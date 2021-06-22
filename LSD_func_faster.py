@@ -7,17 +7,14 @@ import matplotlib.pyplot as plt
 def LSD(wavelengths, flux_obs, rms, linelist):
 
     vmax=25
-    #deltav=1.1
+    #deltav=0.8
     vmin=-vmax
 
     resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
     deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
-    #print(resol1)
 
     velocities=np.arange(vmin,vmax,deltav)
 
-    id_matrix=np.identity(len(flux_obs))
-    S_matrix=(1/rms)*id_matrix
     #print('Matrix S has been set up')
 
     #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
@@ -37,25 +34,19 @@ def LSD(wavelengths, flux_obs, rms, linelist):
         else:
             pass
 
-    #print('number of lines: %s'%len(depths_expected))
-    #print('Expected linelist has been read in')
-
     blankwaves=wavelengths
     R_matrix=flux_obs
-    #print('Matrix R has been set up')
-
-    #delta_x=np.zeros([len(wavelengths_expected), (len(blankwaves)*len(velocities))])
-    #print('Delta x')
-    #print(np.shape(delta_x))
 
     alpha=np.zeros((len(blankwaves), len(velocities)))
 
     limit=np.max(velocities)*np.max(wavelengths_expected)/2.99792458e5
+    #print(limit)
 
     for j in range(0, len(blankwaves)):
         for i in (range(0,len(wavelengths_expected))):
 
             diff=blankwaves[j]-wavelengths_expected[i]
+            #limit=np.max(velocities)*wavelengths_expected[i]/2.99792458e5
             if abs(diff)<=(limit):
                 vel=2.99792458e5*diff/wavelengths_expected[i]
                 for k in range(0, len(velocities)):
@@ -68,42 +59,57 @@ def LSD(wavelengths, flux_obs, rms, linelist):
                         alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
             else:
                 pass
-    '''
-    #print('Delta_x has been calculated')
+
+    ### FITTING CONTINUUM OF SPECTRUM ###
+
+    ## Identifies the continuum points as those corresponding to a row of zeros in the alpha matrix (a row of zeros implies zero contribution from all lines in the line list)
     continuum_matrix = []
     continuum_waves = []
     for j in range(0, len(blankwaves)):
         row = alpha[j, :]
-        num_non_zeros = np.count_nonzero(row)
+        row = np.array(row)
+        non_zeros = row[row>0.001]
+        num_non_zeros = len(non_zeros)
         if num_non_zeros == 0 :
             continuum_waves.append(blankwaves[j])
             continuum_matrix.append(R_matrix[j])
 
+    ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
     plt.figure()
-    plt.plot(blankwaves, R_matrix)
-    plt.scatter(continuum_waves, continuum_matrix, 'k')
+    plt.plot(blankwaves, R_matrix, linewidth = 0.25)
+    plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
+    plotdepths = [0.5]*len(wavelengths_expected)
+    plt.vlines(wavelengths_expected, plotdepths, 1, label = 'line list', alpha = 0.5, linewidth = 0.5)
     plt.show()
-    '''
-    #print('Calculating Alpha...')
 
-    #alpha=np.dot(depths_expected,delta_x)
-    #alpha=np.reshape(alpha, (len(blankwaves), len(velocities)))
+    ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
+    coeffs=np.polyfit(continuum_waves, continuum_matrix, 2)
+    poly = np.poly1d(coeffs)
+    fit = poly(blankwaves)
+    R_matrix_1 = R_matrix
+    R_matrix = (R_matrix/fit)-1
+    rms = rms/fit
 
-    #print('Alpha Calculated')
+    ## Plotting the original spectrum with the fit.
+    plt.figure()
+    plt.plot(blankwaves, R_matrix_1)
+    plt.plot(blankwaves, fit)
+    plt.show()
+
+    ### Continuum fitting done - feeds corrected R_matrix and errors (denoted rms, but not actually the rms) back into LSD.
+
+    id_matrix=np.identity(len(flux_obs))
+    S_matrix=(1/rms)*id_matrix
 
     S_squared=np.dot(S_matrix, S_matrix)
     alpha_transpose=(np.transpose(alpha))
 
-    #print('Beginning deconvolution')
     RHS_1=np.dot(alpha_transpose, S_squared)
     RHS_final=np.dot(RHS_1, R_matrix )
-
-    #print('RHS ready')
 
     LHS_preinvert=np.dot(RHS_1, alpha)
     LHS_prep=np.matrix(LHS_preinvert)
 
-    #print('Beginning inversion')
     P,L,U=linalg.lu(LHS_prep)
 
     n=len(LHS_prep)
@@ -112,28 +118,11 @@ def LSD(wavelengths, flux_obs, rms, linelist):
     X = linalg.solve_triangular(U, Z, lower=False)
     LHS_final = np.matmul(X,np.transpose(P))
 
-    #print('Inversion complete')
 
     profile=np.dot(LHS_final, RHS_final)
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
-    '''
-    upper_errors = profile+profile_errors
-    lower_errors = profile-profile_errors
 
-
-    fig3 = plt.figure(3)
-    plt.plot(velocities, profile, color = 'b')
-    plt.fill_between(velocities, lower_errors, upper_errors, alpha=0.4)
-    plt.xlabel('Velocity(km/s)')
-    plt.ylabel('Flux(Arbitrary Units)')
-    #fig3.savefig('%s.png'%spectrum)
-
-    #stop = timeit.default_timer() #end point of the timer
-    #print('Time: ', stop - start)
-
-    plt.show()
-    '''
     return velocities, profile, profile_errors
 
 def get_wave(data,header):
@@ -177,6 +166,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         flux_error[where_are_NaNs] = 1000000000000
         where_are_zeros = np.where(spec == 0)[0]
         flux_error[where_are_zeros] = 1000000000000
+
         wave=get_wave(spec, header)
         wavelengths_order = wave[order]
         wavelength_min = np.min(wavelengths_order)
@@ -296,64 +286,19 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         else: print('WARNING - masking not catching - must be either "masked" or "unmasked"')
 
         hdu.close()
-        div = np.max(fluxes)
-        fluxes = fluxes/div
-        flux_error_order = flux_error_order/div
+        #div = np.max(fluxes)
+        #fluxes = fluxes/div
+        #flux_error_order = flux_error_order/div
 
         #print(flux_error_order[idx])
         #plt.figure()
         #plt.plot(wavelengths, fluxes)
 
     #fluxes = continuumfit(fluxes, wavelengths, 2)
+    return fluxes, wavelengths, flux_error_order ## for just LSD
 
-    return fluxes, wavelengths, flux_error_order
-
-def continuumfit(fluxes, wavelengths, errors, poly_ord):
-        fluxes=fluxes
-        idx = wavelengths.argsort()
-        wavelength = wavelengths[idx]
-        fluxe = fluxes[idx]
-
-        frac = 0.75
-        sigma = 1.5*np.median(abs(wavelengths-np.median(wavelengths)))
-        sigma_lower = np.min(wavelengths)+frac*sigma
-        sigma_upper = np.max(wavelengths)-frac*sigma
-
-        #print(sigma_lower, sigma_upper)
-
-        idx = wavelengths.argsort()
-
-        wavelength = wavelengths[idx]
-        flux = fluxe[idx]
-
-
-        wavelength1 = np.array(wavelength[wavelength<sigma_lower])
-        #print(len(wavelength1))
-        flux1 = np.array(flux[:len(wavelength1)])
-        #print(len(flux1))
-        wavelength2 = np.array(wavelength[wavelength>sigma_upper])
-        #print(len(wavelength2))
-        flux2 = np.array(flux[-len(wavelength2):])
-        #print(len(flux2))
-
-        wavelength = np.concatenate((wavelength1, wavelength2))
-        fluxe = np.concatenate((flux1, flux2))
-
-        coeffs=np.polyfit(wavelength, fluxe, poly_ord)
-        poly = np.poly1d(coeffs)
-        fit = poly(wavelengths)
-        flux_obs = fluxes/fit
-        flux_error = errors/fit
-
-        fig = plt.figure('fit')
-        plt.plot(wavelengths, fluxes)
-        plt.plot(wavelengths, fit)
-        #plt.plot(wavelengths, flux_obs)
-        plt.scatter(wavelength, fluxe, color = 'k', s=8)
-        plt.show()
-
-        return flux_obs, flux_error, poly
 ############################################################################################################
+
 file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
 directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
 linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
@@ -362,42 +307,15 @@ file_type = 'e2ds'
 
 # order or full(can't fit properly yet as continuum fit goes to zero)
 spec_type = 'order'
-order = 28
+order = 35
 masking = 'masked'
 
 fluxes, wavelengths, flux_error = blaze_correct(file_type, spec_type, order, file, directory, masking)
 velocities, profile, profile_errors = LSD(wavelengths, fluxes, flux_error, linelist)
 
-p, v, poly = continuumfit(profile, velocities, profile_errors, 1)
-
-fit = poly(wavelengths)
-fit_plot = poly(velocities)
-
-plt.figure('Before Correction')
-plt.plot(wavelengths, fluxes)
-plt.plot(wavelengths, fit)
-plt.xlabel('wavelength')
-plt.ylabel('flux')
-
-plt.figure('LSD Profile(without continuum correction): Order %s'%order)
+#p, v, poly = continuumfit(profile, velocities, profile_errors, 1)
+plt.figure()
 plt.plot(velocities, profile)
-plt.plot(velocities, fit_plot)
-plt.xlabel('velocities')
-plt.ylabel('flux')
 plt.show()
-
-fluxes = (fit*fluxes)
-flux_error = fit*flux_error
-
-plt.figure('After Correction')
-plt.plot(wavelengths, fluxes)
-plt.xlabel('wavelength')
-plt.ylabel('flux')
-
-velocities, profile, profile_errors = LSD(wavelengths, fluxes, flux_error, linelist)
-
-plt.figure('Final LSD Profile: Order %s'%order)
-plt.plot(velocities, profile)
-plt.xlabel('velocities')
-plt.ylabel('flux')
-plt.show()
+#fit = poly(wavelengths)
+#fit_plot = poly(velocities)
