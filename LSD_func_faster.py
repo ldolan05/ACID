@@ -68,18 +68,22 @@ def LSD(wavelengths, flux_obs, rms, linelist):
     for j in range(0, len(blankwaves)):
         row = alpha[j, :]
         row = np.array(row)
-        non_zeros = row[row>0.001]
-        num_non_zeros = len(non_zeros)
-        if num_non_zeros == 0 :
+        edge_size = int(np.floor(len(row)/8))
+        print(edge_size)
+        row = row[edge_size:len(row)-edge_size]
+        weight = sum(row)
+        #print(row)
+        if weight <= 0.001:
             continuum_waves.append(blankwaves[j])
             continuum_matrix.append(R_matrix[j])
+
 
     ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
     plt.figure()
     plt.plot(blankwaves, R_matrix, linewidth = 0.25)
     plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
     plotdepths = [0.5]*len(wavelengths_expected)
-    plt.vlines(wavelengths_expected, plotdepths, 1, label = 'line list', alpha = 0.5, linewidth = 0.5)
+    plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
     plt.show()
 
     ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
@@ -307,7 +311,7 @@ file_type = 'e2ds'
 
 # order or full(can't fit properly yet as continuum fit goes to zero)
 spec_type = 'order'
-order = 35
+order = 26
 masking = 'masked'
 
 fluxes, wavelengths, flux_error = blaze_correct(file_type, spec_type, order, file, directory, masking)
