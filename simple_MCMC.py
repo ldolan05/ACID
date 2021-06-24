@@ -17,12 +17,13 @@ def get_data(file, frame, order):
     fluxes, wavelengths, flux_error_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'masked')
     velocities, profile, profile_errors, alpha = LSD.LSD(wavelengths, fluxes-1, flux_error_order, linelist)
 
-    alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
-    alpha = np.array(alpha)
+    #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
+    #alpha = np.array(alpha)
     profile = np.array(profile)
-    print(np.shape(alpha))
-    print(np.shape(profile))
-    inputs = np.concatenate((alpha, profile))
+    inputs = profile
+    #print(np.shape(alpha))
+    #print(np.shape(profile))
+    #inputs = np.concatenate((alpha, profile))
     '''
     plt.figure()
     plt.plot(velocities, profile)
@@ -35,7 +36,7 @@ def get_data(file, frame, order):
     plt.plot(wavelengths, fluxes)
     plt.show()
     '''
-    return wavelengths, fluxes, flux_error_order, inputs
+    return wavelengths, fluxes, flux_error_order, inputs, alpha
 '''
 def z_func(inputs, x):
     #print('o, w, h: %s'%theta)
@@ -49,12 +50,12 @@ def z_func(inputs, x):
 def model_func(inputs, x):
     ## make LSD profile flux the first input  - are you varying this as well
     ## setting up the alpha matrix depending on the size of the spectrum and velocity grid
-    alpha = inputs[:j_max*k_max]
-    z = inputs[j_max*k_max:j_max*k_max+k_max]
-    alpha=np.reshape(alpha, (j_max, k_max))
+    #alpha = inputs[:j_max*k_max]
+    z = inputs[:k_max]
+    #alpha=np.reshape(alpha, (j_max, k_max))
     mdl = np.dot(alpha, z)
-    for i in range(j_max*k_max+k_max,len(inputs)):
-        mdl = mdl*inputs[i]*x**(i-(j_max*k_max+k_max))
+    for i in range(k_max,len(inputs)):
+        mdl = mdl*inputs[i]*x**(i-(k_max))
     '''
     plt.figure()
     plt.plot(x, mdl)
@@ -88,14 +89,11 @@ def likelihood_estimate(x, y, yerr, initial):
 def log_prior(theta):
 
     check = 0
-    alpha = inputs[:j_max*k_max]
-    z = inputs[j_max*k_max:j_max*k_max+k_max]
+    #alpha = inputs[:j_max*k_max]
+    z = theta[:k_max]
     for i in range(len(theta)):
-        if i<j_max*k_max: ## must lie in alpha
-            if 0<=theta[i]<1: pass
-            else:check = 1
-        if i>=j_max*k_max and i<j_max*k_max+k_max: ## must lie in z
-            if 0<=theta[i]<1: pass
+        if i<k_max: ## must lie in z
+            if -1<=theta[i]<2: pass
             else:check = 1
         if i>j_max*k_max+k_max:pass ## no restrictions on polynomial coefficents
 
@@ -115,13 +113,15 @@ def run_emcee(x, y, yerr, initial_inputs):
     model_inputs, soln = likelihood_estimate(x, y, yerr, initial_inputs)
     print(model_inputs)
 
-    pos = soln.x + 1e-4 * np.random.randn(32, len(initial_inputs))
+    pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
+    #print(pos)
     #print(soln.x)
     #pos = initial_inputs + 1e-4 * np.random.randn(32, 2)
     nwalkers, ndim = pos.shape
+    print(nwalkers, ndim)
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    sampler.run_mcmc(pos, 5000, progress=True);
+    sampler.run_mcmc(pos, 5000, progress=True, skip_initial_state_check=True);
     '''
     fig, axes = plt.subplots(ndim, figsize=(10, 7), sharex=True)
     samples = sampler.get_chain()
@@ -176,11 +176,14 @@ frame = 0
 order = 26
 
 #fits_file = fits.open(file)
-wavelength_init, flux_init, flux_error_init, initial_inputs = get_data(file, frame, order)
+wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1 = get_data(file, frame, order)
 
+## making alpha a global variable
+alpha = alpha1
 ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
 j_max = int(len(flux_init))
-k_max = int(len(initial_inputs)/(j_max+1))
+k_max = len(initial_inputs)
+#k_max = int(len(initial_inputs)/(j_max+1))
 print(k_max)
 
 #poly_ord = input('Enter order of polynomial for continuum fit:')
