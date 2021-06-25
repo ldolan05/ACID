@@ -113,7 +113,7 @@ def run_emcee(x, y, yerr, initial_inputs):
     model_inputs, soln = likelihood_estimate(x, y, yerr, initial_inputs)
     print(model_inputs)
 
-    pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
+    pos = soln.x + 0.1 * np.random.randn(20000, len(initial_inputs))
     #print(pos)
     #print(soln.x)
     #pos = initial_inputs + 1e-4 * np.random.randn(32, 2)
