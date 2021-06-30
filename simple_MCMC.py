@@ -29,7 +29,7 @@ def get_data(file, frame, order):
     #print(np.shape(alpha))
     #print(np.shape(profile))
     #inputs = np.concatenate((alpha, profile))
-    '''
+
     plt.figure()
     plt.plot(velocities, profile)
 
@@ -40,7 +40,7 @@ def get_data(file, frame, order):
     plt.figure()
     plt.plot(wavelengths, fluxes-1)
     #plt.show()
-    '''
+
     return wavelengths, fluxes-1, flux_error_order, inputs, alpha
 '''
 def z_func(inputs, x):
@@ -76,15 +76,17 @@ def model_func(inputs, x):
     plt.plot(x, mdl1, 'k')
     plt.plot(x, mdl)
     plt.show()
-
-
-    plt.figure('adjusted mdl')
-    plt.plot(x, mdl)
-    plt.show()
     '''
     mdl = mdl * mdl1
     mdl = mdl-1
-
+    '''
+    plt.figure('adjusted mdl')
+    plt.plot(x, y, color='k', marker='.')
+    plt.plot(x, mdl)
+    plt.show()
+    '''
+    #error = yerr*mdl1
+    #print(error)
     return mdl
 
 ## maximum likelihood estimation for a gaussian with offset, o, width, w and height h.
@@ -95,7 +97,15 @@ def log_likelihood(theta, x, y, yerr):
     #lnlike = -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))
 
     lnlike = -0.5 * np.sum((y - model) ** 2 / yerr**2)
+    '''
+    print(y)
+    print(model)
+    print(yerr)
+    print(yerr1)
+    '''
+    print(lnlike)
 
+    #plt.show()
     return lnlike
 
 ## caluclating maximum liklihood estimates for x, y and y_err
@@ -104,9 +114,10 @@ def likelihood_estimate(x, y, yerr, initial):
     nll = lambda *args: -log_likelihood(*args)
     #print(nll)
     #print(initial)
-    soln = minimize(nll, initial, args=(x, y, yerr))
+    soln = minimize(nll, initial, args=(x, y, yerr), method = 'Nelder-Mead')
     #print(soln)
     model_inputs = soln.x
+    #plt.close('all')
     return model_inputs , soln
 
 ## imposes the prior restrictions on the inputs
@@ -115,11 +126,28 @@ def log_prior(theta):
     check = 0
     #alpha = inputs[:j_max*k_max]
     z = theta[:k_max]
+    '''
+    print(z)
+    plt.figure()
+    plt.plot(z)
+    plt.show()
+    '''
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
             if -1.5<=theta[i]<0.5: pass
             else:check = 1
-        if i>j_max*k_max+k_max:pass ## no restrictions on polynomial coefficents
+        if i==len(theta)-2:
+            if 15<=theta[i]<30: pass
+            else:check = 1
+        if i==len(theta)-1:
+             if -1<=theta[i]<1: pass
+             else:check = 1
+        '''
+        if i==len(theta):
+             if -0.00001<=theta[i]<0.00001: pass
+             else:check = 1
+        '''
+    #print(k_max+1, len(theta)-2)
 
     if check==0:
         return 0.0
@@ -127,10 +155,15 @@ def log_prior(theta):
 
 def log_probability(theta, x, y, yerr):
     lp = log_prior(theta)
+    #print(lp)
     if not np.isfinite(lp):
+        #print(theta)
         return -np.inf
     #print('hello')
-    return lp + log_likelihood(theta, x, y, yerr)
+    final = lp + log_likelihood(theta, x, y, yerr)
+    #plt.show()
+    #print('final')
+    return final
 
 def run_emcee(x, y, yerr, initial_inputs):
 
@@ -261,17 +294,29 @@ print(initial_inputs)
 #wavelength, flux, flux_error = run_emcee(wavelength_init, flux_init, flux_error_init, initial_inputs)
 #plt.close('all')
 x = wavelength_init
-y = flux_error_init
+y = flux_init
 yerr = flux_error_init
 
-model_inputs, soln = likelihood_estimate(x, y, yerr, initial_inputs)
-print(model_inputs)
+#plt.figure('data')
+#plt.plot(x, y, 'k')
+#plt.close('all')
+#plt.show()
 
-pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
+#model_inputs, soln = likelihood_estimate(x, y, yerr, initial_inputs)
+#print('model inputs created')
+#print(model_inputs)
+ndim = len(initial_inputs)
+nwalkers= ndim*3
+#pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
+rng = np.random.default_rng()
+pos=initial_inputs[:]+rng.normal( 0.,0.001,(nwalkers, ndim))
+print(pos)
+#pos = initial_inputs + 0.0001 * np.random.randn(10000, len(initial_inputs))
+
 #print(pos)
 #print(soln.x)
 #pos = initial_inputs + 1e-4 * np.random.randn(32, 2)
-nwalkers, ndim = pos.shape
+
 print(nwalkers, ndim)
 
 sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
@@ -307,24 +352,42 @@ inds = np.random.randint(len(flat_samples), size=100)
 for ind in inds:
     sample = flat_samples[ind]
     #plt.plot(x0, np.dot(np.vander(x0, 2), sample[:2]), "C1", alpha=0.1)
-    plt.plot(x, model_func(sample, x), "C1", alpha=0.1)
-plt.errorbar(x, y, yerr=yerr, fmt=".k", capsize=0)
-plt.plot(x, model_func(model_inputs, x))
+    mdl = model_func(sample, x)
+    plt.plot(x, mdl, "C1", alpha=0.1)
+plt.plot(x, y, color = 'k', alpha = 0.1)
+#model = model_func(model_inputs, x)
+#plt.plot(x, model)
 #plt.plot(velocities, ccf_spec, "k", label="truth")
 #plt.legend(fontsize=14)
 #plt.xlim(0, 10)
-plt.xlabel("x")
-plt.ylabel("y");
+plt.xlabel("wavelengths")
+plt.ylabel("flux");
 #plt.show()
-print(ndim)
+profile = []
+poly_cos = []
 for i in range(ndim):
     mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-    q = np.diff(mcmc)
+    if i<ndim-poly_ord-1:
+        profile.append(mcmc[1])
+    else: poly_cos.append(mcmc[1])
+    #q = np.diff(mcmc)
     #txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
     #txt = txt.format(mcmc[1], q[0], q[1], labels[i])
 
-wavelength = x
-flux = y
-flux_error = yerr
+plt.figure('profile directly from mcmc')
+plt.plot(profile)
 
+plt.figure('continuum fit from mcmc')
+plt.plot(x, y+1, color = 'k', label = 'data')
+plt.plot(x, poly_cos[2]*x**2 + poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
+plt.legend()
+
+fit = poly_cos[2]*x**2 + poly_cos[1]*wavelength_init + poly_cos[0]
+flux_adjusted  = (flux_init+1)/fit-1
+flux_error_adjusted = flux_error_init/fit
+
+velocities, profile, profile_errors, alpha = LSD.LSD(wavelength_init, flux_adjusted, flux_error_adjusted, linelist)
+
+plt.figure('LSD with new continuum')
+plt.plot(velocities, profile)
 plt.show()
