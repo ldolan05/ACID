@@ -6,6 +6,8 @@ from scipy.optimize import minimize
 import emcee
 #import corner
 import LSD_func_faster as LSD
+import time
+
 '''
 fits_file = '/Users/lucydolan/Documents/Ernst_Rm_Codes/HD189733b_profiles/August2007_master_out_ccfs.fits'
 linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
@@ -32,7 +34,11 @@ def get_data(file, frame, order):
 
     plt.figure()
     plt.plot(velocities, profile)
-
+    plt.xlabel('velocities km/s')
+    plt.ylabel('flux')
+    plt.title('Profile from LSD (no continuum correction)')
+    #plt.savefig('/home/lsd/Documents/original_profile_LSD.png')
+    '''
     profile = profile+1
     plt.figure()
     plt.plot(velocities, profile)
@@ -40,8 +46,8 @@ def get_data(file, frame, order):
     plt.figure()
     plt.plot(wavelengths, fluxes-1)
     #plt.show()
-
-    return wavelengths, fluxes-1, flux_error_order, inputs, alpha
+    '''
+    return wavelengths, fluxes-1, flux_error_order, inputs, alpha, velocities
 '''
 def z_func(inputs, x):
     #print('o, w, h: %s'%theta)
@@ -89,6 +95,11 @@ def model_func(inputs, x):
     #print(error)
     return mdl
 
+
+def convolve(profile, alpha):
+    spectrum = np.dot(alpha, profile)
+    return spectrum
+
 ## maximum likelihood estimation for a gaussian with offset, o, width, w and height h.
 def log_likelihood(theta, x, y, yerr):
     #print('o, w, h: %s'%theta)
@@ -103,22 +114,10 @@ def log_likelihood(theta, x, y, yerr):
     print(yerr)
     print(yerr1)
     '''
-    print(lnlike)
+    #print(lnlike)
 
     #plt.show()
     return lnlike
-
-## caluclating maximum liklihood estimates for x, y and y_err
-def likelihood_estimate(x, y, yerr, initial):
-    #sigma_init, h_init, mu_init, a_init, b_init = initial
-    nll = lambda *args: -log_likelihood(*args)
-    #print(nll)
-    #print(initial)
-    soln = minimize(nll, initial, args=(x, y, yerr), method = 'Nelder-Mead')
-    #print(soln)
-    model_inputs = soln.x
-    #plt.close('all')
-    return model_inputs , soln
 
 ## imposes the prior restrictions on the inputs
 def log_prior(theta):
@@ -136,13 +135,14 @@ def log_prior(theta):
         if i<k_max: ## must lie in z
             if -1.5<=theta[i]<0.5: pass
             else:check = 1
+        '''
         if i==len(theta)-2:
             if 15<=theta[i]<30: pass
             else:check = 1
         if i==len(theta)-1:
              if -1<=theta[i]<1: pass
              else:check = 1
-        '''
+
         if i==len(theta):
              if -0.00001<=theta[i]<0.00001: pass
              else:check = 1
@@ -165,68 +165,6 @@ def log_probability(theta, x, y, yerr):
     #print('final')
     return final
 
-def run_emcee(x, y, yerr, initial_inputs):
-
-    model_inputs, soln = likelihood_estimate(x, y, yerr, initial_inputs)
-    print(model_inputs)
-
-    pos = soln.x + 0.01 * np.random.randn(10000, len(initial_inputs))
-    #print(pos)
-    #print(soln.x)
-    #pos = initial_inputs + 1e-4 * np.random.randn(32, 2)
-    nwalkers, ndim = pos.shape
-    print(nwalkers, ndim)
-
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    sampler.run_mcmc(pos, 5000, progress=True, skip_initial_state_check=True);
-    '''
-    fig, axes = plt.subplots(ndim, figsize=(10, 7), sharex=True)
-    samples = sampler.get_chain()
-    labels = ["sigma", "h", "mu", "offset_in_y"]
-    for l in range(4, len(model_inputs)):
-        labels.append('poly_ord %s'%(l-3))
-    for i in range(ndim):
-        ax = axes[i]
-        ax.plot(samples[:, :, i], "k", alpha=0.3)
-        ax.set_xlim(0, len(samples))
-        ax.set_ylabel(labels[i])
-        ax.yaxis.set_label_coords(-0.1, 0.5)
-
-    axes[-1].set_xlabel("step number");
-    '''
-    #tau = sampler.get_autocorr_time()
-    #print("Tau: %s"%tau)
-
-    #dis_no = int(input("How many values to discard: "))
-    dis_no = 200
-    #av_tau = np.sum(tau)/len(tau)
-    flat_samples = sampler.get_chain(discard=dis_no, thin=15, flat=True)
-    print(flat_samples.shape)
-
-    #fig = corner.corner(flat_samples, labels=labels);
-
-    plt.figure()
-    inds = np.random.randint(len(flat_samples), size=100)
-    for ind in inds:
-        sample = flat_samples[ind]
-        #plt.plot(x0, np.dot(np.vander(x0, 2), sample[:2]), "C1", alpha=0.1)
-        plt.plot(x, model_func(sample, x), "C1", alpha=0.1)
-    plt.errorbar(x, y, yerr=yerr, fmt=".k", capsize=0)
-    #plt.plot(x, np.exp(initial_inputs[1])*np.exp(-x**2/2.*initial_inputs[0]**2))
-    #plt.plot(velocities, ccf_spec, "k", label="truth")
-    #plt.legend(fontsize=14)
-    #plt.xlim(0, 10)
-    plt.xlabel("x")
-    plt.ylabel("y");
-    #plt.show()
-    print(ndim)
-    for i in range(ndim):
-        mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-        q = np.diff(mcmc)
-        #txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
-        #txt = txt.format(mcmc[1], q[0], q[1], labels[i])
-
-    return x, y, yerr
 
 def continuumfit(fluxes, wavelengths, errors, poly_ord):
         fluxes = fluxes+1
@@ -266,10 +204,13 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
 #file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
 file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
 frame = 0
-order = 28
+
+order = 34
+
+t0 = time.time()
 
 #fits_file = fits.open(file)
-wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1 = get_data(file, frame, order)
+wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities = get_data(file, frame, order)
 
 ## making alpha a global variable
 alpha = alpha1
@@ -280,7 +221,7 @@ k_max = len(initial_inputs)
 print(k_max)
 
 #poly_ord = input('Enter order of polynomial for continuum fit:')
-poly_ord = 1
+poly_ord = 2
 poly_inputs=continuumfit(flux_init,  wavelength_init, flux_error_init, poly_ord)
 poly_inputs=poly_inputs[::-1]
 print(poly_inputs)
@@ -340,7 +281,7 @@ axes[-1].set_xlabel("step number");
 #print("Tau: %s"%tau)
 
 #dis_no = int(input("How many values to discard: "))
-dis_no = 200
+dis_no = 100
 #av_tau = np.sum(tau)/len(tau)
 flat_samples = sampler.get_chain(discard=dis_no, thin=15, flat=True)
 print(flat_samples.shape)
@@ -354,14 +295,16 @@ for ind in inds:
     #plt.plot(x0, np.dot(np.vander(x0, 2), sample[:2]), "C1", alpha=0.1)
     mdl = model_func(sample, x)
     plt.plot(x, mdl, "C1", alpha=0.1)
-plt.plot(x, y, color = 'k', alpha = 0.1)
+plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
 #model = model_func(model_inputs, x)
 #plt.plot(x, model)
 #plt.plot(velocities, ccf_spec, "k", label="truth")
 #plt.legend(fontsize=14)
 #plt.xlim(0, 10)
 plt.xlabel("wavelengths")
-plt.ylabel("flux");
+plt.ylabel("flux")
+plt.title('mcmc models and data')
+#plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
 #plt.show()
 profile = []
 poly_cos = []
@@ -375,19 +318,55 @@ for i in range(ndim):
     #txt = txt.format(mcmc[1], q[0], q[1], labels[i])
 
 plt.figure('profile directly from mcmc')
-plt.plot(profile)
+plt.plot(velocities, profile)
+plt.xlabel('velocities km/s')
+plt.ylabel('flux')
+plt.title('Profile directly from mcmc')
+#plt.savefig('/home/lsd/Documents/mcmc_profile.png')
 
 plt.figure('continuum fit from mcmc')
 plt.plot(x, y+1, color = 'k', label = 'data')
 plt.plot(x, poly_cos[2]*x**2 + poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
+#plt.plot(x, poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
 plt.legend()
+plt.title('continuum from mcmc')
+plt.xlabel("wavelengths")
+plt.ylabel("flux");
+#plt.savefig('/home/lsd/Documents/mcmc_continuum_fit.png')
 
 fit = poly_cos[2]*x**2 + poly_cos[1]*wavelength_init + poly_cos[0]
+#fit = poly_cos[1]*wavelength_init + poly_cos[0]
 flux_adjusted  = (flux_init+1)/fit-1
 flux_error_adjusted = flux_error_init/fit
 
 velocities, profile, profile_errors, alpha = LSD.LSD(wavelength_init, flux_adjusted, flux_error_adjusted, linelist)
 
+contents = fits.PrimaryHDU([velocities, profile, profile_errors])
+hdu = fits.HDUList(contents)
+hdu.writeto('/home/lsd/Documents/LSD_profile_mcmc_order%s'%order, overwrite = 'True')
+hdu.close()
+
+t1 = time.time()
+
 plt.figure('LSD with new continuum')
 plt.plot(velocities, profile)
+plt.xlabel('velocities km/s')
+plt.ylabel('flux')
+plt.title('Profile from LSD with continuum correction from mcmc')
+#plt.savefig('/home/lsd/Documents/new_continuum_LSD.png')
+
+m_flux = convolve(profile, alpha)
+residuals = flux_adjusted - m_flux
+
+fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model - Order: %s, seperate continuum fit'%(order), sharex = True)
+ax[0].plot(x, flux_adjusted, '--', color = 'orange', label = 'data')
+ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model ')
+ax[0].legend()
+hline = [0]*len(x)
+ax[1].plot(x, residuals, '.', color = 'red')
+ax[1].plot(x, hline, linestyle = '--')
+#ax[1].set_ylim([-0.3, 0.5])
+plt.savefig('/home/lsd/Documents/forward_model_%s.png'%order)
 plt.show()
+
+print('Time Taken: %s minutes'%((t1-t0)/60))
