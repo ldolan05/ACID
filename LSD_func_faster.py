@@ -9,8 +9,8 @@ def LSD(wavelengths, flux_obs, rms, linelist):
     deltav=0.8
     vmin=-vmax
 
-    #resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    #deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
+    resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
     #print(resol1)
 
     velocities=np.arange(vmin,vmax,deltav)

@@ -7,6 +7,7 @@ import emcee
 #import corner
 import LSD_func_faster as LSD
 import time
+import synthetic_data as syn
 
 '''
 fits_file = '/Users/lucydolan/Documents/Ernst_Rm_Codes/HD189733b_profiles/August2007_master_out_ccfs.fits'
@@ -23,11 +24,10 @@ def get_data(file, frame, order):
 
     fluxes, wavelengths, flux_error_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'masked')
     velocities, profile, profile_errors, alpha = LSD.LSD(wavelengths, fluxes-1, flux_error_order, linelist)
-
     #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
     #alpha = np.array(alpha)
     profile = np.array(profile)
-    inputs = profile
+    print(len(profile))
     #print(np.shape(alpha))
     #print(np.shape(profile))
     #inputs = np.concatenate((alpha, profile))
@@ -37,7 +37,7 @@ def get_data(file, frame, order):
     plt.xlabel('velocities km/s')
     plt.ylabel('flux')
     plt.title('Profile from LSD (no continuum correction)')
-    #plt.savefig('/home/lsd/Documents/original_profile_LSD.png')
+    plt.savefig('/home/lsd/Documents/original_profile_LSD.png')
     '''
     profile = profile+1
     plt.figure()
@@ -47,7 +47,55 @@ def get_data(file, frame, order):
     plt.plot(wavelengths, fluxes-1)
     #plt.show()
     '''
+
+    inputs = profile
+    print(profile)
+    plt.figure()
+    plt.plot(velocities, profile)
+    plt.xlabel('velocities km/s')
+    plt.ylabel('flux')
+    plt.title('Profile from LSD (continuum correction)')
+
     return wavelengths, fluxes-1, flux_error_order, inputs, alpha, velocities
+
+def get_synthetic_data(vgrid, linelist, p0, wavelengths):
+
+    fluxes, flux_error_order = syn.make_spectrum(vgrid, p0, wavelengths, linelist)
+    velocities, profile, profile_errors, alpha = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist)
+    #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
+    #alpha = np.array(alpha)
+    profile = np.array(profile)
+    print(len(profile))
+    #print(np.shape(alpha))
+    #print(np.shape(profile))
+    #inputs = np.concatenate((alpha, profile))
+
+    plt.figure()
+    plt.plot(velocities, profile)
+    plt.xlabel('velocities km/s')
+    plt.ylabel('flux')
+    plt.title('Profile from LSD (no continuum correction)')
+    plt.savefig('/home/lsd/Documents/original_profile_LSD.png')
+    '''
+    profile = profile+1
+    plt.figure()
+    plt.plot(velocities, profile)
+
+    plt.figure()
+    plt.plot(wavelengths, fluxes-1)
+    #plt.show()
+    '''
+
+    inputs = profile
+    print(profile)
+    plt.figure()
+    plt.plot(velocities, profile)
+    plt.xlabel('velocities km/s')
+    plt.ylabel('flux')
+    plt.title('Profile from LSD (continuum correction)')
+
+    return wavelengths, fluxes, flux_error_order, inputs, alpha, velocities
+
 '''
 def z_func(inputs, x):
     #print('o, w, h: %s'%theta)
@@ -205,12 +253,18 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
 file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
 frame = 0
 
-order = 34
+order = 26
 
 t0 = time.time()
 
 #fits_file = fits.open(file)
-wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities = get_data(file, frame, order)
+#wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities = get_data(file, frame, order)
+
+vgrid = np.arange(-25, 25, 0.8)
+p0=[0.36, -0.6, 0, 0, 11.38 , -0.000422450, -0.000000408] ## for synthetic data
+wavelengths = np.arange(4575, 4626, 0.01)
+
+wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities = get_synthetic_data(vgrid, linelist, p0, wavelengths)
 
 ## making alpha a global variable
 alpha = alpha1
@@ -221,7 +275,7 @@ k_max = len(initial_inputs)
 print(k_max)
 
 #poly_ord = input('Enter order of polynomial for continuum fit:')
-poly_ord = 2
+poly_ord = 3
 poly_inputs=continuumfit(flux_init,  wavelength_init, flux_error_init, poly_ord)
 poly_inputs=poly_inputs[::-1]
 print(poly_inputs)
@@ -281,7 +335,7 @@ axes[-1].set_xlabel("step number");
 #print("Tau: %s"%tau)
 
 #dis_no = int(input("How many values to discard: "))
-dis_no = 100
+dis_no = 200
 #av_tau = np.sum(tau)/len(tau)
 flat_samples = sampler.get_chain(discard=dis_no, thin=15, flat=True)
 print(flat_samples.shape)
@@ -304,7 +358,7 @@ plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
 plt.xlabel("wavelengths")
 plt.ylabel("flux")
 plt.title('mcmc models and data')
-#plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
+plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
 #plt.show()
 profile = []
 poly_cos = []
@@ -322,22 +376,25 @@ plt.plot(velocities, profile)
 plt.xlabel('velocities km/s')
 plt.ylabel('flux')
 plt.title('Profile directly from mcmc')
-#plt.savefig('/home/lsd/Documents/mcmc_profile.png')
+plt.savefig('/home/lsd/Documents/mcmc_profile.png')
 
 plt.figure('continuum fit from mcmc')
 plt.plot(x, y+1, color = 'k', label = 'data')
-plt.plot(x, poly_cos[2]*x**2 + poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
+plt.plot(x, poly_cos[3]*x**3 +poly_cos[2]*x**2 + poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
 #plt.plot(x, poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
 plt.legend()
 plt.title('continuum from mcmc')
 plt.xlabel("wavelengths")
 plt.ylabel("flux");
-#plt.savefig('/home/lsd/Documents/mcmc_continuum_fit.png')
+plt.savefig('/home/lsd/Documents/mcmc_continuum_fit.png')
 
-fit = poly_cos[2]*x**2 + poly_cos[1]*wavelength_init + poly_cos[0]
+fit = poly_cos[3]*x**3 + poly_cos[2]*x**2 + poly_cos[1]*wavelength_init + poly_cos[0]
+true_fit = p0[6]*x**2 + p0[5]*wavelength_init + p0[4]
 #fit = poly_cos[1]*wavelength_init + poly_cos[0]
 flux_adjusted  = (flux_init+1)/fit-1
 flux_error_adjusted = flux_error_init/fit
+
+true_flux = (flux_init+1)/true_fit-1
 
 velocities, profile, profile_errors, alpha = LSD.LSD(wavelength_init, flux_adjusted, flux_error_adjusted, linelist)
 
@@ -353,13 +410,13 @@ plt.plot(velocities, profile)
 plt.xlabel('velocities km/s')
 plt.ylabel('flux')
 plt.title('Profile from LSD with continuum correction from mcmc')
-#plt.savefig('/home/lsd/Documents/new_continuum_LSD.png')
+plt.savefig('/home/lsd/Documents/new_continuum_LSD.png')
 
 m_flux = convolve(profile, alpha)
 residuals = flux_adjusted - m_flux
 
 fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model - Order: %s, seperate continuum fit'%(order), sharex = True)
-ax[0].plot(x, flux_adjusted, '--', color = 'orange', label = 'data')
+ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
 ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model ')
 ax[0].legend()
 hline = [0]*len(x)
