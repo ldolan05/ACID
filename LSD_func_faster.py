@@ -4,14 +4,14 @@ from astropy.io import  fits
 import glob
 import matplotlib.pyplot as plt
 
-def LSD(wavelengths, flux_obs, rms, linelist):
+def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
 
     vmax=25
-    #deltav=0.8
+    deltav=0.8
     vmin=-vmax
 
-    resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
+    #resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    #deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
 
     velocities=np.arange(vmin,vmax,deltav)
 
@@ -61,46 +61,54 @@ def LSD(wavelengths, flux_obs, rms, linelist):
                 pass
 
     ### FITTING CONTINUUM OF SPECTRUM ###
+    if adjust_continuum == 'True':
+        ## Identifies the continuum points as those corresponding to a row of zeros in the alpha matrix (a row of zeros implies zero contribution from all lines in the line list)
+        continuum_matrix = []
+        continuum_waves = []
+        for j in range(0, len(blankwaves)):
+            row = alpha[j, :]
+            row = np.array(row)
+            edge_size = int(np.floor(len(row)/8))
+            #print(edge_size)
+            row = row[edge_size:len(row)-edge_size]
+            weight = sum(row)
+            #print(row)
+            if weight <= 0.001:
+                continuum_waves.append(blankwaves[j])
+                continuum_matrix.append(R_matrix[j]+1)
 
-    ## Identifies the continuum points as those corresponding to a row of zeros in the alpha matrix (a row of zeros implies zero contribution from all lines in the line list)
-    continuum_matrix = []
-    continuum_waves = []
-    for j in range(0, len(blankwaves)):
-        row = alpha[j, :]
-        row = np.array(row)
-        edge_size = int(np.floor(len(row)/8))
-        print(edge_size)
-        row = row[edge_size:len(row)-edge_size]
-        weight = sum(row)
-        #print(row)
-        if weight <= 0.001:
-            continuum_waves.append(blankwaves[j])
-            continuum_matrix.append(R_matrix[j])
+        if len(continuum_waves)<3:R_matrix = R_matrix
+        else:
+            ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
+            '''
+            plt.figure()
+            plt.plot(blankwaves, R_matrix, linewidth = 0.25)
+            plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
+            plotdepths = [0.5]*len(wavelengths_expected)
+            plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
+            plt.show()
+            '''
 
+            ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
+            coeffs=np.polyfit(continuum_waves, continuum_matrix, poly_ord)
+            poly = np.poly1d(coeffs)
+            fit = poly(blankwaves)
+            R_matrix_1 = R_matrix+1
+            R_matrix = (R_matrix_1/fit)-1
+            rms = rms/fit
 
-    ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
-    plt.figure()
-    plt.plot(blankwaves, R_matrix, linewidth = 0.25)
-    plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
-    plotdepths = [0.5]*len(wavelengths_expected)
-    plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
-    plt.show()
+            ## Plotting the original spectrum with the fit.
+            '''
+            plt.figure()
+            plt.plot(blankwaves, R_matrix_1)
+            plt.plot(blankwaves, fit)
+            plt.show()
+            '''
+    else:
+        continuum_waves = []
+        continuum_matrix = []
 
-    ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
-    coeffs=np.polyfit(continuum_waves, continuum_matrix, 2)
-    poly = np.poly1d(coeffs)
-    fit = poly(blankwaves)
-    R_matrix_1 = R_matrix
-    R_matrix = (R_matrix/fit)-1
-    rms = rms/fit
-
-    ## Plotting the original spectrum with the fit.
-    plt.figure()
-    plt.plot(blankwaves, R_matrix_1)
-    plt.plot(blankwaves, fit)
-    plt.show()
-
-    ### Continuum fitting done - feeds corrected R_matrix and errors (denoted rms, but not actually the rms) back into LSD.
+            ### Continuum fitting done - feeds corrected R_matrix and errors (denoted rms, but not actually the rms) back into LSD.
 
     id_matrix=np.identity(len(flux_obs))
     S_matrix=(1/rms)*id_matrix
@@ -127,7 +135,7 @@ def LSD(wavelengths, flux_obs, rms, linelist):
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
 
-    return velocities, profile, profile_errors
+    return velocities, profile, profile_errors, alpha, continuum_waves, continuum_matrix
 
 def get_wave(data,header):
 
@@ -302,7 +310,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
     return fluxes, wavelengths, flux_error_order ## for just LSD
 
 ############################################################################################################
-
+'''
 file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
 directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
 linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
@@ -323,3 +331,4 @@ plt.plot(velocities, profile)
 plt.show()
 #fit = poly(wavelengths)
 #fit_plot = poly(velocities)
+'''
