@@ -59,11 +59,48 @@ def get_data(file, frame, order):
 
     return wavelengths, fluxes-1, flux_error_order, inputs, alpha, velocities, continuum_waves, continuum_flux
 
+def continuumfit_profile(fluxes, wavelengths, errors, poly_ord):
+        fluxes = fluxes+1
+
+
+        idx = wavelengths.argsort()
+        wavelength = wavelengths[idx]
+        fluxe = fluxes[idx]
+        clipped_flux = []
+        clipped_waves = []
+        binsize =20
+        for i in range(0, len(wavelength), binsize):
+            waves = wavelength[i:i+binsize]
+            flux = fluxe[i:i+binsize]
+            indicies = flux.argsort()
+            flux = flux[indicies]
+            waves = waves[indicies]
+            clipped_flux.append(flux[len(flux)-2])
+            clipped_waves.append(waves[len(waves)-2])
+        coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        poly = np.poly1d(coeffs)
+        fit = poly(wavelengths)
+        flux_obs = fluxes/fit -1
+        new_errors = errors/fit
+
+        flux_obs[len(flux_obs)-3:] = 0
+        flux_obs[:2] = 0
+
+        fig = plt.figure('fit')
+        plt.plot(wavelengths, fluxes)
+        plt.plot(wavelengths, fit)
+        plt.plot(wavelengths, flux_obs)
+        plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
+        plt.show()
+
+        return wavelengths, flux_obs, new_errors
+
 def get_synthetic_data(vgrid, linelist, p0, wavelengths):
 
     fluxes, flux_error_order, original_profile = syn.make_spectrum(vgrid, p0, wavelengths, linelist)
     #fluxes = fluxes+0.1*np.random.randn()
     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'False', poly_ord)
+    #velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)  ## NOT IN INITIAL VERSION
     #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
     #alpha = np.array(alpha)
     profile = np.array(profile)
@@ -78,7 +115,7 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     plt.ylabel('flux')
     plt.title('Profile from LSD (no continuum correction)')
     plt.savefig('/home/lsd/Documents/original_profile_LSD.png')
-
+    plt.show()
     '''
     profile = profile+1
     plt.figure()
@@ -127,7 +164,7 @@ def model_func(inputs, x):
 
     mdl1=0
     for i in range(k_max,len(inputs)):
-        mdl1 = mdl1 + (inputs[i]*(x/np.max(x))**(i-k_max))
+        mdl1 = mdl1 + (inputs[i]*(x/np.max(x))**(i-k_max))   ###### USING THE MODULATED POLYNOMIAL - COULD BE ISSUE
         #print('y = %s*x**%s'%(inputs[i], (i-(k_max))))
         #print(inputs[i])
         #print(i-(k_max))
@@ -243,7 +280,7 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
             clipped_flux.append(flux[len(flux)-1])
             clipped_waves.append(waves[len(waves)-1])
         coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
-        '''
+
         poly = np.poly1d(coeffs)
         fit = poly(wavelengths)
         print('fit: %s'%fit)
@@ -258,7 +295,7 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
         plt.plot(wavelengths, flux_obs)
         #plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
         plt.show()
-        '''
+
         return coeffs
 
 #file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
@@ -275,13 +312,14 @@ t0 = time.time()
 
 vgrid = np.arange(-25, 25, 0.8)
 #p0=[0.36, -0.6, 0, 0, 11.38 , -0.000422450, -0.000000408] ## for synthetic data
-#p0=[0.36, -0.6, 0, 0, 1, 0.05, -5, -0.5, -15, 19, -70, 100] ## for synthetic data
+#p0=[0.36, -0.6, 0, 0, 1, 0.05, -5, -0.5, -15, 19, -70, 100] ## for synthetic data  #### INITIAL VALUES AFFECTING IT?? THIS DIFFERS FROM OLD VERSION
 
 ### for synthetic data ###
 ## setting up the 8th order polynomial for the synthetic data ####
 flux = [0.78, 1.048, 0.85, 1.13, 0.9, 1, 0.72, 1.037]
 waves = np. arange(4560, 4640, 10)
-poly_inputs=np.polyfit(waves/np.max(waves), flux, 8)
+
+poly_inputs=np.polyfit(waves/np.max(waves), flux, 3)
 poly_inputs = poly_inputs[::-1]
 p0= [0.36, -0.6, 0, 0]
 p0 = np.array(p0)
@@ -290,7 +328,7 @@ p0 = np.concatenate((p0, poly_inputs))
 wavelengths = np.arange(4575, 4626, 0.01)
 
 ### This is the order of polynomial the mcmc will try to fit ###
-poly_ord = 8
+poly_ord = 3
 
 wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux, original_profile = get_synthetic_data(vgrid, linelist, p0, wavelengths)
 
@@ -308,7 +346,14 @@ print(k_max)
 
 if len(continuum_waves)<3:
     poly_inputs=continuumfit(flux_init,  wavelength_init/np.max(wavelength_init), flux_error_init, poly_ord)
-else: poly_inputs=np.polyfit(continuum_waves/np.max(wavelength_init), continuum_flux, poly_ord)
+    print('used continuumfit')
+else:
+    poly_inputs=np.polyfit(continuum_waves/np.max(wavelength_init), continuum_flux, poly_ord)
+    print('used polyfit')
+
+#poly_inputs = [1.1, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001]
+#poly_inputs = [1.1, 0.00001, 0.00001, 0.00001]  ## YOU WERE USING CONTINUUM FIT TO GET THE INITIAL VALUES
+
 '''
 poly = np.poly1d(poly_inputs)
 fit = poly(wavelength_init/np.max(wavelength_init))
@@ -332,6 +377,9 @@ print(poly_inputs)
 poly_inputs = np.array(poly_inputs)
 #original_profile = initial_inputs
 #initial_inputs = initial_inputs*1.25
+
+## TESTING HOW THE INPOUT PROFILE AFFECTS IT ##
+#initial_inputs = profile ## upper adjustment
 initial_inputs = np.concatenate((initial_inputs, poly_inputs))
 
 print('Number of inputs: %s'%len(initial_inputs))
@@ -355,8 +403,8 @@ ndim = len(initial_inputs)
 nwalkers= ndim*3
 #pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
 rng = np.random.default_rng()
-pos=initial_inputs[:]+rng.normal(0.,0.1,(nwalkers, ndim))
-print(pos)
+pos=np.concatenate((initial_inputs[:k_max]+rng.normal(0.,0.01,(nwalkers, k_max)), initial_inputs[k_max:]+rng.normal(0.,0.1,(nwalkers, ndim-k_max))), axis = 1)
+print(np.shape(pos)) ### INITIALLY USED 0.001 FOR PROFILE
 #pos = initial_inputs + 0.0001 * np.random.randn(10000, len(initial_inputs))
 
 #print(pos)
@@ -371,7 +419,7 @@ sampler.run_mcmc(pos, 5000, progress=True, skip_initial_state_check=True);
 fig, axes = plt.subplots(ndim, figsize=(10, 7), sharex=True)
 samples = sampler.get_chain()
 labels = ["sigma", "h", "mu", "offset_in_y"]
-for l in range(4, len(model_inputs)):
+for l in range(4, len(initial_inputs)):
     labels.append('poly_ord %s'%(l-3))
 for i in range(ndim):
     ax = axes[i]
@@ -388,7 +436,7 @@ axes[-1].set_xlabel("step number");
 #dis_no = int(input("How many values to discard: "))
 dis_no = 200
 #av_tau = np.sum(tau)/len(tau)
-flat_samples = sampler.get_chain(discard=dis_no, thin=15, flat=True)
+flat_samples = sampler.get_chain(discard=dis_no, flat = True)
 print(flat_samples.shape)
 
 #fig = corner.corner(flat_samples, labels=labels);
@@ -492,7 +540,7 @@ plt.savefig('/home/lsd/Documents/new_continuum_LSD.png')
 m_flux = convolve(profile, alpha)
 residuals = flux_adjusted - m_flux
 
-fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model - Order: %s, seperate continuum fit'%(order), sharex = True)
+fig, ax = plt.subplots(2, figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model - Order: %s, seperate continuum fit'%(order), sharex = True)
 ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
 ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model ')
 ax[0].legend()
