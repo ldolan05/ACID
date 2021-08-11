@@ -99,8 +99,8 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
 
     fluxes, flux_error_order, original_profile = syn.make_spectrum(vgrid, p0, wavelengths, linelist)
     #fluxes = fluxes+0.1*np.random.randn()
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'False', poly_ord)
-    velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)  ## NOT IN INITIAL VERSION
+    velocities, profile, profile_errors, alpha, RHS_1, LHS_final, continuum_waves, continuum_flux = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'False', poly_ord)
+    #velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)  ## NOT IN INITIAL VERSION
     #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
     #alpha = np.array(alpha)
     profile = np.array(profile)
@@ -136,7 +136,7 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     plt.ylabel('flux')
     plt.title('Profile from LSD (continuum correction)')
     '''
-    return wavelengths, fluxes, flux_error_order, inputs, alpha, velocities, continuum_waves, continuum_flux, original_profile
+    return wavelengths, fluxes, flux_error_order, inputs, alpha, RHS_1, LHS_final, velocities, continuum_waves, continuum_flux, original_profile
 
 '''
 def z_func(inputs, x):
@@ -148,37 +148,22 @@ def z_func(inputs, x):
     return mdl
 '''
 ## thousands of parameters - must be varying alpha also
+## needs data_spec, RHS_1, alpha, LHS_final all to be global variables.
 def model_func(inputs, x):
-    ## make LSD profile flux the first input  - are you varying this as well
-    ## setting up the alpha matrix depending on the size of the spectrum and velocity grid
-    #alpha = inputs[:j_max*k_max]
-    #print(inputs)
-    #z = inputs[:k_max]
-    z = fixed_profile
-    #alpha=np.reshape(alpha, (j_max, k_max))
-    mdl = np.dot(alpha, z)
-    #mdl = np.dot(alpha, inputs)
 
-    mdl = mdl+1
-    #plt.plot(x, mdl)
-    #plt.show()
-    k_max = 0
     mdl1=0
-    for i in range(k_max,len(inputs)):
-        mdl1 = mdl1 + (inputs[i]*(x)**(i-k_max))
+    for i in range(0,len(inputs)):
+        mdl1 = mdl1 + (inputs[i]*(x)**(i))
         #mdl1 = mdl1 + (inputs[i]*(x/np.max(x))**(i-k_max))   ###### USING THE MODULATED POLYNOMIAL - COULD BE ISSUE
-        #print('y = %s*x**%s'%(inputs[i], (i-(k_max))))
-        #print(inputs[i])
-        #print(i-(k_max))
-        #print(mdl1)
 
-    '''
-    plt.figure('poly and non-adjust mdl')
-    plt.plot(x, mdl1, 'k')
-    plt.plot(x, mdl)
-    plt.show()
-    '''
-    mdl = mdl * mdl1
+    R_matrix = (data_spec+1)/mdl1 -1
+
+    RHS_final = np.dot(RHS_1, R_matrix)
+    profile = np.dot(LHS_final, RHS_final)
+
+    m_spec = np.dot(alpha, profile)
+
+    mdl = m_spec * mdl1
     mdl = mdl-1
 
     '''
@@ -221,34 +206,8 @@ def log_prior(theta):
     check = 0
     #alpha = inputs[:j_max*k_max]
     #z = theta[:k_max]
-    '''
-    print(z)
-    plt.figure()
-    plt.plot(z)
-    plt.show()
-    '''
-    '''
-    for i in range(len(theta)):
-        if i<k_max: ## must lie in z
-            if -1.5<=theta[i]<=0.5: pass
-            else:check = 1
-                #plt.figure()
-                #plt.plot(z)
-                #plt.show()
-    '''
-    '''
-    if len(continuum_waves)>3:
-        for n in range(len(continuum_waves)):
-            mdl1=0
-            for i in range(k_max,len(theta)):
-                mdl1 = mdl1 + (theta[i]*continuum_waves[n]**(i-(k_max)))
-            if mdl1 <= (continuum_flux[n]+1)+0.1 and mdl1 >= (continuum_flux[n]+1)-0.1: pass
-            else:check = 1
-                #plt.figure()
-                #plt.plot(continuum_waves, mdl1)
-                #plt.show()
-    else:pass
-    '''
+
+    # no constraints
 
     if check==0:
         return 0.0
@@ -336,11 +295,14 @@ wavelengths = np.arange(4575, 4626, 0.01)
 ### This is the order of polynomial the mcmc will try to fit ###
 poly_ord = 3
 
-wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux, original_profile = get_synthetic_data(vgrid, linelist, p0, wavelengths)
+wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, RHS_11, LHS_final1, velocities, continuum_waves, continuum_flux, original_profile = get_synthetic_data(vgrid, linelist, p0, wavelengths)
 
 
-## making alpha a global variable
+## making alpha, LHS_final, RHS_1 and data_spec global variables
 alpha = alpha1
+RHS_1 = RHS_11
+LHS_final = LHS_final1
+data_spec = flux_init
 ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
 j_max = int(len(flux_init))
 k_max = len(initial_inputs)

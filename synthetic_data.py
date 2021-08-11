@@ -117,7 +117,7 @@ def make_spectrum(vgrid, p0, wavelengths, linelist):
 
     spectrum = ((spectrum+1)*mdl)
     errors = np.ones(np.shape(spectrum))
-    errors = errors*0.0001
+    errors = errors*0.000000000001
     #errors = np.sqrt(spectrum)
     #where_are_NaNs = np.isnan(errors)
     #errors[where_are_NaNs] = 10000000000

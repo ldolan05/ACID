@@ -135,7 +135,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
 
-    return velocities, profile, profile_errors, alpha, continuum_waves, continuum_matrix
+    return velocities, profile, profile_errors, alpha, RHS_1, LHS_final, continuum_waves, continuum_matrix
 
 def get_wave(data,header):
 
