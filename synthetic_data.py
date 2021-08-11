@@ -102,7 +102,8 @@ def make_spectrum(vgrid, p0, wavelengths, linelist):
     for i in np.arange(0,len(p1)):
         #print(i)
         #print(mdl)
-        mdl = mdl+p1[i]*(wavelengths/np.max(wavelengths))**(i-0)
+        #mdl = mdl+p1[i]*(wavelengths/np.max(wavelengths))**(i-0)
+        mdl = mdl+p1[i]*(wavelengths)**(i-0)
         #print(mdl)
         #print(p1[i])
 

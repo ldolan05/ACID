@@ -100,7 +100,7 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     fluxes, flux_error_order, original_profile = syn.make_spectrum(vgrid, p0, wavelengths, linelist)
     #fluxes = fluxes+0.1*np.random.randn()
     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'False', poly_ord)
-    #velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)  ## NOT IN INITIAL VERSION
+    velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)  ## NOT IN INITIAL VERSION
     #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
     #alpha = np.array(alpha)
     profile = np.array(profile)
@@ -153,22 +153,25 @@ def model_func(inputs, x):
     ## setting up the alpha matrix depending on the size of the spectrum and velocity grid
     #alpha = inputs[:j_max*k_max]
     #print(inputs)
-    z = inputs[:k_max]
-
+    #z = inputs[:k_max]
+    z = fixed_profile
     #alpha=np.reshape(alpha, (j_max, k_max))
     mdl = np.dot(alpha, z)
+    #mdl = np.dot(alpha, inputs)
 
     mdl = mdl+1
     #plt.plot(x, mdl)
     #plt.show()
-
+    k_max = 0
     mdl1=0
     for i in range(k_max,len(inputs)):
-        mdl1 = mdl1 + (inputs[i]*(x/np.max(x))**(i-k_max))   ###### USING THE MODULATED POLYNOMIAL - COULD BE ISSUE
+        mdl1 = mdl1 + (inputs[i]*(x)**(i-k_max))
+        #mdl1 = mdl1 + (inputs[i]*(x/np.max(x))**(i-k_max))   ###### USING THE MODULATED POLYNOMIAL - COULD BE ISSUE
         #print('y = %s*x**%s'%(inputs[i], (i-(k_max))))
         #print(inputs[i])
         #print(i-(k_max))
         #print(mdl1)
+
     '''
     plt.figure('poly and non-adjust mdl')
     plt.plot(x, mdl1, 'k')
@@ -217,12 +220,13 @@ def log_prior(theta):
 
     check = 0
     #alpha = inputs[:j_max*k_max]
-    z = theta[:k_max]
+    #z = theta[:k_max]
     '''
     print(z)
     plt.figure()
     plt.plot(z)
     plt.show()
+    '''
     '''
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
@@ -231,7 +235,7 @@ def log_prior(theta):
                 #plt.figure()
                 #plt.plot(z)
                 #plt.show()
-
+    '''
     '''
     if len(continuum_waves)>3:
         for n in range(len(continuum_waves)):
@@ -319,10 +323,12 @@ vgrid = np.arange(-25, 25, 0.8)
 flux = [0.78, 1.048, 0.85, 1.13, 0.9, 1, 0.72, 1.037]
 waves = np. arange(4560, 4640, 10)
 
-poly_inputs=np.polyfit(waves/np.max(waves), flux, 3)
+#poly_inputs=np.polyfit(waves/np.max(waves), flux, 3)
+poly_inputs=np.polyfit(waves, flux, 3)
 poly_inputs = poly_inputs[::-1]
 p0= [0.36, -0.6, 0, 0]
 p0 = np.array(p0)
+#poly_inputs = [1, 0, 0, 0]
 p0 = np.concatenate((p0, poly_inputs))
 
 wavelengths = np.arange(4575, 4626, 0.01)
@@ -345,10 +351,12 @@ print(k_max)
 
 
 if len(continuum_waves)<3:
-    poly_inputs=continuumfit(flux_init,  wavelength_init/np.max(wavelength_init), flux_error_init, poly_ord)
+    #poly_inputs=continuumfit(flux_init,  wavelength_init/np.max(wavelength_init), flux_error_init, poly_ord)
+    poly_inputs=continuumfit(flux_init,  wavelength_init, flux_error_init, poly_ord)
     print('used continuumfit')
 else:
-    poly_inputs=np.polyfit(continuum_waves/np.max(wavelength_init), continuum_flux, poly_ord)
+    #poly_inputs=np.polyfit(continuum_waves/np.max(wavelength_init), continuum_flux, poly_ord)
+    poly_inputs=np.polyfit(continuum_waves, continuum_flux, poly_ord)
     print('used polyfit')
 
 #poly_inputs = [1.1, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001]
@@ -380,7 +388,11 @@ poly_inputs = np.array(poly_inputs)
 
 ## TESTING HOW THE INPOUT PROFILE AFFECTS IT ##
 #initial_inputs = profile ## upper adjustment
-initial_inputs = np.concatenate((initial_inputs, poly_inputs))
+
+fixed_profile = initial_inputs
+#initial_inputs = np.concatenate((initial_inputs, poly_inputs))
+initial_inputs = poly_inputs
+#initial_inputs = initial_inputs - 0.1
 
 print('Number of inputs: %s'%len(initial_inputs))
 print(initial_inputs)
@@ -403,7 +415,9 @@ ndim = len(initial_inputs)
 nwalkers= ndim*3
 #pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
 rng = np.random.default_rng()
-pos=np.concatenate((initial_inputs[:k_max]+rng.normal(0.,0.01,(nwalkers, k_max)), initial_inputs[k_max:]+rng.normal(0.,0.1,(nwalkers, ndim-k_max))), axis = 1)
+#pos=initial_inputs[:]+rng.normal(0.,0.01,(nwalkers, k_max))
+pos = initial_inputs[:]+rng.normal(0.,1,(nwalkers, ndim))
+#pos=np.concatenate((initial_inputs[:k_max]+rng.normal(0.,0.01,(nwalkers, k_max)), initial_inputs[k_max:]+rng.normal(0.,0.1,(nwalkers, ndim-k_max))), axis = 1)
 print(np.shape(pos)) ### INITIALLY USED 0.001 FOR PROFILE
 #pos = initial_inputs + 0.0001 * np.random.randn(10000, len(initial_inputs))
 
@@ -434,7 +448,7 @@ axes[-1].set_xlabel("step number");
 #print("Tau: %s"%tau)
 
 #dis_no = int(input("How many values to discard: "))
-dis_no = 200
+dis_no = 300
 #av_tau = np.sum(tau)/len(tau)
 flat_samples = sampler.get_chain(discard=dis_no, flat = True)
 print(flat_samples.shape)
@@ -475,15 +489,18 @@ for i in range(len(flat_samples)):
 #plt.show()
 profile = []
 poly_cos = []
-
+poly_ord = -1
 for i in range(ndim):
     mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-    if i<ndim-poly_ord-1:
-        profile.append(mcmc[1])
-    else: poly_cos.append(mcmc[1])
+    #if i<ndim-poly_ord-1:
+        #profile.append(mcmc[1])
+    #else:
+    poly_cos.append(mcmc[1])
     #q = np.diff(mcmc)
     #txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
     #txt = txt.format(mcmc[1], q[0], q[1], labels[i])
+
+profile = fixed_profile
 
 plt.figure('profile directly from mcmc')
 plt.plot(velocities, profile, color = 'r', label = 'mcmc')
@@ -497,13 +514,19 @@ plt.savefig('/home/lsd/Documents/mcmc_profile.png')
 plt.figure('continuum fit from mcmc')
 plt.plot(x, y+1, color = 'k', label = 'data')
 mdl1 =0
+print('mcmc')
 for i in np.arange(0, len(poly_cos)):
-    mdl1 = mdl1+poly_cos[i]*(x/np.max(x))**(i)
+    #mdl1 = mdl1+poly_cos[i]*(x/np.max(x))**(i)
+    mdl1 = mdl1+poly_cos[i]*(x)**(i)
+    print(poly_cos[i])
 plt.plot(x, mdl1, label = 'mcmc continuum fit')
 plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
 mdl =0
+print('true')
 for i in np.arange(4,len(p0)):
-    mdl = mdl+p0[i]*(x/np.max(x))**(i-4)
+    #mdl = mdl+p0[i]*(x/np.max(x))**(i-4)
+    mdl = mdl+p0[i]*(x)**(i-4)
+    print(p0[i])
 plt.plot(x, mdl, label = 'true continuum fit')
 #plt.plot(x, poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
 plt.legend()
