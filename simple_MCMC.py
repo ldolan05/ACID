@@ -163,7 +163,7 @@ def log_likelihood(theta, x, y, yerr):
     #sigma2 = yerr ** 2 + model ** 2
     #lnlike = -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))
 
-    lnlike = -0.5 * np.sum((y - model) ** 2 / yerr**2)
+    lnlike = -0.5 * np.sum((y - model) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
     '''
     print(y)
     print(model)
@@ -294,6 +294,7 @@ poly_ord = 8
 
 wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux, original_profile = get_synthetic_data(vgrid, linelist, p0, wavelengths)
 
+true_inputs = np.concatenate((original_profile, poly_inputs))
 
 ## making alpha a global variable
 alpha = alpha1
@@ -355,7 +356,7 @@ ndim = len(initial_inputs)
 nwalkers= ndim*3
 #pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
 rng = np.random.default_rng()
-pos=initial_inputs[:]+rng.normal(0.,0.1,(nwalkers, ndim))
+pos=initial_inputs[:]+rng.normal(-0.01,0.01,(nwalkers, ndim))
 print(pos)
 #pos = initial_inputs + 0.0001 * np.random.randn(10000, len(initial_inputs))
 
@@ -494,7 +495,7 @@ residuals = flux_adjusted - m_flux
 
 fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model - Order: %s, seperate continuum fit'%(order), sharex = True)
 ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
-ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model ')
+ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model')
 ax[0].legend()
 hline = [0]*len(x)
 ax[1].plot(x, residuals, '.', color = 'red')
@@ -503,4 +504,30 @@ ax[1].plot(x, hline, linestyle = '--')
 #plt.savefig('/home/lsd/Documents/forward_model_%s.png'%order)
 plt.show()
 
+
+## calculating liklihood for real data:
+
+true_mdl = model_func(true_inputs, x)
+true_liklihood = log_probability(true_inputs, x, y, yerr)
+
+## calculating likilihood for mcmc models
+mcmc_inputs = np.concatenate((profile, poly_cos))
+mcmc_mdl = model_func(mcmc_inputs, x)
+#mcmc_inputs = np.concatenate((mcmc_inputs, m))
+mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
+
+residuals_2 = (true_mdl+1) - (mcmc_mdl+1)
+
+fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
+ax[0].plot(x, true_mdl+1, 'r', alpha = 0.3, label = 'true spec')
+ax[0].plot(x, true_fit, 'r', label = 'true continuum fit' )
+ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
+ax[0].plot(x, fit, 'k', label = 'mcmc continuum fit')
+ax[0].legend()
+ax[1].plot(x, residuals_2, '.')
+plt.show()
+
+print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
+
+print('reverted version, -0.01, 0.01, 0.000001 in synthetic')
 #print('Time Taken: %s minutes'%((t1-t0)/60))

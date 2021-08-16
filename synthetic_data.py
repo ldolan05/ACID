@@ -103,6 +103,7 @@ def make_spectrum(vgrid, p0, wavelengths, linelist):
         #print(i)
         #print(mdl)
         mdl = mdl+p1[i]*(wavelengths/np.max(wavelengths))**(i-0)
+        #mdl = mdl+p1[i]*(wavelengths)**(i-0)
         #print(mdl)
         #print(p1[i])
 
@@ -116,7 +117,7 @@ def make_spectrum(vgrid, p0, wavelengths, linelist):
 
     spectrum = ((spectrum+1)*mdl)
     errors = np.ones(np.shape(spectrum))
-    errors = errors*0.0001
+    errors = errors*0.001
     #errors = np.sqrt(spectrum)
     #where_are_NaNs = np.isnan(errors)
     #errors[where_are_NaNs] = 10000000000
