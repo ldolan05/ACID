@@ -19,7 +19,6 @@ fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
 linelist = '/home/lsd/Documents/fulllinelist018.txt'
 directory = '/home/lsd/Documents/HD189733/August2007/'
 
-points_to_zero = 5
 ## get LSD profile and spectrum.
 def get_data(file, frame, order):
 
@@ -91,9 +90,7 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     '''
 
 
-    inputs = profile[points_to_zero:-points_to_zero]
-    velocities = velocities[points_to_zero:-points_to_zero]
-    original_profile = original_profile[points_to_zero:-points_to_zero]
+    inputs = profile
     '''
     print(profile)
     plt.figure()
@@ -120,9 +117,7 @@ def model_func(inputs, x):
     #alpha = inputs[:j_max*k_max]
     #print(inputs)
     z = inputs[:k_max]
-    add_on = [0]*points_to_zero
-    z = np.concatenate((add_on, z))
-    z = np.concatenate((z, add_on))
+
     #alpha=np.reshape(alpha, (j_max, k_max))
     mdl = np.dot(alpha, z)
 
@@ -361,7 +356,7 @@ ndim = len(initial_inputs)
 nwalkers= ndim*3
 #pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
 rng = np.random.default_rng()
-pos=initial_inputs[:]+rng.normal(-0.001,0.001,(nwalkers, ndim))
+pos=initial_inputs[:]+rng.normal(-0.01,0.01,(nwalkers, ndim))
 print(pos)
 #pos = initial_inputs + 0.0001 * np.random.randn(10000, len(initial_inputs))
 
@@ -434,9 +429,6 @@ for i in range(len(flat_samples)):
 profile = []
 poly_cos = []
 
-for i in range(0, points_to_zero):
-    profile.append(0)
-
 for i in range(ndim):
     mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
     if i<ndim-poly_ord-1:
@@ -445,13 +437,9 @@ for i in range(ndim):
     #q = np.diff(mcmc)
     #txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
     #txt = txt.format(mcmc[1], q[0], q[1], labels[i])
-for i in range(0, points_to_zero):
-    profile.append(0)
-
-velocities1 = np.arange(-25, 25, 0.8)
 
 plt.figure('profile directly from mcmc')
-plt.plot(velocities1, profile, color = 'r', label = 'mcmc')
+plt.plot(velocities, profile, color = 'r', label = 'mcmc')
 plt.scatter(velocities, original_profile, color = 'k' ,marker = '.', label = 'original')
 plt.xlabel('velocities km/s')
 plt.ylabel('flux')
@@ -523,7 +511,7 @@ true_mdl = model_func(true_inputs, x)
 true_liklihood = log_probability(true_inputs, x, y, yerr)
 
 ## calculating likilihood for mcmc models
-mcmc_inputs = np.concatenate((profile[points_to_zero:-points_to_zero], poly_cos))
+mcmc_inputs = np.concatenate((profile, poly_cos))
 mcmc_mdl = model_func(mcmc_inputs, x)
 #mcmc_inputs = np.concatenate((mcmc_inputs, m))
 mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
@@ -541,5 +529,5 @@ plt.show()
 
 print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
 
-print('corrected likelihood, -0.001, 0.001, 0.000001 in synthetic')
+print('reverted version, -0.01, 0.01, 0.000001 in synthetic')
 #print('Time Taken: %s minutes'%((t1-t0)/60))
