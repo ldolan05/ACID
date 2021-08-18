@@ -99,7 +99,7 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     plt.ylabel('flux')
     plt.title('Profile from LSD (continuum correction)')
     '''
-    return wavelengths, fluxes, flux_error_order, inputs, alpha, velocities, continuum_waves, continuum_flux, original_profile
+    return wavelengths, fluxes, flux_error_order, inputs, alpha, velocities, continuum_waves, continuum_flux, original_profile, profile_errors
 
 '''
 def z_func(inputs, x):
@@ -210,7 +210,19 @@ def log_prior(theta):
     '''
 
     if check==0:
-        return 0.0
+
+        # excluding the continuum points in the profile
+        z_cont = []
+        for i in range(0, k_max):
+            if velocities[i]<-v_min or velocities[i]>v_max:
+                z_cont.append(theta[i])
+        #print(z_cont)
+        #print(velocities)
+        z_cont = np.array(z_cont)
+        # calcualte gaussian probability for each point in continuum
+        p_pent = np.sum((1/np.sqrt(2*np.pi*p_var**2))*np.exp(-0.5*(z_cont/p_var)**2))
+
+        return -p_pent
     return -np.inf
 
 def log_probability(theta, x, y, yerr):
@@ -292,7 +304,13 @@ wavelengths = np.arange(4575, 4626, 0.01)
 ### This is the order of polynomial the mcmc will try to fit ###
 poly_ord = 8
 
-wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux, original_profile = get_synthetic_data(vgrid, linelist, p0, wavelengths)
+wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux, original_profile, profile_errors = get_synthetic_data(vgrid, linelist, p0, wavelengths)
+
+## parameters for working out continuum points in the LSD profile
+p_var = np.max(profile_errors)
+p_var = 0.001
+v_min = -10
+v_max = 10
 
 true_inputs = np.concatenate((original_profile, poly_inputs))
 
@@ -349,15 +367,18 @@ yerr = flux_error_init
 #plt.close('all')
 #plt.show()
 
-#model_inputs, soln = likelihood_estimate(x, y, yerr, initial_inputs)
+#nll = lambda *args: -log_likelihood(*args)
+#soln = minimize(nll, initial_inputs, args = (x, y, yerr))
+#model_inputs = soln.x
 #print('model inputs created')
 #print(model_inputs)
-ndim = len(initial_inputs)
+ndim = len(model_inputs)
 nwalkers= ndim*3
 #pos = soln.x + 0.1 * np.random.randn(10000, len(initial_inputs))
 rng = np.random.default_rng()
-pos=initial_inputs[:]+rng.normal(-0.01,0.01,(nwalkers, ndim))
+pos=initial_inputs[:]+rng.normal(-0.001,0.001,(nwalkers, ndim))
 print(pos)
+print(np.shape(pos))
 #pos = initial_inputs + 0.0001 * np.random.randn(10000, len(initial_inputs))
 
 #print(pos)
@@ -368,21 +389,21 @@ print(nwalkers, ndim)
 
 sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
 sampler.run_mcmc(pos, 5000, progress=True, skip_initial_state_check=True);
-'''
-fig, axes = plt.subplots(ndim, figsize=(10, 7), sharex=True)
+
+fig, axes = plt.subplots(5, figsize=(10, 7), sharex=True)
 samples = sampler.get_chain()
-labels = ["sigma", "h", "mu", "offset_in_y"]
-for l in range(4, len(model_inputs)):
-    labels.append('poly_ord %s'%(l-3))
-for i in range(ndim):
+#labels = ["sigma", "h", "mu", "offset_in_y"]
+#for l in range(4, len(model_inputs)):
+    #labels.append('poly_ord %s'%(l-3))
+for i in range(5):
     ax = axes[i]
     ax.plot(samples[:, :, i], "k", alpha=0.3)
     ax.set_xlim(0, len(samples))
-    ax.set_ylabel(labels[i])
+    #ax.set_ylabel(labels[i])
     ax.yaxis.set_label_coords(-0.1, 0.5)
 
 axes[-1].set_xlabel("step number");
-'''
+
 #tau = sampler.get_autocorr_time()
 #print("Tau: %s"%tau)
 
@@ -529,5 +550,5 @@ plt.show()
 
 print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
 
-print('reverted version, -0.01, 0.01, 0.000001 in synthetic')
+print('reverted version, -0.001, 0.001, 0.001 in synthetic')
 #print('Time Taken: %s minutes'%((t1-t0)/60))
