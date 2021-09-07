@@ -94,30 +94,31 @@ def make_spectrum(vgrid, p0, wavelengths, linelist):
     wavelengths, spectrum = convolve(vgrid, profile, linelist, wavelengths)
 
     p1 = p0[4:]
-    print(p1)
-    print(wavelengths)
-    print(np.max(wavelengths))
+    #print(p1)
+    #print(wavelengths)
+    #print(np.max(wavelengths))
 
     mdl =0
     for i in np.arange(0,len(p1)):
         #print(i)
         #print(mdl)
+        #mdl = mdl+p1[i]*(wavelengths/np.max(wavelengths))**(i-0)
         mdl = mdl+p1[i]*(wavelengths/np.max(wavelengths))**(i-0)
-        #mdl = mdl+p1[i]*(wavelengths)**(i-0)
         #print(mdl)
         #print(p1[i])
 
-
+    '''
     print(mdl)
-    plt.figure('this is the correct figure')
+    plt.figure('synthetic spectrum')
     plt.plot(wavelengths, spectrum+1)
     plt.plot(wavelengths, mdl, 'k')
     plt.show()
 
+    '''
 
     spectrum = ((spectrum+1)*mdl)
     errors = np.ones(np.shape(spectrum))
-    errors = errors*0.001
+    errors = errors*0.00000000001
     #errors = np.sqrt(spectrum)
     #where_are_NaNs = np.isnan(errors)
     #errors[where_are_NaNs] = 10000000000
