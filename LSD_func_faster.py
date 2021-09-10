@@ -298,15 +298,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         else: print('WARNING - masking not catching - must be either "masked" or "unmasked"')
 
         hdu.close()
-        #div = np.max(fluxes)
-        #fluxes = fluxes/div
-        #flux_error_order = flux_error_order/div
 
-        #print(flux_error_order[idx])
-        #plt.figure()
-        #plt.plot(wavelengths, fluxes)
-
-    #fluxes = continuumfit(fluxes, wavelengths, 2)
     flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
     print('flux error: %s'%flux_error_order)
     fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))-1
