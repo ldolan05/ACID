@@ -73,21 +73,21 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
             row = row[edge_size:len(row)-edge_size]
             weight = sum(row)
             #print(row)
-            if weight <= 0.001:
+            if weight == 0:
                 continuum_waves.append(blankwaves[j])
                 continuum_matrix.append(R_matrix[j]+1)
 
         if len(continuum_waves)<3:R_matrix = R_matrix
         else:
             ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
-            '''
+
             plt.figure()
-            plt.plot(blankwaves, R_matrix, linewidth = 0.25)
+            plt.plot(blankwaves, R_matrix+1, linewidth = 0.25)
             plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
-            plotdepths = [0.5]*len(wavelengths_expected)
-            plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
+            #plotdepths = [0.5]*len(wavelengths_expected)
+            #plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
             plt.show()
-            '''
+
 
             ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
             coeffs=np.polyfit(continuum_waves, continuum_matrix, poly_ord)
@@ -98,12 +98,12 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
             rms = rms/fit
 
             ## Plotting the original spectrum with the fit.
-            '''
+
             plt.figure()
             plt.plot(blankwaves, R_matrix_1)
             plt.plot(blankwaves, fit)
             plt.show()
-            '''
+
     else:
         continuum_waves = []
         continuum_matrix = []
@@ -135,7 +135,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
 
-    return velocities, profile, profile_errors, alpha, continuum_waves, continuum_matrix
+    return velocities, profile, profile_errors, alpha, np.array(continuum_waves), np.array(continuum_matrix)
 
 def get_wave(data,header):
 
@@ -307,28 +307,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         #plt.plot(wavelengths, fluxes)
 
     #fluxes = continuumfit(fluxes, wavelengths, 2)
+    flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
+    print('flux error: %s'%flux_error_order)
+    fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))-1
     return fluxes, wavelengths, flux_error_order ## for just LSD
 
 ############################################################################################################
-'''
-file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
-directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
-linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
-# s1d or e2ds
-file_type = 'e2ds'
-
-# order or full(can't fit properly yet as continuum fit goes to zero)
-spec_type = 'order'
-order = 26
-masking = 'masked'
-
-fluxes, wavelengths, flux_error = blaze_correct(file_type, spec_type, order, file, directory, masking)
-velocities, profile, profile_errors = LSD(wavelengths, fluxes, flux_error, linelist)
-
-#p, v, poly = continuumfit(profile, velocities, profile_errors, 1)
-plt.figure()
-plt.plot(velocities, profile)
-plt.show()
-#fit = poly(wavelengths)
-#fit_plot = poly(velocities)
-'''

@@ -10,17 +10,13 @@ import time
 import synthetic_data as syn
 import random
 
-'''
-fits_file = '/Users/lucydolan/Documents/Ernst_Rm_Codes/HD189733b_profiles/August2007_master_out_ccfs.fits'
-linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
-directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
-
-'''
+## for real data
 fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
 linelist = '/home/lsd/Documents/fulllinelist018.txt'
 directory = '/home/lsd/Documents/HD189733/August2007/'
 
-## get LSD profile and spectrum.
+### adjusts continuum of the LSD profile to be at 0
+## fluxes = profile, wavelengths = velocities - copied from another code so names don't make sense
 def continuumfit_profile(fluxes, wavelengths, errors, poly_ord):
         fluxes = fluxes+1
         idx = wavelengths.argsort()
@@ -55,10 +51,11 @@ def continuumfit_profile(fluxes, wavelengths, errors, poly_ord):
         '''
         return wavelengths, flux_obs, new_errors
 
-def get_data(file, frame, order):
+### processes HARPS data file to produce a normalised spectrum (no continuum corection - only blaze correction), the initial LSD profile and the alpha matrix.
+def get_data(file, frame, order, poly_ord):
 
     fluxes, wavelengths, flux_error_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'masked')
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'True')
+    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'True', poly_ord)
     velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)
     #alpha = np.reshape(alpha, (len(wavelengths)*len(velocities)))
     #alpha = np.array(alpha)
@@ -75,7 +72,7 @@ def get_data(file, frame, order):
     plt.ylabel('flux')
     plt.title('Profile from LSD (intitial for mcmc)')
     plt.savefig('/home/lsd/Documents/original_profile_LSD.png')
-
+    #plt.show()
     '''
     profile = profile+1
     plt.figure()
@@ -88,8 +85,9 @@ def get_data(file, frame, order):
 
     inputs = profile
 
-    return wavelengths, fluxes-1, flux_error_order, inputs, alpha, velocities, continuum_waves, continuum_flux
+    return wavelengths, fluxes, flux_error_order, inputs, alpha, velocities, continuum_waves, continuum_flux
 
+## makes the synthetic spectrum, runs the LSD on it to produce the initial LSD profile
 def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     fluxes, flux_error_order, original_profile = syn.make_spectrum(vgrid, p0, wavelengths, linelist)
 
@@ -352,22 +350,23 @@ else:
 
     file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
     frame = 0
-    order = 26
+    order = 28
+    poly_ord = 3
 
     ### for real data ###
     fits_file = fits.open(file)
-    wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux = get_data(file, frame, order)
+    wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux = get_data(file, frame, order, poly_ord)
 
 
 ### This is the order of polynomial the mcmc will try to fit ###
 #poly_ord = input('Enter order of polynomial for mcmc to fit: ')
-poly_ord = 3
+#poly_ord = 3
 
 t0 = time.time()
 
 ## parameters for working out continuum points in the LSD profile
-p_var = np.max(profile_errors)
-#p_var = 0.001
+#p_var = np.max(profile_errors)
+p_var = 0.001
 v_min = -10
 v_max = 10
 
@@ -383,9 +382,9 @@ k_max = len(initial_inputs)
 a = 2/(np.max(wavelength_init)-np.min(wavelength_init))
 b = 1 - a*np.max(wavelength_init)
 
-if len(continuum_waves)<3:
-    poly_inputs=continuumfit(flux_init,  (wavelength_init*a)+b, flux_error_init, poly_ord)
-else: poly_inputs=np.polyfit((continuum_waves*a)+b, continuum_flux, poly_ord)
+poly_inputs=continuumfit(flux_init,  (wavelength_init*a)+b, flux_error_init, poly_ord)
+
+
 '''
 poly = np.poly1d(poly_inputs)
 fit = poly(wavelength_init/np.max(wavelength_init))
@@ -458,16 +457,16 @@ model_inputs = np.concatenate((hdu[0].data, continuum_coefs[::-1]))
 vary_amounts = []
 pos = []
 for i in range(0, ndim):
-    #if model_inputs[i]==0:pos2 = model_inputs[i]+rng.normal(-0.0001, 0.0001,(nwalkers, ))
-    #else:
+    if model_inputs[i]==0:pos2 = model_inputs[i]+rng.normal(-0.0001, 0.0001,(nwalkers, ))
+    else:
         if i <ndim-poly_ord-1:
-            pos2 = model_inputs[i]+rng.normal(-0.001, 0.001,(nwalkers, ))
-            #pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*0.01,abs(model_inputs[i])*0.01,(nwalkers, ))
-            vary_amounts.append(0.001)
+            #pos2 = model_inputs[i]+rng.normal(-0.001, 0.001,(nwalkers, ))
+            pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*0.01,abs(model_inputs[i])*0.01,(nwalkers, ))
+            vary_amounts.append(abs(model_inputs[i])*0.01)
         else:
-            pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*0.1,abs(model_inputs[i])*0.1,(nwalkers, ))
-            vary_amounts.append(model_inputs[i]*0.1)
-        pos.append(pos2)
+            pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*1,abs(model_inputs[i])*1,(nwalkers, ))
+            vary_amounts.append(model_inputs[i]*1)
+    pos.append(pos2)
 
 #print(pos)
 #print(np.shape(pos))
@@ -597,8 +596,9 @@ av_poly_fit = mdl_1/len(flat_samples)
 
 fig, ax = plt.subplots(2, gridspec_kw={'height_ratios': [4, 1]})
 ax[0].plot(velocities, profile, color = 'r', label = 'mcmc')
-ax[0].scatter(velocities, original_profile, color = 'k' ,marker = '.', label = 'original')
-ax[1].scatter(velocities, original_profile-profile, color = 'r')
+if input1 == 'y':
+    ax[0].scatter(velocities, original_profile, color = 'k' ,marker = '.', label = 'original')
+    ax[1].scatter(velocities, original_profile-profile, color = 'r')
 #plt.title('Profile directly from mcmc')
 ax[0].legend()
 plt.savefig('/home/lsd/Documents/mcmc_profile.png')
@@ -610,10 +610,11 @@ for i in np.arange(0, len(poly_cos)):
     mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
 plt.plot(x, mdl1, label = 'mcmc continuum fit')
 plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
-mdl =0
-for i in np.arange(4,len(p0)):
-    mdl = mdl+p0[i]*((a*x)+b)**(i-4)
-plt.plot(x, mdl, label = 'true continuum fit')
+if input1 == 'y':
+    mdl =0
+    for i in np.arange(4,len(p0)):
+        mdl = mdl+p0[i]*((a*x)+b)**(i-4)
+    plt.plot(x, mdl, label = 'true continuum fit')
 #plt.plot(x, av_poly_fit, label = 'mcmc average')
 #plt.plot(x, poly_cos[1]*x + poly_cos[0], label = 'mcmc continuum fit')
 plt.legend()
@@ -624,12 +625,14 @@ plt.savefig('/home/lsd/Documents/mcmc_continuum_fit.png')
 
 fit = mdl1
 #true_fit = p0[7]*(x-4600)**3 + p0[6]*(x-4600)**2 + p0[5]*(x-4600) + p0[4]
-true_fit = mdl
+
 #fit = poly_cos[1]*wavelength_init + poly_cos[0]
 flux_adjusted  = (flux_init+1)/fit-1
 flux_error_adjusted = flux_error_init/fit
 
-true_flux = (flux_init+1)/true_fit-1
+if input1 == 'y':
+    true_fit = mdl
+    true_flux = (flux_init+1)/true_fit-1
 '''
 velocities, profile, profile_errors, alpha, cont_waves, cont_flux = LSD.LSD(wavelength_init, flux_adjusted, flux_error_adjusted, linelist, 'False', 'nan')
 
@@ -647,25 +650,26 @@ plt.ylabel('flux')
 plt.title('Profile from LSD with continuum correction from mcmc')
 plt.savefig('/home/lsd/Documents/new_continuum_LSD.png')
 '''
-m_flux = convolve(profile, alpha)
-residuals = flux_adjusted - m_flux
+if input1 == 'y':
+    m_flux = convolve(profile, alpha)
+    residuals = flux_adjusted - m_flux
 
-fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model', sharex = True)
-ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
-ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model')
-ax[0].legend()
-hline = [0]*len(x)
-ax[1].plot(x, residuals, '.', color = 'red')
-ax[1].plot(x, hline, linestyle = '--')
-#ax[1].set_ylim([-0.3, 0.5])
-#plt.savefig('/home/lsd/Documents/forward_model_%s.png'%order)
-#plt.show()
+    fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model', sharex = True)
+    ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
+    ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model')
+    ax[0].legend()
+    hline = [0]*len(x)
+    ax[1].plot(x, residuals, '.', color = 'red')
+    ax[1].plot(x, hline, linestyle = '--')
+    #ax[1].set_ylim([-0.3, 0.5])
+    #plt.savefig('/home/lsd/Documents/forward_model_%s.png'%order)
+    #plt.show()
 
 
-## calculating liklihood for real data:
+    ## calculating liklihood for real data:
 
-true_mdl = model_func(true_inputs, x)
-true_liklihood = log_probability(true_inputs, x, y, yerr)
+    true_mdl = model_func(true_inputs, x)
+    true_liklihood = log_probability(true_inputs, x, y, yerr)
 
 ## calculating likilihood for mcmc models
 mcmc_inputs = np.concatenate((profile, poly_cos))
@@ -674,15 +678,18 @@ mcmc_mdl = model_func(mcmc_inputs, x)
 #mcmc_inputs = np.concatenate((mcmc_inputs, m))
 mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
 
-residuals_2 = (true_mdl+1) - (mcmc_mdl+1)
+print('Likelihood for mcmc: %s'%mcmc_liklihood)
 
-fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
-ax[0].plot(x, true_mdl+1, 'r', alpha = 0.3, label = 'true spec')
-ax[0].plot(x, true_fit, 'r', label = 'true continuum fit' )
-ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
-ax[0].plot(x, fit, 'k', label = 'mcmc continuum fit')
-ax[0].legend()
-ax[1].plot(x, residuals_2, '.')
+if input1 == 'y':
+    residuals_2 = (true_mdl+1) - (mcmc_mdl+1)
+
+    fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
+    ax[0].plot(x, true_mdl+1, 'r', alpha = 0.3, label = 'true spec')
+    ax[0].plot(x, true_fit, 'r', label = 'true continuum fit' )
+    ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
+    ax[0].plot(x, fit, 'k', label = 'mcmc continuum fit')
+    ax[0].legend()
+    ax[1].plot(x, residuals_2, '.')
 
 
 input = input('View figures? y or n: ')
