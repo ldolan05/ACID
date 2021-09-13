@@ -13,6 +13,7 @@ import random
 ## for real data
 fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
 linelist = '/home/lsd/Documents/fulllinelist018.txt'
+#linelist = '/home/lsd/Documents/fulllinelist004.txt'
 directory = '/home/lsd/Documents/HD189733/August2007/'
 
 ### adjusts continuum of the LSD profile to be at 0
@@ -51,14 +52,52 @@ def continuumfit_profile(fluxes, wavelengths, errors, poly_ord):
         '''
         return wavelengths, flux_obs, new_errors
 
+## fits the continuum of the spectum - used to get the initial continuum coefficents
+def continuumfit(fluxes, wavelengths, errors, poly_ord):
+        fluxes = fluxes+1
+        idx = wavelengths.argsort()
+        wavelength = wavelengths[idx]
+        fluxe = fluxes[idx]
+        clipped_flux = []
+        clipped_waves = []
+        binsize =100
+        for i in range(0, len(wavelength), binsize):
+            waves = wavelength[i:i+binsize]
+            flux = fluxe[i:i+binsize]
+            indicies = flux.argsort()
+            flux = flux[indicies]
+            waves = waves[indicies]
+            clipped_flux.append(flux[len(flux)-1])
+            clipped_waves.append(waves[len(waves)-1])
+        coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
+
+        poly = np.poly1d(coeffs)
+        fit = poly(wavelengths)
+        flux_obs = fluxes/fit-1
+        new_errors = errors/fit
+
+        fig = plt.figure('fit for initial continuum')
+        plt.plot(wavelengths, fluxes)
+        plt.plot(wavelengths, fit)
+        plt.plot(wavelengths, flux_obs)
+        #plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
+        plt.show()
+
+        return coeffs, flux_obs, new_errors
+
 ### processes HARPS data file to produce a normalised spectrum (no continuum corection - only blaze correction), the initial LSD profile and the alpha matrix.
 def get_data(file, frame, order, poly_ord):
 
     fluxes, wavelengths, flux_error_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'masked')
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'True', poly_ord)
+
+    a = 2/(np.max(wavelengths)-np.min(wavelengths))
+    b = 1 - a*np.max(wavelengths)
+    poly_inputs, fluxes1, flux_error_order1 = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
+
+    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord)
     velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)
     profile = np.array(profile)
-
+    print(profile)
     plt.figure()
     plt.plot(velocities, profile)
     plt.xlabel('velocities km/s')
@@ -168,38 +207,7 @@ def log_probability(theta, x, y, yerr):
     #print('final')
     return final
 
-## fits the continuum of the spectum - used to get the initial continuum coefficents
-def continuumfit(fluxes, wavelengths, errors, poly_ord):
-        fluxes = fluxes+1
-        idx = wavelengths.argsort()
-        wavelength = wavelengths[idx]
-        fluxe = fluxes[idx]
-        clipped_flux = []
-        clipped_waves = []
-        binsize =100
-        for i in range(0, len(wavelength), binsize):
-            waves = wavelength[i:i+binsize]
-            flux = fluxe[i:i+binsize]
-            indicies = flux.argsort()
-            flux = flux[indicies]
-            waves = waves[indicies]
-            clipped_flux.append(flux[len(flux)-1])
-            clipped_waves.append(waves[len(waves)-1])
-        coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
 
-        poly = np.poly1d(coeffs)
-        fit = poly(wavelengths)
-        flux_obs = fluxes/fit-1
-        new_errors = errors/fit
-
-        fig = plt.figure('fit for initial continuum')
-        plt.plot(wavelengths, fluxes)
-        plt.plot(wavelengths, fit)
-        plt.plot(wavelengths, flux_obs)
-        #plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
-        plt.show()
-
-        return coeffs
 
 input1 = input('Use synthetic data? y or n: ')
 
@@ -231,14 +239,14 @@ if input1 == 'y':
     true_inputs = np.concatenate((original_profile, poly_inputs))
     poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 else:
-    file = input('Enter path to data file: ')
+    #file = input('Enter path to data file: ')
     frame = int(input('Enter frame: '))
     order = int(input('Enter order: '))
     poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 
-    #file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
+    file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
     #frame = 0
-    #order = 28
+    #order = 26
     #poly_ord = 3
 
     fits_file = fits.open(file)
@@ -263,7 +271,7 @@ k_max = len(initial_inputs)
 a = 2/(np.max(wavelength_init)-np.min(wavelength_init))
 b = 1 - a*np.max(wavelength_init)
 
-poly_inputs=continuumfit(flux_init,  (wavelength_init*a)+b, flux_error_init, poly_ord)
+poly_inputs, bin, bye=continuumfit(flux_init,  (wavelength_init*a)+b, flux_error_init, poly_ord)
 poly_inputs=poly_inputs[::-1]
 poly_inputs = np.array(poly_inputs)
 model_inputs = np.concatenate((initial_inputs, poly_inputs))
@@ -300,7 +308,7 @@ for i in range(0, ndim):
 pos = np.array(pos)
 pos = np.transpose(pos)
 
-## the number of steps is how ling it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
+## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
 steps_no = 10000
 
 # running the mcmc using python package emcee

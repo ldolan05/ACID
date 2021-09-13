@@ -3,15 +3,16 @@ from scipy import linalg
 from astropy.io import  fits
 import glob
 import matplotlib.pyplot as plt
+import random
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
 
-    vmax=25
-    deltav=0.8
+    vmax=20
+    #deltav=0.8
     vmin=-vmax
 
-    #resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    #deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
+    resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
 
     velocities=np.arange(vmin,vmax,deltav)
 
@@ -30,6 +31,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
     for some in range(0, len(wavelengths_expected1)):
         if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max:
             wavelengths_expected.append(wavelengths_expected1[some])
+            #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))
             depths_expected.append(depths_expected1[some])
         else:
             pass
