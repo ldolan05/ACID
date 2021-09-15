@@ -1,8 +1,8 @@
 import numpy as np
 import emcee
 import matplotlib.pyplot as plt
-from astropy.io import fits
 from scipy.optimize import minimize
+from astropy.io import  fits
 import emcee
 #import corner
 import LSD_func_faster as LSD
@@ -110,11 +110,13 @@ def get_data(file, frame, order, poly_ord):
 
 ## makes the synthetic spectrum, runs the LSD on it to produce the initial LSD profile
 def get_synthetic_data(vgrid, linelist, p0, wavelengths):
-    fluxes, flux_error_order, original_profile = syn.make_spectrum(vgrid, p0, wavelengths, linelist)
+    linelist1 = '/home/lsd/Documents/fulllinelist004.txt'
+    print('little lines not fit for')
+    fluxes, flux_error_order, original_profile = syn.make_spectrum(vgrid, p0, wavelengths, linelist1)
 
     ## adding noise
     for i in range(len(fluxes)):
-        number = random.uniform(-0.01, 0.01)
+        number = random.uniform(-0.1, 0.1)
         #print(number)
         fluxes[i] = fluxes[i]+number
 
@@ -240,7 +242,7 @@ if input1 == 'y':
     poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 else:
     #file = input('Enter path to data file: ')
-    frame = int(input('Enter frame: '))
+    #frame = int(input('Enter frame: '))
     order = int(input('Enter order: '))
     poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 
@@ -249,199 +251,204 @@ else:
     #order = 26
     #poly_ord = 3
 
-    fits_file = fits.open(file)
-    wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux = get_data(file, frame, order, poly_ord)
+profile_order = []
+coeffs_order = []
+for frame in range(0, 10):
+    if input1!='y':
+        fits_file = fits.open(file)
+        wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux = get_data(file, frame, order, poly_ord)
 
 
 
-t0 = time.time()
+    t0 = time.time()
 
-## parameters for working out continuum points in the LSD profile - if using penalty function
-#p_var = 0.001
-#v_min = -10
-#v_max = 10
+    ## parameters for working out continuum points in the LSD profile - if using penalty function
+    #p_var = 0.001
+    #v_min = -10
+    #v_max = 10
 
-## making alpha a global variable
-alpha = alpha1
-## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
-j_max = int(len(flux_init))
-k_max = len(initial_inputs)
+    ## making alpha a global variable
+    alpha = alpha1
+    ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
+    j_max = int(len(flux_init))
+    k_max = len(initial_inputs)
 
-## getting initial continuum coefficents
-a = 2/(np.max(wavelength_init)-np.min(wavelength_init))
-b = 1 - a*np.max(wavelength_init)
+    ## getting initial continuum coefficents
+    a = 2/(np.max(wavelength_init)-np.min(wavelength_init))
+    b = 1 - a*np.max(wavelength_init)
 
-poly_inputs, bin, bye=continuumfit(flux_init,  (wavelength_init*a)+b, flux_error_init, poly_ord)
-poly_inputs=poly_inputs[::-1]
-poly_inputs = np.array(poly_inputs)
-model_inputs = np.concatenate((initial_inputs, poly_inputs))
+    poly_inputs, bin, bye=continuumfit(flux_init,  (wavelength_init*a)+b, flux_error_init, poly_ord)
+    poly_inputs=poly_inputs[::-1]
+    poly_inputs = np.array(poly_inputs)
+    model_inputs = np.concatenate((initial_inputs, poly_inputs))
 
-## setting x, y, yerr for emcee
-x = wavelength_init
-y = flux_init
-yerr = flux_error_init
+    ## setting x, y, yerr for emcee
+    x = wavelength_init
+    y = flux_init
+    yerr = flux_error_init
 
-## setting these normalisation factors as global variables - used in the figures below
-a = 2/(np.max(x)-np.min(x))
-b = 1 - a*np.max(x)
+    ## setting these normalisation factors as global variables - used in the figures below
+    a = 2/(np.max(x)-np.min(x))
+    b = 1 - a*np.max(x)
 
-## setting number of walkers and their start values(pos)
-ndim = len(model_inputs)
-nwalkers= ndim*3
-rng = np.random.default_rng()
+    ## setting number of walkers and their start values(pos)
+    ndim = len(model_inputs)
+    nwalkers= ndim*3
+    rng = np.random.default_rng()
 
-## starting values of walkers vary from the model_inputs by 0.01*model_input - this means the bottom of the profile varies more than the continuum. Continuum coefficent vary by 1*model_input.
-vary_amounts = []
-pos = []
-for i in range(0, ndim):
-    if model_inputs[i]==0:pos2 = model_inputs[i]+rng.normal(-0.0001, 0.0001,(nwalkers, ))
-    else:
-        if i <ndim-poly_ord-1:
-            #pos2 = model_inputs[i]+rng.normal(-0.001, 0.001,(nwalkers, ))
-            pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*0.01,abs(model_inputs[i])*0.01,(nwalkers, ))
-            vary_amounts.append(abs(model_inputs[i])*0.01)
+    ## starting values of walkers vary from the model_inputs by 0.01*model_input - this means the bottom of the profile varies more than the continuum. Continuum coefficent vary by 1*model_input.
+    vary_amounts = []
+    pos = []
+    for i in range(0, ndim):
+        if model_inputs[i]==0:pos2 = model_inputs[i]+rng.normal(-0.0001, 0.0001,(nwalkers, ))
         else:
-            pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*1,abs(model_inputs[i])*1,(nwalkers, ))
-            vary_amounts.append(model_inputs[i]*1)
-    pos.append(pos2)
+            if i <ndim-poly_ord-1:
+                #pos2 = model_inputs[i]+rng.normal(-0.001, 0.001,(nwalkers, ))
+                pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*0.01,abs(model_inputs[i])*0.01,(nwalkers, ))
+                vary_amounts.append(abs(model_inputs[i])*0.01)
+            else:
+                pos2 = model_inputs[i]+rng.normal(-abs(model_inputs[i])*1,abs(model_inputs[i])*1,(nwalkers, ))
+                vary_amounts.append(model_inputs[i]*1)
+        pos.append(pos2)
 
-pos = np.array(pos)
-pos = np.transpose(pos)
+    pos = np.array(pos)
+    pos = np.transpose(pos)
 
-## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
-steps_no = 10000
+    ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
+    steps_no = 10000
 
-# running the mcmc using python package emcee
-sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-sampler.run_mcmc(pos, steps_no, progress=True);
+    # running the mcmc using python package emcee
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+    sampler.run_mcmc(pos, steps_no, progress=True);
 
-t1 = time.time()
+    t1 = time.time()
 
-## discarding all vales except the last 1000 steps.
-dis_no = int(np.floor(steps_no-1000))
-
-
-# plots the model for 'walks' of the all walkers for the first 5 profile points
-fig, axes = plt.subplots(5, figsize=(10, 7), sharex=True)
-samples = sampler.get_chain(discard = dis_no)
-for i in range(5):
-    ax = axes[i]
-    ax.plot(samples[:, :, i], "k", alpha=0.3)
-    ax.set_xlim(0, len(samples))
-axes[-1].set_xlabel("step number");
+    ## discarding all vales except the last 1000 steps.
+    dis_no = int(np.floor(steps_no-1000))
 
 
-## combining all walkers togather
-flat_samples = sampler.get_chain(discard=dis_no, flat=True)
-
-# plots random models from flat_samples - lets you see if it's converging
-plt.figure()
-inds = np.random.randint(len(flat_samples), size=100)
-for ind in inds:
-    sample = flat_samples[ind]
-    mdl = model_func(sample, x)
-    mdl1 = 0
-    for i in np.arange(k_max, len(sample)):
-        mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
-    plt.plot(x, mdl1, "C1", alpha=0.1)
-    plt.plot(x, mdl+1, "g", alpha=0.1)
-plt.scatter(x, y+1, color = 'k', marker = '.', label = 'data')
-plt.xlabel("wavelengths")
-plt.ylabel("flux")
-plt.title('mcmc models and data')
-#plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
-#plt.show()
+    # plots the model for 'walks' of the all walkers for the first 5 profile points
+    fig, axes = plt.subplots(5, figsize=(10, 7), sharex=True)
+    samples = sampler.get_chain(discard = dis_no)
+    for i in range(5):
+        ax = axes[i]
+        ax.plot(samples[:, :, i], "k", alpha=0.3)
+        ax.set_xlim(0, len(samples))
+    axes[-1].set_xlabel("step number");
 
 
-## getting the final profile and continuum values - median of last 1000 steps
-profile = []
-poly_cos = []
+    ## combining all walkers togather
+    flat_samples = sampler.get_chain(discard=dis_no, flat=True)
 
-for i in range(ndim):
-    mcmc = np.median(flat_samples[:, i])
-    if i<ndim-poly_ord-1:
-        profile.append(mcmc)
-    else:
-        poly_cos.append(mcmc)
-
-# plots the mcmc profile - will have extra panel if it's for data
-fig, ax = plt.subplots(2, gridspec_kw={'height_ratios': [4, 1]})
-ax[0].plot(velocities, profile, color = 'r', label = 'mcmc')
-if input1 == 'y':
-    ax[0].scatter(velocities, original_profile, color = 'k' ,marker = '.', label = 'original')
-    ax[1].scatter(velocities, original_profile-profile, color = 'r')
-ax[0].legend()
-#plt.savefig('/home/lsd/Documents/mcmc_profile.png')
-
-# plots mcmc continuum fit on top of data
-plt.figure('continuum fit from mcmc')
-plt.plot(x, y+1, color = 'k', label = 'data')
-mdl1 =0
-for i in np.arange(0, len(poly_cos)):
-    mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
-plt.plot(x, mdl1, label = 'mcmc continuum fit')
-plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
-if input1 == 'y':
-    mdl =0
-    for i in np.arange(4,len(p0)):
-        mdl = mdl+p0[i]*((a*x)+b)**(i-4)
-    plt.plot(x, mdl, label = 'true continuum fit')
-plt.legend()
-plt.title('continuum from mcmc')
-plt.xlabel("wavelengths")
-plt.ylabel("flux")
-plt.savefig('/home/lsd/Documents/mcmc_continuum_fit.png')
+    # plots random models from flat_samples - lets you see if it's converging
+    plt.figure()
+    inds = np.random.randint(len(flat_samples), size=100)
+    for ind in inds:
+        sample = flat_samples[ind]
+        mdl = model_func(sample, x)
+        mdl1 = 0
+        for i in np.arange(k_max, len(sample)):
+            mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
+        plt.plot(x, mdl1, "C1", alpha=0.1)
+        plt.plot(x, mdl+1, "g", alpha=0.1)
+    plt.scatter(x, y+1, color = 'k', marker = '.', label = 'data')
+    plt.xlabel("wavelengths")
+    plt.ylabel("flux")
+    plt.title('mcmc models and data')
+    #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
+    #plt.show()
 
 
-## last section is a bit of a mess but plots the two forward models
+    ## getting the final profile and continuum values - median of last 1000 steps
+    profile = []
+    poly_cos = []
 
-fit = mdl1
-flux_adjusted  = (flux_init+1)/fit-1
-flux_error_adjusted = flux_error_init/fit
-## calculating likilihood for mcmc models
-mcmc_inputs = np.concatenate((profile, poly_cos))
-mcmc_mdl = model_func(mcmc_inputs, x)
-mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
+    for i in range(ndim):
+        mcmc = np.median(flat_samples[:, i])
+        if i<ndim-poly_ord-1:
+            profile.append(mcmc)
+        else:
+            poly_cos.append(mcmc)
 
-print('Likelihood for mcmc: %s'%mcmc_liklihood)
-
-## plots forward models for continuum corrected data and uncorrected data - only if using synthetic
-if input1 == 'y':
-    true_fit = mdl
-    true_flux = (flux_init+1)/true_fit-1
-
-    m_flux = convolve(profile, alpha)
-    residuals = flux_adjusted - m_flux
-
-    fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model', sharex = True)
-    ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
-    ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model')
+    # plots the mcmc profile - will have extra panel if it's for data
+    fig, ax = plt.subplots(2, gridspec_kw={'height_ratios': [4, 1]})
+    ax[0].plot(velocities, profile, color = 'r', label = 'mcmc')
+    if input1 == 'y':
+        ax[0].scatter(velocities, original_profile, color = 'k' ,marker = '.', label = 'original')
+        ax[1].scatter(velocities, original_profile-profile, color = 'r')
     ax[0].legend()
-    hline = [0]*len(x)
-    ax[1].plot(x, residuals, '.', color = 'red')
-    ax[1].plot(x, hline, linestyle = '--')
+    #plt.savefig('/home/lsd/Documents/mcmc_profile.png')
 
-    ## calculating liklihood for real data:
-    true_mdl = model_func(true_inputs, x)
-    true_liklihood = log_probability(true_inputs, x, y, yerr)
+    # plots mcmc continuum fit on top of data
+    plt.figure('continuum fit from mcmc')
+    plt.plot(x, y+1, color = 'k', label = 'data')
+    mdl1 =0
+    for i in np.arange(0, len(poly_cos)):
+        mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
+    plt.plot(x, mdl1, label = 'mcmc continuum fit')
+    plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
+    if input1 == 'y':
+        mdl =0
+        for i in np.arange(4,len(p0)):
+            mdl = mdl+p0[i]*((a*x)+b)**(i-4)
+        plt.plot(x, mdl, label = 'true continuum fit')
+    plt.legend()
+    plt.title('continuum from mcmc')
+    plt.xlabel("wavelengths")
+    plt.ylabel("flux")
+    plt.savefig('/home/lsd/Documents/mcmc_continuum_fit.png')
 
-    residuals_2 = (true_mdl+1) - (mcmc_mdl+1)
 
-    fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
-    ax[0].plot(x, true_mdl+1, 'r', alpha = 0.3, label = 'true spec')
-    ax[0].plot(x, true_fit, 'r', label = 'true continuum fit' )
-    ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
-    ax[0].plot(x, fit, 'k', label = 'mcmc continuum fit')
-    ax[0].legend()
-    ax[1].plot(x, residuals_2, '.')
+    ## last section is a bit of a mess but plots the two forward models
 
-## asks before showing all the figures
-input = input('View figures? y or n: ')
-if input == 'y':
-    plt.show()
-else: plt.close('all')
+    fit = mdl1
+    flux_adjusted  = (flux_init+1)/fit-1
+    flux_error_adjusted = flux_error_init/fit
+    ## calculating likilihood for mcmc models
+    mcmc_inputs = np.concatenate((profile, poly_cos))
+    mcmc_mdl = model_func(mcmc_inputs, x)
+    mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
 
-print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
-#print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
+    print('Likelihood for mcmc: %s'%mcmc_liklihood)
 
-print('Time Taken: %s minutes'%((t1-t0)/60))
+    ## plots forward models for continuum corrected data and uncorrected data - only if using synthetic
+    if input1 == 'y':
+        true_fit = mdl
+        true_flux = (flux_init+1)/true_fit-1
+
+        m_flux = convolve(profile, alpha)
+        residuals = flux_adjusted - m_flux
+
+        fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'Forwards Model', sharex = True)
+        ax[0].plot(x, true_flux, '--', color = 'orange', label = 'data')
+        ax[0].plot(x, m_flux, color = 'r', linestyle = '-', label = 'model')
+        ax[0].legend()
+        hline = [0]*len(x)
+        ax[1].plot(x, residuals, '.', color = 'red')
+        ax[1].plot(x, hline, linestyle = '--')
+
+        ## calculating liklihood for real data:
+        true_mdl = model_func(true_inputs, x)
+        true_liklihood = log_probability(true_inputs, x, y, yerr)
+
+        residuals_2 = (true_mdl+1) - (mcmc_mdl+1)
+
+        fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
+        ax[0].plot(x, true_mdl+1, 'r', alpha = 0.3, label = 'true spec')
+        ax[0].plot(x, true_fit, 'r', label = 'true continuum fit' )
+        ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
+        ax[0].plot(x, fit, 'k', label = 'mcmc continuum fit')
+        ax[0].legend()
+        ax[1].plot(x, residuals_2, '.')
+
+    ## asks before showing all the figures
+    input2 = input('View figures? y or n: ')
+    if input2 == 'y':
+        plt.show()
+    else: plt.close('all')
+
+    print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
+    #print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
+    profile_order.append(profile)
+    coeffs_order.append(poly_cos)
+    print('Time Taken: %s minutes'%((t1-t0)/60))

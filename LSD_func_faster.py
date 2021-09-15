@@ -7,7 +7,7 @@ import random
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
 
-    vmax=20
+    vmax=25
     #deltav=0.8
     vmin=-vmax
 
