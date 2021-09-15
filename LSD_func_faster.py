@@ -5,9 +5,9 @@ import glob
 import matplotlib.pyplot as plt
 import random
 
-def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
+def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn):
 
-    vmax=25
+    vmax=20
     #deltav=0.8
     vmin=-vmax
 
@@ -29,7 +29,8 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
     wavelengths_expected=[]
     depths_expected=[]
     for some in range(0, len(wavelengths_expected1)):
-        if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max:
+        line_min = 1/(3*sn)
+        if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max and depths_expected1[some]>=line_min:
             wavelengths_expected.append(wavelengths_expected1[some])
             #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))
             depths_expected.append(depths_expected1[some])
@@ -233,6 +234,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         hdu=fits.open('%s'%file)
         spec=hdu[0].data
         header=hdu[0].header
+        sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
         spec_check = spec[spec<=0]
         if len(spec_check)>0:
             print('WARNING NEGATIVE/ZERO FLUX - corrected')
@@ -304,6 +306,6 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
     flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
     print('flux error: %s'%flux_error_order)
     fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))-1
-    return fluxes, wavelengths, flux_error_order ## for just LSD
+    return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
 
 ############################################################################################################

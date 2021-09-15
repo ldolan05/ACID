@@ -12,6 +12,7 @@ import random
 
 ## for real data
 fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
+#linelist = '/home/lsd/Documents/fulllinelist.txt'
 linelist = '/home/lsd/Documents/fulllinelist018.txt'
 #linelist = '/home/lsd/Documents/fulllinelist004.txt'
 directory = '/home/lsd/Documents/HD189733/August2007/'
@@ -86,15 +87,19 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
         return coeffs, flux_obs, new_errors
 
 ### processes HARPS data file to produce a normalised spectrum (no continuum corection - only blaze correction), the initial LSD profile and the alpha matrix.
+#sns = []
+#sn_wave = []
 def get_data(file, frame, order, poly_ord):
 
-    fluxes, wavelengths, flux_error_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'masked')
+    fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'masked')
+    #sns.append(sn)
+    #sn_waves.append(mid_wave_order)
 
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
     poly_inputs, fluxes1, flux_error_order1 = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord)
+    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn)
     velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)
     profile = np.array(profile)
     print(profile)
@@ -120,7 +125,8 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
         #print(number)
         fluxes[i] = fluxes[i]+number
 
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'False', poly_ord)
+    sn=1
+    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux = LSD.LSD(wavelengths, fluxes, flux_error_order, linelist, 'False', poly_ord, sn)
     velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)
     profile = np.array(profile)
 
@@ -244,16 +250,16 @@ else:
     #file = input('Enter path to data file: ')
     #frame = int(input('Enter frame: '))
     order = int(input('Enter order: '))
-    poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
+    #poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 
     file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
-    #frame = 0
+    frame = 0
     #order = 26
-    #poly_ord = 3
+    poly_ord = 3
 
-profile_order = []
-coeffs_order = []
-for frame in range(0, 10):
+    #profile_order = []
+    #coeffs_order = []
+    #for frame in range(, 10):
     if input1!='y':
         fits_file = fits.open(file)
         wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux = get_data(file, frame, order, poly_ord)
@@ -411,6 +417,14 @@ for frame in range(0, 10):
 
     print('Likelihood for mcmc: %s'%mcmc_liklihood)
 
+    residuals_2 = (y+1) - (mcmc_mdl+1)
+
+    fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
+    ax[0].plot(x, y+1, 'r', alpha = 0.3, label = 'data')
+    ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
+    ax[0].legend()
+    ax[1].plot(x, residuals_2, '.')
+
     ## plots forward models for continuum corrected data and uncorrected data - only if using synthetic
     if input1 == 'y':
         true_fit = mdl
@@ -449,6 +463,6 @@ for frame in range(0, 10):
 
     print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
     #print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
-    profile_order.append(profile)
-    coeffs_order.append(poly_cos)
+    #profile_order.append(profile)
+    #coeffs_order.append(poly_cos)
     print('Time Taken: %s minutes'%((t1-t0)/60))
