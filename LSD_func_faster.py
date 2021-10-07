@@ -5,17 +5,26 @@ import glob
 import matplotlib.pyplot as plt
 import random
 
-def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn):
+def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name):
 
-    vmax=20
+    width = 40
+    centre = -2.1
     #deltav=0.8
-    vmin=-vmax
+    #vmin=-vmax
 
     resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
     deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
 
-    velocities=np.arange(vmin,vmax,deltav)
+    shift = int(centre/deltav)
+    centre1 = shift*deltav
 
+    vmin = int(centre1-(width/2))
+    vmax = int(centre1+(width/2))
+    no_pix = int(width/deltav)
+
+    velocities=np.linspace(vmin,vmax,no_pix)
+
+    #print(vgrid[1]-vgrid[0])
     #print('Matrix S has been set up')
 
     #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
@@ -42,7 +51,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn):
 
     alpha=np.zeros((len(blankwaves), len(velocities)))
 
-    limit=np.max(velocities)*np.max(wavelengths_expected)/2.99792458e5
+    limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
     #print(limit)
 
     for j in range(0, len(blankwaves)):
@@ -162,7 +171,7 @@ def get_wave(data,header):
 
   return wave
 
-def blaze_correct(file_type, spec_type, order, file, directory, masking):
+def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name):
     #### Inputing spectrum depending on file_type and spec_type #####
 
     if file_type == 's1d':
@@ -257,6 +266,8 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
 
 
         blaze_file = glob.glob('%sblaze_folder/**blaze_A*.fits'%(directory))
+        print('%sblaze_folder/**blaze_A*.fits'%(directory))
+        print(blaze_file)
         blaze_file = blaze_file[0]
         blaze =fits.open('%s'%blaze_file)
         blaze_func = blaze[0].data
@@ -278,13 +289,13 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         if masking == 'masked':
             ## I've just been updating as I go through so it's not complete
             #if you want to add to it the just add an element of form: [min wavelength of masked region, max wavelength of masked region]
-            masks = [[4955, 4960], [4933.5, 4934.5], [6496, 6497.5], [3981, 3982.5], [3988.5, 3990.5]
-                     ,[4287.5, 4290.5], [4293.5, 4294.5], [4299.5,4303], [4336, 4339], [4341, 4344.5], [4381, 4386], [4402, 4407]
-                     ,[4417.3,4418], [4443.4,4444.2], [4501,4501.5], [4533.5, 4534.4], [4553.6, 4554.4], [4563.4, 4564.2], [4571.6, 4572.4]
-                     ,[4860.5, 4862], [4855.1, 4855.6], [4828.9, 4829.2], [4890.3,4892.49], [4903.9, 4904.9], [4913.7, 4914.4], [5013.7, 5014.7]
-                     ,[5039.5,5040.4], [5080.15, 5081.41], [5126.64, 5126.98], [5136.84, 5137.2], [5146.27, 5146.48], [5166.19, 5187.44], [5141, 5143]
-                     ,[5231.81, 5233.96], [5352.89, 5354.04], [5369.6, 5372.9], [5444.6, 5445.6], [4003, 4008], [4043, 4048], [4069, 4073], [4091, 4093]
-                     ,[4141, 4145], [4224, 4229], [5475, 5478], [5885, 5900], [6140, 6143], [6255, 6259], [6313, 6316], [6558, 6565], [6121,6124.5], [6159, 6172], [6100, 6104] ]
+            masks_csv = np.genfromtxt('/home/lsd/Documents/HD189733b_masks.csv', delimiter=',')
+            min_waves_mask = np.array(masks_csv[:,0])
+            max_waves_mask = np.array(masks_csv[:,1])
+            masks = []
+            for mask_no in range(len(min_waves_mask)):
+                masks.append([min_waves_mask[mask_no], max_waves_mask[mask_no]])
+
             masked_waves=[]
 
             for mask in masks:
@@ -292,8 +303,62 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
                 idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
                 #print(flux_error_order[idx])
                 flux_error_order[idx] = 10000000000000000000
+                #print(idx)
+                if len(wavelengths[idx])>0:
+                    masked_waves.append(wavelengths[idx])
 
-                masked_waves.append(wavelengths[idx])
+            #masks = []
+            ### allows extra masking to be added ##
+
+            plt.figure('masking')
+            plt.plot(wavelengths, fluxes)
+            if len(masked_waves)>0:
+                for masked_wave in masked_waves:
+                    plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+            #plt.show()
+
+            #response = input('Are there any regions to be masked? y or n: ')
+            response = 'y'
+            if response == 'y':
+                '''
+                print('Take note of regions.')
+                plt.figure('masking')
+                plt.plot(wavelengths, fluxes)
+                plt.show()
+                '''
+                #response1 = int(input('How many regions to mask?: '))
+                response1 = 0
+                for i in range(response1):
+                    min_wave = float(input('Minimum wavelength of region %s: '%i))
+                    max_wave = float(input('Maximum wavelength of region %s: '%i))
+                    masks.append([min_wave, max_wave])
+                masked_waves=[]
+                #print(masks)
+                for mask in masks:
+                    print(np.max(mask), np.min(mask))
+                    idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
+                    #print(flux_error_order[idx])
+                    flux_error_order[idx] = 10000000000000000000
+
+                    if len(wavelengths[idx])>0:
+                        masked_waves.append(wavelengths[idx])
+
+                plt.figure('masking')
+                plt.plot(wavelengths, fluxes)
+                print(masked_waves)
+                for masked_wave in masked_waves:
+                    plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+                #print('new version')
+                plt.savefig('/home/lsd/Documents/LSD_Figures/masking_plots/order%s_masks_%s'%(order, run_name))
+
+                plt.figure('errors')
+                plt.plot(wavelengths, flux_error_order)
+                plt.close('all')
+                #plt.show()
+
+            if response == 'n':
+                print('yay!')
+
 
         elif masking == 'unmasked':
             masked_waves = []
@@ -307,5 +372,4 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
     print('flux error: %s'%flux_error_order)
     fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))-1
     return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
-
 ############################################################################################################
