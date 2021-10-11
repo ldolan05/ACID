@@ -3,18 +3,28 @@ from scipy import linalg
 from astropy.io import  fits
 import glob
 import matplotlib.pyplot as plt
+import random
 
-def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
+def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name):
 
-    vmax=25
-    deltav=0.8
-    vmin=-vmax
+    width = 40
+    centre = -2.1
+    #deltav=0.8
+    #vmin=-vmax
 
-    #resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    #deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
+    resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
 
-    velocities=np.arange(vmin,vmax,deltav)
+    shift = int(centre/deltav)
+    centre1 = shift*deltav
 
+    vmin = int(centre1-(width/2))
+    vmax = int(centre1+(width/2))
+    no_pix = int(width/deltav)
+
+    velocities=np.linspace(vmin,vmax,no_pix)
+
+    #print(vgrid[1]-vgrid[0])
     #print('Matrix S has been set up')
 
     #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
@@ -28,8 +38,10 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
     wavelengths_expected=[]
     depths_expected=[]
     for some in range(0, len(wavelengths_expected1)):
-        if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max:
+        line_min = 1/(3*sn)
+        if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max and depths_expected1[some]>=line_min:
             wavelengths_expected.append(wavelengths_expected1[some])
+            #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))
             depths_expected.append(depths_expected1[some])
         else:
             pass
@@ -39,7 +51,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
 
     alpha=np.zeros((len(blankwaves), len(velocities)))
 
-    limit=np.max(velocities)*np.max(wavelengths_expected)/2.99792458e5
+    limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
     #print(limit)
 
     for j in range(0, len(blankwaves)):
@@ -73,21 +85,21 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
             row = row[edge_size:len(row)-edge_size]
             weight = sum(row)
             #print(row)
-            if weight <= 0.001:
+            if weight == 0:
                 continuum_waves.append(blankwaves[j])
                 continuum_matrix.append(R_matrix[j]+1)
 
         if len(continuum_waves)<3:R_matrix = R_matrix
         else:
             ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
-            '''
+
             plt.figure()
-            plt.plot(blankwaves, R_matrix, linewidth = 0.25)
+            plt.plot(blankwaves, R_matrix+1, linewidth = 0.25)
             plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
-            plotdepths = [0.5]*len(wavelengths_expected)
-            plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
+            #plotdepths = [0.5]*len(wavelengths_expected)
+            #plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
             plt.show()
-            '''
+
 
             ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
             coeffs=np.polyfit(continuum_waves, continuum_matrix, poly_ord)
@@ -98,12 +110,12 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
             rms = rms/fit
 
             ## Plotting the original spectrum with the fit.
-            '''
+
             plt.figure()
             plt.plot(blankwaves, R_matrix_1)
             plt.plot(blankwaves, fit)
             plt.show()
-            '''
+
     else:
         continuum_waves = []
         continuum_matrix = []
@@ -135,7 +147,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord):
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
 
-    return velocities, profile, profile_errors, alpha, continuum_waves, continuum_matrix
+    return velocities, profile, profile_errors, alpha, np.array(continuum_waves), np.array(continuum_matrix)
 
 def get_wave(data,header):
 
@@ -159,7 +171,7 @@ def get_wave(data,header):
 
   return wave
 
-def blaze_correct(file_type, spec_type, order, file, directory, masking):
+def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name):
     #### Inputing spectrum depending on file_type and spec_type #####
 
     if file_type == 's1d':
@@ -231,6 +243,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         hdu=fits.open('%s'%file)
         spec=hdu[0].data
         header=hdu[0].header
+        sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
         spec_check = spec[spec<=0]
         if len(spec_check)>0:
             print('WARNING NEGATIVE/ZERO FLUX - corrected')
@@ -253,6 +266,8 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
 
 
         blaze_file = glob.glob('%sblaze_folder/**blaze_A*.fits'%(directory))
+        print('%sblaze_folder/**blaze_A*.fits'%(directory))
+        print(blaze_file)
         blaze_file = blaze_file[0]
         blaze =fits.open('%s'%blaze_file)
         blaze_func = blaze[0].data
@@ -274,13 +289,13 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         if masking == 'masked':
             ## I've just been updating as I go through so it's not complete
             #if you want to add to it the just add an element of form: [min wavelength of masked region, max wavelength of masked region]
-            masks = [[4955, 4960], [4933.5, 4934.5], [6496, 6497.5], [3981, 3982.5], [3988.5, 3990.5]
-                     ,[4287.5, 4290.5], [4293.5, 4294.5], [4299.5,4303], [4336, 4339], [4341, 4344.5], [4381, 4386], [4402, 4407]
-                     ,[4417.3,4418], [4443.4,4444.2], [4501,4501.5], [4533.5, 4534.4], [4553.6, 4554.4], [4563.4, 4564.2], [4571.6, 4572.4]
-                     ,[4860.5, 4862], [4855.1, 4855.6], [4828.9, 4829.2], [4890.3,4892.49], [4903.9, 4904.9], [4913.7, 4914.4], [5013.7, 5014.7]
-                     ,[5039.5,5040.4], [5080.15, 5081.41], [5126.64, 5126.98], [5136.84, 5137.2], [5146.27, 5146.48], [5166.19, 5187.44], [5141, 5143]
-                     ,[5231.81, 5233.96], [5352.89, 5354.04], [5369.6, 5372.9], [5444.6, 5445.6], [4003, 4008], [4043, 4048], [4069, 4073], [4091, 4093]
-                     ,[4141, 4145], [4224, 4229], [5475, 5478], [5885, 5900], [6140, 6143], [6255, 6259], [6313, 6316], [6558, 6565], [6121,6124.5], [6159, 6172], [6100, 6104] ]
+            masks_csv = np.genfromtxt('/home/lsd/Documents/HD189733b_masks.csv', delimiter=',')
+            min_waves_mask = np.array(masks_csv[:,0])
+            max_waves_mask = np.array(masks_csv[:,1])
+            masks = []
+            for mask_no in range(len(min_waves_mask)):
+                masks.append([min_waves_mask[mask_no], max_waves_mask[mask_no]])
+
             masked_waves=[]
 
             for mask in masks:
@@ -288,8 +303,62 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
                 idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
                 #print(flux_error_order[idx])
                 flux_error_order[idx] = 10000000000000000000
+                #print(idx)
+                if len(wavelengths[idx])>0:
+                    masked_waves.append(wavelengths[idx])
 
-                masked_waves.append(wavelengths[idx])
+            #masks = []
+            ### allows extra masking to be added ##
+
+            plt.figure('masking')
+            plt.plot(wavelengths, fluxes)
+            if len(masked_waves)>0:
+                for masked_wave in masked_waves:
+                    plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+            #plt.show()
+
+            #response = input('Are there any regions to be masked? y or n: ')
+            response = 'y'
+            if response == 'y':
+                '''
+                print('Take note of regions.')
+                plt.figure('masking')
+                plt.plot(wavelengths, fluxes)
+                plt.show()
+                '''
+                #response1 = int(input('How many regions to mask?: '))
+                response1 = 0
+                for i in range(response1):
+                    min_wave = float(input('Minimum wavelength of region %s: '%i))
+                    max_wave = float(input('Maximum wavelength of region %s: '%i))
+                    masks.append([min_wave, max_wave])
+                masked_waves=[]
+                #print(masks)
+                for mask in masks:
+                    print(np.max(mask), np.min(mask))
+                    idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
+                    #print(flux_error_order[idx])
+                    flux_error_order[idx] = 10000000000000000000
+
+                    if len(wavelengths[idx])>0:
+                        masked_waves.append(wavelengths[idx])
+
+                plt.figure('masking')
+                plt.plot(wavelengths, fluxes)
+                print(masked_waves)
+                for masked_wave in masked_waves:
+                    plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+                #print('new version')
+                plt.savefig('/home/lsd/Documents/LSD_Figures/masking_plots/order%s_masks_%s'%(order, run_name))
+
+                plt.figure('errors')
+                plt.plot(wavelengths, flux_error_order)
+                plt.close('all')
+                #plt.show()
+
+            if response == 'n':
+                print('yay!')
+
 
         elif masking == 'unmasked':
             masked_waves = []
@@ -298,37 +367,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking):
         else: print('WARNING - masking not catching - must be either "masked" or "unmasked"')
 
         hdu.close()
-        #div = np.max(fluxes)
-        #fluxes = fluxes/div
-        #flux_error_order = flux_error_order/div
 
-        #print(flux_error_order[idx])
-        #plt.figure()
-        #plt.plot(wavelengths, fluxes)
-
-    #fluxes = continuumfit(fluxes, wavelengths, 2)
-    return fluxes, wavelengths, flux_error_order ## for just LSD
-
+    flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
+    print('flux error: %s'%flux_error_order)
+    fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))-1
+    return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
 ############################################################################################################
-'''
-file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
-directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
-linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
-# s1d or e2ds
-file_type = 'e2ds'
-
-# order or full(can't fit properly yet as continuum fit goes to zero)
-spec_type = 'order'
-order = 26
-masking = 'masked'
-
-fluxes, wavelengths, flux_error = blaze_correct(file_type, spec_type, order, file, directory, masking)
-velocities, profile, profile_errors = LSD(wavelengths, fluxes, flux_error, linelist)
-
-#p, v, poly = continuumfit(profile, velocities, profile_errors, 1)
-plt.figure()
-plt.plot(velocities, profile)
-plt.show()
-#fit = poly(wavelengths)
-#fit_plot = poly(velocities)
-'''
