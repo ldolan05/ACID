@@ -104,7 +104,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 #sn_wave = []
 def get_data(file, frame, order, poly_ord):
 
-    fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name)
+    fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('s1d', 'order', order, file, directory, 'unmasked', run_name)
     #sns.append(sn)
     #sn_waves.append(mid_wave_order)
 
@@ -239,7 +239,9 @@ def log_probability(theta, x, y, yerr):
     return final
 
 def residual_mask(wavelengths, forward, data_spec, data_err):
-    residuals=abs((forward+1)-(data_spec+1))
+    #residuals=((data_spec+1)/(forward+1))/data_err
+    residuals=abs(((data_spec+1)-(forward+1))/(data_spec+1))
+    #residuals=abs((data_spec+1)-(forward+1))
     #print(residuals)
     #idx = tuple([residuals>=0.2])
 
@@ -286,7 +288,7 @@ else:
     #order = int(input('Enter order: '))
     #poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 
-    file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
+    file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_s1d_A.fits'
     #file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
     frame = 0
     #order = 26
@@ -303,8 +305,8 @@ T=2454279.436714 #Cegla et al, 2006
 fits_file = fits.open(file)
 phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
 
-for order in range(10, 70):
-    wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, continuum_waves, continuum_flux = get_data(file, frame, order, poly_ord)
+for order in range(57, 58):
+    wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, line_waves, line_depths = get_data(file, frame, order, poly_ord)
 
     print(order)
 
@@ -516,13 +518,16 @@ for order in range(10, 70):
     ax[0].plot(x, y+1, 'r', alpha = 0.3, label = 'data')
     ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
     residual_masks = tuple([yerr>10])
+    '''
     for mask_pos in x[residual_masks]:
         ax[0].plot([mask_pos]*len(y), y+1, alpha = 0.3, color = 'w')
-
+    '''
     #residual_masks = tuple([yerr>10])
-    #ax[0].scatter(x[residual_masks], y[residual_masks]+1, label = 'masked', color = 'b', alpha = 0.3)
+    ax[0].scatter(x[residual_masks], y[residual_masks]+1, label = 'masked', color = 'b', alpha = 0.3)
     ax[0].legend(loc = 'lower right')
-    ax[0].set_ylim(0, 1)
+    #ax[0].set_ylim(0, 1)
+    plotdepths = 1-np.array(line_depths)
+    ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
     #ax[1].plot(x, residuals_2, '.')
     #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
     z_line = [0]*len(x)
