@@ -306,6 +306,7 @@ fits_file = fits.open(file)
 phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
 
 for order in range(57, 58):
+    plt.close('all')
     wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, line_waves, line_depths = get_data(file, frame, order, poly_ord)
 
     print(order)
@@ -566,19 +567,15 @@ for order in range(57, 58):
         plt.savefig('/home/lsd/Documents/LSD_Figures/forward_models/order%s_forwardsyn_%s'%(order, run_name))
 
 
-
-
-    ## asks before showing all the figures
-    '''
-    input2 = input('View figures? y or n: ')
-    if input2 == 'y':
-        plt.show()
-    else:
-        '''
-    plt.close('all')
-
     print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
     #print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
     #profile_order.append(profile)
     #coeffs_order.append(poly_cos)
     print('Time Taken: %s minutes'%((t1-t0)/60))
+
+## asks before showing all the figures
+input2 = input('View figures? y or n: ')
+if input2 == 'y':
+    plt.show()
+else:
+    plt.close('all')
