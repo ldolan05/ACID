@@ -104,10 +104,12 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 #sn_wave = []
 def get_data(file, frame, order, poly_ord):
 
-    fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('s1d', 'order', order, file, directory, 'unmasked', run_name)
+    fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name)
     #sns.append(sn)
     #sn_waves.append(mid_wave_order)
-
+    plt.plot(wavelengths, fluxes)
+    plt.show()
+    
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
     poly_inputs, fluxes1, flux_error_order1 = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
@@ -119,7 +121,7 @@ def get_data(file, frame, order, poly_ord):
     plt.figure()
     plt.plot(velocities, profile)
     plt.xlabel('velocities km/s')
-    plt.ylabel('flux')
+    plt.ylabel('optical depth')
     plt.title('Profile from LSD (intitial for mcmc)')
     plt.savefig('/home/lsd/Documents/LSD_Figures/initial_profiles/order%s_initprof_%s'%(order, run_name))
     #plt.show()
@@ -146,7 +148,7 @@ def get_synthetic_data(vgrid, linelist, p0, wavelengths):
     plt.figure()
     plt.plot(velocities, profile)
     plt.xlabel('velocities km/s')
-    plt.ylabel('flux')
+    plt.ylabel('optical depth')
     plt.title('Profile from LSD (intitial for mcmc)')
     plt.savefig('/home/lsd/Documents/LSD_Figures/initial_profiles/order%s_originalprofsyn_%s'%(order, run_name))
     plt.show()
@@ -288,7 +290,7 @@ else:
     #order = int(input('Enter order: '))
     #poly_ord = int(input('Enter order of polynomial for mcmc to fit: '))
 
-    file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_s1d_A.fits'
+    file = '/home/lsd/Documents/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
     #file = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/ADP.2014-09-17T11:19:48.123/HARPS.2007-08-29T00:52:34.128_e2ds_A.fits'
     frame = 0
     #order = 26
@@ -305,7 +307,7 @@ T=2454279.436714 #Cegla et al, 2006
 fits_file = fits.open(file)
 phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
 
-for order in range(57, 58):
+for order in range(26, 27):
     plt.close('all')
     wavelength_init, flux_init, flux_error_init, initial_inputs, alpha1, velocities, line_waves, line_depths = get_data(file, frame, order, poly_ord)
 
@@ -425,7 +427,7 @@ for order in range(57, 58):
         plt.plot(x, mdl+1, "g", alpha=0.1)
     plt.scatter(x, y+1, color = 'k', marker = '.', label = 'data')
     plt.xlabel("wavelengths")
-    plt.ylabel("flux")
+    plt.ylabel("optical depth")
     plt.title('mcmc models and data')
     #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
     plt.savefig('/home/lsd/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
@@ -492,7 +494,7 @@ for order in range(57, 58):
     plt.legend()
     plt.title('continuum from mcmc')
     plt.xlabel("wavelengths")
-    plt.ylabel("flux")
+    plt.ylabel("optical depth")
     plt.savefig('/home/lsd/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
 
 

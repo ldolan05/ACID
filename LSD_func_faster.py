@@ -46,6 +46,9 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
         else:
             pass
 
+    ## depths from linelist in optical depth space
+    depths_expected = -np.log(depths_expected)
+
     blankwaves=wavelengths
     R_matrix=flux_obs
 
@@ -447,6 +450,11 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
     flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
     print('flux error: %s'%flux_error_order)
-    fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))-1
-    return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
+    fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
+    idx = tuple([fluxes!=0])
+    # in optical depth space
+    flux_error_order = flux_error_order[idx]/fluxes[idx]
+    fluxes = np.log(fluxes[idx])-1
+
+    return fluxes, wavelengths[idx], flux_error_order, sn, np.median(wavelengths) ## for just LSD
 ############################################################################################################
