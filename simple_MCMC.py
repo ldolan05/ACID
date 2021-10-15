@@ -109,7 +109,7 @@ def get_data(file, frame, order, poly_ord):
     #sn_waves.append(mid_wave_order)
     plt.plot(wavelengths, fluxes)
     plt.show()
-    
+
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
     poly_inputs, fluxes1, flux_error_order1 = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
@@ -338,12 +338,12 @@ for order in range(26, 27):
     ## setting x, y, yerr for emcee
     x = wavelength_init
     y = flux_init
-    yerr1 = flux_error_init
+    yerr = flux_error_init
 
     ## making initial model and masking areas with large residuals
     initial_mdl = model_func(model_inputs, x)
-    yerr = residual_mask(x, initial_mdl, y, yerr1)
-    print(yerr)
+    #yerr = residual_mask(x, initial_mdl, y, yerr1)
+    #print(yerr)
 
     ## setting these normalisation factors as global variables - used in the figures below
     a = 2/(np.max(x)-np.min(x))
