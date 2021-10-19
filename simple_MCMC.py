@@ -59,7 +59,7 @@ def continuumfit_profile(fluxes, wavelengths, errors, poly_ord):
 
 ## fits the continuum of the spectum - used to get the initial continuum coefficents
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
-        fluxes1 = fluxes1
+        fluxes1 = fluxes1+1
         ## taking out masked areas
         idx = [errors1<1]
         print(idx)
@@ -85,7 +85,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
         poly = np.poly1d(coeffs)
         fit = poly(wavelengths1)
-        flux_obs = fluxes1/fit
+        flux_obs = fluxes1/fit-1
         new_errors = errors1/fit
 
 
@@ -115,7 +115,7 @@ def get_data(file, frame, order, poly_ord):
     poly_inputs, fluxes1, flux_error_order1 = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
-    #velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)
+    velocities, profile, profile_errors = continuumfit_profile(profile, velocities, profile_errors, 1)
     profile = np.array(profile)
     #print(profile)
     plt.figure()
@@ -161,9 +161,7 @@ def model_func(inputs, x):
 
     mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
 
-    #converting model from optical depth to flux
-    mdl = np.exp(mdl)
-    #mdl = mdl +1
+    mdl = mdl +1
 
     ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
     a = 2/(np.max(x)-np.min(x))
@@ -196,13 +194,11 @@ def log_prior(theta):
     check = 0
     z = theta[:k_max]
 
-    '''
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
-            if -10<=theta[i]<=0.5: pass
+            if -3<=theta[i]<=0.5: pass
             else:
                 check = 1
-    '''
 
     if check==0:
         ## penalty function for profile - not in use
@@ -346,7 +342,7 @@ for order in range(26, 27):
 
     ## making initial model and masking areas with large residuals
     initial_mdl = model_func(model_inputs, x)
-    yerr = residual_mask(x, initial_mdl, y, yerr1)
+    #yerr = residual_mask(x, initial_mdl, y, yerr1)
     #print(yerr)
 
     ## setting these normalisation factors as global variables - used in the figures below

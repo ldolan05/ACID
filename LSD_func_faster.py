@@ -7,17 +7,6 @@ import random
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name):
 
-    #converting to optical depth
-    idx = tuple([flux_obs!=0])
-    flux_obs = np.log(flux_obs[idx])
-    rms = rms[idx]/flux_obs
-
-    wavelengths = wavelengths[idx]
-
-    plt.figure()
-    plt.plot(wavelengths, flux_obs)
-    plt.show()
-
     width = 40
     centre = -2.1
     #deltav=0.8
@@ -60,11 +49,6 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     ## depths from linelist in optical depth space
     depths_expected = np.array(depths_expected)
     depths_expected = np.log(1+depths_expected)
-
-    plt.figure()
-    plotdepths = -np.array(depths_expected)
-    plt.vlines(wavelengths_expected, plotdepths, 0, label = 'line list', color = 'c', alpha = 0.5)
-    plt.show()
 
     blankwaves=wavelengths
     R_matrix=flux_obs
@@ -471,6 +455,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
 
     idx = tuple([fluxes!=0])
+    # in optical depth space
+    flux_error_order = flux_error_order[idx]/fluxes[idx]
+    fluxes = np.log(fluxes[idx])
 
-    return fluxes[idx], wavelengths[idx], flux_error_order[idx], sn, np.median(wavelengths) ## for just LSD
+    return fluxes, wavelengths[idx], flux_error_order, sn, np.median(wavelengths) ## for just LSD
 ############################################################################################################
