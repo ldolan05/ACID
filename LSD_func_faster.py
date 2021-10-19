@@ -47,7 +47,8 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
             pass
 
     ## depths from linelist in optical depth space
-    depths_expected = -np.log(depths_expected)
+    depths_expected = np.array(depths_expected)
+    depths_expected = np.log(1+depths_expected)
 
     blankwaves=wavelengths
     R_matrix=flux_obs

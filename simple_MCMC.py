@@ -88,14 +88,14 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         flux_obs = fluxes1/fit-1
         new_errors = errors1/fit
 
-        '''
+
         fig = plt.figure('fit for initial continuum')
         plt.plot(wavelengths1, fluxes1)
         plt.plot(wavelengths1, fit)
         plt.plot(wavelengths1, flux_obs)
         #plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
         plt.show()
-        '''
+
 
         return coeffs, flux_obs, new_errors
 
@@ -161,7 +161,7 @@ def model_func(inputs, x):
 
     mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
 
-    mdl = mdl+1
+    mdl = mdl +1
 
     ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
     a = 2/(np.max(x)-np.min(x))
@@ -172,7 +172,7 @@ def model_func(inputs, x):
         mdl1 = mdl1 + (inputs[i]*((x*a)+b)**(i-k_max))
 
     mdl = mdl * mdl1
-    mdl = mdl-1
+    mdl = mdl -1
 
     return mdl
 
@@ -184,7 +184,7 @@ def convolve(profile, alpha):
 def log_likelihood(theta, x, y, yerr):
     model = model_func(theta, x)
 
-    lnlike = -0.5 * np.sum(((y+1) - (model+1)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
+    lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
 
     return lnlike
 
@@ -242,7 +242,7 @@ def log_probability(theta, x, y, yerr):
 
 def residual_mask(wavelengths, forward, data_spec, data_err):
     #residuals=((data_spec+1)/(forward+1))/data_err
-    residuals=abs(((data_spec+1)-(forward+1))/(data_spec+1))
+    residuals=abs(((data_spec)-(forward))/(data_spec))
     #residuals=abs((data_spec+1)-(forward+1))
     #print(residuals)
     #idx = tuple([residuals>=0.2])
@@ -424,8 +424,8 @@ for order in range(26, 27):
         for i in np.arange(k_max, len(sample)):
             mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
         plt.plot(x, mdl1, "C1", alpha=0.1)
-        plt.plot(x, mdl+1, "g", alpha=0.1)
-    plt.scatter(x, y+1, color = 'k', marker = '.', label = 'data')
+        plt.plot(x, mdl, "g", alpha=0.1)
+    plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
     plt.xlabel("wavelengths")
     plt.ylabel("optical depth")
     plt.title('mcmc models and data')
@@ -472,7 +472,7 @@ for order in range(26, 27):
 
     # plots mcmc continuum fit on top of data
     plt.figure('continuum fit from mcmc')
-    plt.plot(x, y+1, color = 'k', label = 'data')
+    plt.plot(x, y, color = 'k', label = 'data')
     mdl1 =0
     for i in np.arange(0, len(poly_cos)):
         mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
@@ -518,19 +518,19 @@ for order in range(26, 27):
     #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
     #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
     ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
-    ax[0].plot(x, y+1, 'r', alpha = 0.3, label = 'data')
-    ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
+    ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
+    ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
     residual_masks = tuple([yerr>10])
     '''
     for mask_pos in x[residual_masks]:
         ax[0].plot([mask_pos]*len(y), y+1, alpha = 0.3, color = 'w')
     '''
     #residual_masks = tuple([yerr>10])
-    ax[0].scatter(x[residual_masks], y[residual_masks]+1, label = 'masked', color = 'b', alpha = 0.3)
+    ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
     ax[0].legend(loc = 'lower right')
     #ax[0].set_ylim(0, 1)
-    plotdepths = 1-np.array(line_depths)
-    ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+    plotdepths = np.array(line_depths)
+    ax[0].vlines(line_waves, plotdepths, 0, label = 'line list', color = 'c', alpha = 0.5)
     #ax[1].plot(x, residuals_2, '.')
     #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
     z_line = [0]*len(x)
@@ -540,7 +540,7 @@ for order in range(26, 27):
     ## plots forward models for continuum corrected data and uncorrected data - only if using synthetic
     if input1 == 'y':
         true_fit = mdl
-        true_flux = (flux_init+1)/true_fit-1
+        true_flux = (flux_init)/true_fit
 
         m_flux = convolve(profile, alpha)
         residuals = flux_adjusted - m_flux
@@ -560,9 +560,9 @@ for order in range(26, 27):
         residuals_2 = (true_mdl+1) - (mcmc_mdl+1)
 
         fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
-        ax[0].plot(x, true_mdl+1, 'r', alpha = 0.3, label = 'true spec')
+        ax[0].plot(x, true_mdl, 'r', alpha = 0.3, label = 'true spec')
         ax[0].plot(x, true_fit, 'r', label = 'true continuum fit' )
-        ax[0].plot(x, mcmc_mdl+1, 'k', alpha =0.3, label = 'mcmc spec')
+        ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
         ax[0].plot(x, fit, 'k', label = 'mcmc continuum fit')
         ax[0].legend()
         ax[1].plot(x, residuals_2, '.')
