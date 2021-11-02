@@ -7,6 +7,13 @@ import random
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name):
 
+
+    idx = tuple([flux_obs!=0])
+    # in optical depth space
+    rms = rms[idx]/flux_obs[idx]
+    flux_obs = np.log(flux_obs[idx])
+    wavelengths = wavelengths[idx]
+
     width = 40
     centre = -2.1
     #deltav=0.8
@@ -102,7 +109,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
             plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
             #plotdepths = [0.5]*len(wavelengths_expected)
             #plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
-            plt.show()
+            #plt.show()
 
 
             ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
@@ -118,7 +125,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
             plt.figure()
             plt.plot(blankwaves, R_matrix_1)
             plt.plot(blankwaves, fit)
-            plt.show()
+            #plt.show()
 
     else:
         continuum_waves = []
@@ -449,15 +456,10 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
         hdu.close()
 
-
     flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
     print('flux error: %s'%flux_error_order)
     fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
-
     idx = tuple([fluxes!=0])
-    # in optical depth space
-    flux_error_order = flux_error_order[idx]/fluxes[idx]
-    fluxes = np.log(fluxes[idx])
 
-    return fluxes, wavelengths[idx], flux_error_order, sn, np.median(wavelengths) ## for just LSD
+    return fluxes[idx], wavelengths[idx], flux_error_order[idx], sn, np.median(wavelengths) ## for just LSD
 ############################################################################################################

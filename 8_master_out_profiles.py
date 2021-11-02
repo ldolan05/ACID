@@ -17,6 +17,8 @@ import LSD_func_faster as LSD
 
 def findfiles(directory, file_type):
 
+    filelist_final = glob.glob('/home/lsd/Documents/LSD_Figures/*all_frames*.fits')
+    '''
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
     filelist=glob.glob('%s/*/*%s**A*.fits'%(directory, file_type))               #finding all A band spectra
 
@@ -27,7 +29,7 @@ def findfiles(directory, file_type):
         for file1 in filelist1:
             if file1 == file:count=1
         if count==0:filelist_final.append(file)
-
+    '''
     return filelist_final                          #returns list of uncorrected spectra files
 
 def classify(ccf, P, t, T):
@@ -179,6 +181,13 @@ def combineccfs(spectra):
 def combineprofiles(spectra, errors):
     spectra = np.array(spectra)
     errors = np.array(errors)
+
+    plt.figure()
+    for i in range(10,len(spectra)):
+        plt.plot(velocities, spectra[i])
+        plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3)
+    plt.show()
+
     length, width = np.shape(spectra)
     spectrum = np.zeros((1,width))
     spec_errors = np.zeros((1,width))
@@ -187,8 +196,16 @@ def combineprofiles(spectra, errors):
         #print(weights)
         spectrum[0,n]=sum(weights*spectra[:,n])/sum(weights)
         spec_errors[0,n]=1/sum(weights)
+
+    plt.figure('frame: %s'%frame)
+    plt.plot(velocities, spectrum[0, :])
+    plt.fill_between(velocities, spectrum[0, :]-spec_errors[0, :], spectrum[0, :]+spec_errors[0, :], alpha = 0.3)
+    plt.show()
+
+
     spectrum = list(np.reshape(spectrum, (width,)))
     spec_errors = list(np.reshape(spec_errors, (width,)))
+
     return  spectrum, spec_errors
 
 def continuumfit(fluxes, wavelengths, errors, poly_ord):
@@ -252,16 +269,16 @@ u2=0            #Sing et al, 2011
 #b=a_rstar*np.cos(i)
 
 
-path = '/Users/lucydolan/Documents/CCF_method/HD189733/'
-save_path = '/Users/lucydolan/Documents/Ernst_Rm_Codes/HD189733b_profiles/'
+path = '/home/lsd/Documents/LSD_Figures/'
+save_path = '/home/lsd/Documents/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 
 months = ['August2007',
-          'July2007',
-          'July2006',
-          'Sep2006'
+          #'July2007',
+          #'July2006',
+          #'Sep2006'
           ]
-linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
+#linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
 file_type = 'e2ds'
 
@@ -284,6 +301,18 @@ velos=[]
 outliers = []
 lengths = []
 
+
+phases = [0.9829554832972711,
+ 0.014062783831011672,
+ 0.9933784904576477,
+ 0.019279504696676497,
+ 0.0333385608285397,
+ 0.003712814469444936,
+ 0.04198266527329153,
+ 0.01060410073691287]
+
+results = ['in', 'in', 'in', 'out', 'out', 'in', 'out', 'in']
+
 for month in months:
     plt.figure(month)
     directory =  '%s%s/'%(path,month)
@@ -292,27 +321,51 @@ for month in months:
     out_ccfs = []
     out_errors = []
     all_ccfs = []
-    phases = []
+    #phases = []
 
     velos1=[]
-    results = []
+    #results = []
     #befores = []
     #afters = []
     matched=[]
     lengths.append(len(filelist))
-    for file in filelist:
-        for order in range (0,72):
-            fluxes, wavelengths, flux_error = LSD.blaze_correct(file_type, spec_type, order, file, directory, masking)
-            velocities, profile, profile_errors = LSD.LSD(wavelengths, fluxes, flux_error, linelist)
+    for frame in range(0, len(filelist)):
+        file = fits.open(filelist[frame])
+        order_errors = []
+        order_profiles = []
+        for order in range (10,70):
+            profile = file[order].data[0]
+            profile_errors = file[order].data[1]
+            #velocities = file[order].data[2]
+            velocities=np.linspace(-21,18,len(profile))
+            #fluxes, wavelengths, flux_error = LSD.blaze_correct(file_type, spec_type, order, file, directory, masking)
+            #velocities, profile, profile_errors = LSD.LSD(wavelengths, fluxes, flux_error, linelist)
+            '''
+            if frame==4:
+                plt.figure()
+                plt.plot(profile)
+                plt.fill_between(velocities, profile-profile_errors, profile+profile_errors, alpha = 0.3)
+                plt.show()
+                order_errors.append(profile_errors*10)
+                order_profiles.append(profile*10)
+            '''
+            #else:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
 
         #print(np.shape(ccf[0].data)) #(73,161)
-        opened_file = fits.open(file)
-        result, phi, phase = classify(opened_file, P, t, T) #phi is adjusted, phase is original
+
+        #opened_file = fits.open(file)
+        #result, phi, phase = classify(opened_file, P, t, T) #phi is adjusted, phase is original
+        phase = phases[frame]
+        if phase>0.5:
+            phi = phase-1
+        else:phi = phase
+        result = results[frame]
+
         #print(result, phi, phase)
         #plt.figure(file)
-        spectrum, errors = combineprofiles(order_profile, order_errors)
+        spectrum, errors = combineprofiles(order_profiles, order_errors)
         #plt.plot(velocities, spectrum)
         velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
         phases1.append(phi)
@@ -334,7 +387,7 @@ for month in months:
         '''
         all_ccfs.append([spectrum, errors])
         total.append(spectrum)
-        phases.append(phi)
+        #phases.append(phi)
         results.append(result)
         if result == 'out':
             #plt.plot(spectrum)
@@ -345,7 +398,7 @@ for month in months:
     master_out_spec, master_out_errors = combineprofiles(out_ccfs, out_errors)
     master_out = np.array([master_out_spec, master_out_errors])
 
-    phases = np.array(phases)
+    phases = np.array(phases1)
     all_ccfs = np.array(all_ccfs)
     results = np.array(results)
 
@@ -378,7 +431,7 @@ for month in months:
 
     hdu.writeto('%s%s_master_out_LSD_profile.fits'%(save_path, month), output_verify='fix', overwrite = 'True')
 
-    opened_file.close()
+    #opened_file.close()
 
 #plt.close('all')
 '''

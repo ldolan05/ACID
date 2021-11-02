@@ -21,7 +21,8 @@ def residualccfs(in_ccfs, master_out, velocities):
     residuals=[]
     #plt.figure('residuals')
     for ccf in in_ccfs:
-        residual = master_out-ccf
+        #residual = master_out-ccf
+        residual = (ccf+1)/(master_out+1)-1
         #plt.scatter(velocities,residual)
         residuals.append(residual)
         '''
@@ -37,9 +38,10 @@ def residualccfs(in_ccfs, master_out, velocities):
 ####################################################################################################################################################################
 
 
-path = '/Users/lucydolan/Documents/CCF_method/HD189733/'#August2007
-#path = '/Users/lucydolan/Documents/CCF_method/HD189733_HARPS_CCFS/'
+##path = '/Users/lucydolan/Documents/CCF_method/HD189733_HARPS_CCFS/'
+path = '/home/lsd/Documents/LSD_Figures/'
 month = 'August2007' #August, July, Sep
+#path = '%s%s_master_out_LSD_profile.fits'%(save_path, month)
 
 months = ['August2007', #'July2007',
           #'July2006',
@@ -51,9 +53,9 @@ all_phase=[]
 
 for month in months:
 
-    directory =  '%s%s/'%(path,month)
+    directory =  '%s'%(path)
     #file ='%s%s_master_out.fits'%(directory, month)
-    #file ='%s%s_master_out_LSD.fits'%(directory, month)
+    file ='%s%s_master_out_LSD_profile.fits'%(directory, month)
     #file ='%s%s_master_out_LSD_v3.fits'%(directory, month)
     #file ='%s%s_master_out_cegla.fits'%(directory, month)
     all_ccfs = fits.open(file)
@@ -69,15 +71,16 @@ for month in months:
     phases = []
     plt.figure('all_ccfs')
     for line in range(0,master_position):
-        ccf = all_ccfs[line].data
-        phase = all_ccfs[line].header['PHASE']
-        in_ccfs.append(ccf)
-        plt.plot(ccf)
-        phases.append(phase)
-        all_phase.append(phase)
+        if line != 4:
+            ccf = all_ccfs[line].data[0]
+            phase = all_ccfs[line].header['PHASE']
+            in_ccfs.append(ccf)
+            plt.plot(ccf)
+            phases.append(phase)
+            all_phase.append(phase)
     plt.show()
     #print(phases)
-    ccf_spec = all_ccfs[0].data
+    ccf_spec = all_ccfs[0].data[0]
     velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
 
    # K = -2.277 #km/s - Boisse et al, 2009
