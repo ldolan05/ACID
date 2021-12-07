@@ -17,14 +17,19 @@ import glob
     #return  spectrum
 
 
-def residualccfs(in_ccfs, master_out, velocities):
+def residualccfs(in_ccfs, in_ccfs_errors, master_out, master_out_errors, velocities):
     residuals=[]
+    residual_errors = []
     #plt.figure('residuals')
-    for ccf in in_ccfs:
-        #residual = master_out-ccf
-        residual = (ccf+1)/(master_out+1)-1
+    for i in range(len(in_ccfs)):
+        ccf = in_ccfs[i]
+        ccf_err = in_ccfs_errors[i]
+        residual = (master_out+1)-(ccf+1)
+        error = (np.sqrt(master_out_errors**2 + ccf_err**2))/np.sqrt(len(ccf_err))
+        #residual = (ccf+1)/(master_out+1)-1
         #plt.scatter(velocities,residual)
         residuals.append(residual)
+        residual_errors.append(error)
         '''
         plt.figure(1)
         #plt.plot(ccf)
@@ -34,12 +39,13 @@ def residualccfs(in_ccfs, master_out, velocities):
         '''
         #plt.show()
 
-    return residuals
+    return residuals, residual_errors
 ####################################################################################################################################################################
 
 
 ##path = '/Users/lucydolan/Documents/CCF_method/HD189733_HARPS_CCFS/'
 path = '/home/lsd/Documents/LSD_Figures/'
+#path = '/Users/lucydolan/Starbase/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 #path = '%s%s_master_out_LSD_profile.fits'%(save_path, month)
 
@@ -50,6 +56,7 @@ months = ['August2007', #'July2007',
 
 all_resi=[]
 all_phase=[]
+results = []
 
 for month in months:
 
@@ -68,17 +75,23 @@ for month in months:
     plt.show()
 
     in_ccfs = []
+    in_ccfs_errors = []
     phases = []
     plt.figure('all_ccfs')
     for line in range(0,master_position):
-        if line != 4:
-            ccf = all_ccfs[line].data[0]
-            phase = all_ccfs[line].header['PHASE']
-            in_ccfs.append(ccf)
-            plt.plot(ccf)
-            phases.append(phase)
-            all_phase.append(phase)
+        ccf = all_ccfs[line].data[0]
+        ccf_errors = all_ccfs[line].data[1]
+        phase = all_ccfs[line].header['PHASE']
+        result = all_ccfs[line].header['RESULT']
+        in_ccfs.append(ccf)
+        in_ccfs_errors.append(ccf_errors)
+        plt.plot(ccf, label = '%s_%s'%(result, line))
+        phases.append(phase)
+        all_phase.append(phase)
+        results.append(result)
+    plt.legend()
     plt.show()
+
     #print(phases)
     ccf_spec = all_ccfs[0].data[0]
     velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
@@ -86,7 +99,7 @@ for month in months:
    # K = -2.277 #km/s - Boisse et al, 2009
     #velocities = velocities - K  ### Adjusting doppler reflex ###
 
-    residual_ccfs = residualccfs(in_ccfs, master_out, velocities)
+    residual_ccfs, residual_errors = residualccfs(in_ccfs, in_ccfs_errors, master_out, master_out_errors, velocities)
 
     '''
     plt.figure(month)
@@ -103,9 +116,13 @@ for month in months:
 
     print(month)
     plt.figure(month)
+    i=0
     for ccf1 in residual_ccfs:
-        plt.plot(velocities, ccf1)
+        plt.plot(velocities, ccf1, label = '%s_%s'%(results[i], i))
+        plt.fill_between(velocities, ccf1-residual_errors[i], ccf1+residual_errors[i], alpha = 0.3)
         all_resi.append(ccf1)
+        i+=1
+    plt.legend()
     plt.show()
 
     #write in data

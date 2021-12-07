@@ -15,9 +15,11 @@ from scipy.interpolate import interp1d
 from statistics import stdev
 import LSD_func_faster as LSD
 
+run_name = input('Run name (all_frames or jvc):' )
 def findfiles(directory, file_type):
 
-    filelist_final = glob.glob('/home/lsd/Documents/LSD_Figures/*all_frames*.fits')
+    filelist_final = glob.glob('%s*%s*.fits'%(directory, run_name))
+
     '''
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
     filelist=glob.glob('%s/*/*%s**A*.fits'%(directory, file_type))               #finding all A band spectra
@@ -152,9 +154,14 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     velo = v0 + K*(e*np.cos(omega)+np.cos(2*np.pi*phi+omega))
     #print(velo)
     adjusted_velocities = velocities-velo
-    f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value=np.nan)
-    velocity_grid = np.linspace(-19,19,len(spectrum))
+    f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False)
+    velocity_grid = np.linspace(-18,18,len(spectrum))
     adjusted_spectrum = f2(velocity_grid)
+
+    print(adjusted_spectrum)
+
+    plt.plot(adjusted_spectrum)
+    plt.show()
     '''
     for n in range(len(adjusted_spectrum)):
         if adjusted_spectrum[n]==np.min(adjusted_spectrum):
@@ -178,35 +185,127 @@ def combineccfs(spectra):
     spectrum = list(np.reshape(spectrum, (width,)))
     return  spectrum
 
-def combineprofiles(spectra, errors):
+def combineprofiles(spectra, errors, master):
     spectra = np.array(spectra)
     errors = np.array(errors)
 
-    plt.figure()
-    for i in range(10,len(spectra)):
-        plt.plot(velocities, spectra[i])
-        plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3)
-    plt.show()
+    if master == 'no':
+        weights_csv = np.genfromtxt('/home/lsd/Documents/order_weights.csv', delimiter=',')
+        orders = np.array(weights_csv[10:-1,0], dtype = int)
+        print(orders)
+        weights = np.array(weights_csv[10:-1,1])
+        print(weights)
 
-    length, width = np.shape(spectra)
+        #calc_errors=np.zeros(np.shape(errors))
+        plt.figure()
+        plt.title('Error per order, frame: %s'%frame)
+        #orders = []
+        for i in range(0,len(spectra)):
+            #if np.max(abs(spectra[i]))<0.25:
+            #continue
+            points = spectra[i]
+            errors[i] = errors[i]/np.max(abs(points))
+            av_err = np.sum(errors[i])/len(errors[i])
+            #calc_errors[i] = get_errors(velocities, spectra[i])/np.max(abs(spectra[i]))  ## 1/snr
+            #av_calc_err = np.sum(calc_errors[i])/len(calc_errors[i])
+            plt.scatter(i, av_err, color = 'k')
+            #plt.scatter(i, av_calc_err, color = 'b', alpha = 0.3)
+        plt.xlabel('order')
+        plt.ylabel('average error')
+        #plt.show()
+
+
+        spectra_to_combine = []
+        errorss = []
+        plt.figure()
+        plt.title('All orders, frame: %s'%frame)
+        for i in orders:
+            print(i)
+            print(np.shape(spectra))
+            spectra_to_combine.append(list(spectra[i-1]))
+            errorss.append(list(errors[i-1]))
+            plt.plot(velocities, spectra[i-1])
+            plt.fill_between(velocities, spectra[i-1]-errors[i-1], spectra[i-1]+errors[i-1], alpha = 0.3, label = 'order: %s'%i)
+            plt.legend(ncol = 3)
+            #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
+        plt.ylim(-0.8, 0.2)
+        plt.show()
+
+    else:
+        spectra_to_combine = []
+        weights=[]
+        #all_weights = np.zeros(np.shape(errors))
+        for n in range(0, len(spectra)):
+            spectra_to_combine.append(list(spectra[n]))
+            temp_err = np.array(errors[n, :])
+            #temp_err = temp_err/np.max(abs(spectra[n]))
+            #errors[n, :]=temp_err
+            print(temp_err)
+            weight = (1/temp_err**2)
+            print(weight)
+            weights.append(np.mean(weight))
+        weights = np.array(weights/sum(weights))
+
+        plt.figure()
+        plt.title('master out - all profiles')
+        for i in range(len(spectra)):
+            #spectra_to_combine.append(list(spectra[i-1]))
+            #errorss.append(list(errors[i-1]))
+            plt.plot(velocities, spectra[i])
+            plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3, label = 'frame: %s'%i)
+            plt.legend(ncol = 3)
+            #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
+        plt.show()
+
+
+    spectra_to_combine = np.array(spectra_to_combine)
+    #errorss = np.array(errorss)
+
+    length, width = np.shape(spectra_to_combine)
     spectrum = np.zeros((1,width))
     spec_errors = np.zeros((1,width))
+
+    all_weights = np.zeros(np.shape(errors))
     for n in range(0,width):
-        weights = 1/errors[:,n]**2
-        #print(weights)
-        spectrum[0,n]=sum(weights*spectra[:,n])/sum(weights)
-        spec_errors[0,n]=1/sum(weights)
-
+        temp_spec = spectra_to_combine[:, n]
+        #temp_err = np.array(errorss[:, n])
+        #weights = (1/temp_err**2)
+        #weights = np.array(weights/sum(weights))
+        #all_weights[:,n]=weights
+        print(temp_spec)
+        print(weights)
+        spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
+        #spectrum[0,n]=sum(temp_spec)/len(temp_spec)
+        spec_errors[0,n]=(stdev(temp_spec)**2)*np.sqrt(sum(weights**2))
+        #spec_errors[0, n] = stdev(temp_spec)
+        #print(temp_spec)
+        #print(temp_err)
+    '''
+    plt.figure()
+    plt.scatter(orders, weights)
+    plt.xlabel('order')
+    plt.ylabel('weight')
+    '''
+    '''
+    plt.figure()
+    plt.scatter(orders, temp_err)
+    plt.xlabel('order')
+    plt.ylabel('error')
+    '''
+    '''
     plt.figure('frame: %s'%frame)
+    plt.title('frame: %s'%frame)
     plt.plot(velocities, spectrum[0, :])
+    plt.plot(velocities, [0]*len(velocities))
     plt.fill_between(velocities, spectrum[0, :]-spec_errors[0, :], spectrum[0, :]+spec_errors[0, :], alpha = 0.3)
+    print(spectrum[0,:])
     plt.show()
-
+    '''
 
     spectrum = list(np.reshape(spectrum, (width,)))
     spec_errors = list(np.reshape(spec_errors, (width,)))
 
-    return  spectrum, spec_errors
+    return  spectrum, spec_errors, weights
 
 def continuumfit(fluxes, wavelengths, errors, poly_ord):
         idx = wavelengths.argsort()
@@ -271,6 +370,10 @@ u2=0            #Sing et al, 2011
 
 path = '/home/lsd/Documents/LSD_Figures/'
 save_path = '/home/lsd/Documents/LSD_Figures/'
+
+#path = '/Users/lucydolan/Starbase/LSD_Figures/'
+#save_path = '/Users/lucydolan/Starbase/LSD_Figures/'
+
 month = 'August2007' #August, July, Sep
 
 months = ['August2007',
@@ -282,7 +385,6 @@ months = ['August2007',
 # s1d or e2ds
 file_type = 'e2ds'
 
-# order or full(can't fit properly yet as continuum fit goes to zero)
 spec_type = 'order'
 order = 26
 masking = 'masked'
@@ -301,41 +403,54 @@ velos=[]
 outliers = []
 lengths = []
 
-
-phases = [0.9829554832972711,
- 0.014062783831011672,
- 0.9933784904576477,
- 0.019279504696676497,
- 0.0333385608285397,
- 0.003712814469444936,
- 0.04198266527329153,
- 0.01060410073691287]
-
-results = ['in', 'in', 'in', 'out', 'out', 'in', 'out', 'in']
+all_weights_total = []
 
 for month in months:
     plt.figure(month)
-    directory =  '%s%s/'%(path,month)
+    directory =  '%s%s'%(path,month)
 
     filelist = findfiles(directory, file_type)
     out_ccfs = []
     out_errors = []
     all_ccfs = []
     #phases = []
-
+    results = []
+    phases = []
     velos1=[]
     #results = []
     #befores = []
     #afters = []
     matched=[]
     lengths.append(len(filelist))
-    for frame in range(0, len(filelist)):
+    framelist = np.arange(1, len(filelist))
+    framelist = framelist[framelist!=4]
+    print(framelist)
+    for frame in framelist:
         file = fits.open(filelist[frame])
         order_errors = []
         order_profiles = []
-        for order in range (10,70):
-            profile = file[order].data[0]
-            profile_errors = file[order].data[1]
+        for order1 in range(1,70):
+
+            profile_errors = file[order1].data[1]
+            profile = file[order1].data[0]
+
+            order = file[order1].header['ORDER']
+            phase = file[order1].header['PHASE']
+            result = file[order1].header['result']
+
+            profile = np.exp(profile)
+            profile_errors = np.sqrt(profile_errors**2/profile**2)
+            profile = profile-1
+
+            profile[np.isnan(profile)]=0
+            profile_errors[np.isnan(profile)] = 1
+            profile_errors[np.isnan(profile_errors)]=1
+            #profile_errors = abs(profile_errors/profile)
+            #profile_errors[np.isnan(profile_errors)]=0.5
+            #print(profile_errors)
+            #print('profile errors^^')
+            #profile = np.exp(profile)-1
+            print(profile)
             #velocities = file[order].data[2]
             velocities=np.linspace(-21,18,len(profile))
             #fluxes, wavelengths, flux_error = LSD.blaze_correct(file_type, spec_type, order, file, directory, masking)
@@ -353,19 +468,18 @@ for month in months:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
 
-        #print(np.shape(ccf[0].data)) #(73,161)
-
         #opened_file = fits.open(file)
         #result, phi, phase = classify(opened_file, P, t, T) #phi is adjusted, phase is original
-        phase = phases[frame]
         if phase>0.5:
             phi = phase-1
         else:phi = phase
-        result = results[frame]
 
         #print(result, phi, phase)
         #plt.figure(file)
-        spectrum, errors = combineprofiles(order_profiles, order_errors)
+        #spectrum, errors = combineprofiles(order_profiles, order_errors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31, 35, 38, 39, 41, 42, 43, 44, 45, 45, 47, 50, 51, 55, 56, 63, 64, 65, 69])
+        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, 'no')
+
+        all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
         velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
         phases1.append(phi)
@@ -395,9 +509,14 @@ for month in months:
             out_errors.append(errors)
     #velos.append(velos1)
     #break
-    master_out_spec, master_out_errors = combineprofiles(out_ccfs, out_errors)
-    master_out = np.array([master_out_spec, master_out_errors])
+    frame = 'master_out'
+    if len(out_ccfs)>1:
+        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors, 'yes')
+    else:
+        master_out_spec = out_ccfs[0]
+        master_out_errors = out_errors[0]
 
+    master_out = np.array([master_out_spec, master_out_errors])
     phases = np.array(phases1)
     all_ccfs = np.array(all_ccfs)
     results = np.array(results)
@@ -407,6 +526,7 @@ for month in months:
     all_ccfs = all_ccfs[idx]
     results = results[idx]
     phases = list(phases)
+    results = list(results)
 
     #write in data
     hdu=fits.HDUList()
@@ -415,6 +535,7 @@ for month in months:
 
     hdu.append(fits.PrimaryHDU(data=master_out))
     phases.append('out')
+    results.append('master_out')
 
     #write in header
     for p in range(len(phases)):
@@ -427,6 +548,7 @@ for month in months:
         hdr['K']=K
         hdr['V0']=v0
         hdr['PHASE']=phase
+        hdr['RESULT']=results[p]
         hdu[p].header=hdr
 
     hdu.writeto('%s%s_master_out_LSD_profile.fits'%(save_path, month), output_verify='fix', overwrite = 'True')
