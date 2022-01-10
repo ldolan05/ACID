@@ -63,29 +63,58 @@ for month in months:
     directory =  '%s'%(path)
     #file ='%s%s_master_out.fits'%(directory, month)
     file ='%s%s_master_out_LSD_profile.fits'%(directory, month)
+    ccf_file='%s%s_master_out_ccfs.fits'%(directory, month)
     #file ='%s%s_master_out_LSD_v3.fits'%(directory, month)
     #file ='%s%s_master_out_cegla.fits'%(directory, month)
-    all_ccfs = fits.open(file)
+    all_ccfs = fits.open(ccf_file)
+    all_profiles = fits.open(file)
 
-    master_position = len(all_ccfs)-1
-    master_out, master_out_errors= all_ccfs[master_position].data
+    profile_spec = all_profiles[0].data[0]
+    velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
+
+    ccf_spec = all_ccfs[0].data[0]
+    ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
+
+    master_position_ccf = len(all_ccfs)-1
+    master_out_ccf, master_out_errors_ccf= all_ccfs[master_position_ccf].data
+
+    master_position = len(all_profiles)-1
+    master_out, master_out_errors= all_profiles[master_position].data
 
     plt.figure('master out')
-    plt.plot(master_out)
+    plt.plot(velocities, master_out, label = 'LSD')
+    plt.plot(ccf_velocities, master_out_ccf/master_out_ccf[0]-1, label = 'ccf')
+    plt.legend()
     plt.show()
+
+    in_profiles = []
+    in_profiles_errors = []
+    phases = []
 
     in_ccfs = []
     in_ccfs_errors = []
-    phases = []
+    phases_ccfs = []
+
     plt.figure('all_ccfs')
     for line in range(0,master_position):
         ccf = all_ccfs[line].data[0]
         ccf_errors = all_ccfs[line].data[1]
-        phase = all_ccfs[line].header['PHASE']
-        result = all_ccfs[line].header['RESULT']
-        in_ccfs.append(ccf)
-        in_ccfs_errors.append(ccf_errors)
-        plt.plot(ccf, label = '%s_%s'%(result, line))
+        ccf_phase = all_ccfs[line].header['PHASE']
+        #ccf_result = all_ccfs[line].header['RESULT']
+        in_ccfs.append(ccf/ccf[0]-1)
+        in_ccfs_errors.append(ccf_errors/ccf[0])
+        #plt.plot(ccf, label = '%s_%s'%(result, line))
+        phases_ccfs.append(ccf_phase)
+        #all_phase.append(phase)
+        #results.append(result)
+
+        profile = all_profiles[line].data[0]
+        profile_errors = all_profiles[line].data[1]
+        phase = all_profiles[line].header['PHASE']
+        result = all_profiles[line].header['RESULT']
+        in_profiles.append(profile)
+        in_profiles_errors.append(profile_errors)
+        plt.plot(velocities, profile, label = '%s_%s'%(result, line))
         phases.append(phase)
         all_phase.append(phase)
         results.append(result)
@@ -93,13 +122,19 @@ for month in months:
     plt.show()
 
     #print(phases)
+    profile_spec = all_profiles[0].data[0]
+    #velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
+    velocities = np.linspace(-21, 18, 48)
+
     ccf_spec = all_ccfs[0].data[0]
-    velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
+    ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
+
 
    # K = -2.277 #km/s - Boisse et al, 2009
     #velocities = velocities - K  ### Adjusting doppler reflex ###
 
-    residual_ccfs, residual_errors = residualccfs(in_ccfs, in_ccfs_errors, master_out, master_out_errors, velocities)
+    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
+    residual_ccfs, residual_errors = residualccfs(in_ccfs, in_ccfs_errors, master_out_ccf, master_out_errors_ccf, ccf_velocities)
 
     '''
     plt.figure(month)
@@ -115,19 +150,31 @@ for month in months:
     '''
 
     print(month)
-    plt.figure(month)
+    plt.figure()
     i=0
     for ccf1 in residual_ccfs:
+        plt.plot(ccf_velocities, ccf1, label = '%s'%(i))
+        #plt.fill_between(ccf_velocities, ccf1-residual_errors[i], ccf1+residual_errors[i], alpha = 0.3)
+        #all_resi.append(ccf1)
+        i+=1
+    plt.legend()
+    plt.show()
+
+    print(month)
+    plt.figure(month)
+    i=0
+    for ccf1 in residual_profiles:
         plt.plot(velocities, ccf1, label = '%s_%s'%(results[i], i))
-        plt.fill_between(velocities, ccf1-residual_errors[i], ccf1+residual_errors[i], alpha = 0.3)
+        plt.fill_between(velocities, ccf1-residual_profile_errors[i], ccf1+residual_profile_errors[i], alpha = 0.3)
         all_resi.append(ccf1)
         i+=1
     plt.legend()
     plt.show()
 
+
     #write in data
     hdu=fits.HDUList()
-    for data in residual_ccfs:
+    for data in residual_profiles:
         hdu.append(fits.PrimaryHDU(data=data))
 
     #hdu.append(fits.PrimaryHDU(data=master_out))
@@ -136,8 +183,8 @@ for month in months:
     for p in range(len(phases)):
         phase = phases[p]
         hdr=fits.Header()
-        hdr['CRVAL1']=all_ccfs[0].header['CRVAL1']
-        hdr['CDELT1']=all_ccfs[0].header['CDELT1']
+        hdr['CRVAL1']=all_profiles[0].header['CRVAL1']
+        hdr['CDELT1']=all_profiles[0].header['CDELT1']
         hdr['OBJECT']='HD189733b'
         hdr['NIGHT']='%s'%month
         hdr['K']=-2.277

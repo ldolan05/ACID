@@ -359,14 +359,14 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         '''
         brv=header['ESO DRS BERV']
         wave=get_wave(spec, header)*(1.+brv/2.99792458e5)
-
+        '''
         plt.figure('Spectrum directly from fits file')
         plt.title('Spectrum directly from fits file')
         plt.errorbar(wave[order], spec[order], yerr = flux_error[order])
         plt.xlabel('wavelengths')
         plt.ylabel('flux')
         plt.show()
-
+        '''
         blaze_file = glob.glob('%sblaze_folder/**blaze_A*.fits'%(directory))
         print('%sblaze_folder/**blaze_A*.fits'%(directory))
         print(blaze_file)
@@ -456,7 +456,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
                 plt.ylabel('flux')
                 plt.xlabel('wavelength')
 
-
+                '''
                 plt.figure('Spectrum')
                 plt.title('Original Spectrum with errors')
                 plt.errorbar(wavelengths, fluxes, yerr=flux_error_order, ecolor = 'k' )
@@ -464,7 +464,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
                 plt.xlabel('wavelength')
 
                 plt.show()
-
+                '''
             if response == 'n':
                 print('yay!')
 
@@ -477,11 +477,11 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
         hdu.close()
 
-    flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
-    print('flux error: %s'%flux_error_order)
-    fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
-    idx = tuple([fluxes>0])
-
+    #flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
+    #print('flux error: %s'%flux_error_order)
+    #fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
+    #idx = tuple([fluxes>0])
+    '''
     plt.figure('Normalised Spectrum')
     plt.title('Normalised Spectrum with errors')
     plt.errorbar(wavelengths, fluxes, yerr=flux_error_order, ecolor = 'k' )
@@ -495,6 +495,6 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     plt.xlabel('wavelength')
 
     plt.show()
-
-    return fluxes[idx], wavelengths[idx], flux_error_order[idx], sn, np.median(wavelengths) ## for just LSD
+    '''
+    return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
 ############################################################################################################

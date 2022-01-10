@@ -18,7 +18,7 @@ import LSD_func_faster as LSD
 run_name = input('Run name (all_frames or jvc):' )
 def findfiles(directory, file_type):
 
-    filelist_final = glob.glob('%s*%s*.fits'%(directory, run_name))
+    filelist_final = glob.glob('%s*_%s*.fits'%(directory, run_name))
 
     '''
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
@@ -154,14 +154,9 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     velo = v0 + K*(e*np.cos(omega)+np.cos(2*np.pi*phi+omega))
     #print(velo)
     adjusted_velocities = velocities-velo
-    f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False)
-    velocity_grid = np.linspace(-18,18,len(spectrum))
+    f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value=np.nan)
+    velocity_grid = np.linspace(-19,19,len(spectrum))
     adjusted_spectrum = f2(velocity_grid)
-
-    print(adjusted_spectrum)
-
-    plt.plot(adjusted_spectrum)
-    plt.show()
     '''
     for n in range(len(adjusted_spectrum)):
         if adjusted_spectrum[n]==np.min(adjusted_spectrum):
@@ -229,7 +224,7 @@ def combineprofiles(spectra, errors, master):
             plt.legend(ncol = 3)
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
         plt.ylim(-0.8, 0.2)
-        plt.show()
+        #plt.show()
 
     else:
         spectra_to_combine = []
@@ -255,7 +250,7 @@ def combineprofiles(spectra, errors, master):
             plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3, label = 'frame: %s'%i)
             plt.legend(ncol = 3)
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
-        plt.show()
+        #plt.show()
 
 
     spectra_to_combine = np.array(spectra_to_combine)
@@ -422,9 +417,10 @@ for month in months:
     #afters = []
     matched=[]
     lengths.append(len(filelist))
-    framelist = np.arange(1, len(filelist))
-    framelist = framelist[framelist!=4]
+    framelist = np.arange(0, len(filelist))
+    #framelist = framelist[framelist!=4]
     print(framelist)
+    plt.figure('all_frames')
     for frame in framelist:
         file = fits.open(filelist[frame])
         order_errors = []
@@ -452,7 +448,7 @@ for month in months:
             #profile = np.exp(profile)-1
             print(profile)
             #velocities = file[order].data[2]
-            velocities=np.linspace(-21,18,len(profile))
+            velocities = np.linspace(-21, 18, 48)
             #fluxes, wavelengths, flux_error = LSD.blaze_correct(file_type, spec_type, order, file, directory, masking)
             #velocities, profile, profile_errors = LSD.LSD(wavelengths, fluxes, flux_error, linelist)
             '''
@@ -482,6 +478,8 @@ for month in months:
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
         velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
+        plt.figure('all_frames')
+        plt.plot(velocities, spectrum)
         phases1.append(phi)
         #plt.plot(velocities, spectrum)
         #plt.show()
@@ -507,6 +505,8 @@ for month in months:
             #plt.plot(spectrum)
             out_ccfs.append(spectrum)
             out_errors.append(errors)
+
+    plt.show()
     #velos.append(velos1)
     #break
     frame = 'master_out'
