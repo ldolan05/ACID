@@ -16,9 +16,9 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     width = 40
     centre = -2.1
-    #deltav=0.8
-    #vmin=-vmax
 
+    #vmin=-vmax
+    '''
     resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
     deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
     print(deltav)
@@ -29,10 +29,16 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     vmin = int(centre1-(width/2))
     vmax = int(centre1+(width/2))
     no_pix = int(width/deltav)
+    '''
+    vmin = -21
+    vmax = 18
+    no_pix = 48
+
     print(vmin, vmax, no_pix)
 
     velocities=np.linspace(vmin,vmax,int(no_pix))
     print(velocities[1]-velocities[0])
+    deltav = velocities[1]-velocities[0]
     #print(vgrid[1]-vgrid[0])
     #print('Matrix S has been set up')
 

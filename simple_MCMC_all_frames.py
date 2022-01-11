@@ -42,11 +42,13 @@ def findfiles(directory, file_type):
 def read_in_frames(order, filelist):
     frames = []
     errors = []
+    frame_wavelengths = []
     sns = []
     max_sn = 0
     #read in all frames
     for file in filelist:
         fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name)
+        frame_wavelengths.append(wavelengths)
         frames.append(fluxes)
         errors.append(flux_error_order)
         sns.append(sn)
@@ -55,6 +57,7 @@ def read_in_frames(order, filelist):
             max_sn = sn
             reference_frame=fluxes
             reference_error=flux_error_order
+
 
     frames = np.array(frames)
     errors = np.array(errors)
@@ -110,7 +113,7 @@ def read_in_frames(order, filelist):
         plt.show()
         '''
 
-    return wavelengths, frames, errors, sns
+    return frame_wavelengths, frames, errors, sns
 
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
@@ -473,7 +476,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 
 ## finding continuum fit for each order
 filelist=findfiles(directory, file_type)
-order_range = np.arange(8,9)
+order_range = np.arange(8,71)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -484,7 +487,7 @@ for order in order_range:
     poly_ord = 3
 
     frame_wavelengths, frames, frame_errors, sns = read_in_frames(order, filelist)
-    wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths, frames, frame_errors, sns)
+    wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths[-1], frames, frame_errors, sns)
 
     ## normalise
     '''
@@ -773,6 +776,7 @@ for order in order_range:
     for counter in range(0, len(frames)):
         flux = frames[counter]
         error = frame_errors[counter]
+        wavelengths = frame_wavelengths[counter]
 
         #masking based off residuals
         error[mask_idx]=10000000000000000
@@ -784,7 +788,6 @@ for order in order_range:
         '''
         flux = flux/mdl1
         error = error/mdl1
-        wavelengths = frame_wavelengths
 
         idx = tuple([flux>0])
         error = error[idx]
@@ -805,6 +808,21 @@ for order in order_range:
 
     plt.legend()
 
+    count = 0
+    plt.figure()
+    plt.title("HARPS CCFs")
+    file_list = findfiles(directory, 'ccf')
+    for file in file_list[:-1]:
+        ccf = fits.open(file)
+        ccf_spec = ccf[0].data[order]
+        velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*ccf[0].header['CDELT1']
+        plt.plot(velocities_ccf, ccf_spec/ccf_spec[0]-1, label = '%s'%count)
+        count +=1
+    plt.legend()
+    plt.ylabel('flux')
+    plt.xlabel('velocities km/s')
+    #plt.show()
+
     plt.figure()
     plt.title('order %s, LSD profiles'%order)
     no=0
@@ -818,21 +836,7 @@ for order in order_range:
     plt.ylabel('flux')
     plt.xlabel('velocities km/s')
 
-    count = 0
-    plt.figure()
-    plt.title("HARPS CCFs")
-    file_list = findfiles(directory, 'ccf')
-    for file in file_list[:-1]:
-        ccf = fits.open(file)
-        ccf_spec = ccf[0].data[order]
-        velocities=ccf[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*ccf[0].header['CDELT1']
-        plt.plot(velocities, ccf_spec/ccf_spec[0]-1, label = '%s'%count)
-        count +=1
-    plt.legend()
-    plt.ylabel('flux')
-    plt.xlabel('velocities km/s')
-    #plt.show()
-    plt.close('all')
+    #plt.close('all')
 
 # adding into fits files for each frame
 for frame_no in range(0, len(frames)):

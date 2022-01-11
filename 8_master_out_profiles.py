@@ -186,9 +186,9 @@ def combineprofiles(spectra, errors, master):
 
     if master == 'no':
         weights_csv = np.genfromtxt('/home/lsd/Documents/order_weights.csv', delimiter=',')
-        orders = np.array(weights_csv[10:-1,0], dtype = int)
+        orders = np.array(weights_csv[8:-1,0], dtype = int)
         print(orders)
-        weights = np.array(weights_csv[10:-1,1])
+        weights = np.array(weights_csv[8:-1,1])
         print(weights)
 
         #calc_errors=np.zeros(np.shape(errors))
@@ -207,14 +207,16 @@ def combineprofiles(spectra, errors, master):
             #plt.scatter(i, av_calc_err, color = 'b', alpha = 0.3)
         plt.xlabel('order')
         plt.ylabel('average error')
-        #plt.show()
+        plt.close()
 
 
         spectra_to_combine = []
         errorss = []
-        plt.figure()
-        plt.title('All orders, frame: %s'%frame)
+
         for i in orders:
+            plt.figure()
+            plt.title('All orders, frame: %s'%frame)
+            plt.plot(velocities, [0]*len(velocities))
             print(i)
             print(np.shape(spectra))
             spectra_to_combine.append(list(spectra[i-1]))
@@ -223,8 +225,8 @@ def combineprofiles(spectra, errors, master):
             plt.fill_between(velocities, spectra[i-1]-errors[i-1], spectra[i-1]+errors[i-1], alpha = 0.3, label = 'order: %s'%i)
             plt.legend(ncol = 3)
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
-        plt.ylim(-0.8, 0.2)
-        #plt.show()
+            plt.ylim(-0.8, 0.2)
+            plt.show()
 
     else:
         spectra_to_combine = []
@@ -250,7 +252,7 @@ def combineprofiles(spectra, errors, master):
             plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3, label = 'frame: %s'%i)
             plt.legend(ncol = 3)
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
-        #plt.show()
+            plt.show()
 
 
     spectra_to_combine = np.array(spectra_to_combine)
@@ -464,6 +466,7 @@ for month in months:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
 
+
         #opened_file = fits.open(file)
         #result, phi, phase = classify(opened_file, P, t, T) #phi is adjusted, phase is original
         if phase>0.5:
@@ -480,6 +483,7 @@ for month in months:
         velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
         plt.figure('all_frames')
         plt.plot(velocities, spectrum)
+        plt.plot(velocities, [0]*len(spectrum))
         phases1.append(phi)
         #plt.plot(velocities, spectrum)
         #plt.show()
