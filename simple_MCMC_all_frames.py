@@ -24,22 +24,6 @@ month = 'August2007'
 
 run_name = input('Input nickname for this version of code (for saving figures): ')
 
-def make_gauss(vgrid, A, linewidth, offset):
-    """
-    returns the line profile for the different points on the star
-    as a 2d array with one axis being velocity and other axis position
-    on the star
-    npix - number of pixels along one axis of the star (assumes solid bosy rotation)
-    rstar - the radius of the star in pixels
-    xc - the midpoint of the star in pixels
-    vgrid - the velocity grid for the spectrum you wish to make (1d array in km/s)
-    A - the line depth of the intrinsic profile - the bottom is at (1 - A) is the max line depth (single value)
-    veq - the equatorial velocity (the v sin i for star of inclination i) in km/s (single value)
-    linewidth - the sigma of your Gaussian line profile in km/s (single value)
-    """
-    profile=1.-A*np.exp( -(vgrid-offset)**2/linewidth**2)
-    return profile-1
-
 def findfiles(directory, file_type):
 
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
@@ -251,9 +235,7 @@ def flux2od(x):
 no_line = 100
 ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
 def model_func(inputs, x):
-    #z = inputs[:k_max]
-    z = make_gauss(velocities, inputs[0], inputs[1], inputs[2])
-    k_max = 3
+    z = inputs[:k_max]
 
     mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
 
@@ -298,23 +280,19 @@ def log_likelihood(theta, x, y, yerr):
 def log_prior(theta):
 
     check = 0
+    z = theta[:k_max]
 
 
-    if 0<=theta[0]<=5 and 0<theta[1]:
-            # A                 lw
-        return 0.0
-
-    '''
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
             if -10<=theta[i]<=0.5: pass
             else:
                 check = 1
-                '''
+
 
     if check==0:
         ## penalty function for profile - not in use
-        '''
+
         # excluding the continuum points in the profile
         z_cont = []
         v_cont = []
@@ -326,14 +304,17 @@ def log_prior(theta):
         #print(z_cont)
         #print(velocities)
         z_cont = np.array(z_cont)
-
+        '''
+        plt.figure()
+        plt.plot(velocities, theta[:k_max])
+        plt.scatter(v_cont, z_cont)
+        plt.show()
+        '''
         # calcualte gaussian probability for each point in continuum
         p_pent = np.sum((1/np.sqrt(2*np.pi*p_var**2))*np.exp(-0.5*(z_cont/p_var)**2))
 
         return p_pent
-        '''
-        return 0
-
+        #return 0
     return -np.inf
 
 ## calculates log probability - used for mcmc
@@ -495,7 +476,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 
 ## finding continuum fit for each order
 filelist=findfiles(directory, file_type)
-order_range = np.arange(12,71)
+order_range = np.arange(8,71)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -548,19 +529,12 @@ for order in order_range:
     plt.show()
     #poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
     '''
-
-
     ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
     j_max = int(len(fluxes))
-    k_max = 3
+    k_max = len(profile)
 
-    profile = [0.559, 3.5, -2.2765]
-    profile = np.array(profile)
     model_inputs = np.concatenate((profile, poly_inputs))
 
-    plt.figure()
-    plt.plot(velocities, make_gauss(velocities, model_inputs[0], model_inputs[1], model_inputs[2]))
-    plt.show()
     ## setting x, y, yerr for emcee
     x = wavelengths
     y = fluxes
@@ -576,7 +550,7 @@ for order in order_range:
     v_max = 10
 
     #masking based off residuals
-    yerr, model_inputs_bin = residual_mask(x, y, yerr, model_inputs)
+    yerr, model_inputs = residual_mask(x, y, yerr, model_inputs)
 
     ##masking frames also
     mask_idx = tuple([yerr>1000000000000000000])
@@ -662,26 +636,23 @@ for order in order_range:
     #plt.show()
 
     ## getting the final profile and continuum values - median of last 1000 steps
-    profile_out = []
+    profile = []
     poly_cos = []
-    profile_err_out = []
+    profile_err = []
     poly_cos_err = []
 
     for i in range(ndim):
         mcmc = np.median(flat_samples[:, i])
         error = np.std(flat_samples[:, i])
         if i<ndim-poly_ord-1:
-            profile_out.append(mcmc)
-            profile_err_out.append(error)
+            profile.append(mcmc)
+            profile_err.append(error)
         else:
             poly_cos.append(mcmc)
             poly_cos_err.append(error)
 
-    #profile = np.array(profile)
-    #profile_err = np.array(profile_err)
-
-    profile = make_gauss(velocities, profile_out[0], profile_out[1], profile_out[2])
-    profile_err = profile*0.001
+    profile = np.array(profile)
+    profile_err = np.array(profile_err)
 
     prof_flux = np.exp(profile)-1
     # plots the mcmc profile - will have extra panel if it's for data
@@ -690,7 +661,7 @@ for order in order_range:
     ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
     zero_line = [0]*len(velocities)
     ax0.plot(velocities, zero_line)
-    #ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+    ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
     ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
     ax0.set_xlabel('velocities')
     ax0.set_ylabel('optical depth')
@@ -736,13 +707,13 @@ for order in order_range:
     residuals_2 = (y+1) - (mcmc_mdl+1)
 
     fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
-    non_masked = tuple([yerr<1000000000000])
+    non_masked = tuple([yerr<10])
     #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
     #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
     ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
     ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
     ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
-    residual_masks = tuple([yerr>1000000000000])
+    residual_masks = tuple([yerr>10])
 
     #residual_masks = tuple([yerr>10])
     ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
@@ -761,7 +732,7 @@ for order in order_range:
     ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
     zero_line = [0]*len(velocities)
     ax0.plot(velocities, zero_line)
-    #ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+    ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
     ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
     ax0.set_xlabel('velocities')
     ax0.set_ylabel('optical depth')
@@ -777,7 +748,7 @@ for order in order_range:
     ax0.plot(velocities, profile_f, color = 'r', label = 'LSD')
     zero_line = [0]*len(velocities)
     ax0.plot(velocities, zero_line)
-    #ax0.plot(velocities, np.exp(model_inputs[:k_max])-1, label = 'initial')
+    ax0.plot(velocities, np.exp(model_inputs[:k_max])-1, label = 'initial')
     ax0.fill_between(velocities, profile_f-profile_errors_f, profile_f+profile_errors_f, alpha = 0.3, color = 'r')
     ax0.set_xlabel('velocities')
     ax0.set_ylabel('flux')
@@ -864,7 +835,7 @@ for order in order_range:
     plt.legend()
     plt.ylabel('flux')
     plt.xlabel('velocities km/s')
-    plt.show()
+
     #plt.close('all')
 
 # adding into fits files for each frame
@@ -895,4 +866,3 @@ for frame_no in range(0, len(frames)):
 
         hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
     hdu.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_%s.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
-plt.show()
