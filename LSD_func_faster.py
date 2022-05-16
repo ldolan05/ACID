@@ -12,6 +12,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     # in optical depth space
     rms = rms/flux_obs
     flux_obs = np.log(flux_obs)
+    #flux_obs = flux_obs -1
     #wavelengths = wavelengths[idx]
 
     width = 40
@@ -23,6 +24,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
     print(deltav)
 
+    resol1 = deltav*(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
     shift = int(centre/deltav)
     centre1 = shift*deltav
 
@@ -46,6 +48,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
     wavelengths_expected1 =np.array(linelist_expected[:,0])
     depths_expected1 = np.array(linelist_expected[:,1])
+    print(len(depths_expected1))
 
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
@@ -55,6 +58,9 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
         line_min = 1/(3*sn)
+        #print(line_)
+        #line_min = np.log(1+line_min)
+        #print(line_min)
         if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max and depths_expected1[some]>=line_min:
             wavelengths_expected.append(wavelengths_expected1[some])
             #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))

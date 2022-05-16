@@ -32,7 +32,12 @@ def findfiles(directory, file_type):
             if file1 == file:count=1
         if count==0:filelist_final.append(file)
     '''
-    return filelist_final                          #returns list of uncorrected spectra files
+    directory = '/home/lsd/Documents/HD189733/August2007/'
+
+    print('%s**ccf**A*.fits'%directory)
+    filelist=glob.glob('/home/lsd/Documents/HD189733/August2007/*/*ccf**A*.fits')
+    print(filelist_final)
+    return filelist_final, filelist                          #returns list of uncorrected spectra files
 
 def classify(ccf, P, t, T):
     #working out if in- or out- of transit
@@ -180,42 +185,89 @@ def combineccfs(spectra):
     spectrum = list(np.reshape(spectrum, (width,)))
     return  spectrum
 
-def combineprofiles(spectra, errors, master):
+def combineprofiles(spectra, errors, ccf, master):
     spectra = np.array(spectra)
     errors = np.array(errors)
 
     if master == 'no':
         weights_csv = np.genfromtxt('/home/lsd/Documents/order_weights.csv', delimiter=',')
-        orders = np.array(weights_csv[8:-1,0], dtype = int)
+        orders = np.array(weights_csv[7:,0], dtype = int)
         print(orders)
-        weights = np.array(weights_csv[8:-1,1])
+        weights = np.array(weights_csv[7:,1])
         print(weights)
 
+        '''
         #calc_errors=np.zeros(np.shape(errors))
-        plt.figure()
-        plt.title('Error per order, frame: %s'%frame)
-        #orders = []
-        for i in range(0,len(spectra)):
+        plt.figure('order_vs_cont')
+        plt.title('Order vs Continuum Level (CCF profiles), frame: %s'%frame)
+        plt.xlabel('Order')
+        plt.ylabel('Continuum Level')
+
+        plt.figure('order_vs_line_depth')
+        plt.title('Order vs Line Depth, frame: %s'%frame)
+        plt.xlabel('Order')
+        plt.ylabel('Line Depth')
+
+        plt.figure('cont_vs_line_depth')
+        plt.title('Continuum Level vs Line Depth (CCF profiles), frame: %s'%frame)
+        plt.ylabel('Line Depth')
+        plt.xlabel('Continuum Level')
+
+        for i in range(9,len(spectra)+1):
             #if np.max(abs(spectra[i]))<0.25:
             #continue
-            points = spectra[i]
-            errors[i] = errors[i]/np.max(abs(points))
-            av_err = np.sum(errors[i])/len(errors[i])
-            #calc_errors[i] = get_errors(velocities, spectra[i])/np.max(abs(spectra[i]))  ## 1/snr
-            #av_calc_err = np.sum(calc_errors[i])/len(calc_errors[i])
-            plt.scatter(i, av_err, color = 'k')
-            #plt.scatter(i, av_calc_err, color = 'b', alpha = 0.3)
-        plt.xlabel('order')
-        plt.ylabel('average error')
-        plt.close()
+            counter = i-1
+            points = spectra[counter]
+            ccf_points = ccf[0].data[counter]
+            continuum_points_ccf = np.concatenate((ccf_points[:5], ccf_points[-5:]))
+            continuum_level_ccf = np.mean(continuum_points_ccf)
+            ccf_points=ccf_points/continuum_level_ccf -1
 
+            ## work out conitnuum level
+            continuum_points = np.concatenate((points[:5], points[-5:]))
+            x_ticks = np.arange(0, len(points))
 
+            continuum_level = np.mean(continuum_points)
+
+            continuum_points_ccf = np.concatenate((ccf_points[:5], ccf_points[-5:]))
+            x_ticks_ccf = np.arange(0, len(ccf_points))
+
+            continuum_level_ccf = np.mean(continuum_points_ccf)
+            plt.figure('order_vs_cont')
+            plt.scatter(orders[i-9], continuum_level)
+            #plt.scatter(orders[i-9], continuum_level_ccf, color = 'k')
+
+            ## work out line depth
+            bottom_points = points.copy()
+            idx = bottom_points.argsort()
+            bottom_points = bottom_points[idx]
+            bottom_points = bottom_points[:3]
+            line_depth = abs(continuum_level-np.mean(bottom_points))
+
+            bottom_points_ccf = ccf_points.copy()
+            idx = bottom_points_ccf.argsort()
+            bottom_points_ccf = bottom_points_ccf[idx]
+            bottom_points_ccf = bottom_points_ccf[:3]
+            line_depth_ccf = abs(continuum_level_ccf-np.mean(bottom_points_ccf))
+
+            plt.figure('order_vs_line_depth')
+            plt.scatter(orders[i-9], line_depth, color = 'r', label = 'LSD')
+            plt.scatter(orders[i-9], line_depth_ccf, color = 'k', label = 'CCF')
+
+            plt.legend(['LSD', 'CCF'])
+
+            plt.figure('cont_vs_line_depth')
+            plt.scatter(continuum_level, line_depth, color = 'r')
+            #plt.scatter(continuum_level_ccf, line_depth_ccf, color = 'k')
+
+        plt.show()
+        '''
         spectra_to_combine = []
         errorss = []
 
+        plt.figure()
+        plt.title('All orders, frame: %s'%frame)
         for i in orders:
-            plt.figure()
-            plt.title('All orders, frame: %s'%frame)
             plt.plot(velocities, [0]*len(velocities))
             print(i)
             print(np.shape(spectra))
@@ -226,7 +278,8 @@ def combineprofiles(spectra, errors, master):
             plt.legend(ncol = 3)
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
             plt.ylim(-0.8, 0.2)
-            plt.show()
+        #plt.show()
+        plt.close()
 
     else:
         spectra_to_combine = []
@@ -252,8 +305,8 @@ def combineprofiles(spectra, errors, master):
             plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3, label = 'frame: %s'%i)
             plt.legend(ncol = 3)
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
-            plt.show()
-
+            #plt.show()
+            plt.close()
 
     spectra_to_combine = np.array(spectra_to_combine)
     #errorss = np.array(errorss)
@@ -373,10 +426,10 @@ save_path = '/home/lsd/Documents/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = ['August2007',
-          #'July2007',
-          #'July2006',
-          #'Sep2006'
+months = [#'August2007',
+          'July2007',
+          'July2006',
+          'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -394,7 +447,7 @@ total= []
 
 positions=[]
 ins = 0
-phases1 = []
+
 v_obs = []
 velos=[]
 outliers = []
@@ -406,13 +459,15 @@ for month in months:
     plt.figure(month)
     directory =  '%s%s'%(path,month)
 
-    filelist = findfiles(directory, file_type)
+    filelist, ccf_list = findfiles(directory, file_type)
+
     out_ccfs = []
     out_errors = []
     all_ccfs = []
     #phases = []
     results = []
     phases = []
+    phases1 = []
     velos1=[]
     #results = []
     #befores = []
@@ -425,17 +480,30 @@ for month in months:
     plt.figure('all_frames')
     for frame in framelist:
         file = fits.open(filelist[frame])
+        ccf_file = ccf_list[0]
+        ccf = fits.open(ccf_file)
         order_errors = []
         order_profiles = []
-        for order1 in range(1,70):
+        ccf_profiles = []
+        for order1 in range(1,71):
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
+            velocities = np.linspace(-21, 18, 48)
+
+            ccf_profile = ccf[0].data[order1]
+            velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
 
             order = file[order1].header['ORDER']
             phase = file[order1].header['PHASE']
             result = file[order1].header['result']
-
+            '''
+            plt.figure('%s'%order)
+            plt.plot(velocities, profile)
+            plt.plot(velocities_ccf, ccf_profile/ccf_profile[0]-1)
+            plt.show()
+            '''
+            '''
             profile = np.exp(profile)
             profile_errors = np.sqrt(profile_errors**2/profile**2)
             profile = profile-1
@@ -443,6 +511,7 @@ for month in months:
             profile[np.isnan(profile)]=0
             profile_errors[np.isnan(profile)] = 1
             profile_errors[np.isnan(profile_errors)]=1
+            '''
             #profile_errors = abs(profile_errors/profile)
             #profile_errors[np.isnan(profile_errors)]=0.5
             #print(profile_errors)
@@ -450,7 +519,6 @@ for month in months:
             #profile = np.exp(profile)-1
             print(profile)
             #velocities = file[order].data[2]
-            velocities = np.linspace(-21, 18, 48)
             #fluxes, wavelengths, flux_error = LSD.blaze_correct(file_type, spec_type, order, file, directory, masking)
             #velocities, profile, profile_errors = LSD.LSD(wavelengths, fluxes, flux_error, linelist)
             '''
@@ -465,7 +533,19 @@ for month in months:
             #else:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
+            ccf_profiles.append(ccf_profile/ccf_profile[0]-1)
 
+        if frame == framelist[0]:
+            plt.figure('LSD')
+            plt.imshow(np.array(order_profiles), extent = [velocities[0], velocities[-1], 0, len(order_profiles)-1])
+            plt.vlines(-2.276, 0, len(order_profiles)-1)
+            plt.colorbar()
+
+            plt.figure('CCFs')
+            plt.imshow(np.array(ccf_profiles), extent = [velocities_ccf[0], velocities_ccf[-1], 0, len(order_profiles)-1])
+            plt.vlines(-2.276, 0, len(order_profiles)-1)
+            plt.colorbar()
+            plt.show()
 
         #opened_file = fits.open(file)
         #result, phi, phase = classify(opened_file, P, t, T) #phi is adjusted, phase is original
@@ -476,7 +556,7 @@ for month in months:
         #print(result, phi, phase)
         #plt.figure(file)
         #spectrum, errors = combineprofiles(order_profiles, order_errors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31, 35, 38, 39, 41, 42, 43, 44, 45, 45, 47, 50, 51, 55, 56, 63, 64, 65, 69])
-        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, 'no')
+        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no')
 
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
@@ -515,7 +595,7 @@ for month in months:
     #break
     frame = 'master_out'
     if len(out_ccfs)>1:
-        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors, 'yes')
+        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors,ccf, 'yes')
     else:
         master_out_spec = out_ccfs[0]
         master_out_errors = out_errors[0]
