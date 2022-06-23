@@ -58,6 +58,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
         line_min = 1/(3*sn)
+        #line_min = np.log(1+line_min)
         #print(line_)
         #line_min = np.log(1+line_min)
         #print(line_min)
@@ -71,6 +72,8 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     ## depths from linelist in optical depth space
     depths_expected1 = np.array(depths_expected)
     depths_expected = np.log(1+depths_expected1)
+    ## conversion for depths from SME
+    #depths_expected = -np.log(1-depths_expected1)
 
     print(len(depths_expected))
 

@@ -16,6 +16,7 @@ from scipy.interpolate import interp1d
 fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
 file_type = 'e2ds'
 linelist = '/home/lsd/Documents/fulllinelist0001.txt'
+#linelist = '/home/lsd/Documents/norm.txt'
 #linelist = '/home/lsd/Documents/sme_linelist_result_48.txt'
 #linelist = '/home/lsd/Documents/HD189733b_tloggmvsini.txt'
 #linelist = '/home/lsd/Documents/HD189733_vary_abund.txt'
@@ -321,7 +322,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 
     fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, sharex = True)
     non_masked = tuple([data_err<1000000000000000000])
-    ax[1].scatter(wavelengths[non_masked], residuals[non_masked], marker = '.')
+    ax[1].scatter(wavelengths, residuals, marker = '.')
     ax[0].plot(wavelengths, data_spec, 'r', alpha = 0.3, label = 'data')
     ax[0].plot(wavelengths, forward, 'k', alpha =0.3, label = 'mcmc mdl')
     residual_masks = tuple([data_err>=1000000000000000000])
@@ -331,7 +332,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     #plotdepths = -np.array(line_depths)
     #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
     #ax[1].plot(x, residuals_2, '.')
-    #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+    #ax[1].scatter(x, residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
     z_line = [0]*len(x)
     ax[1].plot(x, z_line, '--')
     plt.show()
@@ -466,7 +467,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 months = ['August2007']
 #months = ['August2007','July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(48,49)
+order_range = np.arange(9,71)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
