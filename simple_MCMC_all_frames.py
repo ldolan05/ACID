@@ -103,6 +103,8 @@ def read_in_frames(order, filelist):
 
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
+        cont_factor = fluxes1[0]
+
         fluxes1 = fluxes1
         ## taking out masked areas
         if np.max(fluxes1)<1:
@@ -131,9 +133,9 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
             clipped_flux.append(flux[len(flux)-1])
             clipped_waves.append(waves[len(waves)-1])
-        coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
 
-        poly = np.poly1d(coeffs)
+        poly = np.poly1d(coeffs*cont_factor)
         fit = poly(wavelengths1)
         flux_obs = fluxes1/fit
         new_errors = errors1/fit
@@ -141,7 +143,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         idx = [flux_obs<=0]
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
-        '''
+
         fig = plt.figure('Continuum fit')
         plt.title('Continuum fit')
         plt.plot(wavelengths1, fluxes1, label = 'original')
@@ -158,8 +160,10 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         plt.xlabel('wavelengths')
         plt.legend()
         plt.show()
-        '''
+
         coeffs=coeffs[::-1]
+        coeffs = list(coeffs)
+        coeffs.append(cont_factor)
         coeffs = np.array(coeffs)
 
         return coeffs, flux_obs, new_errors, fit
@@ -215,8 +219,10 @@ def model_func(inputs, x):
     b = 1 - a*np.max(x)
 
     mdl1=0
-    for i in range(k_max,len(inputs)):
+    for i in range(k_max,len(inputs)-1):
         mdl1 = mdl1 + (inputs[i]*((x*a)+b)**(i-k_max))
+
+    mdl1 = mdl1 * inputs[-1]
 
     '''
     plt.figure()
@@ -299,7 +305,8 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     data_spec = data_spec_in.copy()
 
     ### (roughly) normalise the data (easier to set standard threshold for residuals)
-    residuals=(data_spec/data_spec[0]-forward/forward[0])
+    #residuals=(data_spec/data_spec[0]-forward/forward[0])
+    residuals = (data_spec_in - np.min(data_spec_in))/(np.max(data_spec_in)-np.min(data_spec_in)) - (forward - np.min(forward))/(np.max(forward)-np.min(forward))
 
     ### finds consectuative sections where at least 20 points have resiudals greater than 0.25 - these are masked
     flag = ['False']*len(residuals)
@@ -467,7 +474,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 months = ['August2007']
 #months = ['August2007','July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(9,71)
+order_range = np.arange(8,71)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -559,10 +566,10 @@ for month in months:
         forward = model_func(model_inputs, x)
         plt.figure(figsize=(16,9))
         plt.title('LSD optical depth forward model')
-        plt.plot(x, y/fit, 'k', alpha = 0.3, label = 'data')
-        plt.plot(x, forward/fit, 'r', alpha =0.3, label = 'forward model')
+        plt.plot(x, y, 'k', alpha = 0.3, label = 'data')
+        plt.plot(x, forward, 'r', alpha =0.3, label = 'forward model')
         plt.vlines(continuum_waves, plotdepths, 1, label = 'line depths from VALD linelist', color = 'c', alpha = 0.2)
-        plt.xlim(5460, 5480)
+        #plt.xlim(5460, 5480)
         plt.legend()
         plt.show()
 
@@ -603,7 +610,7 @@ for month in months:
         '''
         ### starting values of walkers with indpendent variation
         sigma = 0.8*0.005
-        sigma_cont = [1, 10, 0.01, 0.00001]
+        sigma_cont = [1, 10, 0.01, 0.00001, 100]
         pos = []
         for i in range(0, ndim):
             if i <ndim-poly_ord:
@@ -662,8 +669,9 @@ for month in months:
             #mdl = model_func(sample, x)
             #mdl = mdl[idx]
             mdl1 = 0
-            for i in np.arange(k_max, len(sample)):
+            for i in np.arange(k_max, len(sample)-1):
                 mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
+            mdl1 = mdl1*sample[-1]
             plt.plot(x, mdl1, "C1", alpha=0.1)
             plt.plot(x, mdl, "g", alpha=0.1)
         plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
@@ -685,7 +693,7 @@ for month in months:
             error = np.std(flat_samples[:, i])
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
-            if i<ndim-poly_ord-1:
+            if i<k_max:
                 profile.append(mcmc[1])
                 profile_err.append(np.max(error))
             else:
@@ -716,15 +724,18 @@ for month in months:
         plt.figure('continuum fit from mcmc')
         plt.plot(x, y, color = 'k', label = 'data')
         mdl1 =0
-        for i in np.arange(0, len(poly_cos)):
+        for i in np.arange(0, len(poly_cos)-1):
             mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
+        mdl1 = mdl1*poly_cos[-1]
         plt.plot(x, mdl1, label = 'mcmc continuum fit')
         mdl1_poserr =0
-        for i in np.arange(0, len(poly_cos)):
+        for i in np.arange(0, len(poly_cos)-1):
             mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
+        mdl1_poserr = mdl1_poserr*poly_cos[-1]
         mdl1_neg =0
-        for i in np.arange(0, len(poly_cos)):
+        for i in np.arange(0, len(poly_cos)-1):
             mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
+        mdl1_negerr = mdl1_negerr*poly_cos[-1]
         plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
 
         mdl1_err =abs(mdl1-mdl1_neg)
@@ -816,9 +827,9 @@ for month in months:
             wavelengths = frame_wavelengths[counter]
 
             mdl1 =0
-            for i in np.arange(0, len(poly_cos)):
+            for i in np.arange(0, len(poly_cos)-1):
                 mdl1 = mdl1+poly_cos[i]*((a*wavelengths)+b)**(i)
-
+            mdl1 = mdl1*poly_cos[-1]
             #masking based off residuals
             error[mask_idx]=10000000000000000000
 
@@ -830,8 +841,17 @@ for month in months:
             flux_b = flux
             error_b = error
 
+            plt.figure('flux before continuum correction')
+            plt.plot(wavelengths, flux)
+
+            plt.figure('flux before continuum correction - with continuum fit')
+            plt.plot(wavelengths, flux)
+            plt.plot(wavelengths, mdl1)
+
+            plt.show()
             flux = flux/mdl1
             error = error/mdl1
+
 
             idx = tuple([flux>0])
             error = error[idx]
