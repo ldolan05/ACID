@@ -97,7 +97,8 @@ def read_in_frames(order, filelist):
         plt.show()
         '''
         plt.plot(frame_wavelengths[n], frames[n])
-    plt.show()
+    # plt.show()
+    plt.close()
 
     return frame_wavelengths, frames, errors, sns
 
@@ -144,23 +145,24 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
 
-        fig = plt.figure('Continuum fit')
-        plt.title('Continuum fit')
-        plt.plot(wavelengths1, fluxes1, label = 'original')
-        plt.plot(wavelengths1, fit, label = 'fit')
-        plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
-        plt.ylabel('flux')
-        plt.xlabel('wavelengths')
-        plt.legend()
+        
+        # fig = plt.figure('Continuum fit')
+        # plt.title('Continuum fit')
+        # plt.plot(wavelengths1, fluxes1, label = 'original')
+        # plt.plot(wavelengths1, fit, label = 'fit')
+        # plt.scatter(clipped_waves, clipped_flux, color = 'k', s=8)
+        # plt.ylabel('flux')
+        # plt.xlabel('wavelengths')
+        # plt.legend()
 
-        fig = plt.figure('Continuum fit - adjusted')
-        plt.title('Continuum fit')
-        plt.plot(wavelengths1, flux_obs, label = 'adjusted')
-        plt.ylabel('flux')
-        plt.xlabel('wavelengths')
-        plt.legend()
-        plt.show()
-
+        # fig = plt.figure('Continuum fit - adjusted')
+        # plt.title('Continuum fit')
+        # plt.plot(wavelengths1, flux_obs, label = 'adjusted')
+        # plt.ylabel('flux')
+        # plt.xlabel('wavelengths')
+        # plt.legend()
+        # plt.show()
+        
         coeffs=coeffs[::-1]
         coeffs = list(coeffs)
         coeffs.append(cont_factor)
@@ -185,17 +187,17 @@ def combine_spec(wavelengths, spectra, errors, sns):
         sn = sum(weights*sns)/sum(weights)
 
         spec_errors[n]=(np.std(temp_spec))*np.sqrt(sum(weights**2))
-
-    plt.figure('frames')
-    plt.title('spectra for each frame and combined spectrum')
-    for n in range(0, len(spectra)):
-        #plt.errorbar(wavelengths, frames[n], yerr=errors[n], ecolor = 'k')
-        plt.plot(wavelengths, spectra[n], label = '%s'%n)
-    plt.errorbar(wavelengths, spectrum, label = 'combined', color = 'b', yerr = spec_errors, ecolor = 'k')
-    #plt.xlim(np.min(frames[n])-1, np.max(frames[n])+1)
-    #plt.legend()
-    plt.show()
-
+   
+    # plt.figure('frames')
+    # plt.title('spectra for each frame and combined spectrum')
+    # for n in range(0, len(spectra)):
+    #     #plt.errorbar(wavelengths, frames[n], yerr=errors[n], ecolor = 'k')
+    #     plt.plot(wavelengths, spectra[n], label = '%s'%n)
+    # plt.errorbar(wavelengths, spectrum, label = 'combined', color = 'b', yerr = spec_errors, ecolor = 'k')
+    # #plt.xlim(np.min(frames[n])-1, np.max(frames[n])+1)
+    # #plt.legend()
+    # plt.show()
+    
     return wavelengths, spectrum, spec_errors, sn
 
 def od2flux(x):
@@ -327,22 +329,22 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
                     data_err[idx]=10000000000000000000
             flagged = []
 
-    fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, sharex = True)
-    non_masked = tuple([data_err<1000000000000000000])
-    ax[1].scatter(wavelengths, residuals, marker = '.')
-    ax[0].plot(wavelengths, data_spec, 'r', alpha = 0.3, label = 'data')
-    ax[0].plot(wavelengths, forward, 'k', alpha =0.3, label = 'mcmc mdl')
+    # fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, sharex = True)
+    # non_masked = tuple([data_err<1000000000000000000])
+    # ax[1].scatter(wavelengths, residuals, marker = '.')
+    # ax[0].plot(wavelengths, data_spec, 'r', alpha = 0.3, label = 'data')
+    # ax[0].plot(wavelengths, forward, 'k', alpha =0.3, label = 'mcmc mdl')
     residual_masks = tuple([data_err>=1000000000000000000])
 
-    ax[0].scatter(wavelengths[residual_masks], data_spec[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-    ax[0].legend(loc = 'lower right')
-    #plotdepths = -np.array(line_depths)
-    #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-    #ax[1].plot(x, residuals_2, '.')
-    #ax[1].scatter(x, residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-    z_line = [0]*len(x)
-    ax[1].plot(x, z_line, '--')
-    plt.show()
+    # ax[0].scatter(wavelengths[residual_masks], data_spec[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+    # ax[0].legend(loc = 'lower right')
+    # #plotdepths = -np.array(line_depths)
+    # #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+    # #ax[1].plot(x, residuals_2, '.')
+    # #ax[1].scatter(x, residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+    # z_line = [0]*len(x)
+    # ax[1].plot(x, z_line, '--')
+    # plt.show()
     '''
     plt.figure('Masking based off residuals (>0.25 for >20 masked)')
     plt.plot(wavelengths, data_spec)
@@ -371,11 +373,11 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     print(residuals[idx1])
     print(residuals[idx2])
 
-    plt.figure()
-    plt.plot(wavelengths, residuals, 'k')
-    plt.scatter(wavelengths[idx1], residuals[idx1], color = 'r')
-    plt.scatter(wavelengths[idx2], residuals[idx2], color = 'r')
-    #plt.show()
+    # plt.figure()
+    # plt.plot(wavelengths, residuals, 'k')
+    # plt.scatter(wavelengths[idx1], residuals[idx1], color = 'r')
+    # plt.scatter(wavelengths[idx2], residuals[idx2], color = 'r')
+    # #plt.show()
 
     data_err[idx1]=10000000000000000000
     data_err[idx2]=10000000000000000000
@@ -471,8 +473,8 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     '''
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
-months = ['August2007']
-#months = ['August2007','July2007', 'July2006', 'Sep2006']
+#months = ['August2007']
+months = ['August2007','July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
 order_range = np.arange(8,71)
 
@@ -513,19 +515,19 @@ for month in months:
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
 
 
-        plt.figure()
-        plt.title('SPEC BEFORE 1st LSD')
-        plt.plot(wavelengths, fluxes1, 'r')
-        plotdepths = 1 - np.array(continuum_flux)
-        plt.vlines(continuum_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-        plt.show()
+        # plt.figure()
+        # plt.title('SPEC BEFORE 1st LSD')
+        # plt.plot(wavelengths, fluxes1, 'r')
+        # plotdepths = 1 - np.array(continuum_flux)
+        # plt.vlines(continuum_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+        # plt.show()
 
-        plt.figure()
-        plt.plot(velocities, profile)
-        plt.title('LSD - basic continuuum correction')
-        plt.xlabel('Velocities (km/s)')
-        plt.ylabel('Normalised Flux')
-        plt.show()
+        # plt.figure()
+        # plt.plot(velocities, profile)
+        # plt.title('LSD - basic continuuum correction')
+        # plt.xlabel('Velocities (km/s)')
+        # plt.ylabel('Normalised Flux')
+        # plt.show()
 
 
         #### setting up empty array for final profiles to go into
@@ -564,14 +566,14 @@ for month in months:
 
         ##plots
         forward = model_func(model_inputs, x)
-        plt.figure(figsize=(16,9))
-        plt.title('LSD optical depth forward model')
-        plt.plot(x, y, 'k', alpha = 0.3, label = 'data')
-        plt.plot(x, forward, 'r', alpha =0.3, label = 'forward model')
-        plt.vlines(continuum_waves, plotdepths, 1, label = 'line depths from VALD linelist', color = 'c', alpha = 0.2)
-        #plt.xlim(5460, 5480)
-        plt.legend()
-        plt.show()
+        # plt.figure(figsize=(16,9))
+        # plt.title('LSD optical depth forward model')
+        # plt.plot(x, y, 'k', alpha = 0.3, label = 'data')
+        # plt.plot(x, forward, 'r', alpha =0.3, label = 'forward model')
+        # plt.vlines(continuum_waves, plotdepths, 1, label = 'line depths from VALD linelist', color = 'c', alpha = 0.2)
+        # #plt.xlim(5460, 5480)
+        # plt.legend()
+        # plt.show()
 
         #masking based off residuals
         yerr_unmasked = yerr
@@ -735,7 +737,7 @@ for month in months:
         mdl1_neg =0
         for i in np.arange(0, len(poly_cos)-1):
             mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
-        mdl1_negerr = mdl1_negerr*poly_cos[-1]
+        mdl1_neg = mdl1_neg*poly_cos[-1]
         plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
 
         mdl1_err =abs(mdl1-mdl1_neg)
@@ -817,7 +819,7 @@ for month in months:
         #profile_order.append(profile)
         #coeffs_order.append(poly_cos)
         #print('Time Taken: %s minutes'%((t1-t0)/60))
-
+        plt.close('all')
 
         profiles = []
         plt.figure()
@@ -841,22 +843,20 @@ for month in months:
             flux_b = flux
             error_b = error
 
-            plt.figure('flux before continuum correction')
-            plt.plot(wavelengths, flux)
+            # plt.figure('flux before continuum correction')
+            # plt.plot(wavelengths, flux)
 
-            plt.figure('flux before continuum correction - with continuum fit')
-            plt.plot(wavelengths, flux)
-            plt.plot(wavelengths, mdl1)
+            # plt.figure('flux before continuum correction - with continuum fit')
+            # plt.plot(wavelengths, flux)
+            # plt.plot(wavelengths, mdl1)
 
-            plt.show()
+            # plt.show()
             flux = flux/mdl1
             error = error/mdl1
 
 
             idx = tuple([flux>0])
-            error = error[idx]
-            wavelengths = wavelengths[idx]
-            flux = flux[idx]
+            if len(flux[idx])!=0:continue
 
             #plt.plot(wavelengths, flux, label = '%s'%counter)
 
@@ -908,7 +908,7 @@ for month in months:
                 print(counter)
                 print(len(frames))
                 plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_FINALprof_%s'%(order, run_name))
-                plt.show()
+                #plt.show()
 
             mcmc_mdl = model_func(np.concatenate((profile, poly_cos)), wavelengths)
             f2 = interp1d(velocities_ccf, ccf_spec/ccf_spec[0]-1, kind='linear', bounds_error=False, fill_value=np.nan)
@@ -940,8 +940,9 @@ for month in months:
             #z_line = [0]*len(wavelengths)
             #ax[1].plot(wavelengths, z_line, '--')
             plt.savefig('/home/lsd/Documents/LSD_Figures/forward_models/order%s_FINALforward_%s'%(order, run_name))
-            plt.show()
+            #plt.show()
     #plt.show()
+    plt.close('all')
 
     # adding into fits files for each frame
     for frame_no in range(0, len(frames)):
