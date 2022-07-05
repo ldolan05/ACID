@@ -12,6 +12,10 @@ import random
 import glob
 from scipy.interpolate import interp1d
 
+from math import log10, floor
+def round_sig(x, sig):
+    return round(x, sig-int(floor(log10(abs(x))))-1)
+
 ## for real data
 fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
 file_type = 'e2ds'
@@ -167,7 +171,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         coeffs = list(coeffs)
         coeffs.append(cont_factor)
         coeffs = np.array(coeffs)
-
+        
         return coeffs, flux_obs, new_errors, fit
 
 def combine_spec(wavelengths, spectra, errors, sns):
@@ -226,12 +230,13 @@ def model_func(inputs, x):
 
     mdl1 = mdl1 * inputs[-1]
 
-    '''
-    plt.figure()
-    plt.plot(x, mdl, 'r')
-    plt.plot(x, y/y[0])
-    #plt.show()
-    '''
+    print(inputs)
+
+    # plt.figure()
+    # plt.plot(x, mdl1, 'r')
+    # plt.plot(x, y)
+    # plt.show()
+    
     mdl = mdl * mdl1
     '''
     plt.figure()
@@ -477,6 +482,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 months = ['August2007','July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
 order_range = np.arange(8,71)
+# order_range = np.arange(48,49)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -514,6 +520,9 @@ for month in months:
         #### getting the initial profile
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
 
+        # plt.figure('initial profile')
+        # plt.plot(velocities, profile)
+        # plt.show()
 
         # plt.figure()
         # plt.title('SPEC BEFORE 1st LSD')
@@ -577,7 +586,7 @@ for month in months:
 
         #masking based off residuals
         yerr_unmasked = yerr
-        yerr, model_inputs, mask_idx = residual_mask(x, y, yerr, model_inputs)
+        yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs)
 
         ##masking frames also
         #mask_idx = tuple([yerr>1000000000000000000])
@@ -610,15 +619,21 @@ for month in months:
         print(pos)
 
         '''
+        print('MODEL INPUTS')
+        model_func(model_inputs, x)
+
         ### starting values of walkers with indpendent variation
         sigma = 0.8*0.005
-        sigma_cont = [1, 10, 0.01, 0.00001, 100]
         pos = []
         for i in range(0, ndim):
-            if i <ndim-poly_ord:
+            if i <ndim-poly_ord-2:
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
             else:
-                pos2 = rng.normal(model_inputs[i], sigma_cont[i-k_max], (nwalkers, ))
+                print(model_inputs[i])
+                sigma = abs(round_sig(model_inputs[i], 1))/10
+                print(sigma)
+                # print(sigma_cont[i-k_max])
+                pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
             pos.append(pos2)
 
         pos = np.array(pos)
@@ -638,9 +653,13 @@ for month in months:
         plt.show()
         '''
 
+        # plt.figure()
+        # plt.plot(x, y)
+        # plt.show()
+
         # running the mcmc using python package emcee
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-        sampler.run_mcmc(pos, steps_no, progress=True);
+        sampler.run_mcmc(pos, steps_no, progress=True)
 
         idx = tuple([yerr<=10000000000000000000])
 
@@ -656,7 +675,7 @@ for month in months:
             ax = axes[i]
             ax.plot(samples[:, :, i], "k", alpha=0.3)
             ax.set_xlim(0, len(samples))
-        axes[-1].set_xlabel("step number");
+        axes[-1].set_xlabel("step number")
         #plt.show()
 
         ## combining all walkers togather
@@ -856,13 +875,19 @@ for month in months:
 
 
             idx = tuple([flux>0])
-            if len(flux[idx])!=0:continue
-
+            
+            if len(flux[idx])==0:
+                plt.plot(flux)
+                plt.show()
+                print('continuing... frame %s'%counter)
+                continue
+            
             #plt.plot(wavelengths, flux, label = '%s'%counter)
 
             velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name)
 
             plt.plot(velocities, profile)
+            
 
             profile_f = np.exp(profile)
             profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
@@ -941,7 +966,7 @@ for month in months:
             #ax[1].plot(wavelengths, z_line, '--')
             plt.savefig('/home/lsd/Documents/LSD_Figures/forward_models/order%s_FINALforward_%s'%(order, run_name))
             #plt.show()
-    #plt.show()
+    # plt.show()
     plt.close('all')
 
     # adding into fits files for each frame

@@ -37,6 +37,8 @@ def findfiles(directory, file_type):
     print('%s**ccf**A*.fits'%directory)
     filelist=glob.glob('/home/lsd/Documents/HD189733/August2007/*/*ccf**A*.fits')
     print(filelist_final)
+
+    inp = input('Enter to continue...')
     return filelist_final, filelist                          #returns list of uncorrected spectra files
 
 def classify(ccf, P, t, T):
