@@ -162,7 +162,7 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     #print(velo)
     adjusted_velocities = velocities-velo
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value=np.nan)
-    velocity_grid = np.linspace(-19,19,len(spectrum))
+    velocity_grid = np.linspace(-15, 15,len(spectrum))
     adjusted_spectrum = f2(velocity_grid)
     '''
     for n in range(len(adjusted_spectrum)):
@@ -281,7 +281,7 @@ def combineprofiles(spectra, errors, ccf, master):
             #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
             plt.ylim(-0.8, 0.2)
         #plt.show()
-        plt.close()
+        #plt.close()
 
     else:
         spectra_to_combine = []
@@ -317,6 +317,9 @@ def combineprofiles(spectra, errors, ccf, master):
     spectrum = np.zeros((1,width))
     spec_errors = np.zeros((1,width))
 
+    idx = tuple([np.sum(spectra_to_combine, axis = 1)==0])
+    weights[idx] = 0.
+
     all_weights = np.zeros(np.shape(errors))
     for n in range(0,width):
         temp_spec = spectra_to_combine[:, n]
@@ -327,24 +330,23 @@ def combineprofiles(spectra, errors, ccf, master):
         print(temp_spec)
         print(weights)
         spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
+        print(spectrum[0, n])
         #spectrum[0,n]=sum(temp_spec)/len(temp_spec)
         spec_errors[0,n]=(stdev(temp_spec)**2)*np.sqrt(sum(weights**2))
         #spec_errors[0, n] = stdev(temp_spec)
         #print(temp_spec)
         #print(temp_err)
-    '''
+    
     plt.figure()
     plt.scatter(orders, weights)
     plt.xlabel('order')
     plt.ylabel('weight')
-    '''
-    '''
-    plt.figure()
-    plt.scatter(orders, temp_err)
-    plt.xlabel('order')
-    plt.ylabel('error')
-    '''
-    '''
+    
+    # plt.figure()
+    # plt.scatter(orders, temp_err)
+    # plt.xlabel('order')
+    # plt.ylabel('error')
+
     plt.figure('frame: %s'%frame)
     plt.title('frame: %s'%frame)
     plt.plot(velocities, spectrum[0, :])
@@ -352,7 +354,6 @@ def combineprofiles(spectra, errors, ccf, master):
     plt.fill_between(velocities, spectrum[0, :]-spec_errors[0, :], spectrum[0, :]+spec_errors[0, :], alpha = 0.3)
     print(spectrum[0,:])
     plt.show()
-    '''
 
     spectrum = list(np.reshape(spectrum, (width,)))
     spec_errors = list(np.reshape(spec_errors, (width,)))
