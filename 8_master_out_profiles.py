@@ -164,18 +164,7 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value=np.nan)
     velocity_grid = np.linspace(-19,19,len(spectrum))
     adjusted_spectrum = f2(velocity_grid)
-    '''
-    for n in range(len(adjusted_spectrum)):
-        if adjusted_spectrum[n]==np.min(adjusted_spectrum):
-            if round(velocity_grid[n],2)!=0:
-                vextra = 0.1875
-                adjusted_velocities = velocities-velo-vextra
-                f2 = interp1d(adjusted_velocities, spectrum, kind='cubic')
-                velocity_grid = np.linspace(-15,15,len(spectrum))
-                adjusted_spectrum = f2(velocity_grid)
-            else:pass
-        else:pass
-     '''
+    
     return velocity_grid, adjusted_spectrum, errors
 
 def combineccfs(spectra):
@@ -428,7 +417,7 @@ save_path = '/home/lsd/Documents/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = [#'August2007',
+months = ['August2007',
           'July2007',
           'July2006',
           'Sep2006'
@@ -592,7 +581,7 @@ for month in months:
             out_ccfs.append(spectrum)
             out_errors.append(errors)
 
-    plt.show()
+    # plt.show()
     #velos.append(velos1)
     #break
     frame = 'master_out'

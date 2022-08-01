@@ -372,8 +372,14 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
         flux_error = flux_error*np.ones(np.shape(spec))
         '''
+        # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
+        # print(file_ccf[0].header['ESO DRS BERV'])
         brv=header['ESO DRS BERV']
-        wave=get_wave(spec, header)*(1.+brv/2.99792458e5)
+        wave=get_wave(spec, header)#*(1.+brv/2.99792458e5)
+        # wave_corr = (1.+brv/2.99792458e5)
+        # print(brv, (wave_corr-1)*2.99792458e5)
+
+        # inp = input('Enter to continue...')
         '''
         plt.figure('Spectrum directly from fits file')
         plt.title('Spectrum directly from fits file')

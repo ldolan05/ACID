@@ -56,8 +56,10 @@ def read_in_frames(order, filelist):
     max_sn = 0
 
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
+    plt.figure('spectra after blaze_correct')
     for file in filelist:
         fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name)
+        plt.plot(wavelengths, fluxes)
         frame_wavelengths.append(wavelengths)
         frames.append(fluxes)
         errors.append(flux_error_order)
@@ -71,7 +73,7 @@ def read_in_frames(order, filelist):
     frames = np.array(frames)
     errors = np.array(errors)
 
-    plt.figure()
+    plt.figure('divided spectra (by reference frame)')
     ### each frame is divided by refernce frame and then adjusted so that all spectra lie at the same continuum
     for n in range(len(frames)):
         div_frame = frames[n]/reference_frame
@@ -84,6 +86,7 @@ def read_in_frames(order, filelist):
             binned[pos] = (div_frame[i]+div_frame[i+1])/2
             binned_waves[pos] = (wavelengths[i]+wavelengths[i+1])/2
 
+        plt.plot(frame_wavelengths[n], frames[n])
         ### fitting polynomial to div_frame
         coeffs=np.polyfit(binned_waves, binned, 2)
         poly = np.poly1d(coeffs)
@@ -258,7 +261,7 @@ def log_likelihood(theta, x, y, yerr):
 
     return lnlike
 
-## imposes the prior restrictions on the inputs - rejects if profile point if less thna 3 or greater than 1.5.
+## imposes the prior restrictions on the inputs - rejects if profile point if less than -10 or greater than 0.5.
 def log_prior(theta):
 
     check = 0
@@ -481,8 +484,8 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 #months = ['August2007']
 months = ['August2007','July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(8,71)
-# order_range = np.arange(48,49)
+# order_range = np.arange(8,71)
+order_range = np.arange(48,49)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -519,6 +522,11 @@ for month in months:
 
         #### getting the initial profile
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
+
+        plt.figure('forward model after first LSD')
+        plt.plot(wavelengths, np.log(fluxes1))
+        plt.plot(wavelengths, np.dot(alpha, profile))
+        plt.show()
 
         # plt.figure('initial profile')
         # plt.plot(velocities, profile)
@@ -678,7 +686,7 @@ for month in months:
         axes[-1].set_xlabel("step number")
         #plt.show()
 
-        ## combining all walkers togather
+        ## combining all walkers together
         flat_samples = sampler.get_chain(discard=dis_no, flat=True)
 
         # plots random models from flat_samples - lets you see if it's converging
@@ -847,10 +855,16 @@ for month in months:
             error = frame_errors[counter]
             wavelengths = frame_wavelengths[counter]
 
+            # a = 2/(np.max(wavelengths)-np.min(wavelengths))
+            # b = 1 - a*np.max(wavelengths)
+            a = 2/(np.max(wavelengths)-np.min(wavelengths))
+            b = 1 - a*np.max(wavelengths)
+
             mdl1 =0
             for i in np.arange(0, len(poly_cos)-1):
                 mdl1 = mdl1+poly_cos[i]*((a*wavelengths)+b)**(i)
             mdl1 = mdl1*poly_cos[-1]
+
             #masking based off residuals
             error[mask_idx]=10000000000000000000
 
@@ -870,8 +884,13 @@ for month in months:
             # plt.plot(wavelengths, mdl1)
 
             # plt.show()
+
             flux = flux/mdl1
             error = error/mdl1
+
+            remove = tuple([flux<0])
+            flux[remove]=1.
+            error[remove]=10000000000000000000
 
 
             idx = tuple([flux>0])
@@ -887,12 +906,15 @@ for month in months:
             velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name)
 
             plt.plot(velocities, profile)
-            
 
             profile_f = np.exp(profile)
             profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
             profile_f = profile_f-1
 
+            # print(profile)
+            # print(profile_f)
+
+            # inp = input('(od profile and flux profile above) Enter to continue...')
             all_frames[counter, order]=[profile_f, profile_errors_f]
 
             profiles.append(profile)
@@ -914,6 +936,18 @@ for month in months:
             plt.ylabel('flux')
             plt.xlabel('velocities km/s')
             #plt.show()
+
+            berv_corr = ccf[0].header['ESO DRS BERV']
+
+            plt.figure()
+            adjusted_velocities = velocities-berv_corr
+            f2 = interp1d(adjusted_velocities, profile_f, kind='linear', bounds_error=False, fill_value=np.nan)
+            velocity_grid = np.linspace(-15,15,len(profile_f))
+            adjusted_prof = f2(velocity_grid)
+            plt.plot(velocity_grid, adjusted_prof, label = 'adjusted_profile')
+            plt.plot(velocities_ccf, ccf_spec/ccf_spec[0]-1, label = 'ccf') 
+            plt.plot(velocities, profile_f, label = 'profile (pre-adjusted)')
+            plt.show()
 
             plt.figure()
             plt.title('order %s, LSD profiles'%order)

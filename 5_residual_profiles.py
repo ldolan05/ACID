@@ -66,6 +66,7 @@ all_resi=[]
 all_phase=[]
 results = []
 
+masters = []
 for month in months:
 
     directory =  '%s'%(path)
@@ -90,6 +91,7 @@ for month in months:
 
     master_position = len(all_profiles)-1
     master_out, master_out_errors= all_profiles[master_position].data
+    masters.append(master_out)
 
     plt.figure('master out')
     plt.plot(velocities, master_out, label = 'LSD')
@@ -297,4 +299,10 @@ plt.figure()
 plt.xlabel('Phase')
 plt.ylabel('Local RV (km/s)')
 plt.errorbar(rv_phases, rvs[:,0], yerr = rvs[:,1], fmt='o')
+plt.show()
+
+plt.figure('master profiles')
+for i in range(len(months)):
+    plt.plot(velocities, masters[i], label = '%s'%months[i])
+plt.legend()
 plt.show()
