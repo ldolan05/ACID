@@ -523,6 +523,10 @@ for order in order_range:
         #masking based off residuals
         error[mask_idx]=10000000000000000000
 
+        ## setting these normalisation factors for new wavelength range
+        a = 2/(np.max(wavelengths)-np.min(wavelengths))
+        b = 1 - a*np.max(wavelengths)
+
         ## copying original flux and error
         flux_b = flux.copy()
         error_b = error.copy()
