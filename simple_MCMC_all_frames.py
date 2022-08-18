@@ -58,7 +58,7 @@ def read_in_frames(order, filelist):
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
     plt.figure('spectra after blaze_correct')
     for file in filelist:
-        fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name)
+        fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
         plt.plot(wavelengths, fluxes)
         frame_wavelengths.append(wavelengths)
         frames.append(fluxes)
@@ -481,30 +481,48 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     '''
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
-#months = ['August2007']
-months = ['August2007','July2007', 'July2006', 'Sep2006']
+months1 = ['August2007']
+months = ['July2007', 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
 # order_range = np.arange(8,71)
-order_range = np.arange(48,49)
+order_range = np.arange(56,57)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
 t=0.076125 #Torres et al, 2008
 deltaphi = t/(2*P)
 
-for month in months:
-    directory = '%s%s/'%(directory_p, month)
-    filelist=findfiles(directory, file_type)
+month_spec = []
+for month in months1:
+    directory1 = '%s%s/'%(directory_p, 'July2007')
+    print(directory1)
+    filelist1=findfiles(directory1, file_type)
+    print(filelist1)
+    directory2 = '%s%s/'%(directory_p, 'August2007')
+    filelist2=findfiles(directory2, file_type)
+    print(filelist2)
+    filelist = [filelist1[0], filelist2[0]]
+
     for order in order_range:
         plt.close('all')
         poly_ord = 3
 
         ### read in spectra for each frame, along with S/N of each frame
-        frame_wavelengths, frames, frame_errors, sns = read_in_frames(order, filelist)
-        ### combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
-        wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths[-1], frames, frame_errors, sns)
-        print("SN of combined spectrum, order %s: %s"%(order, sn))
+        for file in filelist:
+            fits_file = fits.open(file)
+            phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
+            print(phi)
+            print(file, order)
+            fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory1, 'unmasked', run_name, 'y')
+            fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
 
+        # frame_wavelengths, frames, frame_errors, sns = read_in_frames(order, filelist)
+        ### combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
+        # wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths[-1], frames, frame_errors, sns)
+        # print("SN of combined spectrum, order %s: %s"%(order, sn))
+        
+            month_spec.append([wavelengths, wavelengths1, fluxes, fluxes1])
+                          #corr_wave, uncorr wave, corr flux, uncorr flux 
         ## normalise
         '''
         flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
@@ -940,7 +958,7 @@ for month in months:
             berv_corr = ccf[0].header['ESO DRS BERV']
 
             plt.figure()
-            adjusted_velocities = velocities-berv_corr
+            adjusted_velocities = velocities+berv_corr
             f2 = interp1d(adjusted_velocities, profile_f, kind='linear', bounds_error=False, fill_value=np.nan)
             velocity_grid = np.linspace(-15,15,len(profile_f))
             adjusted_prof = f2(velocity_grid)
@@ -1031,3 +1049,26 @@ for month in months:
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
         hdu.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_%s.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
+
+# month_spec = np.array(month_spec)
+
+# plt.figure()
+# plt.plot(month_spec[0, 0, :], month_spec[0, 2, :], label = '%s, BERV corrected'%months[0], color = 'b', linestyle= '-')
+# plt.plot(month_spec[1, 0, :], month_spec[1, 2, :], label = '%s, BERV corrected'%months[1], color = 'b', linestyle='--')
+# plt.plot(month_spec[0, 1, :], month_spec[0, 3, :], label = '%s, not corrected'%months[0], color = 'orange', linestyle= '-')
+# plt.plot(month_spec[1, 1, :], month_spec[1, 3, :], label = '%s, not corrected'%months[1], color = 'orange', linestyle='--')
+# plt.legend()
+
+# plt.figure()
+# plt.title('BERV Corrected')
+# plt.plot(month_spec[0, 0, :], month_spec[0, 2, :], label = '%s'%months[0], linestyle= '-')
+# plt.plot(month_spec[1, 0, :], month_spec[1, 2, :], label = '%s'%months[1], linestyle='--')
+# plt.legend()
+
+# plt.figure()
+# plt.title('Not corrected')
+# plt.plot(month_spec[1, 1, :], month_spec[1, 3, :], label = '%s'%months[1],  linestyle='--')
+# plt.plot(month_spec[0, 1, :], month_spec[0, 3, :], label = '%s'%months[0],  linestyle= '-')
+# plt.legend()
+
+# plt.show()

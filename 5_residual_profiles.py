@@ -5,9 +5,6 @@ Created on Fri Jan 22 14:14:17 2021
 
 @author: lucydolan
 """
-
-import matplotlib.pyplot as plt
-from astropy.io import fits
 import numpy as np
 import math
 import glob
@@ -15,6 +12,8 @@ import Mandel_Agol as ma
 from scipy.interpolate import interp1d
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
+from astropy.io import fits
 
 #def combineccfs(spectra):
    # spectrum[:] = np.sum(spectra[:])/len(spectra[:])
@@ -57,18 +56,19 @@ path = '/home/lsd/Documents/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 #path = '%s%s_master_out_LSD_profile.fits'%(save_path, month)
 
-months = ['August2007', 'July2007',
+months = ['August2007', 
+          'July2007',
           'July2006',
           'Sep2006'
           ]
 
 all_resi=[]
 all_phase=[]
-results = []
+all_prof=[]
+results_all = []
 
 masters = []
 for month in months:
-
     directory =  '%s'%(path)
     #file ='%s%s_master_out.fits'%(directory, month)
     file ='%s%s_master_out_LSD_profile.fits'%(directory, month)
@@ -80,7 +80,7 @@ for month in months:
 
     profile_spec = all_profiles[0].data[0]
     velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
-    velocities = np.linspace(-19,19,len(profile_spec))
+    velocities = np.linspace(-15,15,len(profile_spec))
 
     # ccf_spec = all_ccfs[0].data[0]
     # ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
@@ -104,11 +104,13 @@ for month in months:
     in_profiles = []
     in_profiles_errors = []
     phases = []
-
+    results = []
     in_ccfs = []
     in_ccfs_errors = []
     phases_ccfs = []
     ccf_results = []
+    out_profiles = []
+    out_profile_error = []
 
     plt.figure('all_ccfs')
     # for line in range(0,master_position_ccf):
@@ -125,28 +127,38 @@ for month in months:
         profile = all_profiles[line].data[0]
         profile_errors = all_profiles[line].data[1]
         phase = all_profiles[line].header['PHASE']
-
+        result = all_profiles[line].header['RESULT']
         ##adding in M and A curve
-        a_rstar= 8.863 #Agol et al, 2010
+        P=2.21857567 #Cegla et al, 2016 - days
+        T=2454279.436714 #cegla et al,2016
+        a_Rs = 8.786 #Cristo et al - 8.786
+        b=0.687 #Cristo et al, 2022
+        RpRs = 0.15667
         u1=0.816
         u2=0  #Sing et al, 2011
-        rp_rstar= 0.15667 #Agol et al, 2010
-        i = 85.71*np.pi/180 #got quickly of exoplanet.eu
+        i = 85.5*np.pi/180 #Cristo et al, 2022
 
-        z = ma.MandelandAgol(phase, a_rstar, i)
-        transit_curve = ma.occultquad(z, rp_rstar, [u1, u2])
+        z = ma.MandelandAgol(phase, a_Rs, i)
+        transit_curve = ma.occultquad(z, RpRs, [u1, u2])
+        print(line)
+        print(phase)
         print(transit_curve)
+        print(result)
 
         profile = (profile+1)*transit_curve
         profile_errors = profile_errors*transit_curve
 
-        result = all_profiles[line].header['RESULT']
+        
         in_profiles.append(profile)
         in_profiles_errors.append(profile_errors)
         plt.plot(velocities, profile, label = '%s_%s'%(result, line))
         phases.append(phase)
         all_phase.append(phase)
+        if result == 'out':
+            out_profiles.append(profile)
+            out_profile_error.append(profile)
         results.append(result)
+        results_all.append(result)
     plt.legend()
     plt.show()
 
@@ -159,7 +171,7 @@ for month in months:
     #print(phases)
     profile_spec = all_profiles[0].data[0]
     #velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
-    velocities = np.linspace(-19,19,len(profile_spec))
+    velocities = np.linspace(-15,15,len(profile_spec))
 
     # ccf_spec = all_ccfs[0].data[0]
     # ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
@@ -167,8 +179,13 @@ for month in months:
 
    # K = -2.277 #km/s - Boisse et al, 2009
     #velocities = velocities - K  ### Adjusting doppler reflex ###
-
-    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
+    # residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
+    plt.figure()
+    for out_prof in out_profiles:
+        residual_profiles, residual_profile_errors = residualccfs(out_profiles, out_profile_error, out_prof, master_out_errors, velocities)
+        # for resi_prof in residual_profiles:
+        plt.plot(np.mean(residual_profiles, axis = 1))
+    plt.show()
     # residual_ccfs, residual_errors = residualccfs(in_ccfs, in_ccfs_errors, master_out_ccf, master_out_errors_ccf, ccf_velocities)
 
     '''
@@ -211,6 +228,7 @@ for month in months:
         plt.plot(velocities, ccf1, label = '%s_%s'%(results[i], i), linestyle = colour)
         plt.fill_between(velocities, ccf1-residual_profile_errors[i], ccf1+residual_profile_errors[i], alpha = 0.3)
         all_resi.append(ccf1+1)
+        all_prof.append(in_profiles[i])
         i+=1
     plt.legend()
     plt.show()
@@ -223,6 +241,7 @@ for month in months:
 
     #hdu.append(fits.PrimaryHDU(data=master_out))
 
+    plt.figure()
     #write in header
     for p in range(len(phases)):
         phase = phases[p]
@@ -234,7 +253,13 @@ for month in months:
         hdr['K']=-2.277
         hdr['PHASE']=phase
         hdu[p].header=hdr
-
+        print(phase)
+        print(results[p])
+        
+        if results[p] == 'out':
+            plt.plot(residual_profiles[p], label = '%s, %s'%(phases[p], max(residual_profiles[p])-min(residual_profiles[p])))
+    plt.legend()
+    plt.show()
     #hdu.writeto('%s%s_residual_ccfs.fits'%(directory, month), output_verify='fix', overwrite = 'True')
     #hdu.writeto('%s%s_residual_ccfs_LSD_v3.fits'%(directory, month), output_verify='fix', overwrite = 'True')
 
@@ -275,9 +300,9 @@ ax[1].set_ylabel('Phase')
 plt.show()
 
 ## Cegla style fitting of rvs
-x = velocities[1:]
+x = velocities#[1:]
 all_resi = np.array(all_resi)
-all_resi = all_resi[:, 1:]
+# all_resi = all_resi[:, 1:]
 rvs = []
 count = 0
 
@@ -285,20 +310,55 @@ P=2.21857567 #Cegla et al, 2006 - days
 t=0.076125 #Torres et al, 2008 - days
 
 rv_phases = []
-for y in all_resi:
-    if (-t/(2*P)+0.001)<all_phase[count]<0.0155:
-        popt, pcov = curve_fit(gauss, x, y)
-        perr= np.sqrt(np.diag(pcov))
-        rvs.append([popt[0], perr[0]])
-        rv_phases.append(all_phase[count])
+for y in all_prof:
+    #if (-t/(2*P)+0.001)<all_phase[count]<0.0155:
+    
+    popt, pcov = curve_fit(gauss, x, y)
+    perr= np.sqrt(np.diag(pcov))
+    rvs.append([popt[0], perr[0]])
+    rv_phases.append(all_phase[count])
     count += 1
 
 rvs = np.array(rvs)
 
-plt.figure()
+plt.figure('RV measured from full profile')
 plt.xlabel('Phase')
 plt.ylabel('Local RV (km/s)')
-plt.errorbar(rv_phases, rvs[:,0], yerr = rvs[:,1], fmt='o')
+plt.errorbar(rv_phases, rvs[:,0], yerr = rvs[:,1], fmt='o', label = 'LSD')
+
+x = velocities#[1:]
+all_resi = np.array(all_resi)
+#all_resi = all_resi[:, 1:]
+rvs = []
+count = 0
+
+P=2.21857567 #Cegla et al, 2006 - days
+t=0.076125 #Torres et al, 2008 - days
+
+rv_phases = []
+
+plt.figure()
+for y in all_resi:
+    #if (-t/(2*P)+0.001)<all_phase[count]<0.0155:
+    if np.max(y) - np.min(y)>0.006:
+        # plt.figure()
+        # plt.plot(x, y)
+        # plt.show()
+        popt, pcov = curve_fit(gauss, x, y)
+        perr= np.sqrt(np.diag(pcov))
+        rvs.append([popt[0], perr[0]])
+        rv_phases.append(all_phase[count])
+    else: 
+        plt.plot(x, y)
+        print(results_all[count])
+    count += 1
+
+rvs = np.array(rvs)
+
+plt.figure('RV measured from residual profile')
+plt.xlabel('Phase')
+plt.ylabel('Local RV (km/s)')
+plt.errorbar(rv_phases, rvs[:,0], yerr = rvs[:,1], fmt='o', label = 'LSD')
 plt.show()
 
 plt.figure('master profiles')

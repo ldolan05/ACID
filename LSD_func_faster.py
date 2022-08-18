@@ -83,15 +83,19 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     alpha=np.zeros((len(blankwaves), len(velocities)))
 
     limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
-    #print(limit)
+    print(limit)
 
     for j in range(0, len(blankwaves)):
         for i in (range(0,len(wavelengths_expected))):
             diff=blankwaves[j]-wavelengths_expected[i]
-            #limit=np.max(velocities)*wavelengths_expected[i]/2.99792458e5
             if abs(diff)<=(limit):
+                print('diff')
+                print(diff)
+                print('limit')
+                print(np.max(velocities)*wavelengths_expected[i]/2.99792458e5)
                 if rms[j]<1:no_line.append(i)
                 vel=2.99792458e5*diff/wavelengths_expected[i]
+                print(vel)
                 for k in range(0, len(velocities)):
                     x=(velocities[k]-vel)/deltav
                     if -1.<x and x<0.:
@@ -203,7 +207,7 @@ def get_wave(data,header):
 
   return wave
 
-def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name):
+def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name, berv_opt):
     #### Inputing spectrum depending on file_type and spec_type #####
 
     if file_type == 's1d':
@@ -375,7 +379,16 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
         # print(file_ccf[0].header['ESO DRS BERV'])
         brv=header['ESO DRS BERV']
-        wave=get_wave(spec, header)#*(1.+brv/2.99792458e5)
+        print(brv)
+        wave_nonad=get_wave(spec, header)
+        if berv_opt == 'y':
+            wave = wave_nonad*(1.+brv/2.99792458e5)
+        if berv_opt == 'n':
+            wave = wave_nonad
+
+    
+        rv_drift=header['ESO DRS DRIFT RV'] 
+        print(rv_drift)
         # wave_corr = (1.+brv/2.99792458e5)
         # print(brv, (wave_corr-1)*2.99792458e5)
 
@@ -400,6 +413,23 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
         wavelengths = wave[order]
         fluxes = spec[order]
+
+        plt.figure()
+        plt.plot(wave[63], spec[63], label = 'wave*(1.+brv/2.99792458e5)')
+        plt.plot(wave_nonad[63], spec[63], label = 'non-adjusted wave')
+        plt.legend()
+
+        plt.figure()
+        plt.title('Sodium D - July 2007')
+        plt.plot(wave[56], spec[56], label = 'wave*(1.+brv/2.99792458e5)')
+        plt.plot(wave_nonad[56], spec[56], label = 'non-adjusted wave')
+        plt.legend()
+
+        plt.figure()
+        plt.plot(wave[70], spec[70], label = 'wave*(1.+brv/2.99792458e5)')
+        plt.plot(wave_nonad[70], spec[70], label = 'non-adjusted wave')
+        plt.legend()
+        plt.show()
 
         last_wavelengths = wave[order-1]
         next_wavelengths = wave[order+1]

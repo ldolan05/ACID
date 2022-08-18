@@ -9,13 +9,29 @@ Created on Thu Jan 28 12:20:32 2021
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import numpy as np
-#import math
+import math
 import glob
 from scipy.interpolate import interp1d
 from statistics import stdev
 import LSD_func_faster as LSD
+from scipy.optimize import curve_fit
+from scipy.special import erf
+from matplotlib.pyplot import cm
 
 run_name = input('Run name (all_frames or jvc):' )
+
+def gauss(x, rv, sd, height, cont):
+    y = cont*(1-height*np.exp(-(x-rv)**2/(2*sd**2)))
+    return y
+
+def skewnormal(x, scaleheight, omega, gamma, alpha, zeroorder):
+    # print(zeroorder, scaleheight, omega, gamma)
+    # print((((alpha*(x-gamma))/omega))/(np.sqrt(2)))
+    # print(math.erf((((alpha*(x-gamma))/omega))/(np.sqrt(2))))
+    # print(math.erf((((alpha*(x-gamma))/omega))/(np.sqrt(2)))+1)
+    result = zeroorder+(scaleheight*(2/omega)*np.exp(-(((x-gamma)/omega)**2)/2)/(np.sqrt(2*np.pi))*0.5*(erf((((alpha*(x-gamma))/omega))/(np.sqrt(2)))+1))
+    return result
+ 
 def findfiles(directory, file_type):
 
     filelist_final = glob.glob('%s*_%s*.fits'%(directory, run_name))
@@ -32,41 +48,43 @@ def findfiles(directory, file_type):
             if file1 == file:count=1
         if count==0:filelist_final.append(file)
     '''
-    directory = '/home/lsd/Documents/HD189733/August2007/'
+    # directory = '/home/lsd/Documents/HD189733/August2007/'
 
     print('%s**ccf**A*.fits'%directory)
-    filelist=glob.glob('/home/lsd/Documents/HD189733/August2007/*/*ccf**A*.fits')
+    ccf_directory = directory.replace('home/lsd/Documents/LSD_Figures/', '/home/lsd/Documents/HD189733/HD189733/')
+
+    filelist=glob.glob('%s/*/*ccf**A*.fits'%ccf_directory)
+    print(filelist)
     print(filelist_final)
 
     inp = input('Enter to continue...')
     return filelist_final, filelist                          #returns list of uncorrected spectra files
 
-def classify(ccf, P, t, T):
+def classify(phase):
     #working out if in- or out- of transit
     #print(t, b)
-    deltaphi = t/(2*P)
+    # deltaphi = t/(2*P)
     #print(deltaphi)
-    phi = (((ccf[0].header['ESO DRS BJD'])-T)/P)%1
+    # phase = (((ccf[0].header['ESO DRS BJD'])-T)/P)%1
     #z = np.sqrt((a_rstar*(np.sin(2*math.pi*phi))**2)+b**2*(np.cos(2*math.pi*phi))**2)
     #part1=a_rstar*np.sin(2*math.pi*phi)**2
     #part2=b**2*np.cos(2*math.pi*phi)**2
     #z=np.sqrt(part1+part2)
     #print(z, phi)
-    '''
-    if z < 1+rp_rstar:
+    phi = phase-np.round(phase)
+
+    P=2.21857567 #Cegla et al, 2016 - days
+    T=2454279.436714 #cegla et al,2016
+    a_Rs = 8.786 #Cristo et al - 8.786
+    b=0.687 #Cristo et al, 2022
+    RpRs = 0.15667
+    RpRs_max = RpRs
+
+    z = np.sqrt( ( (a_Rs)*np.sin(2 * np.pi * phi) )**2 + ( b*np.cos(2. * np.pi * phi))**2)
+
+    if z<=(1+RpRs_max):
         result = 'in'
-    else:result = 'out'
-    '''
-    phase = phi
-    if phi < deltaphi:
-        result ='in'
-    elif phi > 1-deltaphi:
-        result = 'in'
-        phi = phi-1
-    else:result = 'out'
-    #print(result)
-    if phi>0.5:
-            phi = phi-1
+    else: result = 'out'
 
     return result, phi, phase
 
@@ -162,7 +180,7 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     #print(velo)
     adjusted_velocities = velocities-velo
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value=np.nan)
-    velocity_grid = np.linspace(-19,19,len(spectrum))
+    velocity_grid = np.linspace(-15,15,len(spectrum))
     adjusted_spectrum = f2(velocity_grid)
     
     return velocity_grid, adjusted_spectrum, errors
@@ -176,16 +194,20 @@ def combineccfs(spectra):
     spectrum = list(np.reshape(spectrum, (width,)))
     return  spectrum
 
-def combineprofiles(spectra, errors, ccf, master):
+def combineprofiles(spectra, errors, ccf, master, velocities):
     spectra = np.array(spectra)
+    idx = np.isnan(spectra)
+    print(len(spectra[idx]))
+    if len(spectra[idx])>0:
+        inp = input('Nans where found')
     errors = np.array(errors)
 
     if master == 'no':
         weights_csv = np.genfromtxt('/home/lsd/Documents/order_weights.csv', delimiter=',')
         orders = np.array(weights_csv[7:,0], dtype = int)
-        print(orders)
+        # print(orders)
         weights = np.array(weights_csv[7:,1])
-        print(weights)
+        # print(weights)
 
         '''
         #calc_errors=np.zeros(np.shape(errors))
@@ -256,21 +278,21 @@ def combineprofiles(spectra, errors, ccf, master):
         spectra_to_combine = []
         errorss = []
 
-        plt.figure()
-        plt.title('All orders, frame: %s'%frame)
+        # plt.figure()
+        # plt.title('All orders, frame: %s'%frame)
         for i in orders:
             plt.plot(velocities, [0]*len(velocities))
-            print(i)
-            print(np.shape(spectra))
+            # print(i)
+            # print(np.shape(spectra))
             spectra_to_combine.append(list(spectra[i-1]))
             errorss.append(list(errors[i-1]))
-            plt.plot(velocities, spectra[i-1])
-            plt.fill_between(velocities, spectra[i-1]-errors[i-1], spectra[i-1]+errors[i-1], alpha = 0.3, label = 'order: %s'%i)
-            plt.legend(ncol = 3)
-            #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
-            plt.ylim(-0.8, 0.2)
+            # plt.plot(velocities, spectra[i-1])
+            # plt.fill_between(velocities, spectra[i-1]-errors[i-1], spectra[i-1]+errors[i-1], alpha = 0.3, label = 'order: %s'%i)
+            # plt.legend(ncol = 3)
+            # #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
+            # plt.ylim(-0.8, 0.2)
         #plt.show()
-        plt.close()
+        # plt.close()
 
     else:
         spectra_to_combine = []
@@ -287,17 +309,17 @@ def combineprofiles(spectra, errors, ccf, master):
             weights.append(np.mean(weight))
         weights = np.array(weights/sum(weights))
 
-        plt.figure()
-        plt.title('master out - all profiles')
-        for i in range(len(spectra)):
-            #spectra_to_combine.append(list(spectra[i-1]))
-            #errorss.append(list(errors[i-1]))
-            plt.plot(velocities, spectra[i])
-            plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3, label = 'frame: %s'%i)
-            plt.legend(ncol = 3)
-            #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
-            #plt.show()
-            plt.close()
+        # plt.figure()
+        # plt.title('master out - all profiles')
+        # for i in range(len(spectra)):
+        #     #spectra_to_combine.append(list(spectra[i-1]))
+        #     #errorss.append(list(errors[i-1]))
+        #     plt.plot(velocities, spectra[i])
+        #     plt.fill_between(velocities, spectra[i]-errors[i], spectra[i]+errors[i], alpha = 0.3, label = 'frame: %s'%i)
+        #     plt.legend(ncol = 3)
+        #     #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/orderserr%s_profile_%s'%(i, run_name))
+        #     #plt.show()
+        #     plt.close()
 
     spectra_to_combine = np.array(spectra_to_combine)
     #errorss = np.array(errorss)
@@ -313,8 +335,9 @@ def combineprofiles(spectra, errors, ccf, master):
         #weights = (1/temp_err**2)
         #weights = np.array(weights/sum(weights))
         #all_weights[:,n]=weights
-        print(temp_spec)
-        print(weights)
+        # print(spectra_to_combine)
+        # print(temp_spec)
+        # print(weights)
         spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
         #spectrum[0,n]=sum(temp_spec)/len(temp_spec)
         spec_errors[0,n]=(stdev(temp_spec)**2)*np.sqrt(sum(weights**2))
@@ -419,8 +442,8 @@ month = 'August2007' #August, July, Sep
 
 months = ['August2007',
           'July2007',
-          'July2006',
-          'Sep2006'
+          #'July2006',
+          #'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -446,6 +469,13 @@ lengths = []
 
 all_weights_total = []
 
+all_profiles = []
+all_profile_errors = []
+all_ccf_profiles = []
+
+month_profiles = []
+month_ccfs = []
+all_phases = []
 for month in months:
     plt.figure(month)
     directory =  '%s%s'%(path,month)
@@ -466,12 +496,15 @@ for month in months:
     matched=[]
     lengths.append(len(filelist))
     framelist = np.arange(0, len(filelist))
+    # framelist = framelist[:2]
     #framelist = framelist[framelist!=4]
     print(framelist)
     plt.figure('all_frames')
     for frame in framelist:
         file = fits.open(filelist[frame])
-        ccf_file = ccf_list[0]
+        print(file)
+        ccf_file = ccf_list[frame]
+        print(ccf_file)
         ccf = fits.open(ccf_file)
         order_errors = []
         order_profiles = []
@@ -487,6 +520,7 @@ for month in months:
 
             order = file[order1].header['ORDER']
             phase = file[order1].header['PHASE']
+            # print(phase)
             result = file[order1].header['result']
             '''
             plt.figure('%s'%order)
@@ -524,7 +558,26 @@ for month in months:
             #else:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
-            ccf_profiles.append(ccf_profile/ccf_profile[0]-1)
+            print(np.mean(ccf_profile[:5]))
+            print(ccf_profile/np.mean(ccf_profile[:5])-1)
+            ccf_profile = ccf_profile/np.mean(ccf_profile[:5])-1
+            for n in range(len(ccf_profile)):
+                if ccf_profile[n] == 'nan':
+                    if n==0 or n==len(ccf_profile): ccf_profile[n]=0.
+                    else:
+                        ccf_profile[n] = np.mean([ccf_profile[n-1], ccf_profile[n+1]])
+                        print('nan found')
+                        print(ccf_profile[n])
+                        inp = input('Enter to continue...')
+
+            ccf_profiles.append(ccf_profile)
+
+            
+            # print(order_profiles)
+            # print(ccf_profiles)
+
+        # print(len(ccf_profiles))
+        # print(len(order_profiles))
 
         if frame == framelist[0]:
             plt.figure('LSD')
@@ -532,14 +585,20 @@ for month in months:
             plt.vlines(-2.276, 0, len(order_profiles)-1)
             plt.colorbar()
 
+            plt.figure()
+            for prof in order_profiles:
+                plt.plot(velocities, prof)
+
             plt.figure('CCFs')
             plt.imshow(np.array(ccf_profiles), extent = [velocities_ccf[0], velocities_ccf[-1], 0, len(order_profiles)-1])
             plt.vlines(-2.276, 0, len(order_profiles)-1)
             plt.colorbar()
             plt.show()
 
-        #opened_file = fits.open(file)
-        #result, phi, phase = classify(opened_file, P, t, T) #phi is adjusted, phase is original
+        print(phase, result)
+        result, phi, phase = classify(phase) #phi is adjusted, phase is original
+        print(phase, result)
+        # inp = input('Enter to continue...')
         if phase>0.5:
             phi = phase-1
         else:phi = phase
@@ -547,11 +606,21 @@ for month in months:
         #print(result, phi, phase)
         #plt.figure(file)
         #spectrum, errors = combineprofiles(order_profiles, order_errors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31, 35, 38, 39, 41, 42, 43, 44, 45, 45, 47, 50, 51, 55, 56, 63, 64, 65, 69])
-        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no')
+        ccf_profiles = np.array(ccf_profiles)
+        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
+        spectrum_ccf = ccf[0].data[72]
+        velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
+        # spectrum_ccf, errors_ccf, weights_ccf = combineprofiles(ccf_profiles, np.ones(ccf_profiles.shape)*0.0001, ccf, 'no', velocities_ccf)
 
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
+        velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, phi, K, e, omega, v0)
         velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
+        all_profiles.append(spectrum)
+        all_profile_errors.append(errors)
+        all_ccf_profiles.append(spectrum_ccf/np.mean(spectrum_ccf[:5])-1)
+        all_phases.append(phi)
+
         plt.figure('all_frames')
         plt.plot(velocities, spectrum)
         plt.plot(velocities, [0]*len(spectrum))
@@ -572,7 +641,7 @@ for month in months:
         plt.plot(velocities, spectrum)
         plt.plot(velocities, spectrum+errors)
         '''
-        all_ccfs.append([spectrum, errors])
+        all_ccfs.append([list(spectrum), list(errors)])
         total.append(spectrum)
         #phases.append(phi)
         results.append(result)
@@ -581,12 +650,20 @@ for month in months:
             out_ccfs.append(spectrum)
             out_errors.append(errors)
 
+
     # plt.show()
     #velos.append(velos1)
     #break
+
+    # month_profiles.append([velocities, spectrum])
+    # month_ccfs.append([velocities_ccf, spectrum_ccf])
     frame = 'master_out'
     if len(out_ccfs)>1:
-        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors,ccf, 'yes')
+        plt.figure('out ccfs')
+        for ccf in out_ccfs:
+            plt.plot(velocities, ccf)
+        plt.show()
+        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors ,ccf, 'yes', velocities)
     else:
         master_out_spec = out_ccfs[0]
         master_out_errors = out_errors[0]
@@ -628,95 +705,273 @@ for month in months:
 
     hdu.writeto('%s%s_master_out_LSD_profile.fits'%(save_path, month), output_verify='fix', overwrite = 'True')
 
-    #opened_file.close()
+    # opened_file.close()
 
-#plt.close('all')
-'''
-    ins = ins+(len(all_ccfs)-len(out_ccfs))
+# plt.figure()
+# all_profs = []
+# Aug_LSD = month_profiles[0]
+# Aug_ccf = month_ccfs[0]
+# Jul_LSD = month_profiles[1]
+# Jul_ccf = month_ccfs[1]
+# plt.plot(Aug_LSD[0], Aug_LSD[1], label = 'August 2007 - LSD')
+# plt.plot(Jul_LSD[0], Jul_LSD[1], label = 'July 2007 - LSD')
+# aug = Aug_ccf[1]
+# jul = Jul_ccf[1]
+# plt.plot(Aug_ccf[0], Aug_ccf[1]/aug[0]-1, label = 'August 2007 - ccf')
+# plt.plot(Jul_ccf[0], Jul_ccf[1]/jul[0]-1, label = 'July 2007 - ccf')
+# plt.legend()
+# plt.show()
 
-    min_points = []
-    #alll_ccfs=[]
-    for c in range(len(all_ccfs)):
-        ccf = all_ccfs[c]
-        plt.plot(velocities, ccf)
-        for vel in range(len(velocities)):
-            if ccf[vel]==np.min(ccf):
-                min_points.append(velocities[vel])#, results[c]])
-                if round(velocities[vel], 2)!=0:outliers.append([phases1[c], velos[c]])
+# count = 0
+# rv_phases = []
+# rvs = []
+# plt.figure()
+# for y in month_profiles:
+#    # if (-t/(2*P)+0.001)<phases[count]<0.0155:
+#     y = y[count]
+#     popt, pcov = curve_fit(gauss, y[0], y[1])
+#     perr= np.sqrt(np.diag(pcov))
+#     rvs.append([popt[0], perr[0]])
+#     plt.plot('LSD %s'%months[count], popt[0])
+#     #rv_phases.append(phase[count])
+#     count += 1
+# count = 0
+# for y in month_ccfs:
+#    # if (-t/(2*P)+0.001)<phases[count]<0.0155:
+#     popt, pcov = curve_fit(gauss, y[0], y[1])
+#     perr= np.sqrt(np.diag(pcov))
+#     rvs.append([popt[0], perr[0]])
+#     plt.plot('CCF %s'%months[count], popt[0])
+#     #rv_phases.append(phase[count])
+#     count += 1
 
-    plt.show()
+# rvs = []
+# plt.figure()
 
-    print(min_points)
-'''
-'''
-#plots phases against velocity shift
-plt.figure('phases')
+# popt, pcov = curve_fit(gauss, Aug_LSD[0], Aug_LSD[1])
+# perr= np.sqrt(np.diag(pcov))
+# plt.scatter('LSD - Aug 07', popt[0])
+# rvs.append([popt[0], perr[0]])
 
-colours = ['b', 'g', 'k', 'r', 'm']
-#colours =  ['k', 'r', 'm']
-n2=0
+# popt, pcov = curve_fit(gauss, Aug_ccf[0], Aug_ccf[1]/aug[0]-1)
+# perr= np.sqrt(np.diag(pcov))
+# plt.scatter('CCF - Aug 07', popt[0])
+# rvs.append([popt[0], perr[0]])
 
-for n1 in range(0,len(lengths)):
-    n3=n2
-    #print(n3)
-    for n2 in range(0+n3, n3+lengths[n1]):
-        #print(n1, n2)
-        #plt.scatter(phases1[n2], velos[n2], marker ='.')
-        plt.scatter(phases1[n2], v_obs[n2], marker='x', color = colours[n1])
+# popt, pcov = curve_fit(gauss, Jul_LSD[0], Jul_LSD[1])
+# perr= np.sqrt(np.diag(pcov))
+# plt.scatter('LSD - Jul 07', popt[0])
+# rvs.append([popt[0], perr[0]])
 
-plt.scatter(phases1, velos, marker ='.')
-#plt.scatter(phases1, v_obs, marker='x')
+# popt, pcov = curve_fit(gauss, Jul_ccf[0], Jul_ccf[1]/jul[0]-1)
+# perr= np.sqrt(np.diag(pcov))
+# plt.scatter('CCF - Jul 07', popt[0])
+# rvs.append([popt[0], perr[0]])
 
-velos_m=[]
-phases_m = np.arange(-0.1,1.1,0.001)
-for phi in phases_m:
-    velo = v0 + K*(e*np.cos(omega)+np.cos(2*np.pi*phi-omega))
-    velos_m.append(velo)
+# plt.show()
+all_phases = np.array(all_phases)
+all_profiles = np.array(all_profiles)
+idx = all_phases.argsort()
+all_phases = all_phases[idx]
+all_profiles = all_profiles[idx]
+all_phases = list(all_phases)
 
-plt.plot(phases_m, velos_m)
+count = 0
+rv_phases = []
+rvs = []
+plt.figure()
+st = 17
+end = -18
+# st = 0
+# end = len(velocities)
+# cmap = plt.colormaps('Blues')'
+colour = cm.Blues(np.linspace(0, 1, len(all_profiles)))
+plt.figure()
+for y in all_profiles:
+    # if (-t/(2*P)+0.001)<phases[count]<0.0155:
+    # plt.figure()
+    # plt.plot(velocities, skewnormal(velocities, 1, 1, 1, 1, 1))
+    # plt.show()
+    sig = all_profile_errors[count]
+    popt1, pcov1 = curve_fit(skewnormal, velocities[st:end], y[st:end]+1, sigma = sig[st:end], absolute_sigma=True)
+    perr1= np.sqrt(np.diag(pcov1))
+    beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
+    profilemean1=popt1[2]+popt1[1]*beta1
+    beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
+    profilemean_error1=perr1[2]+perr1[1]*beta_error1
+    plt.plot(velocities[st:end], y[st:end]+1-skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), label = '%s'%all_phases[count], color = colour[count])
+    # plt.errorbar(velocities[st:end], y[st:end]+1, yerr = sig[st:end], color ='k')
+    # plt.plot(velocities[st:end], skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), 'r')
+    rvs.append([profilemean1, profilemean_error1])
+    rv_phases.append(all_phases[count])
 
-
-for out in outliers:
-    phase, velo = out
-    plt.scatter(phase-np.round(phase), velo)
-
-plt.xlim(-0.05, 0.05)
-plt.ylim(-2.35, -2.1)
+    # popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
+    # perr= np.sqrt(np.diag(pcov))
+    # plt.plot(velocities[st:end], y[st:end], 'k')
+    # plt.plot(velocities[st:end], gauss(velocities[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
+    # rvs.append([popt[0], perr[0]])
+    # rv_phases.append(all_phases[count])
+    count += 1
+#plt.legend()
 plt.show()
 
-plt.figure('difference')
+count = 0
+rv_phases_ccf = []
+ccf_rvs = []
+plt.figure()
+st = 0
+end = len(velocities_ccf)
+for y in all_ccf_profiles:
+    # if (-t/(2*P)+0.001)<phases[count]<0.0155:
+    popt1, pcov1 = curve_fit(skewnormal, velocities_ccf, y)
+    perr1= np.sqrt(np.diag(pcov1))
+    beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
+    profilemean1=popt1[2]+popt1[1]*beta1
+    beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
+    profilemean_error1=perr1[2]+perr1[1]*beta_error1
+    ccf_rvs.append([profilemean1, profilemean_error1])
+    rv_phases_ccf.append(all_phases[count])
 
-n2=0
-for n1 in range(0,len(lengths)):
-    n3=n2
-    #print(n3)
-    for n2 in range(0+n3, n3+lengths[n1]):
-        #print(n1, n2)
-        #plt.scatter(phases1[n2], velos[n2], marker ='.')
-        plt.plot(phases1[n2], v_obs[n2]-velos[n2], '.', color = colours[n1])
-
-plt.ylim(-0.1,0.1)
-plt.xlim(-0.05,0.05)
-'''
-'''
-n1 = len(total)
-
-col0=((np.round(np.linspace(0,170,num=n1))).astype(int))
-#col1=((np.round(np.linspace(0,170,num=n2))).astype(int))
-#col2=((np.round(np.linspace(50,220,num=n3))).astype(int))
-
-#plt.cm.Reds(col1[i-n1])
-#plt.cm.Greens(col2[i])
-#plt.cm.Reds(col1[i])
-#plt.cm.Blues(col0[i])
-
-fig, ax1 = plt.subplots(1,1)
-
-for i in range(len(total)):
-    ax1.plot(velocities,total[i],color=plt.cm.gist_rainbow(col0[i]),linewidth=0.7)
+    # popt, pcov = curve_fit(gauss, velocities_ccf, y+1)
+    # plt.plot(velocities_ccf, y+1, 'k')
+    # plt.plot(velocities_ccf, gauss(velocities_ccf, popt[0], popt[1], popt[2], popt[3]), 'r')
+    # perr= np.sqrt(np.diag(pcov))
+    # ccf_rvs.append([popt[0], perr[0]])
+    # rv_phases_ccf.append(all_phases[count])
+    count += 1
 plt.show()
 
-#plt.pcolormesh()
-'''
+rvs = np.array(rvs)
+ccf_rvs = np.array(ccf_rvs)
 
-print('Completed')
+plt.figure('LSD and CCFs - Aug and Jul 07')
+plt.title('LSD and CCFs - Aug and Jul 07')
+plt.xlabel('Phase')
+plt.ylabel('Local RV (km/s) (RV - mean(RV))')
+plt.errorbar(rv_phases_ccf, ccf_rvs[:,0] - np.mean(ccf_rvs[:,0]), yerr = ccf_rvs[:,1], fmt='o', label = 'CCFs')
+plt.errorbar(rv_phases, rvs[:,0]-np.mean(rvs[:,0]) , yerr = rvs[:,1], fmt='o', label = 'LSD')
+plt.legend()
+
+plt.figure('CCFs - August 2007')
+plt.title('CCFs - August 2007')
+plt.xlabel('Phase')
+plt.ylabel('Local RV (km/s)')
+plt.errorbar(rv_phases_ccf[:(len(rvs)-len(filelist))], ccf_rvs[:(len(rvs)-len(filelist)),0], yerr = ccf_rvs[:(len(rvs)-len(filelist)),1], fmt='o', label = 'CCFs')
+plt.legend()
+# plt.show()
+
+plt.figure('LSDs - August 2007')
+plt.title('LSDs - August 2007')
+plt.xlabel('Phase')
+plt.ylabel('Local RV (km/s)')
+plt.errorbar(rv_phases[:(len(rvs)-len(filelist))], rvs[:(len(rvs)-len(filelist)),0], yerr = rvs[:(len(rvs)-len(filelist)),1], fmt='o', label = 'LSD')
+plt.legend()
+# plt.show()
+
+plt.figure('CCFs - July 2007')
+plt.title('CCFs - July 2007')
+plt.xlabel('Phase')
+plt.ylabel('Local RV (km/s)')
+plt.errorbar(rv_phases_ccf[(len(rvs)-len(filelist)):], ccf_rvs[(len(rvs)-len(filelist)):,0], yerr = ccf_rvs[(len(rvs)-len(filelist)):,1], fmt='o', label = 'CCFs')
+plt.legend()
+# plt.show()
+
+plt.figure('LSDs - July 2007')
+plt.title('LSDs - July 2007')
+plt.xlabel('Phase')
+plt.ylabel('Local RV (km/s)')
+plt.errorbar(rv_phases[(len(rvs)-len(filelist)):], rvs[(len(rvs)-len(filelist)):,0], yerr = rvs[(len(rvs)-len(filelist)):,1], fmt='o', label = 'LSD')
+plt.legend()
+plt.show()
+
+
+# #plt.close('all')
+# '''
+#     ins = ins+(len(all_ccfs)-len(out_ccfs))
+
+#     min_points = []
+#     #alll_ccfs=[]
+#     for c in range(len(all_ccfs)):
+#         ccf = all_ccfs[c]
+#         plt.plot(velocities, ccf)
+#         for vel in range(len(velocities)):
+#             if ccf[vel]==np.min(ccf):
+#                 min_points.append(velocities[vel])#, results[c]])
+#                 if round(velocities[vel], 2)!=0:outliers.append([phases1[c], velos[c]])
+
+#     plt.show()
+
+#     print(min_points)
+# '''
+# '''
+# #plots phases against velocity shift
+# plt.figure('phases')
+
+# colours = ['b', 'g', 'k', 'r', 'm']
+# #colours =  ['k', 'r', 'm']
+# n2=0
+
+# for n1 in range(0,len(lengths)):
+#     n3=n2
+#     #print(n3)
+#     for n2 in range(0+n3, n3+lengths[n1]):
+#         #print(n1, n2)
+#         #plt.scatter(phases1[n2], velos[n2], marker ='.')
+#         plt.scatter(phases1[n2], v_obs[n2], marker='x', color = colours[n1])
+
+# plt.scatter(phases1, velos, marker ='.')
+# #plt.scatter(phases1, v_obs, marker='x')
+
+# velos_m=[]
+# phases_m = np.arange(-0.1,1.1,0.001)
+# for phi in phases_m:
+#     velo = v0 + K*(e*np.cos(omega)+np.cos(2*np.pi*phi-omega))
+#     velos_m.append(velo)
+
+# plt.plot(phases_m, velos_m)
+
+
+# for out in outliers:
+#     phase, velo = out
+#     plt.scatter(phase-np.round(phase), velo)
+
+# plt.xlim(-0.05, 0.05)
+# plt.ylim(-2.35, -2.1)
+# plt.show()
+
+# plt.figure('difference')
+
+# n2=0
+# for n1 in range(0,len(lengths)):
+#     n3=n2
+#     #print(n3)
+#     for n2 in range(0+n3, n3+lengths[n1]):
+#         #print(n1, n2)
+#         #plt.scatter(phases1[n2], velos[n2], marker ='.')
+#         plt.plot(phases1[n2], v_obs[n2]-velos[n2], '.', color = colours[n1])
+
+# plt.ylim(-0.1,0.1)
+# plt.xlim(-0.05,0.05)
+# '''
+# '''
+# n1 = len(total)
+
+# col0=((np.round(np.linspace(0,170,num=n1))).astype(int))
+# #col1=((np.round(np.linspace(0,170,num=n2))).astype(int))
+# #col2=((np.round(np.linspace(50,220,num=n3))).astype(int))
+
+# #plt.cm.Reds(col1[i-n1])
+# #plt.cm.Greens(col2[i])
+# #plt.cm.Reds(col1[i])
+# #plt.cm.Blues(col0[i])
+
+# fig, ax1 = plt.subplots(1,1)
+
+# for i in range(len(total)):
+#     ax1.plot(velocities,total[i],color=plt.cm.gist_rainbow(col0[i]),linewidth=0.7)
+# plt.show()
+
+# #plt.pcolormesh()
+# '''
+
+# print('Completed')
