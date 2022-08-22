@@ -387,8 +387,8 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             wave = wave_nonad
 
     
-        rv_drift=header['ESO DRS DRIFT RV'] 
-        print(rv_drift)
+        # rv_drift=header['ESO DRS DRIFT RV'] 
+        # print(rv_drift)
         # wave_corr = (1.+brv/2.99792458e5)
         # print(brv, (wave_corr-1)*2.99792458e5)
 
@@ -547,5 +547,19 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
     plt.show()
     '''
+     ## telluric correction
+    tapas = fits.open('/home/lsd/Documents/tapas_000001.fits')
+    tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
+    tapas_trans = tapas[1].data["transmittance"]
+    tapas.close()
+    tapas_wvl = tapas_wvl[::-1]
+    tapas_trans = tapas_trans[::-1]
+
+    plt.figure()
+    plt.plot(tapas_wvl, tapas_trans)
+    tapas_trans = continuumfit(tapas_wvl, tapas_trans, 3)
+    plt.plot(tapas_wvl, tapas_trans)
+    plt.show()
+
     return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
 ############################################################################################################
