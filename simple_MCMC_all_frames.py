@@ -10,19 +10,25 @@ from math import log10, floor
 
 file_type = 'e2ds'
 
-run_name = input('Input nickname for this version of code (for saving figures): ')
-linelist = input('Enter file path to line list (VALD format):')
-directory = input('Enter path to directory containing data files:')
-fig_ans = input('Save Figures? (y/n):')
-fig_path = input('Enter file path for directory to save figures and result files:')
-if fig_path == '':
-    fig_path = '/Users/lucydolan/Documents/ACID/ACID_RESULTS/'
+# run_name = input('Input nickname for this version of code (for saving figures): ')
+# linelist = input('Enter file path to line list (VALD format):')
+# directory = input('Enter path to directory containing data files:')
+# fig_ans = input('Save Figures? (y/n):')
+# fig_path = input('Enter file path for directory to save figures and result files:')
+# if fig_path == '':
+#     fig_path = '/Users/lucydolan/Documents/ACID/ACID_RESULTS/'
 
-if linelist == '':
-    linelist = '/home/lsd/Documents/fulllinelist0001.txt'
-if directory == '':
-    print('default directory set')
-    directory = '/Users/lucydolan/Starbase/HD189733/August2007/*/*/*/'
+# if linelist == '':
+#     linelist = '/home/lsd/Documents/fulllinelist0001.txt'
+# if directory == '':
+#     print('default directory set')
+#     directory = '/Users/lucydolan/Starbase/HD189733/August2007/*/*/*/'
+
+run_name = 'Sun'
+linelist = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/VALD_files/Sun.txt'
+directory = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/data/Sun/data/'
+fig_ans = 'y'
+fig_path = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/ACID/'
 
 def round_sig(x, sig):
     return round(x, sig-int(floor(log10(abs(x))))-1)
@@ -31,7 +37,9 @@ def findfiles(directory, file_type):
 
     filelist=glob.glob('%s*%s_A.fits'%(directory, file_type))               #finding all A band e2ds spectra
     if len(filelist)==0:
-        print('Empty line list please check path: "%s*%s_A.fits"'%(directory, file_type))
+        filelist=glob.glob('%s/*%s_A.fits'%(directory, 'S2D'))
+        if len(filelist)==0:
+            print('Empty file folder please check path: "%s*%s_A.fits"'%(directory, file_type))
     return filelist
 
 def read_in_frames(order, filelist):
@@ -115,7 +123,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         flux_obs = fluxes1/fit
         new_errors = errors1/fit
 
-        ## replacing negative values with a very small number and masking it out ato avoid error in optical depth conversion
+        ## replacing negative values with a very small number and masking it out to avoid error in optical depth conversion
         ## this function is only used to get emcee inputs and so this does not affect the final profiles
         idx = tuple([flux_obs<=0])
         flux_obs[idx] = 0.00000000000000001
@@ -292,7 +300,7 @@ if max_order == '':
 
 order_range = np.arange(min_order, max_order)
 
-phase_calc = 'y' #input('Include phase in fits header (y/n):')
+phase_calc = 'n' #input('Include phase in fits header (y/n):')
 
 if phase_calc == 'y' or '':
     result = input('Enter Period, Mid-Tranist Time and Transit Duration:')

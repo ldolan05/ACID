@@ -33,8 +33,10 @@ def LSD(wavelengths, flux_obs, rms, linelist, sn):
     velocities=np.linspace(vmin,vmax,int(no_pix))
     deltav = velocities[1]-velocities[0]
 
+
     ## reading in line depths from linelist (reads in for all wavelengths)
-    linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
+    # linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
+    linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, skip_footer=100, delimiter='\t', usecols=(1,9))
     wavelengths_expected1 =np.array(linelist_expected[:,0])
     depths_expected1 = np.array(linelist_expected[:,1])
 
@@ -130,8 +132,40 @@ def get_wave(data,header):
 
   return wave
 
+def continuumfit(fluxes1, wavelengths1, poly_ord):
+
+        cont_factor = fluxes1[0]
+
+        fluxes1 = fluxes1
+      
+        fluxes = fluxes1
+        wavelengths = wavelengths1
+
+        idx = wavelengths.argsort()
+        wavelength = wavelengths[idx]
+        fluxe = fluxes[idx]
+        clipped_flux = []
+        clipped_waves = []
+        binsize =100
+        for i in range(0, len(wavelength), binsize):
+            waves = wavelength[i:i+binsize]
+            flux = fluxe[i:i+binsize]
+            indicies = flux.argsort()
+            flux = flux[indicies]
+            waves = waves[indicies]
+
+            clipped_flux.append(flux[len(flux)-1])
+            clipped_waves.append(waves[len(waves)-1])
+        coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
+
+        poly = np.poly1d(coeffs*cont_factor)
+        fit = poly(wavelengths1)
+        flux_obs = fluxes1/fit
+        
+        return flux_obs
+
 def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name):
-   
+    print(file_type)
     if file_type == 's1d':
         #### Finding min and max wavelength from e2ds for the specified order ######
         file_e2ds = file.replace('s1d', 'e2ds')
@@ -198,9 +232,18 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
     elif file_type == 'e2ds':
         hdu=fits.open('%s'%file)
-        spec=hdu[0].data
+        spec=hdu[1].data
         header=hdu[0].header
-        sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
+        # print(header)
+        # print(len(hdu))
+        # for i in range(len(hdu)):
+        #     print(hdu[i].data)
+        #     try:
+        #         plt.figure()
+        #         plt.plot(hdu[i].data[0])
+        #         plt.show()
+        #     except: print('None')
+        # print(spec)
         #print('S/N: %s'%sn)
         spec_check = spec[spec<=0]
         if len(spec_check)>0:
@@ -211,17 +254,26 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         flux_error[where_are_NaNs] = 1000000000000
         where_are_zeros = np.where(spec == 0)[0]
         flux_error[where_are_zeros] = 1000000000000
-        brv=header['ESO DRS BERV']
-        wave=get_wave(spec, header)*(1.+brv/2.99792458e5)
-        blaze_file = glob.glob('%s**blaze_A*.fits'%(directory))
-        #print(blaze_file)
-        blaze_file = blaze_file[0]
-        blaze =fits.open('%s'%blaze_file)
-        blaze_func = blaze[0].data
-        spec = spec/blaze_func
-        flux_error = flux_error/blaze_func
-        blaze.close()
+        
+        try: 
+            sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
+            brv=header['ESO DRS BERV']
+            wave=get_wave(spec, header)*(1.+brv/2.99792458e5)
+        except: 
+            sn = hdu[0].header['HIERARCH TNG QC ORDER%s SNR'%order]
+            brv = hdu[0].header['HIERARCH TNG QC BERV']
+            wave = hdu[5].data*(1.+brv/2.99792458e5)
 
+        try: 
+            blaze_file = glob.glob('%s**blaze_A*.fits'%(directory))
+            blaze_file = blaze_file[0]
+            blaze =fits.open('%s'%blaze_file)
+            blaze_func = blaze[0].data
+            spec = spec/blaze_func
+            flux_error = flux_error/blaze_func
+            blaze.close()
+        except: print('ERROR: No blaze file found. Continuing without correction')
+        
         wavelengths = wave[order]
         fluxes = spec[order]
 
