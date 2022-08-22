@@ -132,38 +132,6 @@ def get_wave(data,header):
 
   return wave
 
-def continuumfit(fluxes1, wavelengths1, poly_ord):
-
-        cont_factor = fluxes1[0]
-
-        fluxes1 = fluxes1
-      
-        fluxes = fluxes1
-        wavelengths = wavelengths1
-
-        idx = wavelengths.argsort()
-        wavelength = wavelengths[idx]
-        fluxe = fluxes[idx]
-        clipped_flux = []
-        clipped_waves = []
-        binsize =100
-        for i in range(0, len(wavelength), binsize):
-            waves = wavelength[i:i+binsize]
-            flux = fluxe[i:i+binsize]
-            indicies = flux.argsort()
-            flux = flux[indicies]
-            waves = waves[indicies]
-
-            clipped_flux.append(flux[len(flux)-1])
-            clipped_waves.append(waves[len(waves)-1])
-        coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
-
-        poly = np.poly1d(coeffs*cont_factor)
-        fit = poly(wavelengths1)
-        flux_obs = fluxes1/fit
-        
-        return flux_obs
-
 def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name):
     print(file_type)
     if file_type == 's1d':
