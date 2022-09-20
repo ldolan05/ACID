@@ -11,6 +11,7 @@ import synthetic_data as syn
 import random
 import glob
 from scipy.interpolate import interp1d
+from scipy.signal import find_peaks
 
 from math import log10, floor
 def round_sig(x, sig):
@@ -58,7 +59,7 @@ def read_in_frames(order, filelist):
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
     plt.figure('spectra after blaze_correct')
     for file in filelist:
-        fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+        fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
         plt.plot(wavelengths, fluxes)
         frame_wavelengths.append(wavelengths)
         frames.append(fluxes)
@@ -74,7 +75,7 @@ def read_in_frames(order, filelist):
     errors = np.array(errors)
 
     plt.figure('divided spectra (by reference frame)')
-    ### each frame is divided by refernce frame and then adjusted so that all spectra lie at the same continuum
+    ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     for n in range(len(frames)):
         div_frame = frames[n]/reference_frame
 
@@ -107,7 +108,7 @@ def read_in_frames(order, filelist):
     # plt.show()
     plt.close()
 
-    return frame_wavelengths, frames, errors, sns
+    return frame_wavelengths, frames, errors, sns, telluric_spec
 
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
@@ -233,7 +234,7 @@ def model_func(inputs, x):
 
     mdl1 = mdl1 * inputs[-1]
 
-    print(inputs)
+    # print(inputs)
 
     # plt.figure()
     # plt.plot(x, mdl1, 'r')
@@ -308,7 +309,7 @@ def log_probability(theta, x, y, yerr):
     return final
 
 ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
-def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
+def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_spec):
     #residuals=((data_spec+1)/(forward+1))/data_err
     #residuals=abs(((data_spec)-(forward))/(forward))
     forward = model_func(initial_inputs, wavelengths)
@@ -318,7 +319,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     #residuals=(data_spec/data_spec[0]-forward/forward[0])
     residuals = (data_spec_in - np.min(data_spec_in))/(np.max(data_spec_in)-np.min(data_spec_in)) - (forward - np.min(forward))/(np.max(forward)-np.min(forward))
 
-    ### finds consectuative sections where at least 20 points have resiudals greater than 0.25 - these are masked
+    ### finds consectuative sections where at least 20 points have residuals greater than 0.25 - these are masked
     flag = ['False']*len(residuals)
     flagged = []
     for i in range(len(residuals)):
@@ -337,33 +338,56 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
                     data_err[idx]=10000000000000000000
             flagged = []
 
-    # fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, sharex = True)
-    # non_masked = tuple([data_err<1000000000000000000])
-    # ax[1].scatter(wavelengths, residuals, marker = '.')
-    # ax[0].plot(wavelengths, data_spec, 'r', alpha = 0.3, label = 'data')
-    # ax[0].plot(wavelengths, forward, 'k', alpha =0.3, label = 'mcmc mdl')
+    ##############################################
+    #                  TELLURICS                 #   
+    ##############################################
+
+    ## masking tellurics
+    ## use find peaks on telluric spec to find the lines
+    ## mask out region around these telluric lines
+    ## these will take care of shallow lines
+    ## create seperate section to mask out very deep lines (think there is a section in LSD that deals with these - Franhofer lines (definetly not spelt like that))
+
+    limit_wave =21/2.99792458e5 #needs multiplied by wavelength to give actual limit
+    limit_pix = limit_wave/((max(wavelengths)-min(wavelengths))/len(wavelengths))
+    
+    # plt.figure()
+    # plt.plot(wavelengths, 1-telluric_spec)
+
+    peaks = find_peaks(1-telluric_spec, height=0.01)
+    # print(peaks[0])
+    for peak in peaks[0]:
+        limit = int(limit_pix*wavelengths[peak])
+        # print('the limit is...')
+        # print(limit)
+        st = peak-limit
+        end = peak+limit
+        if st <0:st =0
+        if end>len(data_err):end=len(data_err)
+        for i in range(st, end):
+            # print(wavelengths[i])
+            data_err[i] = 1000000000000000000
+
+    tell_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+    for line in tell_lines:
+        limit = limit_wave*line +3
+        idx = np.logical_and((line-limit)<=wavelengths, wavelengths<=(limit+line))
+        data_err[idx] = 1000000000000000000
+
     residual_masks = tuple([data_err>=1000000000000000000])
+    
+    plt.figure()
+    plt.plot(wavelengths, data_spec_in, 'k')
+    # print(residual_masks)
+    # print(wavelengths[residual_masks]) 
+    # print(data_spec_in[residual_masks])
+    plt.scatter(wavelengths[residual_masks], data_spec_in[residual_masks], color = 'r')
+    plt.savefig('/home/lsd/Documents/LSD_Figures/order%s_masking_%s'%(order, run_name))
 
-    # ax[0].scatter(wavelengths[residual_masks], data_spec[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-    # ax[0].legend(loc = 'lower right')
-    # #plotdepths = -np.array(line_depths)
-    # #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-    # #ax[1].plot(x, residuals_2, '.')
-    # #ax[1].scatter(x, residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-    # z_line = [0]*len(x)
-    # ax[1].plot(x, z_line, '--')
-    # plt.show()
-    '''
-    plt.figure('Masking based off residuals (>0.25 for >20 masked)')
-    plt.plot(wavelengths, data_spec)
-    residual_masks = tuple([data_err>1000000000000000000])
-    plt.scatter(wavelengths[residual_masks], data_spec[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-    plt.xlabel('wavelengths')
-    plt.ylabel('flux')
-    plt.show()
-    '''
+    ###################################
+    ###      sigma clip masking     ###
+    ###################################
 
-    ### sigma clip masking ##
     m = np.median(residuals)
     sigma = np.std(residuals)
     a = 1
@@ -393,99 +417,13 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     poly_inputs, bin, bye, fit=continuumfit(data_spec_in,  (wavelengths*a)+b, data_err, poly_ord)
     velocities, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, sn, order, run_name)
 
-    '''
-    plt.figure('LSD profile - intital for mcmc')
-    plt.title('LSD profile - intital for mcmc')
-    plt.plot(velocities, profile)
-    plt.xlabel('velocities km/s')
-    plt.ylabel('optical depth')
-    plt.show()
-
-    plt.figure('LSD profile - intital for mcmc (flux)')
-    plt.title('LSD profile - intital for mcmc (flux)')
-    plt.plot(velocities, np.exp(profile)-1)
-    plt.xlabel('velocities km/s')
-    plt.ylabel('flux')
-    plt.show()
-    '''
-    ## second round of masking - based of new profile
-    '''
-    forward = model_func(np.concatenate((profile, poly_inputs)), wavelengths)
-
-    #need to re define continuum fit
-    plt.figure('profile')
-    plt.plot(velocities, profile)
-    #plt.show()
-    plt.figure()
-    plt.plot(wavelengths, forward)
-    plt.plot(wavelengths, data_spec)
-    #plt.show()
-
-    residuals=abs((data_spec+1)-(forward+1))
-
-    plt.figure('residuals - after 1st resi mask')
-    plt.scatter(x, residuals)
-    #plt.show()
-
-    limit=abs(max(velocities))*max(continuum_waves)/2.99792458e5
-
-    flag = ['False']*len(residuals)
-    for j in range(0, len(wavelengths)):
-        flagged = []
-        line_waves = []
-        for i in (range(0,len(continuum_waves))):
-            diff=wavelengths[j]-continuum_waves[i]
-            if abs(diff)<=(limit):
-                line_waves.append(wavelengths[j])
-                if (residuals[j]/abs(continuum_flux[i]))>=10:
-                    #print(residuals[j])
-                    #print(continuum_flux[i])
-                    flagged.append(j)
-        if len(flagged)>len(line_waves)/2:
-            #print(i)
-            #print(len(flagged), len(line_waves)/2)
-            idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)], wavelengths<=wavelengths[np.max(flagged)])
-            data_err[idx]=10000000000000000000
-
-
-    line_masked = 0
-    for i in range(k_max):
-        data_points = alpha[:, k]
-        print(data_points)
-        idx = tuple([data_points>0.1])
-        resi_points = residuals[idx]
-        if len(resi_points[resi_points>0.2])>=(len(resi_points)/2):
-            data_err[idx]=10000000000000000000
-            line_masked+=1
-            plt.figure('line masking')
-            plt.plot(wavelengths, data_spec)
-            plt.scatter(x[idx], y[idx], label = 'masked', color = 'b', alpha = 0.3)
-            plt.show()
-
-    poly_inputs, bin, bye, fit=continuumfit(data_spec,  (wavelengths*a)+b, data_err, poly_ord)
-    velocities, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(x, bin, bye, linelist, 'False', poly_ord, sn, order, run_name)
-    #poly_inputs = [0.1]*(poly_ord+1)
-
-    plt.figure()
-    plt.plot(wavelengths, data_spec)
-    residual_masks = tuple([data_err>10])
-    plt.scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-
-    plt.figure()
-    plt.scatter(x, residuals)
-    plt.plot(x, [0]*len(x))
-
-    plt.figure('profile - after second masking')
-    plt.plot(velocities, profile)
-    plt.show()
-    '''
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
 months1 = ['August2007']
-months = ['July2007', 'August2007', 'July2006', 'Sep2006']
+months = ['July2007']#, 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-# order_range = np.arange(8,71)
-order_range = np.arange(56,57)
+order_range = np.arange(8,70)
+# order_range = np.arange(48,49)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -493,35 +431,29 @@ t=0.076125 #Torres et al, 2008
 deltaphi = t/(2*P)
 
 month_spec = []
-for month in months1:
-    directory1 = '%s%s/'%(directory_p, 'July2007')
-    print(directory1)
-    filelist1=findfiles(directory1, file_type)
-    print(filelist1)
-    directory2 = '%s%s/'%(directory_p, 'August2007')
-    filelist2=findfiles(directory2, file_type)
-    print(filelist2)
-    filelist = [filelist1[0], filelist2[0]]
+for month in months:
+    directory = '%s%s/'%(directory_p, month)
+    filelist=findfiles(directory, file_type)
 
     for order in order_range:
         plt.close('all')
         poly_ord = 3
 
         ### read in spectra for each frame, along with S/N of each frame
-        for file in filelist:
-            fits_file = fits.open(file)
-            phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
-            print(phi)
-            print(file, order)
-            fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory1, 'unmasked', run_name, 'y')
-            fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
+        # for file in filelist:
+        #     fits_file = fits.open(file)
+        #     phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
+        #     print(phi)
+        #     print(file, order)
+        #     fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory1, 'unmasked', run_name, 'y')
+        #     fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
 
-        # frame_wavelengths, frames, frame_errors, sns = read_in_frames(order, filelist)
-        ### combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
-        # wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths[-1], frames, frame_errors, sns)
-        # print("SN of combined spectrum, order %s: %s"%(order, sn))
+        frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist)
+        ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
+        wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths[-1], frames, frame_errors, sns)
+        print("SN of combined spectrum, order %s: %s"%(order, sn))
         
-            month_spec.append([wavelengths, wavelengths1, fluxes, fluxes1])
+        # month_spec.append([wavelengths, wavelengths1, fluxes, fluxes1])
                           #corr_wave, uncorr wave, corr flux, uncorr flux 
         ## normalise
         '''
@@ -541,10 +473,10 @@ for month in months1:
         #### getting the initial profile
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
 
-        plt.figure('forward model after first LSD')
-        plt.plot(wavelengths, np.log(fluxes1))
-        plt.plot(wavelengths, np.dot(alpha, profile))
-        plt.show()
+        # plt.figure('forward model after first LSD')
+        # plt.plot(wavelengths, np.log(fluxes1))
+        # plt.plot(wavelengths, np.dot(alpha, profile))
+        # plt.show()
 
         # plt.figure('initial profile')
         # plt.plot(velocities, profile)
@@ -612,7 +544,7 @@ for month in months1:
 
         #masking based off residuals
         yerr_unmasked = yerr
-        yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs)
+        yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec)
 
         ##masking frames also
         #mask_idx = tuple([yerr>1000000000000000000])
@@ -955,17 +887,17 @@ for month in months1:
             plt.xlabel('velocities km/s')
             #plt.show()
 
-            berv_corr = ccf[0].header['ESO DRS BERV']
+            # berv_corr = ccf[0].header['ESO DRS BERV']
 
-            plt.figure()
-            adjusted_velocities = velocities+berv_corr
-            f2 = interp1d(adjusted_velocities, profile_f, kind='linear', bounds_error=False, fill_value=np.nan)
-            velocity_grid = np.linspace(-15,15,len(profile_f))
-            adjusted_prof = f2(velocity_grid)
-            plt.plot(velocity_grid, adjusted_prof, label = 'adjusted_profile')
-            plt.plot(velocities_ccf, ccf_spec/ccf_spec[0]-1, label = 'ccf') 
-            plt.plot(velocities, profile_f, label = 'profile (pre-adjusted)')
-            plt.show()
+            # plt.figure()
+            # adjusted_velocities = velocities+berv_corr
+            # f2 = interp1d(adjusted_velocities, profile_f, kind='linear', bounds_error=False, fill_value=np.nan)
+            # velocity_grid = np.linspace(-15,15,len(profile_f))
+            # adjusted_prof = f2(velocity_grid)
+            # plt.plot(velocity_grid, adjusted_prof, label = 'adjusted_profile')
+            # plt.plot(velocities_ccf, ccf_spec/ccf_spec[0]-1, label = 'ccf') 
+            # plt.plot(velocities, profile_f, label = 'profile (pre-adjusted)')
+            # plt.show()
 
             plt.figure()
             plt.title('order %s, LSD profiles'%order)

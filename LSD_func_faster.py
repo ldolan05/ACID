@@ -5,6 +5,13 @@ import glob
 import matplotlib.pyplot as plt
 import random
 
+from scipy.signal import find_peaks
+
+
+from scipy.sparse import csc_matrix
+from scipy.sparse.linalg import inv, spsolve
+from scipy.interpolate import interp1d,LSQUnivariateSpline
+
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name):
 
 
@@ -36,7 +43,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     vmax = 18
     no_pix = 48
 
-    print(vmin, vmax, no_pix)
+    # print(vmin, vmax, no_pix)
 
     velocities=np.linspace(vmin,vmax,int(no_pix))
     print(velocities[1]-velocities[0])
@@ -83,16 +90,16 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     alpha=np.zeros((len(blankwaves), len(velocities)))
 
     limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
-    print(limit)
+    # print(limit)
 
     for j in range(0, len(blankwaves)):
         for i in (range(0,len(wavelengths_expected))):
             diff=blankwaves[j]-wavelengths_expected[i]
             if abs(diff)<=(limit):
-                print('diff')
-                print(diff)
-                print('limit')
-                print(np.max(velocities)*wavelengths_expected[i]/2.99792458e5)
+                # print('diff')
+                # print(diff)
+                # print('limit')
+                # print(np.max(velocities)*wavelengths_expected[i]/2.99792458e5)
                 if rms[j]<1:no_line.append(i)
                 vel=2.99792458e5*diff/wavelengths_expected[i]
                 print(vel)
@@ -207,6 +214,46 @@ def get_wave(data,header):
 
   return wave
 
+def continuumfit(wavelengths1, fluxes1, poly_ord):
+
+        fluxes = fluxes1
+        wavelengths = wavelengths1
+
+        idx = wavelengths.argsort()
+        wavelength = wavelengths[idx]
+        fluxe = fluxes[idx]
+        clipped_flux = []
+        clipped_waves = []
+        binsize =100
+        for i in range(0, len(wavelength), binsize):
+            waves = wavelength[i:i+binsize]
+            flux = fluxe[i:i+binsize]
+            indicies = flux.argsort()
+            flux = flux[indicies]
+            waves = waves[indicies]
+
+            clipped_flux.append(flux[len(flux)-1])
+            clipped_waves.append(waves[len(waves)-1])
+        coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
+
+        poly = np.poly1d(coeffs)
+        fit = poly(wavelengths1)
+        # plt.figure()
+        # plt.plot(wavelengths1, fluxes1)
+        # plt.plot(wavelengths1, fit)
+    
+        flux_obs = fluxes1/fit
+        
+        return flux_obs
+
+# from MM-LSD code - give credit if needed
+def upper_envelope(x, y):
+    #used to compute the tapas continuum. find peaks then fit spline to it.
+    peaks = find_peaks(y, height=0.2, distance=len(x) // 500)[0]
+    # t= knot positions
+    spl = LSQUnivariateSpline(x=x[peaks], y=y[peaks], t=x[peaks][5::10])
+    return spl(x)
+
 def blaze_correct(file_type, spec_type, order, file, directory, masking, run_name, berv_opt):
     #### Inputing spectrum depending on file_type and spec_type #####
 
@@ -238,7 +285,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         hdu.close()
         #### Now reading in s1d file ########
         print(file)
-        hdu=fits.open('%s'%file)
+        # hdu=fits.open('%s'%file)
         spec=hdu[0].data
         header=hdu[0].header
         spec_check = spec[spec<=0]
@@ -379,7 +426,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
         # print(file_ccf[0].header['ESO DRS BERV'])
         brv=header['ESO DRS BERV']
-        print(brv)
+        # print(brv)
         wave_nonad=get_wave(spec, header)
         if berv_opt == 'y':
             wave = wave_nonad*(1.+brv/2.99792458e5)
@@ -402,8 +449,8 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         plt.show()
         '''
         blaze_file = glob.glob('%sblaze_folder/**blaze_A*.fits'%(directory))
-        print('%sblaze_folder/**blaze_A*.fits'%(directory))
-        print(blaze_file)
+        # print('%sblaze_folder/**blaze_A*.fits'%(directory))
+        # print(blaze_file)
         blaze_file = blaze_file[0]
         blaze =fits.open('%s'%blaze_file)
         blaze_func = blaze[0].data
@@ -414,22 +461,22 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         wavelengths = wave[order]
         fluxes = spec[order]
 
-        plt.figure()
-        plt.plot(wave[63], spec[63], label = 'wave*(1.+brv/2.99792458e5)')
-        plt.plot(wave_nonad[63], spec[63], label = 'non-adjusted wave')
-        plt.legend()
+        # plt.figure()
+        # plt.plot(wave[63], spec[63], label = 'wave*(1.+brv/2.99792458e5)')
+        # plt.plot(wave_nonad[63], spec[63], label = 'non-adjusted wave')
+        # plt.legend()
 
-        plt.figure()
-        plt.title('Sodium D - July 2007')
-        plt.plot(wave[56], spec[56], label = 'wave*(1.+brv/2.99792458e5)')
-        plt.plot(wave_nonad[56], spec[56], label = 'non-adjusted wave')
-        plt.legend()
+        # plt.figure()
+        # plt.title('Sodium D - July 2007')
+        # plt.plot(wave[56], spec[56], label = 'wave*(1.+brv/2.99792458e5)')
+        # plt.plot(wave_nonad[56], spec[56], label = 'non-adjusted wave')
+        # plt.legend()
 
-        plt.figure()
-        plt.plot(wave[70], spec[70], label = 'wave*(1.+brv/2.99792458e5)')
-        plt.plot(wave_nonad[70], spec[70], label = 'non-adjusted wave')
-        plt.legend()
-        plt.show()
+        # plt.figure()
+        # plt.plot(wave[70], spec[70], label = 'wave*(1.+brv/2.99792458e5)')
+        # plt.plot(wave_nonad[70], spec[70], label = 'non-adjusted wave')
+        # plt.legend()
+        # plt.show()
 
         last_wavelengths = wave[order-1]
         next_wavelengths = wave[order+1]
@@ -553,13 +600,19 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     tapas_trans = tapas[1].data["transmittance"]
     tapas.close()
     tapas_wvl = tapas_wvl[::-1]
-    tapas_trans = tapas_trans[::-1]
+    tapas_trans = tapas_trans[::-1]*(1.+brv/2.99792458e5)
 
-    plt.figure()
-    plt.plot(tapas_wvl, tapas_trans)
-    tapas_trans = continuumfit(tapas_wvl, tapas_trans, 3)
-    plt.plot(tapas_wvl, tapas_trans)
-    plt.show()
+    background = upper_envelope(tapas_wvl, tapas_trans)
+    f = interp1d(tapas_wvl, tapas_trans / background, bounds_error=False)
 
-    return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths) ## for just LSD
+    # plt.figure('telluric spec and real spec')
+    # plt.plot(wavelengths, continuumfit(wavelengths, fluxes, 3))
+    # plt.plot(wavelengths, f(wavelengths))
+    # plt.show()
+    
+    # plt.figure()
+    # plt.plot(tapas_wvl, tapas_trans)
+    # plt.show()
+
+    return fluxes, wavelengths, flux_error_order, sn, np.median(wavelengths), f(wavelengths) ## for just LSD
 ############################################################################################################

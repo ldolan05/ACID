@@ -21,14 +21,10 @@ from matplotlib.pyplot import cm
 run_name = input('Run name (all_frames or jvc):' )
 
 def gauss(x, rv, sd, height, cont):
-    y = cont*(1-height*np.exp(-(x-rv)**2/(2*sd**2)))
+    y = height*np.exp(-(x-rv)**2/(2*sd**2)) + cont
     return y
 
 def skewnormal(x, scaleheight, omega, gamma, alpha, zeroorder):
-    # print(zeroorder, scaleheight, omega, gamma)
-    # print((((alpha*(x-gamma))/omega))/(np.sqrt(2)))
-    # print(math.erf((((alpha*(x-gamma))/omega))/(np.sqrt(2))))
-    # print(math.erf((((alpha*(x-gamma))/omega))/(np.sqrt(2)))+1)
     result = zeroorder+(scaleheight*(2/omega)*np.exp(-(((x-gamma)/omega)**2)/2)/(np.sqrt(2*np.pi))*0.5*(erf((((alpha*(x-gamma))/omega))/(np.sqrt(2)))+1))
     return result
  
@@ -50,10 +46,12 @@ def findfiles(directory, file_type):
     '''
     # directory = '/home/lsd/Documents/HD189733/August2007/'
 
-    print('%s**ccf**A*.fits'%directory)
-    ccf_directory = directory.replace('home/lsd/Documents/LSD_Figures/', '/home/lsd/Documents/HD189733/HD189733/')
+    
+    ccf_directory = directory.replace('home/lsd/Documents/LSD_Figures/', '/home/lsd/Documents/HD189733/')
+    print('%s*/*/*/*ccf**K5_A*.fits'%ccf_directory)
 
-    filelist=glob.glob('%s/*/*ccf**A*.fits'%ccf_directory)
+    filelist=glob.glob('%s/*/*/*/*ccf**K5_A*.fits'%ccf_directory)
+    # filelist=glob.glob('%s/*/*ccf**A*.fits'%ccf_directory)
     print(filelist)
     print(filelist_final)
 
@@ -440,10 +438,10 @@ save_path = '/home/lsd/Documents/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = ['August2007',
-          'July2007',
+months = [#'August2007',
+          #'July2007',
           #'July2006',
-          #'Sep2006'
+          'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -472,10 +470,14 @@ all_weights_total = []
 all_profiles = []
 all_profile_errors = []
 all_ccf_profiles = []
+ccf_phases = []
+all_results = []
+ccf_results = []
 
 month_profiles = []
 month_ccfs = []
 all_phases = []
+header_rvs = []
 for month in months:
     plt.figure(month)
     directory =  '%s%s'%(path,month)
@@ -488,6 +490,9 @@ for month in months:
     #phases = []
     results = []
     phases = []
+    bjds = []
+    mjds = []
+    berv = []
     phases1 = []
     velos1=[]
     #results = []
@@ -499,7 +504,9 @@ for month in months:
     # framelist = framelist[:2]
     #framelist = framelist[framelist!=4]
     print(framelist)
-    plt.figure('all_frames')
+    #plt.figure('all_frames')
+    all_order_rvs = []
+    all_order_rvs_ccf = []
     for frame in framelist:
         file = fits.open(filelist[frame])
         print(file)
@@ -509,19 +516,62 @@ for month in months:
         order_errors = []
         order_profiles = []
         ccf_profiles = []
+
+        order_rvs = []
+        order_fwhm = []
+        order_rvs_ccf = []
+        order_fwhm_ccf = []
+        # plt.figure('all orders %s'%frame)
+        # plt.xlabel('Velocity (km/s)')
+        # plt.ylabel('Normalised Flux')
+        # plt.title('ACID Profiles (All Orders)')
         for order1 in range(1,71):
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
             velocities = np.linspace(-21, 18, 48)
-
             ccf_profile = ccf[0].data[order1]
+            if order1 ==1:
+                header_rvs = list(header_rvs)
+                header_rvs.append(ccf[0].header['HIERARCH ESO DRS CCF RV'])#-ccf[0].header['ESO DRS BERV'])
             velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
-
+            # if np.sum(abs(profile))>0:
+            #     plt.plot(velocities, profile)
+            ccf_phi = (((ccf[0].header['ESO DRS BJD'])-T)/P)%1
+            print(berv)
+            mjd = ccf[0].header["MJD-OBS"]
+            if ccf_phi>0.5: ccf_phi = ccf_phi-1
             order = file[order1].header['ORDER']
             phase = file[order1].header['PHASE']
             # print(phase)
             result = file[order1].header['result']
+
+            ## investigation section - delete/comment out when done
+            # velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, ccf_profile/np.mean(ccf_profile[:5])-1, ccf_profile/100, ccf_phi, K, e, omega, v0)
+            # velocities, spectrum, errors = remove_reflex(velocities, profile, profile_errors, phase, K, e, omega, v0)
+            # st = 15 
+            # end =-15
+            # try: 
+            #     popt, pcov = curve_fit(gauss, velocities[st:end], spectrum[st:end])
+            #     perr= np.sqrt(np.diag(pcov))
+            #     order_rvs.append(popt[0])
+            #     order_fwhm.append(popt[1])
+            # except:
+            #     order_rvs.append(1.)
+            #     order_fwhm.append(1.)
+
+            # st = 30
+            # end =-30
+            # try:
+            #     popt, pcov = curve_fit(gauss, velocities_ccf[st:end], spectrum_ccf[st:end])
+            #     perr= np.sqrt(np.diag(pcov))
+            #     order_rvs_ccf.append(popt[0])
+            #     order_fwhm_ccf.append(popt[1])
+            # except: 
+            #     order_rvs_ccf.append(1.)
+            #     order_fwhm_ccf.append(1.)
+
+            ## end of section
             '''
             plt.figure('%s'%order)
             plt.plot(velocities, profile)
@@ -571,13 +621,19 @@ for month in months:
                         inp = input('Enter to continue...')
 
             ccf_profiles.append(ccf_profile)
-
+            
+            plt.ylim(-0.75, 0.15)
+            # plt.savefig('all_orders/ACIDprof_orders%s'%frame)
             
             # print(order_profiles)
             # print(ccf_profiles)
 
         # print(len(ccf_profiles))
         # print(len(order_profiles))
+        berv.append(ccf[0].header['ESO DRS BERV'])
+        mjds.append(mjd)
+        all_order_rvs.append(order_rvs)
+        all_order_rvs_ccf.append(order_rvs_ccf)
 
         if frame == framelist[0]:
             plt.figure('LSD')
@@ -614,17 +670,32 @@ for month in months:
 
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
-        velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, phi, K, e, omega, v0)
+        velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, ccf_phi, K, e, omega, v0)
         velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
+        all_profiles = list(all_profiles)
+        all_profile_errors = list(all_profile_errors)
+        all_ccf_profiles = list(all_ccf_profiles)
+        ccf_phases = list(ccf_phases)
+        all_phases = list(all_phases)
         all_profiles.append(spectrum)
         all_profile_errors.append(errors)
         all_ccf_profiles.append(spectrum_ccf/np.mean(spectrum_ccf[:5])-1)
         all_phases.append(phi)
+        ccf_phases.append(ccf_phi)
+        all_results.append(result)
 
-        plt.figure('all_frames')
+        fig = plt.figure('all frames')
+        plt.xlabel('Velocity (km/s)')
+        plt.ylabel('Normalised Flux')
+        plt.title('ACID Profiles')
         plt.plot(velocities, spectrum)
-        plt.plot(velocities, [0]*len(spectrum))
+        plt.figure('not all frames')
+        # plt.plot(velocities, [0]*len(spectrum))
+        # print(file[0].header['ESO DRS BJD'])
+        # print(ccf[0].header['ESO DRS BJD'])
+        bjds.append(ccf[0].header['ESO DRS BJD'])
         phases1.append(phi)
+        
         #plt.plot(velocities, spectrum)
         #plt.show()
         #spectrum, errors = continuumfit(spectrum, velocities, errors, 1) # <--------------- this is continuum fit
@@ -655,13 +726,20 @@ for month in months:
     #velos.append(velos1)
     #break
 
+   
     # month_profiles.append([velocities, spectrum])
     # month_ccfs.append([velocities_ccf, spectrum_ccf])
     frame = 'master_out'
+    count = 0
     if len(out_ccfs)>1:
-        plt.figure('out ccfs')
-        for ccf in out_ccfs:
-            plt.plot(velocities, ccf)
+        plt.figure('all ccfs')
+        for ccf in all_ccf_profiles:
+            plt.plot(velocities_ccf, ccf, label = 'Frame %s'%count)
+            count+=1
+        plt.xlabel('Velocity (km/s)')
+        plt.ylabel('Normalised Flux')
+        plt.title('CCF Profiles')
+        plt.savefig('CCFprofs.png')
         plt.show()
         master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors ,ccf, 'yes', velocities)
     else:
@@ -675,10 +753,21 @@ for month in months:
 
     idx = phases.argsort()
     phases = phases[idx]
-    all_ccfs = all_ccfs[idx]
     results = results[idx]
     phases = list(phases)
     results = list(results)
+
+    ccf_phases = np.array(ccf_phases)
+    header_rvs = np.array(header_rvs)
+    idc = ccf_phases.argsort()
+    ccf_phases = ccf_phases[idc]
+    all_ccf_profiles = np.array(all_ccf_profiles)
+    all_ccf_profiles = all_ccf_profiles[idc]
+    header_rvs = header_rvs[idc]
+
+    print(ccf_phases)
+    print(phases)
+    inp = input('Above should be the same')
 
     #write in data
     hdu=fits.HDUList()
@@ -688,6 +777,9 @@ for month in months:
     hdu.append(fits.PrimaryHDU(data=master_out))
     phases.append('out')
     results.append('master_out')
+    bjds.append('out')
+    mjds.append('out')
+    berv.append('out')
 
     #write in header
     for p in range(len(phases)):
@@ -700,6 +792,9 @@ for month in months:
         hdr['K']=K
         hdr['V0']=v0
         hdr['PHASE']=phase
+        hdr['bjd']=bjds[p]
+        hdr['mjd']=mjds[p]
+        hdr['berv']=berv[p]
         hdr['RESULT']=results[p]
         hdu[p].header=hdr
 
@@ -771,17 +866,29 @@ for month in months:
 # plt.show()
 all_phases = np.array(all_phases)
 all_profiles = np.array(all_profiles)
+all_results = np.array(all_results)
 idx = all_phases.argsort()
 all_phases = all_phases[idx]
 all_profiles = all_profiles[idx]
 all_phases = list(all_phases)
+all_results = all_results[idx]
 
+ccf_phases = np.array(ccf_phases)
+header_rvs = np.array(header_rvs)
+idc = ccf_phases.argsort()
+ccf_phases = ccf_phases[idc]
+all_ccf_profiles = np.array(all_ccf_profiles)
+all_ccf_profiles = all_ccf_profiles[idc]
+header_rvs = header_rvs[idc]
 count = 0
 rv_phases = []
+rv_results = []
+ccf_rv_results = []
 rvs = []
+fwhm = []
 plt.figure()
-st = 17
-end = -18
+st = 15
+end = -15
 # st = 0
 # end = len(velocities)
 # cmap = plt.colormaps('Blues')'
@@ -792,98 +899,229 @@ for y in all_profiles:
     # plt.figure()
     # plt.plot(velocities, skewnormal(velocities, 1, 1, 1, 1, 1))
     # plt.show()
-    sig = all_profile_errors[count]
-    popt1, pcov1 = curve_fit(skewnormal, velocities[st:end], y[st:end]+1, sigma = sig[st:end], absolute_sigma=True)
-    perr1= np.sqrt(np.diag(pcov1))
-    beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
-    profilemean1=popt1[2]+popt1[1]*beta1
-    beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
-    profilemean_error1=perr1[2]+perr1[1]*beta_error1
-    plt.plot(velocities[st:end], y[st:end]+1-skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), label = '%s'%all_phases[count], color = colour[count])
-    # plt.errorbar(velocities[st:end], y[st:end]+1, yerr = sig[st:end], color ='k')
-    # plt.plot(velocities[st:end], skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), 'r')
-    rvs.append([profilemean1, profilemean_error1])
-    rv_phases.append(all_phases[count])
-
-    # popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
-    # perr= np.sqrt(np.diag(pcov))
-    # plt.plot(velocities[st:end], y[st:end], 'k')
-    # plt.plot(velocities[st:end], gauss(velocities[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
-    # rvs.append([popt[0], perr[0]])
+    # sig = all_profile_errors[count]
+    # popt1, pcov1 = curve_fit(skewnormal, velocities[st:end], y[st:end]+1, sigma = sig[st:end], absolute_sigma=True)
+    # perr1= np.sqrt(np.diag(pcov1))
+    # beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
+    # profilemean1=popt1[2]+popt1[1]*beta1
+    # beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
+    # profilemean_error1=perr1[2]+perr1[1]*beta_error1
+    # plt.plot(velocities[st:end], y[st:end]+1-skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), label = '%s'%all_phases[count], color = colour[count])
+    # # plt.errorbar(velocities[st:end], y[st:end]+1, yerr = sig[st:end], color ='k')
+    # # plt.plot(velocities[st:end], skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), 'r')
+    # rvs.append([profilemean1, profilemean_error1])
     # rv_phases.append(all_phases[count])
+
+    popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
+    perr= np.sqrt(np.diag(pcov))
+    plt.plot(velocities[st:end], y[st:end], 'k')
+    plt.plot(velocities[st:end], gauss(velocities[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
+    rvs.append([popt[0], perr[0]])
+    fwhm.append(2.355*popt[1])
+    rv_phases.append(all_phases[count])
+    rv_results.append(all_results[count])
     count += 1
 #plt.legend()
 plt.show()
 
+rv_results = np.array(rv_results)
+
 count = 0
 rv_phases_ccf = []
 ccf_rvs = []
+ccf_fwhm = []
 plt.figure()
 st = 0
 end = len(velocities_ccf)
+st = 15
+end = -15
 for y in all_ccf_profiles:
     # if (-t/(2*P)+0.001)<phases[count]<0.0155:
-    popt1, pcov1 = curve_fit(skewnormal, velocities_ccf, y)
-    perr1= np.sqrt(np.diag(pcov1))
-    beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
-    profilemean1=popt1[2]+popt1[1]*beta1
-    beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
-    profilemean_error1=perr1[2]+perr1[1]*beta_error1
-    ccf_rvs.append([profilemean1, profilemean_error1])
-    rv_phases_ccf.append(all_phases[count])
-
-    # popt, pcov = curve_fit(gauss, velocities_ccf, y+1)
-    # plt.plot(velocities_ccf, y+1, 'k')
-    # plt.plot(velocities_ccf, gauss(velocities_ccf, popt[0], popt[1], popt[2], popt[3]), 'r')
-    # perr= np.sqrt(np.diag(pcov))
-    # ccf_rvs.append([popt[0], perr[0]])
+    # popt1, pcov1 = curve_fit(skewnormal, velocities_ccf, y)
+    # perr1= np.sqrt(np.diag(pcov1))
+    # beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
+    # profilemean1=popt1[2]+popt1[1]*beta1
+    # beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
+    # profilemean_error1=perr1[2]+perr1[1]*beta_error1
+    # ccf_rvs.append([profilemean1, profilemean_error1])
     # rv_phases_ccf.append(all_phases[count])
+
+    popt, pcov = curve_fit(gauss, velocities_ccf[st:end], y[st:end]+1)
+    plt.plot(velocities_ccf[st:end], y[st:end]+1, 'k')
+    plt.plot(velocities_ccf[st:end], gauss(velocities_ccf[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
+    perr= np.sqrt(np.diag(pcov))
+    ccf_rvs.append([popt[0], perr[0]])
+    ccf_fwhm.append(2.355*popt[1])
+    rv_phases_ccf.append(ccf_phases[count])
     count += 1
 plt.show()
 
+# plt.figure('LSD and CCF RV Curve', figsize = [9, 7])
+# plt.title('LSD and CCF RV Curve')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s) (RV - median(RV))')
+# plt.errorbar(rv_phases_ccf, ccf_rvs[:,0] - np.median(ccf_rvs[:,0]), yerr = ccf_rvs[:,1], fmt='o', label = 'CCFs')
+# #plt.errorbar(rv_phases_ccf, header_rvs - np.median(header_rvs), yerr = ccf_rvs[:,1], fmt='o', label = 'CCFs (header)')
+# plt.errorbar(rv_phases, rvs[:,0]-np.median(rvs[:,0]) , yerr = rvs[:,1], fmt='o', label = 'ACID')
+# plt.legend()
+# plt.savefig('ALL_LSDCCF_rvs.png')
+
+# plt.figure('LSD and CCF RV Curve', figsize = [9, 7])
+# plt.title('LSD and CCF RV Curve')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s) (RV - median(RV))')
+# plt.scatter(rv_phases_ccf, ccf_rvs[:] - np.median(ccf_rvs[:]), label = 'CCFs')
+# #plt.errorbar(rv_phases_ccf, header_rvs - np.median(header_rvs), yerr = ccf_rvs[:,1], fmt='o', label = 'CCFs (header)')
+# plt.scatter(rv_phases, rvs[:]-np.median(rvs[:]), label = 'ACID')
+# plt.legend()
+# plt.savefig('ALL_LSDCCF_rvs.png')
+
+# plt.figure('CCFs - August 2007')
+# plt.title('CCFs - August 2007')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s)')
+# plt.errorbar(rv_phases_ccf[:(len(rvs)-len(filelist))], ccf_rvs[:(len(rvs)-len(filelist)),0], yerr = ccf_rvs[:(len(rvs)-len(filelist)),1], fmt='o', label = 'CCFs')
+# plt.legend()
+# # plt.show()
+
+# plt.figure('LSDs - August 2007')
+# plt.title('LSDs - August 2007')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s)')
+# plt.errorbar(rv_phases[:(len(rvs)-len(filelist))], rvs[:(len(rvs)-len(filelist)),0], yerr = rvs[:(len(rvs)-len(filelist)),1], fmt='o', label = 'LSD')
+# plt.legend()
+# # plt.show()
+
+# plt.figure('CCFs - July 2007')
+# plt.title('CCFs - July 2007')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s)')
+# plt.errorbar(rv_phases_ccf[(len(rvs)-len(filelist)):], ccf_rvs[(len(rvs)-len(filelist)):,0], yerr = ccf_rvs[(len(rvs)-len(filelist)):,1], fmt='o', label = 'CCFs')
+# plt.legend()
+# # plt.show()
+
+# plt.figure('LSDs - July 2007')
+# plt.title('LSDs - July 2007')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s)')
+# plt.errorbar(rv_phases[(len(rvs)-len(filelist)):], rvs[(len(rvs)-len(filelist)):,0], yerr = rvs[(len(rvs)-len(filelist)):,1], fmt='o', label = 'LSD')
+# plt.legend()
+# plt.show()
+
+# plt.figure('ACID and CCF FWHM', figsize = [9, 7])
+# #plt.title('ACID and CCF FWHM')
+# plt.ylabel('FWHM - median(FWHM)')
+# plt.xlabel('Local RV (km/s)')
+# plt.scatter(rvs[:, 0]-np.median(rvs[:, 0]), fwhm - np.median(fwhm), label = 'ACID')
+# plt.scatter(ccf_rvs[:, 0]-np.median(ccf_rvs[:, 0]), ccf_fwhm - np.median(ccf_fwhm), label = 'CCF')
+# plt.legend()
+# plt.savefig('Jul07_LSDCCF_fwhm.png')
+
+# plt.figure('ACID and CCF FWHM vs phase', figsize = [9, 7])
+# #plt.title('ACID and CCF FWHM')
+# plt.ylabel('FWHM - median(FWHM)')
+# plt.xlabel('Phase')
+# plt.scatter(rv_phases, fwhm - np.median(fwhm), label = 'ACID')
+# plt.scatter(rv_phases_ccf, ccf_fwhm - np.median(ccf_fwhm), label = 'CCF')
+# plt.legend()
+# plt.savefig('Jul07_LSDCCF_fwhmvsphase.png')
+
+# plt.figure('ACID FWHM', figsize = [9, 7])
+# #plt.title('ACID and CCF FWHM')
+# plt.ylabel('FWHM')
+# plt.xlabel('Local RV (km/s)')
+# plt.scatter(rvs[:, 0], fwhm, label = 'ACID')
+# plt.legend()
+# plt.savefig('Jul07_LSD_fwhm.png')
+
+# plt.figure('ACID FWHM vs phase', figsize = [9, 7])
+# #plt.title('ACID and CCF FWHM')
+# plt.ylabel('FWHM')
+# plt.xlabel('Phase')
+# plt.scatter(rv_phases, fwhm, label = 'ACID')
+# plt.legend()
+# plt.savefig('Jul07_LSD_fwhmvsphase.png')
+
+# plt.figure('CCF FWHM', figsize = [9, 7])
+# #plt.title('ACID and CCF FWHM')
+# plt.ylabel('FWHM')
+# plt.xlabel('Local RV (km/s)')
+# plt.scatter(ccf_rvs[:, 0], ccf_fwhm, label = 'CCF')
+# plt.legend()
+# plt.savefig('Jul07_CCF_fwhm.png')
+
+# plt.figure('ACID FWHM vs phase', figsize = [9, 7])
+# #plt.title('ACID and CCF FWHM')
+# plt.ylabel('FWHM')
+# plt.xlabel('Phase')
+# plt.scatter(rv_phases_ccf, ccf_fwhm, label = 'CCF')
+# plt.legend()
+# plt.savefig('Jul07_CCF_fwhmvsphase.png')
 rvs = np.array(rvs)
+rvs = rvs[:, 0]
 ccf_rvs = np.array(ccf_rvs)
+ccf_rvs = ccf_rvs[:, 0]
+fwhm = np.array(fwhm)
+ccf_fwhm = np.array(ccf_fwhm)
+rv_phases = np.array(rv_phases)
+rv_phases_ccf = np.array(rv_phases_ccf)
 
-plt.figure('LSD and CCFs - Aug and Jul 07')
-plt.title('LSD and CCFs - Aug and Jul 07')
-plt.xlabel('Phase')
-plt.ylabel('Local RV (km/s) (RV - mean(RV))')
-plt.errorbar(rv_phases_ccf, ccf_rvs[:,0] - np.mean(ccf_rvs[:,0]), yerr = ccf_rvs[:,1], fmt='o', label = 'CCFs')
-plt.errorbar(rv_phases, rvs[:,0]-np.mean(rvs[:,0]) , yerr = rvs[:,1], fmt='o', label = 'LSD')
+idx_in = tuple([rv_results == 'in'])
+idx_out = tuple([rv_results == 'out'])
+
+plt.figure('ACID and CCF Delta plot', figsize = [9, 7])
+#plt.title('ACID and CCF FWHM')
+plt.ylabel('ACID - CCF FWHM')
+plt.xlabel('ACID - CCF RVs')
+plt.scatter(rvs[idx_out]-ccf_rvs[idx_out], fwhm[idx_out]-ccf_fwhm[idx_out], label = 'out', color = 'g', alpha = 0.75)
+plt.scatter(rvs[idx_in]-ccf_rvs[idx_in], fwhm[idx_in]-ccf_fwhm[idx_in], label = 'in', color = 'b', alpha = 0.75)
 plt.legend()
+plt.savefig('Sep_rr_DELTAplot.png')
 
-plt.figure('CCFs - August 2007')
-plt.title('CCFs - August 2007')
-plt.xlabel('Phase')
-plt.ylabel('Local RV (km/s)')
-plt.errorbar(rv_phases_ccf[:(len(rvs)-len(filelist))], ccf_rvs[:(len(rvs)-len(filelist)),0], yerr = ccf_rvs[:(len(rvs)-len(filelist)),1], fmt='o', label = 'CCFs')
+plt.figure('ACID and CCF (-median)', figsize = [9, 7])
+#plt.title('ACID and CCF FWHM')
+plt.ylabel('FWHM - median(FWHM)')
+plt.xlabel('RV - median(RV)')
+plt.scatter(ccf_rvs[idx_out]-np.median(ccf_rvs), ccf_fwhm[idx_out]-np.median(ccf_fwhm), label = 'CCF out', color = 'c', alpha = 1)
+plt.scatter(ccf_rvs[idx_in]-np.median(ccf_rvs), ccf_fwhm[idx_in]-np.median(ccf_fwhm), label = 'CCF in', color = 'c', alpha = 0.25)
+plt.scatter(rvs[idx_out]-np.median(rvs), fwhm[idx_out]-np.median(fwhm), label = 'ACID out', color = 'm')
+plt.scatter(rvs[idx_in]-np.median(rvs), fwhm[idx_in]-np.median(fwhm), label = 'ACID in', color = 'm', alpha = 0.25)
 plt.legend()
-# plt.show()
+plt.savefig('Sep_rr_Medianplot.png')
 
-plt.figure('LSDs - August 2007')
-plt.title('LSDs - August 2007')
+plt.figure('ACID and CCF FWHM (-median)', figsize = [9, 7])
+#plt.title('ACID and CCF FWHM')
+plt.ylabel('FWHM - median(FWHM)')
 plt.xlabel('Phase')
-plt.ylabel('Local RV (km/s)')
-plt.errorbar(rv_phases[:(len(rvs)-len(filelist))], rvs[:(len(rvs)-len(filelist)),0], yerr = rvs[:(len(rvs)-len(filelist)),1], fmt='o', label = 'LSD')
+plt.scatter(rv_phases[idx_out], ccf_fwhm[idx_out]-np.median(ccf_fwhm), label = 'CCF out', color = 'c', alpha = 1)
+plt.scatter(rv_phases[idx_in], ccf_fwhm[idx_in]-np.median(ccf_fwhm), label = 'CCF in', color = 'c', alpha = 0.25)
+plt.scatter(rv_phases[idx_out], fwhm[idx_out]-np.median(fwhm), label = 'ACID out', color = 'm')
+plt.scatter(rv_phases[idx_in], fwhm[idx_in]-np.median(fwhm), label = 'ACID in', color = 'm', alpha = 0.25)
 plt.legend()
-# plt.show()
+plt.savefig('Sep_rr_FWHMcurve.png')
 
-plt.figure('CCFs - July 2007')
-plt.title('CCFs - July 2007')
+plt.figure('ACID and CCF RV (-median)', figsize = [9, 7])
+plt.ylabel('RV - median(RV)')
 plt.xlabel('Phase')
-plt.ylabel('Local RV (km/s)')
-plt.errorbar(rv_phases_ccf[(len(rvs)-len(filelist)):], ccf_rvs[(len(rvs)-len(filelist)):,0], yerr = ccf_rvs[(len(rvs)-len(filelist)):,1], fmt='o', label = 'CCFs')
+plt.scatter(rv_phases[idx_out], ccf_rvs[idx_out]-np.median(ccf_rvs), label = 'CCF out', color = 'c', alpha = 1)
+plt.scatter(rv_phases[idx_in], ccf_rvs[idx_in]-np.median(ccf_rvs), label = 'CCF in', color = 'c', alpha = 0.25)
+plt.scatter(rv_phases[idx_out], rvs[idx_out]-np.median(rvs), label = 'ACID out', color = 'm')
+plt.scatter(rv_phases[idx_in], rvs[idx_in]-np.median(rvs), label = 'ACID in', color = 'm', alpha = 0.25)
 plt.legend()
-# plt.show()
+plt.savefig('Sep_rr_RVcurve.png')
 
-plt.figure('LSDs - July 2007')
-plt.title('LSDs - July 2007')
-plt.xlabel('Phase')
-plt.ylabel('Local RV (km/s)')
-plt.errorbar(rv_phases[(len(rvs)-len(filelist)):], rvs[(len(rvs)-len(filelist)):,0], yerr = rvs[(len(rvs)-len(filelist)):,1], fmt='o', label = 'LSD')
-plt.legend()
-plt.show()
+# plt.scatter(rv_phases[idx_in], rvs[idx_in]-ccf_rvs[idx_in], label = 'in', color = 'b', alpha = 0.75)
+# plt.scatter(rv_phases[idx_out], rvs[idx_out]-ccf_rvs[idx_out], label = 'out', color = 'g', alpha = 0.75)
 
+# plt.scatter(ccf_rvs[idx_in]-np.median(ccf_rvs), ccf_fwhm[idx_in]-np.median(ccf_fwhm), label = 'CCF in', color = 'b', alpha = 0.5)
+# plt.scatter(rvs[idx_in]-np.median(rvs), fwhm[idx_in]-np.median(fwhm), label = 'ACID in', color = 'r')
+# plt.scatter(ccf_rvs[idx_out]-np.median(ccf_rvs), ccf_fwhm[idx_out]-np.median(ccf_fwhm), label = 'CCF out', color = 'c', alpha = 0.5)
+# plt.scatter(rvs[idx_out]-np.median(rvs), fwhm[idx_out]-np.median(fwhm), label = 'ACID out', color = 'm')
+
+# plt.scatter(rv_phases[idx_in], ccf_fwhm[idx_in]-np.median(ccf_fwhm), label = 'CCF in', color = 'b', alpha = 0.5)
+# plt.scatter(rv_phases[idx_in], fwhm[idx_in]-np.median(fwhm), label = 'ACID in', color = 'r')
+# plt.scatter(rv_phases[idx_out], ccf_fwhm[idx_out]-np.median(ccf_fwhm), label = 'CCF out', color = 'c', alpha = 0.5)
+# plt.scatter(rv_phases[idx_out], fwhm[idx_out]-np.median(fwhm), label = 'ACID out', color = 'm')
 
 # #plt.close('all')
 # '''

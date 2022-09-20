@@ -56,10 +56,10 @@ path = '/home/lsd/Documents/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 #path = '%s%s_master_out_LSD_profile.fits'%(save_path, month)
 
-months = ['August2007', 
-          'July2007',
-          'July2006',
-          'Sep2006'
+months = [#'August2007', 
+          'July2007'#,
+          #'July2006',
+          #'Sep2006'
           ]
 
 all_resi=[]
@@ -179,13 +179,13 @@ for month in months:
 
    # K = -2.277 #km/s - Boisse et al, 2009
     #velocities = velocities - K  ### Adjusting doppler reflex ###
-    # residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
-    plt.figure()
-    for out_prof in out_profiles:
-        residual_profiles, residual_profile_errors = residualccfs(out_profiles, out_profile_error, out_prof, master_out_errors, velocities)
-        # for resi_prof in residual_profiles:
-        plt.plot(np.mean(residual_profiles, axis = 1))
-    plt.show()
+    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
+    # plt.figure()
+    # for out_prof in out_profiles:
+    #     residual_profiles, residual_profile_errors = residualccfs(out_profiles, out_profile_error, out_prof, master_out_errors, velocities)
+    #     # for resi_prof in residual_profiles:
+    #     plt.plot(np.mean(residual_profiles, axis = 1))
+    # plt.show()
     # residual_ccfs, residual_errors = residualccfs(in_ccfs, in_ccfs_errors, master_out_ccf, master_out_errors_ccf, ccf_velocities)
 
     '''
@@ -252,7 +252,7 @@ for month in months:
         hdr['NIGHT']='%s'%month
         hdr['K']=-2.277
         hdr['PHASE']=phase
-        hdu[p].header=hdr
+        # hdu[p].header=hdr
         print(phase)
         print(results[p])
         
