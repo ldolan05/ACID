@@ -10,25 +10,25 @@ from math import log10, floor
 
 file_type = 'e2ds'
 
-# run_name = input('Input nickname for this version of code (for saving figures): ')
-# linelist = input('Enter file path to line list (VALD format):')
-# directory = input('Enter path to directory containing data files:')
-# fig_ans = input('Save Figures? (y/n):')
-# fig_path = input('Enter file path for directory to save figures and result files:')
-# if fig_path == '':
-#     fig_path = '/Users/lucydolan/Documents/ACID/ACID_RESULTS/'
+run_name = input('Input nickname for this version of code (for saving figures): ')
+linelist = input('Enter file path to line list (VALD format):')
+directory = input('Enter path to directory containing data files:')
+fig_ans = input('Save Figures? (y/n):')
+fig_path = input('Enter file path for directory to save figures and result files:')
+if fig_path == '':
+    fig_path = '/Users/lucydolan/Documents/ACID/ACID_RESULTS/'
 
-# if linelist == '':
-#     linelist = '/home/lsd/Documents/fulllinelist0001.txt'
-# if directory == '':
-#     print('default directory set')
-#     directory = '/Users/lucydolan/Starbase/HD189733/August2007/*/*/*/'
+if linelist == '':
+    linelist = '/home/lsd/Documents/fulllinelist0001.txt'
+if directory == '':
+    print('default directory set')
+    directory = '/Users/lucydolan/Starbase/HD189733/August2007/*/*/*/'
 
-run_name = 'Sun'
-linelist = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/VALD_files/Sun.txt'
-directory = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/data/Sun/data/'
-fig_ans = 'y'
-fig_path = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/ACID/'
+# run_name = 'Sun'
+# linelist = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/VALD_files/Sun.txt'
+# directory = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/data/Sun/data/'
+# fig_ans = 'y'
+# fig_path = '/Users/lucydolan/Documents/ACID/AM_LSD/MM-LSD/ACID/'
 
 def round_sig(x, sig):
     return round(x, sig-int(floor(log10(abs(x))))-1)

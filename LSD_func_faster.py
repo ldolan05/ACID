@@ -4,6 +4,7 @@ from astropy.io import  fits
 import glob
 import matplotlib.pyplot as plt
 import random
+import itertools
 
 def LSD(wavelengths, flux_obs, rms, linelist, sn):
 
@@ -33,12 +34,27 @@ def LSD(wavelengths, flux_obs, rms, linelist, sn):
     velocities=np.linspace(vmin,vmax,int(no_pix))
     deltav = velocities[1]-velocities[0]
 
-
     ## reading in line depths from linelist (reads in for all wavelengths)
+    
+    ## from MM-LSD
+    counter = 0
+    for line in reversed(open(linelist).readlines()):
+        if len(line.split(",")) > 10:
+            break
+        counter += 1
+    num_lines = sum(1 for line in open(linelist))
+    last_line = num_lines - counter + 3
+
+    with open(linelist) as f_in:
+        x = np.genfromtxt(itertools.islice(f_in, 3, last_line, 4), dtype=str,delimiter=',')
+
+    wavelengths_expected1 = x[:,1].astype(float)
+    depths_expected1 = x[:,9].astype(float)
+
     # linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
-    linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, skip_footer=100, delimiter='\t', usecols=(1,9))
-    wavelengths_expected1 =np.array(linelist_expected[:,0])
-    depths_expected1 = np.array(linelist_expected[:,1])
+    # # linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, skip_footer=100, delimiter='\t', usecols=(1,9))
+    # wavelengths_expected1 =np.array(linelist_expected[:,0])
+    # depths_expected1 = np.array(linelist_expected[:,1])
 
     ## filters out unneccessary line depths
     wavelength_min = np.min(wavelengths)
@@ -200,7 +216,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
 
     elif file_type == 'e2ds':
         hdu=fits.open('%s'%file)
-        spec=hdu[1].data
+        spec=hdu[0].data
         header=hdu[0].header
         # print(header)
         # print(len(hdu))
