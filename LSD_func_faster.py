@@ -46,7 +46,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     # print(vmin, vmax, no_pix)
 
     velocities=np.linspace(vmin,vmax,int(no_pix))
-    print(velocities[1]-velocities[0])
+    # print(velocities[1]-velocities[0])
     deltav = velocities[1]-velocities[0]
     #print(vgrid[1]-vgrid[0])
     #print('Matrix S has been set up')
@@ -55,7 +55,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
     wavelengths_expected1 =np.array(linelist_expected[:,0])
     depths_expected1 = np.array(linelist_expected[:,1])
-    print(len(depths_expected1))
+    # print(len(depths_expected1))
 
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
@@ -82,7 +82,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     ## conversion for depths from SME
     #depths_expected = -np.log(1-depths_expected1)
 
-    print(len(depths_expected))
+    # print(len(depths_expected))
 
     blankwaves=wavelengths
     R_matrix=flux_obs
@@ -102,7 +102,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                 # print(np.max(velocities)*wavelengths_expected[i]/2.99792458e5)
                 if rms[j]<1:no_line.append(i)
                 vel=2.99792458e5*diff/wavelengths_expected[i]
-                print(vel)
+                # print(vel)
                 for k in range(0, len(velocities)):
                     x=(velocities[k]-vel)/deltav
                     if -1.<x and x<0.:
@@ -115,56 +115,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                 pass
 
     no_line = list(dict.fromkeys(no_line))
-    ### FITTING CONTINUUM OF SPECTRUM ###
-    if adjust_continuum == 'True':
-        ## Identifies the continuum points as those corresponding to a row of zeros in the alpha matrix (a row of zeros implies zero contribution from all lines in the line list)
-        continuum_matrix = []
-        continuum_waves = []
-        for j in range(0, len(blankwaves)):
-            row = alpha[j, :]
-            row = np.array(row)
-            edge_size = int(np.floor(len(row)/8))
-            #print(edge_size)
-            row = row[edge_size:len(row)-edge_size]
-            weight = sum(row)
-            #print(row)
-            if weight == 0:
-                continuum_waves.append(blankwaves[j])
-                continuum_matrix.append(R_matrix[j]+1)
-
-        if len(continuum_waves)<3:R_matrix = R_matrix
-        else:
-            ## Plotting the continuum points on top of original spectrum - highlights any lines missing from linelist ##
-
-            plt.figure()
-            plt.plot(blankwaves, R_matrix+1, linewidth = 0.25)
-            plt.scatter(continuum_waves, continuum_matrix, color = 'k', s=8)
-            #plotdepths = [0.5]*len(wavelengths_expected)
-            #plt.vlines(wavelengths_expected, plotdepths, np.max(continuum_matrix), label = 'line list', alpha = 0.5, linewidth = 0.5)
-            #plt.show()
-
-
-            ## Fits a second order(although usually defaults to first order) polynomial to continuum points and divides original spectrum by the fit.
-            coeffs=np.polyfit(continuum_waves, continuum_matrix, poly_ord)
-            poly = np.poly1d(coeffs)
-            fit = poly(blankwaves)
-            R_matrix_1 = R_matrix+1
-            R_matrix = (R_matrix_1/fit)-1
-            rms = rms/fit
-
-            ## Plotting the original spectrum with the fit.
-
-            plt.figure()
-            plt.plot(blankwaves, R_matrix_1)
-            plt.plot(blankwaves, fit)
-            #plt.show()
-
-    else:
-        continuum_waves = []
-        continuum_matrix = []
-
-            ### Continuum fitting done - feeds corrected R_matrix and errors (denoted rms, but not actually the rms) back into LSD.
-
+    
     id_matrix=np.identity(len(flux_obs))
     S_matrix=(1/rms)*id_matrix
 
