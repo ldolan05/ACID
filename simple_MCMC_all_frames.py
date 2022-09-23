@@ -60,13 +60,18 @@ def read_in_frames(order, filelist):
         if sn>max_sn:
             max_sn = sn
             reference_frame=fluxes
+            ref_wave = wavelengths
 
     frames = np.array(frames)
     errors = np.array(errors)
 
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     for n in range(len(frames)):
-        div_frame = frames[n]/reference_frame
+        # print(ref_wave)
+        # print(frame_wavelengths[n])
+        f2 = interp1d(frame_wavelengths[n], frames[n], kind='linear', bounds_error=False, fill_value='extrapolate')
+        frame = f2(ref_wave)
+        div_frame = frame/reference_frame
 
         ### creating windows to fit polynomial to
         binned = np.zeros(int(len(div_frame)/2))
@@ -74,13 +79,31 @@ def read_in_frames(order, filelist):
         for i in range(0, len(div_frame)-1, 2):
             pos = int(i/2)
             binned[pos] = (div_frame[i]+div_frame[i+1])/2
-            binned_waves[pos] = (wavelengths[i]+wavelengths[i+1])/2
+            binned_waves[pos] = (ref_wave[i]+ref_wave[i+1])/2
 
         ### fitting polynomial to div_frame
         coeffs=np.polyfit(binned_waves, binned, 2)
         poly = np.poly1d(coeffs)
-        fit = poly(wavelengths)
-        frames[n] = frames[n]/fit
+        fit = poly(ref_wave)
+        frame_wavelengths[n] = ref_wave
+
+        if len(fit[fit==0])!=0:
+            print('Zero in the fit')
+
+            plt.figure()
+            plt.title('Spectrum')
+            plt.plot(frame_wavelengths[n], frame)
+
+            plt.figure()
+            plt.title('Div_frame')
+            plt.plot(frame_wavelengths[n], div_frame)
+
+            plt.figure()
+            plt.title('Fit')
+            plt.plot(frame_wavelengths[n], div_frame)
+            plt.show()
+
+        frames[n] = frame/fit
         errors[n] = errors[n]/fit
 
     return frame_wavelengths, frames, errors, sns

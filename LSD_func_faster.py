@@ -249,9 +249,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             wave = hdu[5].data*(1.+brv/2.99792458e5)
 
         try: 
-            blaze_file = glob.glob('%s**blaze_A*.fits'%(directory))
-            blaze_file = blaze_file[0]
-            blaze =fits.open('%s'%blaze_file)
+            blaze_file = hdu[0].header['ESO DRS BLAZE FILE']
+            #blaze_file = blaze_file[0]
+            blaze =fits.open('%s%s'%(directory.replace('/*', ''), blaze_file))
             blaze_func = blaze[0].data
             spec = spec/blaze_func
             flux_error = flux_error/blaze_func
