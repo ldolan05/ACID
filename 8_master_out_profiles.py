@@ -30,7 +30,7 @@ def skewnormal(x, scaleheight, omega, gamma, alpha, zeroorder):
  
 def findfiles(directory, file_type):
 
-    filelist_final = glob.glob('%s*_%s*.fits'%(directory, run_name))
+    filelist_final = glob.glob('%s*_%s.fits'%(directory, run_name))
 
     '''
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
@@ -439,9 +439,9 @@ save_path = '/home/lsd/Documents/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 
 months = [#'August2007',
-          #'July2007',
+          'July2007',
           #'July2006',
-          'Sep2006'
+          #'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -499,6 +499,7 @@ for month in months:
     #befores = []
     #afters = []
     matched=[]
+    rv_drift = []
     lengths.append(len(filelist))
     framelist = np.arange(0, len(filelist))
     # framelist = framelist[:2]
@@ -1108,7 +1109,16 @@ plt.scatter(rv_phases[idx_in], ccf_rvs[idx_in]-np.median(ccf_rvs), label = 'CCF 
 plt.scatter(rv_phases[idx_out], rvs[idx_out]-np.median(rvs), label = 'ACID out', color = 'm')
 plt.scatter(rv_phases[idx_in], rvs[idx_in]-np.median(rvs), label = 'ACID in', color = 'm', alpha = 0.25)
 plt.legend()
-plt.savefig('Sep_rr_RVcurve.png')
+plt.savefig('Jul_rr_RVcurve.png')
+
+plt.figure('ACID and CCF RV (-median)', figsize = [9, 7])
+plt.ylabel('RV - median(RV)')
+plt.xlabel('Phase')
+plt.scatter(rv_phases, ccf_rvs-np.median(ccf_rvs), label = 'CCF', color = 'c', alpha = 1)
+plt.scatter(rv_phases, rvs-np.median(rvs), label = 'ACID NEW', color = 'm')
+plt.scatter(rv_phases, rvs2-np.median(rvs2), label = 'ACID NEW_moremask', color = 'k')
+plt.legend()
+plt.savefig('Jul_rr_RVcurve.png')
 
 # plt.scatter(rv_phases[idx_in], rvs[idx_in]-ccf_rvs[idx_in], label = 'in', color = 'b', alpha = 0.75)
 # plt.scatter(rv_phases[idx_out], rvs[idx_out]-ccf_rvs[idx_out], label = 'out', color = 'g', alpha = 0.75)

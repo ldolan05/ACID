@@ -1029,7 +1029,7 @@ for month in months:
             plt.plot(velocities, profile2, label = 'ACID (same masking as MCMC)')
             
             if order>8 and order<70:
-                plt.plot(velocities, mcmc_profiles[order, 0], label = 'MCMC profile (same for all frames)')
+                plt.plot(velocities, mcmc_profiles[order-8, 0], label = 'MCMC profile (same for all frames)')
 
             plt.legend()
             plt.xlabel('Velocities (km/s)')
