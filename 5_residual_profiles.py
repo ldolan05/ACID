@@ -14,6 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from astropy.io import fits
+from matplotlib.pyplot import cm
 
 #def combineccfs(spectra):
    # spectrum[:] = np.sum(spectra[:])/len(spectra[:])
@@ -79,8 +80,45 @@ for month in months:
     all_profiles = fits.open(file)
 
     profile_spec = all_profiles[0].data[0]
-    velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
     velocities = np.linspace(-15,15,len(profile_spec))
+
+
+    count = 0
+    rv_phases = []
+    rv_results = []
+    ccf_rv_results = []
+    rvs = []
+    fwhm = []
+    plt.figure()
+    st = 15
+    end = -15
+    # st = 0
+    # end = len(velocities)
+    # cmap = plt.colormaps('Blues')'
+
+    colour = cm.Blues(np.linspace(0, 1, len(all_profiles)))
+    plt.figure()
+    for i in range(len(all_profiles)-1):
+        y = all_profiles[i].data[0]
+        popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
+        perr= np.sqrt(np.diag(pcov))
+        plt.plot(velocities[st:end], y[st:end], 'k')
+        plt.plot(velocities[st:end], gauss(velocities[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
+        rvs.append(popt[0])
+        fwhm.append(2.355*popt[1])
+        rv_phases.append(all_profiles[count].header['PHASE'])
+        
+        rv_results.append(all_profiles[count].header['RESULT'])
+        count += 1
+    #plt.legend()
+
+    plt.figure('ACID and CCF RV (-median)', figsize = [9, 7])
+    plt.ylabel('RV - median(RV)')
+    plt.xlabel('Phase')
+    plt.scatter(rv_phases, rvs-np.median(rvs), label = 'ACID NEW', color = 'm')
+    # plt.scatter(rv_phases, rvs2-np.median(rvs2), label = 'ACID NEW_moremask', color = 'k')
+    plt.legend()
+    plt.show()
 
     # ccf_spec = all_ccfs[0].data[0]
     # ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
@@ -313,11 +351,11 @@ rv_phases = []
 for y in all_prof:
     #if (-t/(2*P)+0.001)<all_phase[count]<0.0155:
     
-    popt, pcov = curve_fit(gauss, x, y)
-    perr= np.sqrt(np.diag(pcov))
-    rvs.append([popt[0], perr[0]])
-    rv_phases.append(all_phase[count])
-    count += 1
+        popt, pcov = curve_fit(gauss, x, y)
+        perr= np.sqrt(np.diag(pcov))
+        rvs.append([popt[0], perr[0]])
+        rv_phases.append(all_phase[count])
+        count += 1
 
 rvs = np.array(rvs)
 
@@ -344,10 +382,13 @@ for y in all_resi:
         # plt.figure()
         # plt.plot(x, y)
         # plt.show()
-        popt, pcov = curve_fit(gauss, x, y)
-        perr= np.sqrt(np.diag(pcov))
-        rvs.append([popt[0], perr[0]])
-        rv_phases.append(all_phase[count])
+        try:
+            popt, pcov = curve_fit(gauss, x, y)
+            perr= np.sqrt(np.diag(pcov))
+            rvs.append([popt[0], perr[0]])
+            rv_phases.append(all_phase[count])
+        except:
+            print('could not fit phase: %s'%all_phase[count])
     else: 
         plt.plot(x, y)
         print(results_all[count])

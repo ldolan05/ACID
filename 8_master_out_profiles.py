@@ -755,6 +755,7 @@ for month in months:
     idx = phases.argsort()
     phases = phases[idx]
     results = results[idx]
+    all_ccfs = all_ccfs[idx]
     phases = list(phases)
     results = list(results)
 
@@ -798,6 +799,8 @@ for month in months:
         hdr['berv']=berv[p]
         hdr['RESULT']=results[p]
         hdu[p].header=hdr
+    
+    print(velocities)
 
     hdu.writeto('%s%s_master_out_LSD_profile.fits'%(save_path, month), output_verify='fix', overwrite = 'True')
 
@@ -896,22 +899,6 @@ end = -15
 colour = cm.Blues(np.linspace(0, 1, len(all_profiles)))
 plt.figure()
 for y in all_profiles:
-    # if (-t/(2*P)+0.001)<phases[count]<0.0155:
-    # plt.figure()
-    # plt.plot(velocities, skewnormal(velocities, 1, 1, 1, 1, 1))
-    # plt.show()
-    # sig = all_profile_errors[count]
-    # popt1, pcov1 = curve_fit(skewnormal, velocities[st:end], y[st:end]+1, sigma = sig[st:end], absolute_sigma=True)
-    # perr1= np.sqrt(np.diag(pcov1))
-    # beta1=np.sqrt(2/np.pi)*(popt1[3]/(np.sqrt(1+popt1[3]**2)))
-    # profilemean1=popt1[2]+popt1[1]*beta1
-    # beta_error1=np.sqrt(2/np.pi)*(perr1[3]/(np.sqrt(1+perr1[3]**2)))
-    # profilemean_error1=perr1[2]+perr1[1]*beta_error1
-    # plt.plot(velocities[st:end], y[st:end]+1-skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), label = '%s'%all_phases[count], color = colour[count])
-    # # plt.errorbar(velocities[st:end], y[st:end]+1, yerr = sig[st:end], color ='k')
-    # # plt.plot(velocities[st:end], skewnormal(velocities[st:end], popt1[0], popt1[1], popt1[2], popt1[3], popt1[4]), 'r')
-    # rvs.append([profilemean1, profilemean_error1])
-    # rv_phases.append(all_phases[count])
 
     popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
     perr= np.sqrt(np.diag(pcov))
@@ -1116,7 +1103,7 @@ plt.ylabel('RV - median(RV)')
 plt.xlabel('Phase')
 plt.scatter(rv_phases, ccf_rvs-np.median(ccf_rvs), label = 'CCF', color = 'c', alpha = 1)
 plt.scatter(rv_phases, rvs-np.median(rvs), label = 'ACID NEW', color = 'm')
-plt.scatter(rv_phases, rvs2-np.median(rvs2), label = 'ACID NEW_moremask', color = 'k')
+# plt.scatter(rv_phases, rvs2-np.median(rvs2), label = 'ACID NEW_moremask', color = 'k')
 plt.legend()
 plt.savefig('Jul_rr_RVcurve.png')
 
