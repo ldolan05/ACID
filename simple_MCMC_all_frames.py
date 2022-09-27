@@ -75,11 +75,11 @@ def read_in_frames(order, filelist):
     frames = np.array(frames)
     errors = np.array(errors)
 
-    plt.figure('divided spectra (by reference frame)')
+    #plt.figure('divided spectra (by reference frame)')
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     for n in range(len(frames)):
         # interpolating onto the same wavelength grid
-        f = interp1d(frame_wavelengths[n], frames[n], kind='linear', bounds_error=False, fill_value=np.nan)
+        f = interp1d(frame_wavelengths[n], frames[n], kind='linear', bounds_error=False, fill_value='extrapolate')
         frame = f(reference_wave)
         div_frame = frame/reference_frame
 
@@ -91,7 +91,7 @@ def read_in_frames(order, filelist):
             binned[pos] = (div_frame[i]+div_frame[i+1])/2
             binned_waves[pos] = (wavelengths[i]+wavelengths[i+1])/2
 
-        plt.plot(frame_wavelengths[n], frames[n])
+        # plt.plot(frame_wavelengths[n], frames[n])
         ### fitting polynomial to div_frame
         coeffs=np.polyfit(binned_waves, binned, 2)
         poly = np.poly1d(coeffs)
@@ -109,9 +109,9 @@ def read_in_frames(order, filelist):
         plt.plot(binned_waves, poly(binned_waves))
         plt.show()
         '''
-        plt.plot(frame_wavelengths[n], frames[n])
-    # plt.show()
-    plt.close()
+        #plt.plot(frame_wavelengths[n], frames[n])
+    #plt.show()
+    # plt.close()
 
     return frame_wavelengths, frames, errors, sns, telluric_spec
 
@@ -598,7 +598,7 @@ for month in months:
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
             else:
                 # print(model_inputs[i])
-                sigma = abs(round_sig(model_inputs[i], 1))/10
+                sigma = abs(round_sig(model_inputs[i], 1))/100
                 # print(sigma)
                 # print(sigma_cont[i-k_max])
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
@@ -636,39 +636,40 @@ for month in months:
         ## discarding all vales except the last 1000 steps.
         dis_no = int(np.floor(steps_no-5000))
 
-        # plots the model for 'walks' of the all walkers for the first 5 profile points
-        # samples = sampler.get_chain(discard = dis_no)
-        # fig, axes = plt.subplots(len(samples[0, 0, :]), figsize=(10, 7), sharex=True)
-        # for i in range(len(samples[0, 0, :])):
-        #     ax = axes[i]
-        #     ax.plot(samples[:, :, i], "k", alpha=0.3)
-        #     ax.set_xlim(0, len(samples))
-        # axes[-1].set_xlabel("step number")
+        #plots the model for 'walks' of the all walkers for the first 5 profile points
+        samples = sampler.get_chain(discard = dis_no)
+        fig, axes = plt.subplots(len(samples[0, 0, :])-48, figsize=(10, 7), sharex=True)
+        for i in range(48, len(samples[0, 0, :])):
+            ax = axes[i-48]
+            ax.plot(samples[:, :, i], "k", alpha=0.3)
+            ax.set_xlim(0, len(samples))
+        axes[-1].set_xlabel("step number")
+        plt.savefig('/home/lsd/Documents/LSD_Figures/mc_mdl/order%s_steps_%s'%(order, run_name))
         #plt.show()
 
         ## combining all walkers together
         flat_samples = sampler.get_chain(discard=dis_no, flat=True)
 
         # plots random models from flat_samples - lets you see if it's converging
-        # plt.figure()
-        # inds = np.random.randint(len(flat_samples), size=100)
-        # for ind in inds:
-        #     sample = flat_samples[ind]
-        #     mdl = model_func(sample, x)
-        #     #mdl = model_func(sample, x)
-        #     #mdl = mdl[idx]
-        #     mdl1 = 0
-        #     for i in np.arange(k_max, len(sample)-1):
-        #         mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
-        #     mdl1 = mdl1*sample[-1]
-        #     plt.plot(x, mdl1, "C1", alpha=0.1)
-        #     plt.plot(x, mdl, "g", alpha=0.1)
-        # plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
-        # plt.xlabel("wavelengths")
-        # plt.ylabel("flux")
-        # plt.title('mcmc models and data')
-        # #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
-        # plt.savefig('/home/lsd/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
+        plt.figure()
+        inds = np.random.randint(len(flat_samples), size=100)
+        for ind in inds:
+            sample = flat_samples[ind]
+            mdl = model_func(sample, x)
+            #mdl = model_func(sample, x)
+            #mdl = mdl[idx]
+            mdl1 = 0
+            for i in np.arange(k_max, len(sample)-1):
+                mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
+            mdl1 = mdl1*sample[-1]
+            plt.plot(x, mdl1, "C1", alpha=0.1)
+            plt.plot(x, mdl, "g", alpha=0.1)
+        plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
+        plt.xlabel("wavelengths")
+        plt.ylabel("flux")
+        plt.title('mcmc models and data')
+        #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
+        plt.savefig('/home/lsd/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
         #plt.show()
 
         ## getting the final profile and continuum values - median of last 1000 steps
@@ -694,48 +695,48 @@ for month in months:
 
         # ### mcmc profile here
 
-        # prof_flux = np.exp(profile)-1
-        # plots the mcmc profile - will have extra panel if it's for data
+        prof_flux = np.exp(profile)-1
+        #plots the mcmc profile - will have extra panel if it's for data
 
-        # fig, ax0 = plt.subplots()
-        # ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
-        # zero_line = [0]*len(velocities)
-        # ax0.plot(velocities, zero_line)
-        # ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
-        # ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
-        # ax0.set_xlabel('velocities')
-        # ax0.set_ylabel('optical depth')
-        # secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
-        # secax.set_ylabel('flux')
-        # ax0.legend()
-        # plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_profile_%s'%(order, run_name))
-        # #plt.show()
+        fig, ax0 = plt.subplots()
+        ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
+        zero_line = [0]*len(velocities)
+        ax0.plot(velocities, zero_line)
+        ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+        ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
+        ax0.set_xlabel('velocities')
+        ax0.set_ylabel('optical depth')
+        secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
+        secax.set_ylabel('flux')
+        ax0.legend()
+        plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_profile_%s'%(order, run_name))
+        #plt.show()
 
-        # plots mcmc continuum fit on top of data
-        # plt.figure('continuum fit from mcmc')
-        # plt.plot(x, y, color = 'k', label = 'data')
-        # mdl1 =0
-        # for i in np.arange(0, len(poly_cos)-1):
-        #     mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
-        # mdl1 = mdl1*poly_cos[-1]
-        # plt.plot(x, mdl1, label = 'mcmc continuum fit')
-        # mdl1_poserr =0
-        # for i in np.arange(0, len(poly_cos)-1):
-        #     mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
-        # mdl1_poserr = mdl1_poserr*poly_cos[-1]
-        # mdl1_neg =0
-        # for i in np.arange(0, len(poly_cos)-1):
-        #     mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
-        # mdl1_neg = mdl1_neg*poly_cos[-1]
-        # plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
+        #plots mcmc continuum fit on top of data
+        plt.figure('continuum fit from mcmc')
+        plt.plot(x, y, color = 'k', label = 'data')
+        mdl1 =0
+        for i in np.arange(0, len(poly_cos)-1):
+            mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
+        mdl1 = mdl1*poly_cos[-1]
+        plt.plot(x, mdl1, label = 'mcmc continuum fit')
+        mdl1_poserr =0
+        for i in np.arange(0, len(poly_cos)-1):
+            mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
+        mdl1_poserr = mdl1_poserr*poly_cos[-1]
+        mdl1_neg =0
+        for i in np.arange(0, len(poly_cos)-1):
+            mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
+        mdl1_neg = mdl1_neg*poly_cos[-1]
+        plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
 
-        # mdl1_err =abs(mdl1-mdl1_neg)
-        # #plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
-        # plt.legend()
-        # plt.title('continuum from mcmc')
-        # plt.xlabel("wavelengths")
-        # plt.ylabel("flux")
-        # plt.savefig('/home/lsd/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
+        mdl1_err =abs(mdl1-mdl1_neg)
+        #plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
+        plt.legend()
+        plt.title('continuum from mcmc')
+        plt.xlabel("wavelengths")
+        plt.ylabel("flux")
+        plt.savefig('/home/lsd/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
         #plt.show()
 
         ## last section is a bit of a mess but plots the two forward models
@@ -881,18 +882,18 @@ for month in months:
             # inp = input('(od profile and flux profile above) Enter to continue...')
             all_frames[counter, order]=[profile_f, profile_errors_f]
             
-            ## runnning LSD with sigma clip mask included
-            error[full_mask] = 10000000000000000000
+            # ## runnning LSD with sigma clip mask included
+            # error[full_mask] = 10000000000000000000
 
-            velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name)
+            # velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name)
 
-            plt.plot(velocities, profile, color = 'r')
+            # plt.plot(velocities, profile, color = 'r')
 
-            profile_f = np.exp(profile)
-            profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
-            profile_f = profile_f-1
+            # profile_f = np.exp(profile)
+            # profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
+            # profile_f = profile_f-1
 
-            all_frames_moremask[counter, order]=[profile_f, profile_errors_f]
+            # all_frames_moremask[counter, order]=[profile_f, profile_errors_f]
 
             profiles.append(profile)
             #plt.show()
@@ -994,7 +995,7 @@ for month in months:
         hdr2 = fits.Header()
 
         for order in range(0, 71):
-            plt.figure('Frame %s. Order %s'%(frame_no, order+1))
+            # plt.figure('Frame %s. Order %s'%(frame_no, order+1))
             hdr['ORDER'] = order
             hdr['PHASE'] = phi
 
@@ -1012,39 +1013,39 @@ for month in months:
             profile = all_frames[frame_no, order, 0]
             profile_err = all_frames[frame_no, order, 1]
 
-            plt.plot(velocities, profile, label = 'ACID (original)')
+            # plt.plot(velocities, profile, label = 'ACID (original)')
             
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
 
-            hdr2['ORDER'] = order
-            hdr2['PHASE'] = phi
-            hdr2['result'] = result
-            hdr2['CRVAL1']=np.min(velocities)
-            hdr2['CDELT1']=velocities[1]-velocities[0]
+            # hdr2['ORDER'] = order
+            # hdr2['PHASE'] = phi
+            # hdr2['result'] = result
+            # hdr2['CRVAL1']=np.min(velocities)
+            # hdr2['CDELT1']=velocities[1]-velocities[0]
 
-            profile2 = all_frames_moremask[frame_no, order, 0]
-            profile_err2 = all_frames_moremask[frame_no, order, 1]
+            # profile2 = all_frames_moremask[frame_no, order, 0]
+            # profile_err2 = all_frames_moremask[frame_no, order, 1]
 
             
-            plt.plot(velocities, profile2, label = 'ACID (same masking as MCMC)')
+            # plt.plot(velocities, profile2, label = 'ACID (same masking as MCMC)')
             
-            if order>8 and order<70:
-                plt.plot(velocities, mcmc_profiles[order-8, 0], label = 'MCMC profile (same for all frames)')
+            # if order>8 and order<70:
+            #     plt.plot(velocities, mcmc_profiles[order-8, 0], label = 'MCMC profile (same for all frames)')
 
-            plt.legend()
-            plt.xlabel('Velocities (km/s)')
-            plt.ylabel('Flux')
-            plt.savefig('/home/lsd/Documents/LSD_Figures/%s_fram%s_ord%s_%s.png'%(month, frame_no, order+1, run_name))
-            plt.close()
-            hdu2.append(fits.PrimaryHDU(data = [profile2, profile_err2], header = hdr2))
+            # plt.legend()
+            # plt.xlabel('Velocities (km/s)')
+            # plt.ylabel('Flux')
+            # plt.savefig('/home/lsd/Documents/LSD_Figures/%s_fram%s_ord%s_%s.png'%(month, frame_no, order+1, run_name))
+            # plt.close()
+            # hdu2.append(fits.PrimaryHDU(data = [profile2, profile_err2], header = hdr2))
 
         hdu.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_%s.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
-        hdu2.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_%s_moremask.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
+        # hdu2.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_%s_moremask.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
 
-        hdu = fits.PrimaryHDU(data = mcmc_profiles)
-        hdu.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_mcmcprofiles.fits'%(month, run_name), output_verify = 'fix', overwrite = 'True')
+        # hdu = fits.PrimaryHDU(data = mcmc_profiles)
+        # hdu.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_mcmcprofiles.fits'%(month, run_name), output_verify = 'fix', overwrite = 'True')
 
-all_mcmc_profiles.append(mcmc_profiles)
+# all_mcmc_profiles.append(mcmc_profiles)
 
 
 # month_spec = np.array(month_spec)
