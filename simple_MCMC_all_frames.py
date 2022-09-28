@@ -205,11 +205,11 @@ def combine_spec(wavelengths, spectra, errors, sns):
     #combine all spectra to one spectrum
     for n in range(len(wavelengths)):
         f2 = interp1d(wavelengths[n], spectra[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-        f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+        f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = np.nan)
         spectra[n] = f2(reference_wave)
         errors[n] = f2_err(reference_wave)
 
-        ## mask out nans and zeros
+        ## mask out nans and zeros (these do not contribute to the main spectrum)
         where_are_NaNs = np.isnan(spectra[n])
         errors[n][where_are_NaNs] = 1000000000000
         where_are_zeros = np.where(spectra[n] == 0)[0]
