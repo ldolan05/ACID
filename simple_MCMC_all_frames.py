@@ -68,7 +68,7 @@ def read_in_frames(order, filelist):
         ### finding highest S/N frame, saves this as reference frame
         if sn>max_sn:
             max_sn = sn
-            reference_wave=wavelengths
+            # reference_wave=wavelengths
             reference_frame=fluxes
             reference_error=flux_error_order
 
@@ -79,8 +79,10 @@ def read_in_frames(order, filelist):
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     for n in range(len(frames)):
         # interpolating onto the same wavelength grid
-        f = interp1d(frame_wavelengths[n], frames[n], kind='linear', bounds_error=False, fill_value='extrapolate')
-        frame = f(reference_wave)
+        # f = interp1d(frame_wavelengths[n], frames[n], kind='linear', bounds_error=False, fill_value='extrapolate')
+        # frame = f(reference_wave)
+        # wavelengths = reference_wave
+        frame = frames[n]
         div_frame = frame/reference_frame
 
         ### creating windows to fit polynomial to
@@ -98,7 +100,7 @@ def read_in_frames(order, filelist):
         fit = poly(wavelengths)
         frames[n] = frame/fit
         errors[n] = errors[n]/fit
-        frame_wavelengths[n] = reference_wave
+        #frame_wavelengths[n] = reference_wave
         '''
         plt.figure()
         plt.plot(wavelengths, frames[n])
@@ -477,6 +479,10 @@ for month in months:
         b = 1 - a*np.max(wavelengths)
         poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
+        # plt.figure('initial continuum fit')
+        # plt.plot(wavelengths, fit, color = 'r')
+        # plt.errorbar(wavelengths, fluxes, flux_error_order)
+        # plt.show()
         # print(poly_inputs)
 
         #### getting the initial profile
@@ -598,7 +604,7 @@ for month in months:
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
             else:
                 # print(model_inputs[i])
-                sigma = abs(round_sig(model_inputs[i], 1))/100
+                sigma = abs(round_sig(model_inputs[i], 1))/10
                 # print(sigma)
                 # print(sigma_cont[i-k_max])
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
