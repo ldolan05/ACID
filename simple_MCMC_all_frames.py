@@ -71,7 +71,9 @@ def read_in_frames(order, filelist):
             global reference_wave
             reference_wave = wavelengths
             reference_frame=fluxes
+            reference_frame[reference_frame == 0]=0.001
             reference_error=flux_error_order
+            reference_error[reference_frame == 0]=1000000000000000000
 
     frames = np.array(frames)
     errors = np.array(errors)
@@ -79,7 +81,7 @@ def read_in_frames(order, filelist):
     plt.figure('divided spectra (by reference frame)')
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     for n in range(len(frames)):
-        f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', fill_value = 'extrapolate')
+        f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
         div_frame = f2(reference_wave)/reference_frame
 
         ### creating windows to fit polynomial to
@@ -135,16 +137,32 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         fluxe = fluxes[idx]
         clipped_flux = []
         clipped_waves = []
-        binsize =100
+        binsize = int(round(len(fluxes)/10, 1))
         for i in range(0, len(wavelength), binsize):
-            waves = wavelength[i:i+binsize]
-            flux = fluxe[i:i+binsize]
-            indicies = flux.argsort()
-            flux = flux[indicies]
-            waves = waves[indicies]
+            if i+binsize<len(wavelength):
+                waves = wavelength[i:i+binsize]
+                flux = fluxe[i:i+binsize]
+                indicies = flux.argsort()
+                flux = flux[indicies]
+                waves = waves[indicies]
 
-            clipped_flux.append(flux[len(flux)-1])
-            clipped_waves.append(waves[len(waves)-1])
+                print(np.max(flux))
+                plt.figure()
+                plt.scatter(waves, flux)
+                plt.show()
+
+                clipped_flux.append(flux[len(flux)-1])
+                clipped_waves.append(waves[len(waves)-1])
+        
+        ## trying to find bug - delete after
+        print(clipped_waves, clipped_flux/cont_factor, poly_ord)
+        plt.figure()
+        plt.plot(clipped_waves, clipped_flux)
+
+        plt.figure()
+        plt.plot(clipped_waves, clipped_flux/cont_factor)
+        plt.show()
+
         coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
 
         poly = np.poly1d(coeffs*cont_factor)
@@ -186,10 +204,21 @@ def combine_spec(wavelengths, spectra, errors, sns):
     interp_spec = np.zeros(spectra.shape)
     #combine all spectra to one spectrum
     for n in range(len(wavelengths)):
-        f2 = interp1d(wavelengths[n], spectra[n], kind = 'linear', fill_value = 'extrapolate')
-        f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', fill_value = 'extrapolate')
+        f2 = interp1d(wavelengths[n], spectra[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+        f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
         spectra[n] = f2(reference_wave)
         errors[n] = f2_err(reference_wave)
+
+        ## mask out nans and zeros
+        where_are_NaNs = np.isnan(spectra[n])
+        errors[n][where_are_NaNs] = 1000000000000
+        where_are_zeros = np.where(spectra[n] == 0)[0]
+        errors[n][where_are_zeros] = 1000000000000
+
+        where_are_NaNs = np.isnan(errors[n])
+        errors[n][where_are_NaNs] = 1000000000000
+        where_are_zeros = np.where(errors[n] == 0)[0]
+        errors[n][where_are_zeros] = 1000000000000
 
     length, width = np.shape(spectra)
     spectrum = np.zeros((width,))
