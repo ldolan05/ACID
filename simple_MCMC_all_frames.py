@@ -28,7 +28,7 @@ linelist = '/home/lsd/Documents/fulllinelist0001.txt'
 #linelist = '/home/lsd/Documents/fulllinelist018.txt'
 #linelist = '/Users/lucydolan/Starbase/fulllinelist004.txt'
 #linelist = '/home/lsd/Documents/fulllinelist004.txt'
-directory_p = '/home/lsd/Documents/HD189733/HD189733/'
+directory_p = '/home/lsd/Documents/HD189733 old/HD189733/'
 #directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
 month = 'August2007'
 
