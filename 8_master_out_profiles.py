@@ -763,19 +763,19 @@ for month in months:
     print(phases)
     inp = input('Above should be the same')
 
-    for i in range(len(all_ccfs)):
-        spectrum_ccf = all_ccf_profiles[i]
-        spectrum = all_ccfs[i, 0]
-        ## adjusting rv of ACID profile to match that of CCF profile
-        popt_ccf, pcov_ccf = curve_fit(gauss, velocities_ccf[15:-15], spectrum_ccf[15:-15])
-        popt_lsd, pcov_lsd = curve_fit(gauss, velocities[15:-15], spectrum[15:-15]+1)
-        rv_diff = popt_lsd[0]-popt_ccf[0]
-        velocities_ad = velocities - rv_diff
-        f2 = interp1d(velocities_ad, spectrum, kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-        spectrum = f2(velocities)
+    # for i in range(len(all_ccfs)):
+    #     spectrum_ccf = all_ccf_profiles[i]
+    #     spectrum = all_ccfs[i, 0]
+    #     ## adjusting rv of ACID profile to match that of CCF profile
+    #     popt_ccf, pcov_ccf = curve_fit(gauss, velocities_ccf[15:-15], spectrum_ccf[15:-15])
+    #     popt_lsd, pcov_lsd = curve_fit(gauss, velocities[15:-15], spectrum[15:-15]+1)
+    #     rv_diff = popt_lsd[0]-popt_ccf[0]
+    #     velocities_ad = velocities - rv_diff
+    #     f2 = interp1d(velocities_ad, spectrum, kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+    #     spectrum = f2(velocities)
 
-        all_ccfs[i, 0] = spectrum
-        all_profiles[i] = spectrum
+    #     all_ccfs[i, 0] = spectrum
+    #     all_profiles[i] = spectrum
 
     #making master out
 

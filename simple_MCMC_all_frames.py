@@ -871,8 +871,9 @@ for month in months:
             #the mask therefore needs to be interpolated onto the new wavelength grid.
             mask_pos = np.ones(reference_wave.shape)
             mask_pos[mask_idx]=10000000000000000000
-            f2 = interp1d(reference_wave, mask_pos, fill_value = np.nan)
-            interp_mask_idx = f2(wavelengths)
+            f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
+            interp_mask_pos = f2(wavelengths)
+            interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
             # yerr_resi, model_inputs_resi, mask_idx = residual_mask(wavelengths, flux, error, model_inputs, telluric_spec)
 
             error[interp_mask_idx]=10000000000000000000
@@ -962,7 +963,7 @@ for month in months:
             plt.title('order %s, LSD profiles'%order)
             no=0
 
-            print(velocities)
+            # print(velocities)
             
             ##########################################################################
             ##########################################################################
@@ -990,7 +991,7 @@ for month in months:
                 plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_FINALprof_%s'%(order, run_name))
                 #plt.show()
 
-            inp = input('Check rvs stated above ^^')
+            # inp = input('Check rvs stated above ^^')
             #############################################################################
             #############################################################################
             
