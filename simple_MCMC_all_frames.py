@@ -72,6 +72,8 @@ def read_in_frames(order, filelist):
         sns.append(sn)
         ### finding highest S/N frame, saves this as reference frame
         if sn>max_sn:
+            # print('reference file')
+            # print(file)
             max_sn = sn
             global reference_wave
             reference_wave = wavelengths
@@ -80,43 +82,44 @@ def read_in_frames(order, filelist):
             reference_error=flux_error_order
             reference_error[reference_frame == 0]=1000000000000000000
 
-    frames = np.array(frames)
-    errors = np.array(errors)
+    # inp = input('Check what reference file is.')
+    # frames = np.array(frames)
+    # errors = np.array(errors)
 
-    plt.figure('divided spectra (by reference frame)')
-    ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
-    for n in range(len(frames)):
-        f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-        div_frame = f2(reference_wave)/reference_frame
+    # plt.figure('divided spectra (by reference frame)')
+    # ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
+    # for n in range(len(frames)):
+    #     f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+    #     div_frame = f2(reference_wave)/reference_frame
 
-        ### creating windows to fit polynomial to
-        binned = np.zeros(int(len(div_frame)/2))
-        binned_waves = np.zeros(int(len(div_frame)/2))
-        for i in range(0, len(div_frame)-1, 2):
-            pos = int(i/2)
-            binned[pos] = (div_frame[i]+div_frame[i+1])/2
-            binned_waves[pos] = (reference_wave[i]+reference_wave[i+1])/2
+    #     ### creating windows to fit polynomial to
+    #     binned = np.zeros(int(len(div_frame)/2))
+    #     binned_waves = np.zeros(int(len(div_frame)/2))
+    #     for i in range(0, len(div_frame)-1, 2):
+    #         pos = int(i/2)
+    #         binned[pos] = (div_frame[i]+div_frame[i+1])/2
+    #         binned_waves[pos] = (reference_wave[i]+reference_wave[i+1])/2
 
-        plt.plot(frame_wavelengths[n], frames[n])
-        ### fitting polynomial to div_frame
-        coeffs=np.polyfit(binned_waves, binned, 2)
-        poly = np.poly1d(coeffs)
-        fit = poly(frame_wavelengths[n])
-        frames[n] = frames[n]/fit
-        errors[n] = errors[n]/fit
-        '''
-        plt.figure()
-        plt.plot(wavelengths, frames[n])
-        plt.plot(wavelengths, fit)
+    #     plt.plot(frame_wavelengths[n], frames[n])
+    #     ### fitting polynomial to div_frame
+    #     coeffs=np.polyfit(binned_waves, binned, 2)
+    #     poly = np.poly1d(coeffs)
+    #     fit = poly(frame_wavelengths[n])
+    #     frames[n] = frames[n]/fit
+    #     errors[n] = errors[n]/fit
+    #     '''
+    #     plt.figure()
+    #     plt.plot(wavelengths, frames[n])
+    #     plt.plot(wavelengths, fit)
 
-        plt.figure()
-        plt.plot(binned_waves, binned)
-        plt.plot(binned_waves, poly(binned_waves))
-        plt.show()
-        '''
-        plt.plot(frame_wavelengths[n], frames[n])
-    # plt.show()
-    plt.close()
+    #     plt.figure()
+    #     plt.plot(binned_waves, binned)
+    #     plt.plot(binned_waves, poly(binned_waves))
+    #     plt.show()
+    #     '''
+    #     plt.plot(frame_wavelengths[n], frames[n])
+    # # plt.show()
+    # plt.close()
 
     return frame_wavelengths, frames, errors, sns, telluric_spec
 
@@ -468,7 +471,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_
 months1 = ['August2007']
 months = ['July2007']#, 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(8,70)
+order_range = np.arange(28,29)
 # order_range = np.arange(48,49)
 
 P=2.21857567 #Cegla et al, 2006 - days
@@ -493,369 +496,395 @@ for month in months:
         #     print(file, order)
         #     fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory1, 'unmasked', run_name, 'y')
         #     fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
-
-        frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist)
-        ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
-        wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths, frames, frame_errors, sns)
-        print("SN of combined spectrum, order %s: %s"%(order, sn))
         
-        # month_spec.append([wavelengths, wavelengths1, fluxes, fluxes1])
-                          #corr_wave, uncorr wave, corr flux, uncorr flux 
-        ## normalise
-        '''
-        flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
-        fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
-        '''
+        frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist)
 
-        #### running the MCMC #####
+        frame_wavelengths=np.array(frame_wavelengths)
+        frames = np.array(frames)
+        frame_errors = np.array(frame_errors)
+        sns = np.array(sns)
 
-        ### getting the initial polynomial coefficents
-        a = 2/(np.max(wavelengths)-np.min(wavelengths))
-        b = 1 - a*np.max(wavelengths)
-        poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
-
-        print(poly_inputs)
-
-        #### getting the initial profile
-        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
-
-        # plt.figure('forward model after first LSD')
-        # plt.plot(wavelengths, np.log(fluxes1))
-        # plt.plot(wavelengths, np.dot(alpha, profile))
-        # plt.show()
-
-        # plt.figure('initial profile')
-        # plt.plot(velocities, profile)
-        # plt.show()
-
-        # plt.figure()
-        # plt.title('SPEC BEFORE 1st LSD')
-        # plt.plot(wavelengths, fluxes1, 'r')
-        # plotdepths = 1 - np.array(continuum_flux)
-        # plt.vlines(continuum_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-        # plt.show()
-
-        # plt.figure()
-        # plt.plot(velocities, profile)
-        # plt.title('LSD - basic continuuum correction')
-        # plt.xlabel('Velocities (km/s)')
-        # plt.ylabel('Normalised Flux')
-        # plt.show()
-
-
-        #### setting up empty array for final profiles to go into
-        if order == order_range[0]:
-            all_frames = np.zeros((len(filelist), 71, 2, len(profile)))
-
-        ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
-        j_max = int(len(fluxes))
-        k_max = len(profile)
-
-        model_inputs = np.concatenate((profile, poly_inputs))
-
-        ## setting x, y, yerr for emcee
-        x = wavelengths
-        y = fluxes
-        yerr = flux_error_order
-
-        ## setting these normalisation factors as global variables - used in the figures below
-        a = 2/(np.max(x)-np.min(x))
-        b = 1 - a*np.max(x)
-        '''
-        plt.figure()
-        plt.title('continuum(--) fit on top of data')
-        plt.plot(x, y)
-        check_fit=0
-        for i in range(k_max,len(model_inputs)):
-            check_fit = check_fit + (model_inputs[i]*((x*a)+b)**(i-k_max))
-        plt.plot(x, check_fit, '--')
-        plt.show()
-        '''
-        ## parameters for working out continuum points in the LSD profile - if using penalty function
-        p_var = 0.001
-        v_min = -10
-        v_max = 10
-
-
-        ##plots
-        forward = model_func(model_inputs, x)
-        # plt.figure(figsize=(16,9))
-        # plt.title('LSD optical depth forward model')
-        # plt.plot(x, y, 'k', alpha = 0.3, label = 'data')
-        # plt.plot(x, forward, 'r', alpha =0.3, label = 'forward model')
-        # plt.vlines(continuum_waves, plotdepths, 1, label = 'line depths from VALD linelist', color = 'c', alpha = 0.2)
-        # #plt.xlim(5460, 5480)
-        # plt.legend()
-        # plt.show()
-
-        #masking based off residuals
-        yerr_unmasked = yerr
-        yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec)
-
-        ##masking frames also
-        #mask_idx = tuple([yerr>1000000000000000000])
-        #frame_errors[:, idx]=1000000000000000000
-
-        ## setting number of walkers and their start values(pos)
-        ndim = len(model_inputs)
-        nwalkers= ndim*3
-        rng = np.random.default_rng()
-
-        '''
-        ## starting values of walkers vary from the model_inputs by 0.01*model_input - this means the bottom of the profile varies more than the continuum. Continuum coefficent vary by 1*model_input.
-        vary_amounts = []
-        pos = []
-        for i in range(0, ndim):
-            if model_inputs[i]==0:pos2 = model_inputs[i]+rng.normal(model_input[i], 0.0001, (nwalkers, ))
-            else:
-                if i <ndim-poly_ord-1:
-                    #pos2 = model_inputs[i]+rng.normal(-0.001, 0.001,(nwalkers, ))
-                    pos2 = model_inputs[i]+rng.normal(model_inputs[i], abs(model_inputs[i])*0.02,(nwalkers, ))
-                    vary_amounts.append(abs(model_inputs[i])*0.02)
-                else:
-                    pos2 = model_inputs[i]+rng.normal(model_inputs[i],abs(model_inputs[i])*2,(nwalkers, ))
-                    vary_amounts.append(model_inputs[i]*2)
-            pos.append(pos2)
-
-        pos = np.array(pos)
-        pos = np.transpose(pos)
-        print('DEPENDENT ON INPUT')
-        print(pos)
-
-        '''
-        print('MODEL INPUTS')
-        model_func(model_inputs, x)
-
-        ### starting values of walkers with indpendent variation
-        sigma = 0.8*0.005
-        pos = []
-        for i in range(0, ndim):
-            if i <ndim-poly_ord-2:
-                pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
-            else:
-                print(model_inputs[i])
-                sigma = abs(round_sig(model_inputs[i], 1))/10
-                print(sigma)
-                # print(sigma_cont[i-k_max])
-                pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
-            pos.append(pos2)
-
-        pos = np.array(pos)
-        pos = np.transpose(pos)
-
-        print('INDEPENDENT OF INPUT')
-        print(pos)
-
-        ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
-        steps_no = 10000
-        '''
-        plt.figure('Spectrum given to mcmc with errors')
-        plt.title('Spectrum given to mcmc with errors')
-        plt.errorbar(x, y, yerr=yerr, ecolor = 'k')
-        plt.ylabel('flux')
-        plt.xlabel('wavelength')
-        plt.show()
-        '''
-
-        # plt.figure()
-        # plt.plot(x, y)
-        # plt.show()
-
-        # running the mcmc using python package emcee
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-        sampler.run_mcmc(pos, steps_no, progress=True)
-
-        idx = tuple([yerr<=10000000000000000000])
-
-        t1 = time.time()
-
-        ## discarding all vales except the last 1000 steps.
-        dis_no = int(np.floor(steps_no-5000))
-
-        # plots the model for 'walks' of the all walkers for the first 5 profile points
-        samples = sampler.get_chain(discard = dis_no)
-        fig, axes = plt.subplots(len(samples[0, 0, :]), figsize=(10, 7), sharex=True)
-        for i in range(len(samples[0, 0, :])):
-            ax = axes[i]
-            ax.plot(samples[:, :, i], "k", alpha=0.3)
-            ax.set_xlim(0, len(samples))
-        axes[-1].set_xlabel("step number")
-        #plt.show()
-
-        ## combining all walkers together
-        flat_samples = sampler.get_chain(discard=dis_no, flat=True)
-
-        # plots random models from flat_samples - lets you see if it's converging
-        plt.figure()
-        inds = np.random.randint(len(flat_samples), size=100)
-        for ind in inds:
-            sample = flat_samples[ind]
-            mdl = model_func(sample, x)
-            #mdl = model_func(sample, x)
-            #mdl = mdl[idx]
-            mdl1 = 0
-            for i in np.arange(k_max, len(sample)-1):
-                mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
-            mdl1 = mdl1*sample[-1]
-            plt.plot(x, mdl1, "C1", alpha=0.1)
-            plt.plot(x, mdl, "g", alpha=0.1)
-        plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
-        plt.xlabel("wavelengths")
-        plt.ylabel("flux")
-        plt.title('mcmc models and data')
-        #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
-        plt.savefig('/home/lsd/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
-        plt.close()
-        #plt.show()
-
-        ## getting the final profile and continuum values - median of last 1000 steps
-        profile = []
-        poly_cos = []
-        profile_err = []
-        poly_cos_err = []
-
-        for i in range(ndim):
-            mcmc = np.median(flat_samples[:, i])
-            error = np.std(flat_samples[:, i])
-            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-            error = np.diff(mcmc)
-            if i<k_max:
-                profile.append(mcmc[1])
-                profile_err.append(np.max(error))
-            else:
-                poly_cos.append(mcmc[1])
-                poly_cos_err.append(np.max(error))
-
-        profile = np.array(profile)
-        profile_err = np.array(profile_err)
-
-        prof_flux = np.exp(profile)-1
-        # plots the mcmc profile - will have extra panel if it's for data
-
-        fig, ax0 = plt.subplots()
-        ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
-        zero_line = [0]*len(velocities)
-        ax0.plot(velocities, zero_line)
-        ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
-        ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
-        ax0.set_xlabel('velocities')
-        ax0.set_ylabel('optical depth')
-        secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
-        secax.set_ylabel('flux')
-        ax0.legend()
-        plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_profile_%s'%(order, run_name))
-        plt.close()
-        #plt.show()
-
-        # plots mcmc continuum fit on top of data
-        plt.figure('continuum fit from mcmc')
-        plt.plot(x, y, color = 'k', label = 'data')
-        mdl1 =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
-        mdl1 = mdl1*poly_cos[-1]
-        plt.plot(x, mdl1, label = 'mcmc continuum fit')
-        mdl1_poserr =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
-        mdl1_poserr = mdl1_poserr*poly_cos[-1]
-        mdl1_neg =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
-        mdl1_neg = mdl1_neg*poly_cos[-1]
-        plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
-
-        mdl1_err =abs(mdl1-mdl1_neg)
-        #plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
-        plt.legend()
-        plt.title('continuum from mcmc')
-        plt.xlabel("wavelengths")
-        plt.ylabel("flux")
-        plt.savefig('/home/lsd/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
-        plt.close()
-        #plt.show()
-
-        ## last section is a bit of a mess but plots the two forward models
-
-        mcmc_inputs = np.concatenate((profile, poly_cos))
-        mcmc_mdl = model_func(mcmc_inputs, x)
-        #mcmc_mdl = mcmc_mdl[idx]
-        mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
-
-        print('Likelihood for mcmc: %s'%mcmc_liklihood)
-
-        residuals_2 = (y+1) - (mcmc_mdl+1)
-
-        fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
-        non_masked = tuple([yerr<10])
-        #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
-        #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
-        ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
-        ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
-        ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
-        residual_masks = tuple([yerr>=10000000000000000000])
-
-        #residual_masks = tuple([yerr>10])
-        ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-        ax[0].legend(loc = 'lower right')
-        #ax[0].set_ylim(0, 1)
-        #plotdepths = -np.array(line_depths)
-        #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-        #ax[1].plot(x, residuals_2, '.')
-        #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-        z_line = [0]*len(x)
-        ax[1].plot(x, z_line, '--')
-        plt.savefig('/home/lsd/Documents/LSD_Figures/forward_models/order%s_forward_%s'%(order, run_name))
-        plt.close()
-        #plt.show()
-
-        fig, ax0 = plt.subplots()
-        ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
-        zero_line = [0]*len(velocities)
-        ax0.plot(velocities, zero_line)
-        ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
-        ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
-        ax0.set_xlabel('velocities')
-        ax0.set_ylabel('optical depth')
-        ax0.legend()
-        plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_final_profile_%s'%(order, run_name))
-        plt.close()
-        #plt.show()
-
-        profile_f = np.exp(profile)
-        profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
-        profile_f = profile_f-1
-
-        fig, ax0 = plt.subplots()
-        ax0.plot(velocities, profile_f, color = 'r', label = 'LSD')
-        zero_line = [0]*len(velocities)
-        ax0.plot(velocities, zero_line)
-        ax0.plot(velocities, np.exp(model_inputs[:k_max])-1, label = 'initial')
-        ax0.fill_between(velocities, profile_f-profile_errors_f, profile_f+profile_errors_f, alpha = 0.3, color = 'r')
-        ax0.set_xlabel('velocities')
-        ax0.set_ylabel('flux')
-        ax0.legend()
-        plt.close()
-        #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_final_profile_%s'%(order, run_name))
-        #plt.show()
-
-        '''
-        profile = model_inputs[:k_max]
-        poly_cos = model_inputs[k_max:]
-        '''
-        print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
-        #print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
-        #profile_order.append(profile)
-        #coeffs_order.append(poly_cos)
-        #print('Time Taken: %s minutes'%((t1-t0)/60))
-        plt.close('all')
+        ## rearrage to have lowest s/n frame first
+        idx = sns.argsort()
+        frame_wavelengths=frame_wavelengths[idx]
+        frames = frames[idx]
+        frame_errors = frame_errors[idx]
+        sns = sns[idx]
 
         profiles = []
-        plt.figure()
-        for counter in range(0, len(frames)):
+
+        for counter in range(len(frames)):
+
             flux = frames[counter]
             error = frame_errors[counter]
             wavelengths = frame_wavelengths[counter]
+
+            fluxes = frames[counter]
+            flux_error_order = frame_errors[counter]
+            sn = sns[counter]
+
+            ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
+            #wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths, frames, frame_errors, sns)
+            #print("SN of combined spectrum, order %s: %s"%(order, sn))
+            
+            # month_spec.append([wavelengths, wavelengths1, fluxes, fluxes1])
+                            #corr_wave, uncorr wave, corr flux, uncorr flux 
+            ## normalise
+            '''
+            flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
+            fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
+            '''
+
+            #### running the MCMC #####
+
+            ### getting the initial polynomial coefficents
+            a = 2/(np.max(wavelengths)-np.min(wavelengths))
+            b = 1 - a*np.max(wavelengths)
+            poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
+
+            print(poly_inputs)
+
+            #### getting the initial profile
+            velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
+
+            # plt.figure('forward model after first LSD')
+            # plt.plot(wavelengths, np.log(fluxes1))
+            # plt.plot(wavelengths, np.dot(alpha, profile))
+            # plt.show()
+
+            # plt.figure('initial profile')
+            # plt.plot(velocities, profile)
+            # plt.show()
+
+            # plt.figure()
+            # plt.title('SPEC BEFORE 1st LSD')
+            # plt.plot(wavelengths, fluxes1, 'r')
+            # plotdepths = 1 - np.array(continuum_flux)
+            # plt.vlines(continuum_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+            # plt.show()
+
+            # plt.figure()
+            # plt.plot(velocities, profile)
+            # plt.title('LSD - basic continuuum correction')
+            # plt.xlabel('Velocities (km/s)')
+            # plt.ylabel('Normalised Flux')
+            # plt.show()
+
+
+            #### setting up empty array for final profiles to go into
+            if order == order_range[0]:
+                all_frames = np.zeros((len(filelist), 71, 2, 48))
+
+            ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
+            j_max = int(len(fluxes))
+            k_max = len(profile)
+
+            model_inputs = np.concatenate((profile, poly_inputs))
+
+            ## setting x, y, yerr for emcee
+            x = wavelengths
+            y = fluxes
+            yerr = flux_error_order
+
+            ## setting these normalisation factors as global variables - used in the figures below
+            a = 2/(np.max(x)-np.min(x))
+            b = 1 - a*np.max(x)
+            '''
+            plt.figure()
+            plt.title('continuum(--) fit on top of data')
+            plt.plot(x, y)
+            check_fit=0
+            for i in range(k_max,len(model_inputs)):
+                check_fit = check_fit + (model_inputs[i]*((x*a)+b)**(i-k_max))
+            plt.plot(x, check_fit, '--')
+            plt.show()
+            '''
+            ## parameters for working out continuum points in the LSD profile - if using penalty function
+            p_var = 0.001
+            v_min = -10
+            v_max = 10
+
+
+            ##plots
+            # forward = model_func(model_inputs, x)
+            # plt.figure(figsize=(16,9))
+            # plt.title('LSD optical depth forward model')
+            # plt.plot(x, y, 'k', alpha = 0.3, label = 'data')
+            # plt.plot(x, forward, 'r', alpha =0.3, label = 'forward model')
+            # plt.vlines(continuum_waves, plotdepths, 1, label = 'line depths from VALD linelist', color = 'c', alpha = 0.2)
+            # #plt.xlim(5460, 5480)
+            # plt.legend()
+            # plt.show()
+
+            #masking based off residuals - only done for first frame and kept the same for all
+            yerr_unmasked = yerr
+            if counter==0:
+                reference_wave = x
+                yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec)
+
+            ##masking frames also
+            #mask_idx = tuple([yerr>1000000000000000000])
+            #frame_errors[:, idx]=1000000000000000000
+
+            ## setting number of walkers and their start values(pos)
+            ndim = len(model_inputs)
+            nwalkers= ndim*3
+            rng = np.random.default_rng()
+
+            '''
+            ## starting values of walkers vary from the model_inputs by 0.01*model_input - this means the bottom of the profile varies more than the continuum. Continuum coefficent vary by 1*model_input.
+            vary_amounts = []
+            pos = []
+            for i in range(0, ndim):
+                if model_inputs[i]==0:pos2 = model_inputs[i]+rng.normal(model_input[i], 0.0001, (nwalkers, ))
+                else:
+                    if i <ndim-poly_ord-1:
+                        #pos2 = model_inputs[i]+rng.normal(-0.001, 0.001,(nwalkers, ))
+                        pos2 = model_inputs[i]+rng.normal(model_inputs[i], abs(model_inputs[i])*0.02,(nwalkers, ))
+                        vary_amounts.append(abs(model_inputs[i])*0.02)
+                    else:
+                        pos2 = model_inputs[i]+rng.normal(model_inputs[i],abs(model_inputs[i])*2,(nwalkers, ))
+                        vary_amounts.append(model_inputs[i]*2)
+                pos.append(pos2)
+
+            pos = np.array(pos)
+            pos = np.transpose(pos)
+            print('DEPENDENT ON INPUT')
+            print(pos)
+
+            '''
+            # print('MODEL INPUTS')
+            # model_func(model_inputs, x)
+
+            # ### starting values of walkers with indpendent variation
+            # sigma = 0.8*0.005
+            # pos = []
+            # for i in range(0, ndim):
+            #     if i <ndim-poly_ord-2:
+            #         pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+            #     else:
+            #         print(model_inputs[i])
+            #         sigma = abs(round_sig(model_inputs[i], 1))/10
+            #         print(sigma)
+            #         # print(sigma_cont[i-k_max])
+            #         pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+            #     pos.append(pos2)
+
+            # pos = np.array(pos)
+            # pos = np.transpose(pos)
+
+            # print('INDEPENDENT OF INPUT')
+            # print(pos)
+
+            # ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
+            # steps_no = 10000
+            '''
+            plt.figure('Spectrum given to mcmc with errors')
+            plt.title('Spectrum given to mcmc with errors')
+            plt.errorbar(x, y, yerr=yerr, ecolor = 'k')
+            plt.ylabel('flux')
+            plt.xlabel('wavelength')
+            plt.show()
+            '''
+
+            # plt.figure()
+            # plt.plot(x, y)
+            # plt.show()
+
+            # # running the mcmc using python package emcee
+            # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+            # sampler.run_mcmc(pos, steps_no, progress=True)
+
+            # idx = tuple([yerr<=10000000000000000000])
+
+            # t1 = time.time()
+
+            # ## discarding all vales except the last 1000 steps.
+            # dis_no = int(np.floor(steps_no-5000))
+
+            # # plots the model for 'walks' of the all walkers for the first 5 profile points
+            # samples = sampler.get_chain(discard = dis_no)
+            # fig, axes = plt.subplots(len(samples[0, 0, :]), figsize=(10, 7), sharex=True)
+            # for i in range(len(samples[0, 0, :])):
+            #     ax = axes[i]
+            #     ax.plot(samples[:, :, i], "k", alpha=0.3)
+            #     ax.set_xlim(0, len(samples))
+            # axes[-1].set_xlabel("step number")
+            # #plt.show()
+
+            # ## combining all walkers together
+            # flat_samples = sampler.get_chain(discard=dis_no, flat=True)
+
+            # # plots random models from flat_samples - lets you see if it's converging
+            # plt.figure()
+            # inds = np.random.randint(len(flat_samples), size=100)
+            # for ind in inds:
+            #     sample = flat_samples[ind]
+            #     mdl = model_func(sample, x)
+            #     #mdl = model_func(sample, x)
+            #     #mdl = mdl[idx]
+            #     mdl1 = 0
+            #     for i in np.arange(k_max, len(sample)-1):
+            #         mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
+            #     mdl1 = mdl1*sample[-1]
+            #     plt.plot(x, mdl1, "C1", alpha=0.1)
+            #     plt.plot(x, mdl, "g", alpha=0.1)
+            # plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
+            # plt.xlabel("wavelengths")
+            # plt.ylabel("flux")
+            # plt.title('mcmc models and data')
+            # #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
+            # plt.savefig('/home/lsd/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
+            # plt.close()
+            # #plt.show()
+
+            # ## getting the final profile and continuum values - median of last 1000 steps
+            # profile = []
+            # poly_cos = []
+            # profile_err = []
+            # poly_cos_err = []
+
+            # for i in range(ndim):
+            #     mcmc = np.median(flat_samples[:, i])
+            #     mc_error = np.std(flat_samples[:, i])
+            #     mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+            #     mc_error = np.diff(mcmc)
+            #     if i<k_max:
+            #         profile.append(mcmc[1])
+            #         profile_err.append(np.max(mc_error))
+            #     else:
+            #         poly_cos.append(mcmc[1])
+            #         poly_cos_err.append(np.max(mc_error))
+
+            # profile = np.array(profile)
+            # profile_err = np.array(profile_err)
+
+            # prof_flux = np.exp(profile)-1
+            # # plots the mcmc profile - will have extra panel if it's for data
+
+            # fig, ax0 = plt.subplots()
+            # ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
+            # zero_line = [0]*len(velocities)
+            # ax0.plot(velocities, zero_line)
+            # ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+            # ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
+            # ax0.set_xlabel('velocities')
+            # ax0.set_ylabel('optical depth')
+            # secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
+            # secax.set_ylabel('flux')
+            # ax0.legend()
+            # plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_profile_%s'%(order, run_name))
+            # plt.close()
+            # #plt.show()
+
+            # # plots mcmc continuum fit on top of data
+            # plt.figure('continuum fit from mcmc')
+            # plt.plot(x, y, color = 'k', label = 'data')
+            # mdl1 =0
+            # for i in np.arange(0, len(poly_cos)-1):
+            #     mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
+            # mdl1 = mdl1*poly_cos[-1]
+            # plt.plot(x, mdl1, label = 'mcmc continuum fit')
+            # mdl1_poserr =0
+            # for i in np.arange(0, len(poly_cos)-1):
+            #     mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
+            # mdl1_poserr = mdl1_poserr*poly_cos[-1]
+            # mdl1_neg =0
+            # for i in np.arange(0, len(poly_cos)-1):
+            #     mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
+            # mdl1_neg = mdl1_neg*poly_cos[-1]
+            # plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
+
+            # mdl1_err =abs(mdl1-mdl1_neg)
+            # #plt.scatter(continuum_waves, continuum_flux, label = 'continuum_points')
+            # plt.legend()
+            # plt.title('continuum from mcmc')
+            # plt.xlabel("wavelengths")
+            # plt.ylabel("flux")
+            # plt.savefig('/home/lsd/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
+            # plt.close()
+            # #plt.show()
+
+            # ## last section is a bit of a mess but plots the two forward models
+
+            # mcmc_inputs = np.concatenate((profile, poly_cos))
+            # mcmc_mdl = model_func(mcmc_inputs, x)
+            # #mcmc_mdl = mcmc_mdl[idx]
+            # mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
+
+            # print('Likelihood for mcmc: %s'%mcmc_liklihood)
+
+            # residuals_2 = (y+1) - (mcmc_mdl+1)
+
+            # fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
+            # non_masked = tuple([yerr<10])
+            # #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
+            # #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
+            # ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
+            # ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
+            # ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
+            # residual_masks = tuple([yerr>=10000000000000000000])
+
+            # #residual_masks = tuple([yerr>10])
+            # ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+            # ax[0].legend(loc = 'lower right')
+            # #ax[0].set_ylim(0, 1)
+            # #plotdepths = -np.array(line_depths)
+            # #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+            # #ax[1].plot(x, residuals_2, '.')
+            # #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+            # z_line = [0]*len(x)
+            # ax[1].plot(x, z_line, '--')
+            # plt.savefig('/home/lsd/Documents/LSD_Figures/forward_models/order%s_forward_%s'%(order, run_name))
+            # plt.close()
+            # #plt.show()
+
+            # fig, ax0 = plt.subplots()
+            # ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
+            # zero_line = [0]*len(velocities)
+            # ax0.plot(velocities, zero_line)
+            # ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+            # ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
+            # ax0.set_xlabel('velocities')
+            # ax0.set_ylabel('optical depth')
+            # ax0.legend()
+            # plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_final_profile_%s'%(order, run_name))
+            # plt.close()
+            # #plt.show()
+
+            # profile_f = np.exp(profile)
+            # profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
+            # profile_f = profile_f-1
+
+            # fig, ax0 = plt.subplots()
+            # ax0.plot(velocities, profile_f, color = 'r', label = 'LSD')
+            # zero_line = [0]*len(velocities)
+            # ax0.plot(velocities, zero_line)
+            # ax0.plot(velocities, np.exp(model_inputs[:k_max])-1, label = 'initial')
+            # ax0.fill_between(velocities, profile_f-profile_errors_f, profile_f+profile_errors_f, alpha = 0.3, color = 'r')
+            # ax0.set_xlabel('velocities')
+            # ax0.set_ylabel('flux')
+            # ax0.legend()
+            # plt.close()
+            # #plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_final_profile_%s'%(order, run_name))
+            # #plt.show()
+
+            # '''
+            # profile = model_inputs[:k_max]
+            # poly_cos = model_inputs[k_max:]
+            # '''
+            # print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
+            # #print('True likelihood: %s\nMCMC likelihood: %s\n'%(true_liklihood, mcmc_liklihood))
+            # #profile_order.append(profile)
+            # #coeffs_order.append(poly_cos)
+            # #print('Time Taken: %s minutes'%((t1-t0)/60))
+            # plt.close('all')
+
+            
+            # plt.figure()
+            #for counter in range(0, len(frames)):
+            
+            poly_cos = model_inputs[len(profile):]
 
             # a = 2/(np.max(wavelengths)-np.min(wavelengths))
             # b = 1 - a*np.max(wavelengths)
@@ -915,15 +944,16 @@ for month in months:
 
             velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name)
 
-            plt.plot(velocities, profile)
+            # plt.plot(velocities, profile)
 
             profile_f = np.exp(profile)
-            profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
+            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
             profile_f = profile_f-1
 
             # print(profile)
             # print(profile_f)
 
+            print(counter, order, profile_f)
             # inp = input('(od profile and flux profile above) Enter to continue...')
             all_frames[counter, order]=[profile_f, profile_errors_f]
 
@@ -1052,6 +1082,7 @@ for month in months:
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
+            print(frame_no, order, all_frames[frame_no, order, 0])
             profile = all_frames[frame_no, order, 0]
             profile_err = all_frames[frame_no, order, 1]
 
