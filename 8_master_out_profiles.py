@@ -279,7 +279,6 @@ def combineprofiles(spectra, errors, ccf, master, velocities):
         # plt.figure()
         # plt.title('All orders, frame: %s'%frame)
         for i in orders:
-            # if np.sum(spectra[i-1])==0: weights[i-orders[0]]=0
             plt.plot(velocities, [0]*len(velocities))
             # print(i)
             # print(np.shape(spectra))
@@ -665,12 +664,7 @@ for month in months:
         #plt.figure(file)
         #spectrum, errors = combineprofiles(order_profiles, order_errors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31, 35, 38, 39, 41, 42, 43, 44, 45, 45, 47, 50, 51, 55, 56, 63, 64, 65, 69])
         ccf_profiles = np.array(ccf_profiles)
-        # spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
-        print(frame)
-        spectrum, errors, weights = order_profiles[27], order_errors[27], np.ones(order_errors[27].shape)
-        plt.figure()
-        plt.plot(order_profiles[27])
-        plt.show()
+        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
         spectrum_ccf = ccf[0].data[72]
         velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
         # spectrum_ccf, errors_ccf, weights_ccf = combineprofiles(ccf_profiles, np.ones(ccf_profiles.shape)*0.0001, ccf, 'no', velocities_ccf)
