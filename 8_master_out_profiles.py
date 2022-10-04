@@ -201,6 +201,7 @@ def combineprofiles(spectra, errors, ccf, master, velocities):
     errors = np.array(errors)
 
     if master == 'no':
+
         weights_csv = np.genfromtxt('/home/lsd/Documents/order_weights.csv', delimiter=',')
         orders = np.array(weights_csv[7:,0], dtype = int)
         # print(orders)
@@ -508,7 +509,10 @@ for month in months:
     #plt.figure('all_frames')
     all_order_rvs = []
     all_order_rvs_ccf = []
+    all_rvs = np.zeros((71, len(framelist)))
+    counter = -1
     for frame in framelist:
+        counter +=1
         file = fits.open(filelist[frame])
         print(file)
         ccf_file = ccf_list[frame]
@@ -534,7 +538,7 @@ for month in months:
             ccf_profile = ccf[0].data[order1]
             if order1 ==1:
                 header_rvs = list(header_rvs)
-                header_rvs.append(ccf[0].header['HIERARCH ESO DRS CCF RV'])#-ccf[0].header['ESO DRS BERV'])
+                header_rvs.append(ccf[0].header['HIERARCH ESO DRS CCF RV'])#+ccf[0].header['ESO DRS BERV'])
             velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
             # if np.sum(abs(profile))>0:
             #     plt.plot(velocities, profile)
@@ -548,18 +552,18 @@ for month in months:
             result = file[order1].header['result']
 
             ## investigation section - delete/comment out when done
-            # velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, ccf_profile/np.mean(ccf_profile[:5])-1, ccf_profile/100, ccf_phi, K, e, omega, v0)
-            # velocities, spectrum, errors = remove_reflex(velocities, profile, profile_errors, phase, K, e, omega, v0)
-            # st = 15 
-            # end =-15
-            # try: 
-            #     popt, pcov = curve_fit(gauss, velocities[st:end], spectrum[st:end])
-            #     perr= np.sqrt(np.diag(pcov))
-            #     order_rvs.append(popt[0])
-            #     order_fwhm.append(popt[1])
-            # except:
-            #     order_rvs.append(1.)
-            #     order_fwhm.append(1.)
+            # velocities_ccf_temp, spectrum_ccf_temp, ccf_errors_temp = remove_reflex(velocities_ccf, ccf_profile/np.mean(ccf_profile[:5])-1, ccf_profile/100, ccf_phi, K, e, omega, v0)
+            # velocities_temp, spectrum_temp, errors_temp = remove_reflex(velocities, profile, profile_errors, phase, K, e, omega, v0)
+            st = 15 
+            end =-15
+            try: 
+                popt, pcov = curve_fit(gauss, velocities[st:end], profile[st:end])
+                perr= np.sqrt(np.diag(pcov))
+                all_rvs[order1, counter] = popt[0]
+                order_fwhm.append(popt[1])
+            except:
+                all_rvs[order1, counter] = popt[0]
+                order_fwhm.append(1.)
 
             # st = 30
             # end =-30
