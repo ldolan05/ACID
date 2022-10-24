@@ -92,33 +92,33 @@ for month in months:
     plt.figure()
     st = 15
     end = -15
-    # st = 0
-    # end = len(velocities)
+    st = 0
+    end = len(velocities)
     # cmap = plt.colormaps('Blues')'
 
-    colour = cm.Blues(np.linspace(0, 1, len(all_profiles)))
-    plt.figure()
-    for i in range(len(all_profiles)-1):
-        y = all_profiles[i].data[0]
-        popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
-        perr= np.sqrt(np.diag(pcov))
-        plt.plot(velocities[st:end], y[st:end], 'k')
-        plt.plot(velocities[st:end], gauss(velocities[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
-        rvs.append(popt[0])
-        fwhm.append(2.355*popt[1])
-        rv_phases.append(all_profiles[count].header['PHASE'])
+    # colour = cm.Blues(np.linspace(0, 1, len(all_profiles)))
+    # plt.figure()
+    # for i in range(len(all_profiles)-1):
+    #     y = all_profiles[i].data[0]
+    #     popt, pcov = curve_fit(gauss, velocities[st:end], y[st:end])
+    #     perr= np.sqrt(np.diag(pcov))
+    #     plt.plot(velocities[st:end], y[st:end], 'k')
+    #     plt.plot(velocities[st:end], gauss(velocities[st:end], popt[0], popt[1], popt[2], popt[3]), 'r')
+    #     rvs.append(popt[0])
+    #     fwhm.append(2.355*popt[1])
+    #     rv_phases.append(all_profiles[count].header['PHASE'])
         
-        rv_results.append(all_profiles[count].header['RESULT'])
-        count += 1
-    #plt.legend()
+    #     rv_results.append(all_profiles[count].header['RESULT'])
+    #     count += 1
+    # #plt.legend()
 
-    plt.figure('ACID and CCF RV (-median)', figsize = [9, 7])
-    plt.ylabel('RV - median(RV)')
-    plt.xlabel('Phase')
-    plt.scatter(rv_phases, rvs-np.median(rvs), label = 'ACID NEW', color = 'm')
-    # plt.scatter(rv_phases, rvs2-np.median(rvs2), label = 'ACID NEW_moremask', color = 'k')
-    plt.legend()
-    plt.show()
+    # plt.figure('ACID and CCF RV (-median)', figsize = [9, 7])
+    # plt.ylabel('RV - median(RV)')
+    # plt.xlabel('Phase')
+    # plt.scatter(rv_phases, rvs-np.median(rvs), label = 'ACID NEW', color = 'm')
+    # # plt.scatter(rv_phases, rvs2-np.median(rvs2), label = 'ACID NEW_moremask', color = 'k')
+    # plt.legend()
+    # plt.show()
 
     # ccf_spec = all_ccfs[0].data[0]
     # ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
@@ -183,9 +183,11 @@ for month in months:
         print(transit_curve)
         print(result)
 
-        profile = (profile+1)*transit_curve
-        profile_errors = profile_errors*transit_curve
-
+        profile = (profile[5:-5]+1)*transit_curve
+        profile_errors = profile_errors[5:-5]*transit_curve
+        if line ==0:
+            velocities = velocities[5:-5]
+        print(velocities.shape, profile.shape)
         
         in_profiles.append(profile)
         in_profiles_errors.append(profile_errors)
@@ -207,9 +209,9 @@ for month in months:
     # plt.show()
 
     #print(phases)
-    profile_spec = all_profiles[0].data[0]
-    #velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
-    velocities = np.linspace(-15,15,len(profile_spec))
+    # profile_spec = all_profiles[0].data[0]
+    # #velocities=all_profiles[0].header['CRVAL1']+(np.arange(profile_spec.shape[0]))*all_profiles[0].header['CDELT1']
+    # velocities = np.linspace(-15,15,len(profile_spec))
 
     # ccf_spec = all_ccfs[0].data[0]
     # ccf_velocities=all_ccfs[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*all_ccfs[0].header['CDELT1']
@@ -217,7 +219,7 @@ for month in months:
 
    # K = -2.277 #km/s - Boisse et al, 2009
     #velocities = velocities - K  ### Adjusting doppler reflex ###
-    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
+    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out[5:-5], master_out_errors[5:-5], velocities)
     # plt.figure()
     # for out_prof in out_profiles:
     #     residual_profiles, residual_profile_errors = residualccfs(out_profiles, out_profile_error, out_prof, master_out_errors, velocities)

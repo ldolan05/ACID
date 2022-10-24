@@ -14,8 +14,15 @@ from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
 
 from math import log10, floor
-def round_sig(x, sig):
-    return round(x, sig-int(floor(log10(abs(x))))-1)
+
+def round_sig(x1, sig):
+    return round(x1, sig-int(floor(log10(abs(x1))))-1)
+
+from scipy.optimize import curve_fit
+
+def gauss(x1, rv, sd, height, cont):
+    y1 = height*np.exp(-(x1-rv)**2/(2*sd**2)) + cont
+    return y1
 
 ## for real data
 fits_file = '/home/lsd/Documents/HD189733/August2007_master_out_ccfs.fits'
@@ -61,7 +68,14 @@ def read_in_frames(order, filelist):
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
     plt.figure('spectra after blaze_correct')
     for file in filelist:
+        print('e2ds')
+        # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
         fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+        # for i in range(len(fluxes)):
+        #     if i ==0:
+        #         fluxes[i] = fluxes[i]*(0.01/(2.99792458e5*(wavelengths[1]-wavelengths[0])))
+        #     else:
+        #         fluxes[i] = fluxes[i]*(0.01/(2.99792458e5*(wavelengths[i]-wavelengths[i-1])))
         try: ccf = fits.open(file.replace('e2ds', 'ccf_K5'))
         except: ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
         ccf_rvs.append([ccf[0].header['ESO DRS CCF RV']])
@@ -83,8 +97,14 @@ def read_in_frames(order, filelist):
     frames = np.array(frames)
     errors = np.array(errors)
 
-    plt.figure('divided spectra (by reference frame)')
+    global frames_unadjusted
+    frames_unadjusted = frames
+    global frame_errors_unadjusted
+    frame_errors_unadjusted = errors
+
+    # plt.figure('divided spectra (by reference frame)')
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
+    popts = []
     for n in range(len(frames)):
         f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
         div_frame = f2(reference_wave)/reference_frame
@@ -97,25 +117,43 @@ def read_in_frames(order, filelist):
             binned[pos] = (div_frame[i]+div_frame[i+1])/2
             binned_waves[pos] = (reference_wave[i]+reference_wave[i+1])/2
 
-        plt.plot(frame_wavelengths[n], frames[n])
+        # plt.plot(frame_wavelengths[n], frames_unadjusted[n], color = 'b', label = 'unadjusted')
+        # plt.figure()
+        # plt.plot(frame_wavelengths[n], frames[n])
+        # plt.show()
+
+        mid_line = 4594.08
         ### fitting polynomial to div_frame
         coeffs=np.polyfit(binned_waves, binned, 2)
         poly = np.poly1d(coeffs)
         fit = poly(frame_wavelengths[n])
         frames[n] = frames[n]/fit
         errors[n] = errors[n]/fit
-        '''
-        plt.figure()
-        plt.plot(wavelengths, frames[n])
-        plt.plot(wavelengths, fit)
+       
+    #     id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
+    #     w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
+    #     p = frames_unadjusted[n]/frames_unadjusted[n, 0]
 
-        plt.figure()
-        plt.plot(binned_waves, binned)
-        plt.plot(binned_waves, poly(binned_waves))
-        plt.show()
-        '''
-        plt.plot(frame_wavelengths[n], frames[n])
+    #     try:   
+    #         popt, pcov = curve_fit(gauss, w[id], p[id])
+    #         popts.append(popt[0])
+    #     except: 
+    #         plt.figure()
+    #         plt.plot(w[id], p[id])
+    #         plt.show()
+
+    #     plt.plot(w[id], p[id])
+    #     # plt.plot(frame_wavelengths[n], frames[n], color = 'g', label = 'adjusted')
+    #     if n==0:
+    #         plt.legend()
+    # plt.xlim(np.min(w[id]), np.max(w[id]))
+    
+    # plt.figure()
+    # plt.scatter(np.arange(len(frames)), popts - np.median(popts), label = 'e2ds')
+    # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
+    # plt.legend()
     # plt.show()
+    # # plt.show()
     plt.close()
 
     return frame_wavelengths, frames, errors, sns, telluric_spec
@@ -204,42 +242,42 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         
         return coeffs, flux_obs, new_errors, fit
 
-def combine_spec(wavelengths, spectra, errors, sns):
+def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
-    interp_spec = np.zeros(spectra.shape)
+    interp_spec = np.zeros(spectra_f.shape)
     #combine all spectra to one spectrum
-    for n in range(len(wavelengths)):
-        f2 = interp1d(wavelengths[n], spectra[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-        f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = np.nan)
-        spectra[n] = f2(reference_wave)
-        errors[n] = f2_err(reference_wave)
+    for n in range(len(wavelengths_f)):
+        f2 = interp1d(wavelengths_f[n], spectra_f[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+        f2_err = interp1d(wavelengths_f[n], errors_f[n], kind = 'linear', bounds_error=False, fill_value = np.nan)
+        spectra_f[n] = f2(reference_wave)
+        errors_f[n] = f2_err(reference_wave)
 
         ## mask out nans and zeros (these do not contribute to the main spectrum)
-        where_are_NaNs = np.isnan(spectra[n])
-        errors[n][where_are_NaNs] = 1000000000000
-        where_are_zeros = np.where(spectra[n] == 0)[0]
-        errors[n][where_are_zeros] = 1000000000000
+        where_are_NaNs = np.isnan(spectra_f[n])
+        errors_f[n][where_are_NaNs] = 1000000000000
+        where_are_zeros = np.where(spectra_f[n] == 0)[0]
+        errors_f[n][where_are_zeros] = 1000000000000
 
-        where_are_NaNs = np.isnan(errors[n])
-        errors[n][where_are_NaNs] = 1000000000000
-        where_are_zeros = np.where(errors[n] == 0)[0]
-        errors[n][where_are_zeros] = 1000000000000
+        where_are_NaNs = np.isnan(errors_f[n])
+        errors_f[n][where_are_NaNs] = 1000000000000
+        where_are_zeros = np.where(errors_f[n] == 0)[0]
+        errors_f[n][where_are_zeros] = 1000000000000
 
-    length, width = np.shape(spectra)
-    spectrum = np.zeros((width,))
-    spec_errors = np.zeros((width,))
+    length, width = np.shape(spectra_f)
+    spectrum_f = np.zeros((width,))
+    spec_errors_f = np.zeros((width,))
 
     for n in range(0,width):
-        temp_spec = spectra[:, n]
-        temp_err = errors[:, n]
+        temp_spec_f = spectra_f[:, n]
+        temp_err_f = errors_f[:, n]
 
-        weights = (1/temp_err**2)
-        weights = weights/np.sum(weights)
+        weights_f = (1/temp_err_f**2)
+        weights_f = weights_f/np.sum(weights_f)
 
-        spectrum[n]=sum(weights*temp_spec)
-        sn = sum(weights*sns)/sum(weights)
+        spectrum_f[n]=sum(weights_f*temp_spec_f)
+        sn_f = sum(weights_f*sns_f)/sum(weights_f)
 
-        spec_errors[n]=(np.std(temp_spec))*np.sqrt(sum(weights**2))
+        spec_errors_f[n]=(np.std(temp_spec_f))*np.sqrt(sum(weights_f**2))
    
     # plt.figure('frames')
     # plt.title('spectra for each frame and combined spectrum')
@@ -251,7 +289,7 @@ def combine_spec(wavelengths, spectra, errors, sns):
     # #plt.legend()
     # plt.show()
     
-    return reference_wave, spectrum, spec_errors, sn
+    return reference_wave, spectrum_f, spec_errors_f, sn_f
 
 def od2flux(x):
     return np.exp(x)-1
@@ -468,8 +506,8 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_
 months1 = ['August2007']
 months = ['July2007']#, 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(8,70)
-# order_range = np.arange(48,49)
+# order_range = np.arange(8,70)
+order_range = np.arange(28,29)
 
 P=2.21857567 #Cegla et al, 2006 - days
 T=2454279.436714 #Cegla et al, 2006
@@ -495,8 +533,144 @@ for month in months:
         #     fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
 
         frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist)
+
+        #  ################## TEST - get the RV from each frame - see how it compares to CCF rv and unadjusted spectrum rv #####################
+        # plt.figure('rvs after basic continuum fit')
+        # popts = []
+        # popts_unad = []
+        # line_popts = []
+        # line_popts_unad = []
+
+        # for n in range(len(frame_wavelengths)):
+        #     wavelengths1 = frame_wavelengths[n]
+        #     a = 2/(np.max(wavelengths1)-np.min(wavelengths1))
+        #     b = 1 - a*np.max(wavelengths1)
+        #     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(frames[n],  wavelengths1, frame_errors[n], poly_ord)
+
+        #     #### getting the initial profile
+        #     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths1, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sns[n], order, run_name)
+
+        #     p = np.exp(profile)-1
+        #     # p=profile
+        #     popt, pcov = curve_fit(gauss, velocities, p)
+        #     popts.append(popt[0])
+        #     # plt.figure()
+        #     # plt.plot(velocities, p, color = 'k')
+        #     # plt.plot(velocities, gauss(velocities, popt[0], popt[1], popt[2], popt[3]), color = 'r')
+        #     print(popt[0], ccf_rvs[n])
+            
+        #     ## test for all lines rv #####
+        #     # print('fitting to un-continuum adjusted spectrum')
+        #     mid_lines = [4575.7795, 4580.4365, 4584.5967, 4588.7294, 4594.1158, 4597.7472, 4601.134 , 4606.2251, 4616.2463, 4621.941 ]
+            
+        #     # line_popts1 = []
+        #     # for mid_line in mid_lines:
+        #         ### fitting polynomial to div_frame
+        #     mid_line = mid_lines[0]
+        #     id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
+        #     w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
+        #     p = fluxes1
+        #     try:   
+        #         popt, pcov = curve_fit(gauss, w[id], p[id])
+        #         line_popts.append(popt[0])
+        #     except: 
+        #         print(w[id])
+        #         print(p[id])
+        #         plt.figure()
+        #         plt.plot(w[id], p[id])
+        #         plt.show()
+
+        #     # line_popts.append(line_popts1)
+        #     ## end of sub-test ##
+
+        #     # poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(frames_unadjusted[n],  wavelengths1, frame_errors_unadjusted[n], poly_ord)
+
+        #     # #### getting the initial profile
+        #     # velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths1, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sns[n], order, run_name)
+
+        #     # # p=profile
+        #     # p = np.exp(profile)-1
+        #     # popt, pcov = curve_fit(gauss, velocities, p)
+        #     # popts_unad.append(popt[0])
+        #     # print(popt[0])
+
+        #     # mid_line = 4594.08
+        #     # ### fitting polynomial to div_frame
+        #     # id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
+        #     # w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
+        #     # p = frames_unadjusted[n]/frames_unadjusted[n,0]
+
+        #     # try:   
+        #     #     popt, pcov = curve_fit(gauss, w[id], p[id])
+        #     #     line_popts_unad.append(popt[0])
+        #     # except: 
+        #     #     plt.figure()
+        #     #     plt.plot(w[id], p[id])
+        #     #     plt.show()
+    
+        # # line_popts = np.array(line_popts)
+
+        # # plt.figure()
+        # # for i in range(len(mid_lines)):    
+        # #     plt.scatter(np.arange(len(frames)), line_popts[:, i] - np.median(line_popts[:, i]), label = 'line e2ds - basic continuum - line %s'%i)
+        # # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
+        # # plt.legend()
+        # # plt.show()
+
+        # plt.figure()
+        # plt.title('RV Curve for Synthetic e2ds Spectrum')
+        # plt.scatter(np.arange(len(frames)), line_popts, label = 'RV from line')
+        # plt.scatter(np.arange(len(frames)), popts, label = 'RV from LSD profile')
+        # plt.scatter(np.arange(len(frames)), ccf_rvs, label = 'RV from CCF (input into synthetic spectrum)')
+        # plt.xlabel('Frame Number')
+        # plt.ylabel('RV')
+        # plt.legend()
+        # #plt.show()
+
+        # plt.figure()
+        # plt.title('RV-median(RVs) Curve for Synthetic e2ds Spectrum')
+        # plt.scatter(np.arange(len(frames)), line_popts-np.median(line_popts), label = 'RV from line')
+        # plt.scatter(np.arange(len(frames)), popts-np.median(popts), label = 'RV from LSD profile')
+        # plt.scatter(np.arange(len(frames)), ccf_rvs-np.median(ccf_rvs), label = 'RV from CCF (input into synthetic spectrum)')
+        # plt.xlabel('Frame Number')
+        # plt.ylabel('RV - median(RVs)')
+        # plt.legend()
+        # plt.show()
+
+        # plt.figure()
+        # plt.title('RV difference for Synthetic e2ds Spectrum')
+        # popts = np.array(popts)
+        # ccf_rvs = np.array(ccf_rvs)
+        # ccf_rvs = ccf_rvs.reshape(popts.shape)
+        # plt.scatter(np.arange(len(frames)), (popts-np.median(popts))-(ccf_rvs-np.median(ccf_rvs)), label = 'RV Diff from line')
+        # #plt.scatter(np.arange(len(frames)), popts-np.median(popts), label = 'RV from LSD profile')
+        # # plt.scatter(np.arange(len(frames)), ccf_rvs-np.median(ccf_rvs), label = 'RV from CCF (input into synthetic spectrum)')
+        # plt.xlabel('Frame Number')
+        # plt.ylabel('RV Difference (LSD RV - CCF RV)')
+        # plt.legend()
+        # plt.show()
+
+        # plt.figure()
+        # plt.scatter(np.arange(len(frames)), line_popts_unad - np.median(line_popts_unad), label = 'line e2ds - basic continuum unadjusted')
+        # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
+        # plt.legend()
+       
+        # plt.figure()
+        # plt.scatter(np.arange(len(popts)), popts-np.median(popts), label = 'basic continuum')
+        # plt.scatter(np.arange(len(ccf_rvs)), ccf_rvs-np.median(ccf_rvs), label = 'ccf rvs')
+        # plt.legend()
+
+        # plt.figure()
+        # plt.scatter(np.arange(len(popts_unad)), popts_unad-np.median(popts_unad), label = 'basic continuum, unadjusted')
+        # plt.scatter(np.arange(len(ccf_rvs)), ccf_rvs-np.median(ccf_rvs), label = 'ccf rvs')
+        # plt.legend()
+        # plt.show()
+
+        ############# END OF TEST ####################
+        # inp = input('END of Test 1 - rvs with basic continuum fit')
+
         ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
-        wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths, frames, frame_errors, sns)
+        wavelengths, fluxes, flux_error_order, sn = combine_spec(frame_wavelengths.copy(), frames.copy(), frame_errors.copy(), sns.copy())
         print("SN of combined spectrum, order %s: %s"%(order, sn))
         
         # month_spec.append([wavelengths, wavelengths1, fluxes, fluxes1])
@@ -506,6 +680,95 @@ for month in months:
         flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
         fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
         '''
+
+        # ################## TEST - get the RV from each frame - see how it compares to CCF rv and unadjusted spectrum rv #####################
+        # plt.figure('rvs after basic continuum fit')
+        # popts = []
+        # popts_unad = []
+        # line_popts = []
+        # line_popts_unad = []
+        # for n in range(len(frame_wavelengths)):
+        #     wavelengths1 = frame_wavelengths[n]
+        #     a = 2/(np.max(wavelengths1)-np.min(wavelengths1))
+        #     b = 1 - a*np.max(wavelengths1)
+        #     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(frames[n],  wavelengths1, frame_errors[n], poly_ord)
+
+        #     #### getting the initial profile
+        #     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths1, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sns[n], order, run_name)
+
+        #     p = np.exp(profile)-1
+        #     # p=profile
+        #     popt, pcov = curve_fit(gauss, velocities, p)
+        #     popts.append(popt[0])
+        #     # plt.figure()
+        #     # plt.plot(velocities, p, color = 'k')
+        #     # plt.plot(velocities, gauss(velocities, popt[0], popt[1], popt[2], popt[3]), color = 'r')
+        #     print(popt[0], ccf_rvs[n])
+            
+        #     print('fitting to un-continuum adjusted spectrum')
+        #     mid_line = 4594.08
+        #     ### fitting polynomial to div_frame
+        #     id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
+        #     w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
+        #     p = frames[n]/frames[n,0]
+
+        #     try:   
+        #         popt, pcov = curve_fit(gauss, w[id], p[id])
+        #         line_popts.append(popt[0])
+        #     except: 
+        #         plt.figure()
+        #         plt.plot(w[id], p[id])
+        #         plt.show()
+
+        #     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(frames_unadjusted[n],  wavelengths1, frame_errors_unadjusted[n], poly_ord)
+
+        #     #### getting the initial profile
+        #     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths1, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sns[n], order, run_name)
+
+        #     # p=profile
+        #     p = np.exp(profile)-1
+        #     popt, pcov = curve_fit(gauss, velocities, p)
+        #     popts_unad.append(popt[0])
+        #     print(popt[0])
+
+        #     mid_line = 4594.08
+        #     ### fitting polynomial to div_frame
+        #     id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
+        #     w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
+        #     p = frames_unadjusted[n]/frames_unadjusted[n,0]
+
+        #     try:   
+        #         popt, pcov = curve_fit(gauss, w[id], p[id])
+        #         line_popts_unad.append(popt[0])
+        #     except: 
+        #         plt.figure()
+        #         plt.plot(w[id], p[id])
+        #         plt.show()
+    
+        # plt.figure()
+        # plt.scatter(np.arange(len(frames)), line_popts - np.median(line_popts), label = 'line e2ds - basic continuum')
+        # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
+        # plt.legend()
+
+        # plt.figure()
+        # plt.scatter(np.arange(len(frames)), line_popts_unad - np.median(line_popts_unad), label = 'line e2ds - basic continuum')
+        # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
+        # plt.legend()
+       
+        # plt.figure()
+        # plt.scatter(np.arange(len(popts)), popts-np.median(popts), label = 'basic continuum')
+        # plt.scatter(np.arange(len(ccf_rvs)), ccf_rvs-np.median(ccf_rvs), label = 'ccf rvs')
+        # plt.legend()
+
+        # plt.figure()
+        # plt.scatter(np.arange(len(popts_unad)), popts_unad-np.median(popts_unad), label = 'basic continuum, unadjusted')
+        # plt.scatter(np.arange(len(ccf_rvs)), ccf_rvs-np.median(ccf_rvs), label = 'ccf rvs')
+        # plt.legend()
+        # plt.show()
+
+        # ############# END OF TEST ####################
+        # inp = input('END of Test 2 - rvs with basic continuum fit - after combine spec function')
+
 
         #### running the MCMC #####
 
@@ -541,7 +804,6 @@ for month in months:
         # plt.xlabel('Velocities (km/s)')
         # plt.ylabel('Normalised Flux')
         # plt.show()
-
 
         #### setting up empty array for final profiles to go into
         if order == order_range[0]:
@@ -591,6 +853,55 @@ for month in months:
         #masking based off residuals
         yerr_unmasked = yerr
         yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec)
+
+        # #################### TEST - get the RV from each frame after residual masking - see how it compares to CCF rv and unadjusted spectrum rv #####################
+        # plt.figure('rvs after basic continuum fit and residual mask')
+        # popts = []
+        # popts_unad = []
+        # for n in range(len(frame_wavelengths)):
+        #     wavelengths1 = frame_wavelengths[n]
+        #     a = 2/(np.max(wavelengths1)-np.min(wavelengths1))
+        #     b = 1 - a*np.max(wavelengths1)
+
+        #     mask_pos = np.ones(reference_wave.shape)
+        #     mask_pos[mask_idx]=10000000000000000000
+        #     f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
+        #     interp_mask_pos = f2(wavelengths)
+        #     interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
+
+        #     err = frame_errors[n]
+        #     err[interp_mask_idx] = 10000000000000000000
+           
+        #     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(frames[n],  (wavelengths1*a)+b, err, poly_ord)
+
+        #     #### getting the initial profile
+        #     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths1, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
+
+        #     p = np.exp(profile)-1
+        #     popt, pcov = curve_fit(gauss, velocities[15:-15], p[15:-15])
+        #     popts.append(popt[0])
+        #     print(popt[0], ccf_rvs[n])
+            
+        #     err = frame_errors_unadjusted[n]
+        #     err[interp_mask_idx] = 10000000000000000000
+
+        #     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(frames_unadjusted[n],  (wavelengths1*a)+b, err, poly_ord)
+
+        #     #### getting the initial profile
+        #     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths1, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name)
+
+        #     p = np.exp(profile)-1
+        #     popt, pcov = curve_fit(gauss, velocities[15:-15], p[15:-15])
+        #     popts_unad.append(popt[0])
+        #     print(popt[0])
+
+            
+        # plt.scatter(np.arange(len(popts)), popts)
+        # plt.scatter(np.arange(len(ccf_rvs)), ccf_rvs)
+        # plt.show()
+        # ############## END OF TEST ####################
+        # inp = input('END of Test 2 - rvs with basic continuum fit and masking applied')
+
 
         ##masking frames also
         #mask_idx = tuple([yerr>1000000000000000000])
@@ -664,7 +975,7 @@ for month in months:
         # running the mcmc using python package emcee
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
         sampler.run_mcmc(pos, steps_no, progress=True)
-
+        
         idx = tuple([yerr<=10000000000000000000])
 
         t1 = time.time()
@@ -851,6 +1162,8 @@ for month in months:
         plt.close('all')
 
         profiles = []
+        popts_new = []
+        corrected_spec = []
         plt.figure()
         for counter in range(0, len(frames)):
             flux = frames[counter]
@@ -913,9 +1226,15 @@ for month in months:
             
             #plt.plot(wavelengths, flux, label = '%s'%counter)
 
+            corrected_spec.append([wavelengths, flux, error])
+
             velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name)
 
-            plt.plot(velocities, profile)
+            # p = np.exp(profile)-1
+            # popt, pcov = curve_fit(gauss, velocities[15:-15], p[15:-15])
+            # popts_new.append(popt[0])
+            # print(popt[0], ccf_rvs[counter])
+            
 
             profile_f = np.exp(profile)
             profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
@@ -932,20 +1251,20 @@ for month in months:
             #plt.legend()
             #plt.show()
 
-            count = 0
-            plt.figure()
-            plt.title("HARPS CCFs")
-            file_list = findfiles(directory, 'ccf')
-            for file in file_list[:-1]:
-                ccf = fits.open(file)
-                ccf_spec = ccf[0].data[order]
-                velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*ccf[0].header['CDELT1']
-                plt.plot(velocities_ccf, ccf_spec/ccf_spec[0]-1, label = '%s'%count)
-                count +=1
-            plt.legend()
-            plt.ylabel('flux')
-            plt.xlabel('velocities km/s')
-            #plt.show()
+            # count = 0
+            # plt.figure()
+            # plt.title("HARPS CCFs")
+            # file_list = findfiles(directory, 'ccf')
+            # for file in file_list[:-1]:
+            #     ccf = fits.open(file)
+            #     ccf_spec = ccf[0].data[order]
+            #     velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_spec.shape[0]))*ccf[0].header['CDELT1']
+            #     plt.plot(velocities_ccf, ccf_spec/ccf_spec[0]-1, label = '%s'%count)
+            #     count +=1
+            # plt.legend()
+            # plt.ylabel('flux')
+            # plt.xlabel('velocities km/s')
+            # #plt.show()
 
             # berv_corr = ccf[0].header['ESO DRS BERV']
 
@@ -959,41 +1278,36 @@ for month in months:
             # plt.plot(velocities, profile_f, label = 'profile (pre-adjusted)')
             # plt.show()
 
-            plt.figure()
-            plt.title('order %s, LSD profiles'%order)
+            # plt.figure()
+            # plt.title('order %s, LSD profiles'%order)
             no=0
 
             # print(velocities)
             
-            ##########################################################################
-            ##########################################################################
-            ### testing rvs against ccfs - take out after test
-            from scipy.optimize import curve_fit
+            # ##########################################################################
+            # ##########################################################################
+            # ### testing rvs against ccfs - take out after test
 
-            def gauss(x, rv, sd, height, cont):
-                y = height*np.exp(-(x-rv)**2/(2*sd**2)) + cont
-                return y
+            # for profile in profiles:
+            #     # plt.plot(velocities, np.exp(profile)-1, label = '%s'%no)
+            #     p = np.exp(profile)-1
+            #     popt, pcov = curve_fit(gauss, velocities[15:-15], p[15:-15])
+            #     print(popt[0], ccf_rvs[no])
+            #     no+=1
+            #     #plt.show()
+            # plt.legend()
+            # plt.ylabel('flux')
+            # plt.xlabel('velocities km/s')
+            # if counter == len(frames)-1:
+            #     print('I THINK ITS THE LAST FRAME')
+            #     print(counter)
+            #     print(len(frames))
+            #     plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_FINALprof_%s'%(order, run_name))
+            #     #plt.show()
 
-            for profile in profiles:
-                # plt.plot(velocities, np.exp(profile)-1, label = '%s'%no)
-                p = np.exp(profile)-1
-                popt, pcov = curve_fit(gauss, velocities[15:-15], p[15:-15])
-                print(popt[0], ccf_rvs[no])
-                no+=1
-                #plt.show()
-            plt.legend()
-            plt.ylabel('flux')
-            plt.xlabel('velocities km/s')
-            if counter == len(frames)-1:
-                print('I THINK ITS THE LAST FRAME')
-                print(counter)
-                print(len(frames))
-                plt.savefig('/home/lsd/Documents/LSD_Figures/profiles/order%s_FINALprof_%s'%(order, run_name))
-                #plt.show()
-
-            # inp = input('Check rvs stated above ^^')
-            #############################################################################
-            #############################################################################
+            # # inp = input('Check rvs stated above ^^')
+            # #############################################################################
+            # #############################################################################
             
             # mcmc_mdl = model_func(np.concatenate((profile, poly_cos)), wavelengths)
             # f2 = interp1d(velocities_ccf, ccf_spec/ccf_spec[0]-1, kind='linear', bounds_error=False, fill_value=np.nan)
@@ -1029,11 +1343,17 @@ for month in months:
     # plt.show()
     plt.close('all')
 
+    # print('We are done')
+
+    # inp = input('Enter...')
+
     # adding into fits files for each frame
+    phases = []
     for frame_no in range(0, len(frames)):
         file = filelist[frame_no]
         fits_file = fits.open(file)
         phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
+        phases.append(phi)
         hdu = fits.HDUList()
         hdr = fits.Header()
 
@@ -1047,7 +1367,7 @@ for month in months:
                 result = 'in'
             else:
                 result = 'out'
-
+            
             hdr['result'] = result
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
@@ -1057,6 +1377,13 @@ for month in months:
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
         hdu.writeto('/home/lsd/Documents/LSD_Figures/%s_%s_%s.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
+
+# plt.figure()
+# plt.scatter(phases, popts - np.median(popts), label = 'basic continuum correction')
+# plt.scatter(phases, popts_new-np.median(popts_new), label = 'mcmc continuum correction (LSD profile)')
+# plt.scatter(phases, ccf_rvs[:len(popts)]-np.median(ccf_rvs[:len(popts)]), label = 'ccf rvs')
+# plt.legend()
+# plt.show()
 
 # month_spec = np.array(month_spec)
 
@@ -1080,3 +1407,19 @@ for month in months:
 # plt.legend()
 
 # plt.show()
+
+
+# for no in range(len(corrected_spectrum_e2ds)):
+#     e2ds_spec, e2ds_wave, e2ds_err = corrected_spectrum_e2ds[no]
+#     s1d_spec, s1d_wave, s1d_err = corrected_spectrum_s1d[no]
+#     plt.figure()
+#     plt.errorbar(e2ds_spec, e2ds_wave, e2ds_err, label = 'e2ds')
+#     plt.errorbar(s1d_spec, s1d_wave, s1d_err, label = 's1d')
+#     plt.legend()
+#     plt.savefig('/home/lsd/Documents/LSD_Figures/e2ds_vs_s1d/%s.png'%no)
+
+# plt.figure()
+# plt.title('e2ds frames')
+# plt.plot(cse2ds[0, 0], cse2ds[0, 1])
+# plt.plot(cse2ds[3, 0], cse2ds[3, 1])
+

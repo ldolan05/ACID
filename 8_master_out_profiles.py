@@ -32,18 +32,18 @@ def findfiles(directory, file_type):
 
     filelist_final = glob.glob('%s*_%s.fits'%(directory, run_name))
 
-    '''
-    filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
-    filelist=glob.glob('%s/*/*%s**A*.fits'%(directory, file_type))               #finding all A band spectra
+    if len(filelist_final)>40:
+        filelist=glob.glob('%s*_%s.fits'%(directory, run_name))    #finding corrected spectra
+        filelist1=glob.glob('%s*_syn_%s.fits'%(directory, run_name))               #finding all A band spectra
 
-    filelist_final=[]
+        filelist_final=[]
 
-    for file in filelist:                                                        #filtering out corrected spectra
-        count = 0
-        for file1 in filelist1:
-            if file1 == file:count=1
-        if count==0:filelist_final.append(file)
-    '''
+        for file in filelist:                                                        #filtering out corrected spectra
+            count = 0
+            for file1 in filelist1:
+                if file1 == file:count=1
+            if count==0:filelist_final.append(file)
+    
     # directory = '/home/lsd/Documents/HD189733/August2007/'
 
     
@@ -183,6 +183,13 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     
     return velocity_grid, adjusted_spectrum, errors
 
+
+def remove_berv(velocities, spectrum, berv):
+    adjusted_velocities = velocities+berv
+    f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value='extrapolate')
+    adjusted_spectrum = f2(velocities)
+    return adjusted_spectrum
+
 def combineccfs(spectra):
     spectra = np.array(spectra)
     length, width = np.shape(spectra)
@@ -196,8 +203,19 @@ def combineprofiles(spectra, errors, ccf, master, velocities):
     spectra = np.array(spectra)
     idx = np.isnan(spectra)
     print(len(spectra[idx]))
+    shape_og = spectra.shape
     if len(spectra[idx])>0:
-        inp = input('Nans where found')
+        print(spectra)
+        inp = input('Nans were found')
+        spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
+        print(len(spectra))
+        print(spectra.shape)
+        for n in range(len(spectra)):
+            if spectra[n] == np.nan:
+                spectra[n] = (spectra[n+1]+spectra[n-1])/2
+                if spectra[n] == np.nan:
+                    spectra[n] = 0.
+    spectra = spectra.reshape(shape_og)
     errors = np.array(errors)
 
     if master == 'no':
@@ -554,16 +572,16 @@ for month in months:
             ## investigation section - delete/comment out when done
             # velocities_ccf_temp, spectrum_ccf_temp, ccf_errors_temp = remove_reflex(velocities_ccf, ccf_profile/np.mean(ccf_profile[:5])-1, ccf_profile/100, ccf_phi, K, e, omega, v0)
             # velocities_temp, spectrum_temp, errors_temp = remove_reflex(velocities, profile, profile_errors, phase, K, e, omega, v0)
-            st = 15 
-            end =-15
-            try: 
-                popt, pcov = curve_fit(gauss, velocities[st:end], profile[st:end])
-                perr= np.sqrt(np.diag(pcov))
-                all_rvs[order1, counter] = popt[0]
-                order_fwhm.append(popt[1])
-            except:
-                all_rvs[order1, counter] = popt[0]
-                order_fwhm.append(1.)
+            # st = 15 
+            # end =-15
+            # try: 
+            #     popt, pcov = curve_fit(gauss, velocities[st:end], profile[st:end])
+            #     perr= np.sqrt(np.diag(pcov))
+            #     all_rvs[order1, counter] = popt[0]
+            #     order_fwhm.append(popt[1])
+            # except:
+            #     all_rvs[order1, counter] = popt[0]
+            #     order_fwhm.append(1.)
 
             # st = 30
             # end =-30
@@ -668,15 +686,26 @@ for month in months:
         #plt.figure(file)
         #spectrum, errors = combineprofiles(order_profiles, order_errors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31, 35, 38, 39, 41, 42, 43, 44, 45, 45, 47, 50, 51, 55, 56, 63, 64, 65, 69])
         ccf_profiles = np.array(ccf_profiles)
+
+        idx = np.isnan(order_profiles)
+        order_profiles = np.array(order_profiles)
+        order_profiles[idx] = 0.
+
         spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
+        #spectrum = order_profiles[27]
+        #errors = order_errors[27]
+        # plt.figure()
+        # plt.plot(spectrum)
+        # plt.show()
+        
         spectrum_ccf = ccf[0].data[72]
         velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
         # spectrum_ccf, errors_ccf, weights_ccf = combineprofiles(ccf_profiles, np.ones(ccf_profiles.shape)*0.0001, ccf, 'no', velocities_ccf)
 
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
-        velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, ccf_phi, K, e, omega, v0)
-        velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
+        # velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, ccf_phi, K, e, omega, v0)
+        # velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi,K, e, omega, v0)
 
         all_profiles = list(all_profiles)
         all_profile_errors = list(all_profile_errors)
@@ -738,11 +767,13 @@ for month in months:
     phases = np.array(phases1)
     all_ccfs = np.array(all_ccfs)
     results = np.array(results)
+    berv = np.array(berv)
 
     idx = phases.argsort()
     phases = phases[idx]
     results = results[idx]
     all_ccfs = all_ccfs[idx]
+   
     phases = list(phases)
     results = list(results)
 
@@ -762,6 +793,8 @@ for month in months:
     all_ccf_profiles = np.array(all_ccf_profiles)
     all_ccf_profiles = all_ccf_profiles[idc]
     header_rvs = header_rvs[idc]
+    berv = berv[idc]
+    berv = list(berv)
 
     print(ccf_phases)
     print(phases)
@@ -780,6 +813,14 @@ for month in months:
 
     #     all_ccfs[i, 0] = spectrum
     #     all_profiles[i] = spectrum
+
+
+    ### REMOVING THE BERV 
+    # for i in range(len(all_profiles)):
+    #     print(ccf_phases[i], phases[i], berv[i])
+    #     profile3 = remove_berv(velocities, all_profiles[i], berv[i])
+    #     all_profiles[i] = profile3
+    #     all_ccfs[i][0] = profile3
 
     #making master out
 
@@ -805,6 +846,7 @@ for month in months:
         master_out_errors = out_errors[0]
 
     master_out = np.array([master_out_spec, master_out_errors])
+
 
     #write in data
     hdu=fits.HDUList()
@@ -910,10 +952,10 @@ ccf_rv_results = []
 rvs = []
 fwhm = []
 plt.figure()
-st = 15
-end = -15
-# st = 0
-# end = len(velocities)
+# st = 15
+# end = -15
+st = 0
+end = len(velocities)
 # cmap = plt.colormaps('Blues')'
 colour = cm.Blues(np.linspace(0, 1, len(all_profiles)))
 plt.figure()
