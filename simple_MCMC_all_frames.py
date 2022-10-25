@@ -66,11 +66,14 @@ def read_in_frames(order, filelist):
     max_sn = 0
 
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
+    global idx_overlaps
+    idx_overlaps = []
     plt.figure('spectra after blaze_correct')
     for file in filelist:
-        print('e2ds')
-        # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
-        fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+        print('s2ds')
+        # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, idx_overlap = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
+        fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, idx_overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+        idx_overlaps.append(idx_overlap)
         # for i in range(len(fluxes)):
         #     if i ==0:
         #         fluxes[i] = fluxes[i]*(0.01/(2.99792458e5*(wavelengths[1]-wavelengths[0])))
@@ -1169,6 +1172,7 @@ for month in months:
             flux = frames[counter]
             error = frame_errors[counter]
             wavelengths = frame_wavelengths[counter]
+            idx_overlap = idx_overlaps[counter]
 
             # a = 2/(np.max(wavelengths)-np.min(wavelengths))
             # b = 1 - a*np.max(wavelengths)
@@ -1190,6 +1194,7 @@ for month in months:
             # yerr_resi, model_inputs_resi, mask_idx = residual_mask(wavelengths, flux, error, model_inputs, telluric_spec)
 
             error[interp_mask_idx]=10000000000000000000
+            error[idx_overlap]=10000000000000000000
 
             ## normalise
             '''
@@ -1422,4 +1427,37 @@ for month in months:
 # plt.title('e2ds frames')
 # plt.plot(cse2ds[0, 0], cse2ds[0, 1])
 # plt.plot(cse2ds[3, 0], cse2ds[3, 1])
+
+
+fig = plt.figure(figsize = [20,12])
+gs = fig.add_gridspec(3, 6)
+ax = fig.add_subplot(gs[1:, 1:5])
+ax.plot(corrected_spec[0, 0, :]-0.0121, corrected_spec[0, 1, :], label='s1d - shifted by 0.0121 Angstroms')
+ax.plot(corrected_spec_e2ds[0, 0, :], corrected_spec_e2ds[0, 1, :], label='e2ds')
+ax.scatter(corrected_spec_e2ds[0, 0, idx[0]], corrected_spec_e2ds[0, 1, idx[0]], label ='overlap region', alpha = 0.1)
+plt.legend(loc=[1.1, -0.1])
+
+## middle
+axins = ax.inset_axes([0.25, 1.1, 0.47, 0.47])
+axins.plot(corrected_spec[0, 0, :]-0.0121, corrected_spec[0, 1, :], label='s1d - shifted by 0.0121 Angstroms')
+axins.plot(corrected_spec_e2ds[0, 0, :], corrected_spec_e2ds[0, 1, :], label='e2ds')
+axins.scatter(corrected_spec_e2ds[0, 0, idx[0]], corrected_spec_e2ds[0, 1, idx[0]], label ='overlap region', alpha = 0.1)
+axins.set_xlim(4601.5, 4604.1)
+ax.indicate_inset_zoom(axins, edgecolor = 'black')
+##start
+axins2 = ax.inset_axes([-0.3, 1.1, 0.47, 0.47])
+axins2.plot(corrected_spec[0, 0, :]-0.0121, corrected_spec[0, 1, :], label='s1d - shifted by 0.0121 Angstroms')
+axins2.plot(corrected_spec_e2ds[0, 0, :], corrected_spec_e2ds[0, 1, :], label='e2ds')
+axins2.scatter(corrected_spec_e2ds[0, 0, idx[0]], corrected_spec_e2ds[0, 1, idx[0]], label ='overlap region', alpha = 0.1)
+axins2.set_xlim(4575.1, 4577.5)
+ax.indicate_inset_zoom(axins2, edgecolor = 'black')
+## end
+axins3 = ax.inset_axes([0.8, 1.1, 0.47, 0.47])
+axins3.plot(corrected_spec[0, 0, :]-0.0121, corrected_spec[0, 1, :], label='s1d - shifted by 0.0121 Angstroms')
+axins3.plot(corrected_spec_e2ds[0, 0, :], corrected_spec_e2ds[0, 1, :], label='e2ds')
+axins3.scatter(corrected_spec_e2ds[0, 0, idx[0]], corrected_spec_e2ds[0, 1, idx[0]], label ='overlap region', alpha = 0.1)
+axins3.set_xlim(4622.2, 4624.7)
+ax.indicate_inset_zoom(axins3, edgecolor = 'black')
+
+plt.show()
 

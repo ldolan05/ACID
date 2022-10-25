@@ -105,7 +105,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     alpha=np.zeros((len(blankwaves), len(velocities)))
 
-    # limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
+    #limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
     # print(limit)
 
     for j in range(0, len(blankwaves)):
@@ -134,10 +134,10 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                 # plt.scatter(wavelengths_expected[i], flux_obs[j], label = 'linelist wavelegngth')
                 # plt.plot(blankwaves[id], flux_obs[id], label = 'included area for line')
                 for k in range(0, len(velocities)):
-                    if blankwaves[j]==blankwaves[0]:
-                        dv = ((blankwaves[j+1] - blankwaves[j])*2.99792458e5)/blankwaves[j]
-                    else:
-                        dv = ((blankwaves[j] - blankwaves[j-1])*2.99792458e5)/blankwaves[j-1]
+                    # if blankwaves[j]==blankwaves[0]:
+                    #     dv = ((blankwaves[j+1] - blankwaves[j])*2.99792458e5)/blankwaves[j]
+                    # else:
+                    #     dv = ((blankwaves[j] - blankwaves[j-1])*2.99792458e5)/blankwaves[j-1]
                     x=(velocities[k]-vel)/deltav
                     if -1.<x and x<0.:
                         delta_x=(1+x)
@@ -272,10 +272,26 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         where_are_zeros = np.where(spec == 0)[0]
         flux_error[where_are_zeros] = 1000000000000
 
-        wave=get_wave(spec, header)
+        wave=get_wave(spec, header)*(1.+brv/2.99792458e5)
         wavelengths_order = wave[order]
         wavelength_min = np.min(wavelengths_order)
         wavelength_max = np.max(wavelengths_order)
+
+        ## remove overlapping region (always remove the overlap at the start of the order, i.e the min_overlap)
+        last_wavelengths = wave[order-1]
+        next_wavelengths = wave[order+1]
+        min_overlap = np.max(last_wavelengths)
+        max_overlap = np.min(next_wavelengths)
+
+        # print(min_overlap)
+        # print(max_overlap)
+        # plt.figure()
+        # plt.plot(wave[order-1], spec[order-1])
+        # plt.plot(wave[order], spec[order])
+        # plt.plot(wave[order+1], spec[order+1])
+        # plt.show()
+
+        # idx_ = tuple([wavelengths>min_overlap])
         # wavelength_min = 5900
         # wavelength_max = wavelength_min+200    ###### if you want to do a WAVELENGTH RANGE just input min and max here ######
         #print(wavelength_max)
@@ -304,6 +320,17 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
                     fluxes.append(l_flux)
             wavelengths = np.array(wavelengths)
             fluxes = np.array(fluxes)
+
+            print(np.max(wavelengths), np.min(wavelengths))
+            print(min_overlap)
+            print(max_overlap)
+            idx_overlap = np.logical_and(wavelengths>min_overlap, wavelengths<max_overlap)
+            idx_overlap = tuple([idx_overlap==False])
+
+            # plt.figure()
+            # plt.plot(wavelengths, fluxes, label = 'Flux')
+            # plt.plot(wavelengths[idx_overlap], fluxes[idx_overlap])
+            # plt.show()
 
             # plt.plot(wavelengths, fluxes, label = 's1d')
             # plt.legend()
@@ -788,11 +815,19 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # plt.plot(wavelengths, fluxes)
         # plt.show()
 
-        # ## remove overlapping region (always remove the overlap at the start of the order, i.e the min_overlap)
-        # last_wavelengths = wave[order-1]
-        # min_overlap = np.max(last_wavelengths)
-        # idx = tuple([wavelengths>min_overlap])
-
+        ## remove overlapping region (always remove the overlap at the start of the order, i.e the min_overlap)
+        last_wavelengths = wave[order-1]
+        next_wavelengths = wave[order+1]
+        min_overlap = np.max(last_wavelengths)
+        max_overlap = np.min(next_wavelengths)
+        # idx_ = tuple([wavelengths>min_overlap])
+        idx_overlap = np.logical_and(wavelengths>min_overlap, wavelengths<max_overlap)
+        idx_overlap = tuple([idx_overlap==False])
+        
+        # plt.figure()
+        # plt.plot(wavelengths, fluxes)
+        # plt.plot(wavelengths[idx_overlap], fluxes[idx_overlap])
+        # plt.show()
         # wavelengths = wavelengths[idx]
         # fluxes = fluxes[idx]
         # flux_error_order = flux_error_order[idx]
@@ -927,5 +962,5 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     # plt.show()
     print('overlap accounted for')
 
-    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), f(wavelengths) ## for just LSD
+    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), f(wavelengths), idx_overlap ## for just LSD
 ############################################################################################################
