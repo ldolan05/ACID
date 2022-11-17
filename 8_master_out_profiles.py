@@ -47,7 +47,7 @@ def findfiles(directory, file_type):
     # directory = '/home/lsd/Documents/HD189733/August2007/'
 
     
-    ccf_directory = directory.replace('home/lsd/Documents/LSD_Figures/', '/home/lsd/Documents/HD189733/')
+    ccf_directory = directory.replace('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/', '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733/')
     print('%s*/*/*/*ccf**K5_A*.fits'%ccf_directory)
 
     filelist=glob.glob('%s/*/*/*/*ccf**K5_A*.fits'%ccf_directory)
@@ -178,7 +178,7 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     #print(velo)
     adjusted_velocities = velocities-velo
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value='extrapolate')
-    velocity_grid = np.linspace(-15,15,len(spectrum))
+    velocity_grid = np.linspace(-10,10,len(spectrum))
     adjusted_spectrum = f2(velocity_grid)
     
     return velocity_grid, adjusted_spectrum, errors
@@ -220,7 +220,7 @@ def combineprofiles(spectra, errors, ccf, master, velocities):
 
     if master == 'no':
 
-        weights_csv = np.genfromtxt('/home/lsd/Documents/order_weights.csv', delimiter=',')
+        weights_csv = np.genfromtxt('/home/lsd/Documents/Starbase/novaprime/Documents/order_weights.csv', delimiter=',')
         orders = np.array(weights_csv[7:,0], dtype = int)
         # print(orders)
         weights = np.array(weights_csv[7:,1])
@@ -449,8 +449,8 @@ u2=0            #Sing et al, 2011
 #b=a_rstar*np.cos(i)
 
 
-path = '/home/lsd/Documents/LSD_Figures/'
-save_path = '/home/lsd/Documents/LSD_Figures/'
+path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
+save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 
 #path = '/Users/lucydolan/Starbase/LSD_Figures/'
 #save_path = '/Users/lucydolan/Starbase/LSD_Figures/'
@@ -552,7 +552,9 @@ for month in months:
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
-            velocities = np.linspace(-21, 18, 48)
+            if len(profile) == 48:
+                velocities = np.linspace(-21, 18, 48)
+            else:velocities = np.arange(-15, 10, 0.82)
             ccf_profile = ccf[0].data[order1]
             if order1 ==1:
                 header_rvs = list(header_rvs)
@@ -692,8 +694,8 @@ for month in months:
         order_profiles[idx] = 0.
 
         spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
-        #spectrum = order_profiles[27]
-        #errors = order_errors[27]
+        # spectrum = order_profiles[27]
+        # errors = order_errors[27]
         # plt.figure()
         # plt.plot(spectrum)
         # plt.show()
@@ -705,7 +707,7 @@ for month in months:
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
         # velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, ccf_phi, K, e, omega, v0)
-        # velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi,K, e, omega, v0)
+        velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi,K, e, omega, v0)
 
         all_profiles = list(all_profiles)
         all_profile_errors = list(all_profile_errors)

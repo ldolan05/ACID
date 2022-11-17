@@ -52,7 +52,7 @@ def residualccfs(in_ccfs, in_ccfs_errors, master_out, master_out_errors, velocit
 
 
 ##path = '/Users/lucydolan/Documents/CCF_method/HD189733_HARPS_CCFS/'
-path = '/home/lsd/Documents/LSD_Figures/'
+path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 #path = '/Users/lucydolan/Starbase/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 #path = '%s%s_master_out_LSD_profile.fits'%(save_path, month)
@@ -80,7 +80,7 @@ for month in months:
     all_profiles = fits.open(file)
 
     profile_spec = all_profiles[0].data[0]
-    velocities = np.linspace(-15,15,len(profile_spec))
+    velocities = np.linspace(-10,10,len(profile_spec))
 
 
     count = 0
@@ -398,11 +398,11 @@ for y in all_resi:
 
 rvs = np.array(rvs)
 
-plt.figure('RV measured from residual profile')
-plt.xlabel('Phase')
-plt.ylabel('Local RV (km/s)')
-plt.errorbar(rv_phases, rvs[:,0], yerr = rvs[:,1], fmt='o', label = 'LSD')
-plt.show()
+# plt.figure('RV measured from residual profile')
+# plt.xlabel('Phase')
+# plt.ylabel('Local RV (km/s)')
+# plt.errorbar(rv_phases, rvs[:,0], yerr = rvs[:,1], fmt='o', label = 'LSD')
+# plt.show()
 
 plt.figure('master profiles')
 for i in range(len(months)):
