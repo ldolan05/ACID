@@ -183,11 +183,14 @@ for month in months:
         print(transit_curve)
         print(result)
 
-        profile = (profile[5:-5]+1)*transit_curve
-        profile_errors = profile_errors[5:-5]*transit_curve
-        if line ==0:
-            velocities = velocities[5:-5]
-        print(velocities.shape, profile.shape)
+        # profile = (profile[5:-5]+1)*transit_curve
+        # profile_errors = profile_errors[5:-5]*transit_curve
+        # if line ==0:
+        #     velocities = velocities[5:-5]
+        # print(velocities.shape, profile.shape)
+
+        profile = (profile+1)*transit_curve
+        profile_errors = profile_errors*transit_curve
         
         in_profiles.append(profile)
         in_profiles_errors.append(profile_errors)
@@ -219,7 +222,7 @@ for month in months:
 
    # K = -2.277 #km/s - Boisse et al, 2009
     #velocities = velocities - K  ### Adjusting doppler reflex ###
-    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out[5:-5], master_out_errors[5:-5], velocities)
+    residual_profiles, residual_profile_errors = residualccfs(in_profiles, in_profiles_errors, master_out, master_out_errors, velocities)
     # plt.figure()
     # for out_prof in out_profiles:
     #     residual_profiles, residual_profile_errors = residualccfs(out_profiles, out_profile_error, out_prof, master_out_errors, velocities)

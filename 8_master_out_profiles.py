@@ -554,7 +554,7 @@ for month in months:
             profile = file[order1].data[0]
             if len(profile) == 48:
                 velocities = np.linspace(-21, 18, 48)
-            else:velocities = np.arange(-15, 10, 0.82)
+            else:velocities=np.arange(-16, 11, 0.82)
             ccf_profile = ccf[0].data[order1]
             if order1 ==1:
                 header_rvs = list(header_rvs)
@@ -694,8 +694,10 @@ for month in months:
         order_profiles[idx] = 0.
 
         spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
-        # spectrum = order_profiles[27]
-        # errors = order_errors[27]
+        print(abs(np.max(spectrum)-np.min(spectrum)))
+        if abs(np.max(spectrum)-np.min(spectrum))<0.1:
+            spectrum = order_profiles[27]
+            errors = order_errors[27]
         # plt.figure()
         # plt.plot(spectrum)
         # plt.show()
