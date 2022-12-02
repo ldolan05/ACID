@@ -554,7 +554,7 @@ for month in months:
             profile = file[order1].data[0]
             if len(profile) == 48:
                 velocities = np.linspace(-21, 18, 48)
-            else:velocities=np.arange(-16, 11, 0.82)
+            else:velocities=np.arange(-15, 10, 0.82)
             ccf_profile = ccf[0].data[order1]
             if order1 ==1:
                 header_rvs = list(header_rvs)
@@ -802,6 +802,7 @@ for month in months:
 
     print(ccf_phases)
     print(phases)
+    print(all_phases)
     inp = input('Above should be the same')
 
     # for i in range(len(all_ccfs)):
