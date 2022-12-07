@@ -359,9 +359,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             wavelengths = np.array(wavelengths)
             fluxes = np.array(fluxes)
 
-            if len(wavelengths)>4681:
-                wavelengths = wavelengths[:4681]
-                fluxes = fluxes[:4681]
+            if len(wavelengths)>4096:
+                wavelengths = wavelengths[:4096]
+                fluxes = fluxes[:4096]
             # print(len(wavelengths))
             # print(np.max(wavelengths), np.min(wavelengths))
             # print(min_overlap)
@@ -648,40 +648,45 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         flux_error_order = flux_error[order]
         wavelengths = wave[order]
 
-        # test - e2ds interpolated onto s1d wavelength grid ##
-        # hdu_s1d=fits.open('%s'%file.replace('e2ds', 's1d'))
-        # spec_s1d=hdu_s1d[0].data
-        # header_s1d=hdu_s1d[0].header
+        ##test - e2ds interpolated onto s1d wavelength grid ##
+        hdu_s1d=fits.open('%s'%file.replace('e2ds', 's1d'))
+        spec_s1d=hdu_s1d[0].data
+        header_s1d=hdu_s1d[0].header
 
-        # wave_s1d=header_s1d['CRVAL1']+(header_s1d['CRPIX1']+np.arange(spec_s1d.shape[0]))*header_s1d['CDELT1']
-        # id = np.logical_and(wave_s1d<np.max(wavelengths), wave_s1d>np.min(wavelengths))
+        wave_s1d=header_s1d['CRVAL1']+(header_s1d['CRPIX1']+np.arange(spec_s1d.shape[0]))*header_s1d['CDELT1']
+        id = np.logical_and(wave_s1d<np.max(wavelengths), wave_s1d>np.min(wavelengths))
 
-        # ## these fluxes are in photons per bin - I need them in photons per Angstrom
-        # ## therefore i do flux/angstroms in pixel
-        # diff_arr = wavelengths[1:] - wavelengths[:-1]
-        # print(diff_arr)
-        # wavelengths = wavelengths[:-1]
-        # fluxes = fluxes[:-1]
-        # # plt.figure('changing flux units')
-        # # plt.plot(wavelengths, fluxes, label = 'flux per pixel')
+        ## these fluxes are in photons per bin - I need them in photons per Angstrom
+        ## therefore i do flux/angstroms in pixel
+        diff_arr = wavelengths[1:] - wavelengths[:-1]
+        print(diff_arr)
+        wavelengths = wavelengths[:-1]
+        fluxes = fluxes[:-1]
+        # plt.figure('changing flux units')
+        # plt.plot(wavelengths, fluxes, label = 'flux per pixel')
 
-        # fluxes = fluxes/diff_arr
+        fluxes = fluxes/diff_arr
 
-        # # plt.plot(wavelengths, fluxes, label = ' flux per A')
+        # plt.plot(wavelengths, fluxes, label = ' flux per A')
 
-        # e2ds_spec = Spectrum1D(spectral_axis = wavelengths*u.AA, flux = fluxes*u.Unit('photon AA-1'))
-        # fluxcon = FluxConservingResampler()
-        # new_spec = fluxcon(e2ds_spec, wave_s1d[id]*u.AA)
+        e2ds_spec = Spectrum1D(spectral_axis = wavelengths*u.AA, flux = fluxes*u.Unit('photon AA-1'))
+        fluxcon = FluxConservingResampler()
+        new_spec = fluxcon(e2ds_spec, wave_s1d[id]*u.AA)
 
-        # wavelengths = new_spec.spectral_axis
-        # fluxes = new_spec.flux
+        wavelengths = new_spec.spectral_axis
+        fluxes = new_spec.flux
 
-        # wavelengths = wavelengths[:4097]/u.AA
-        # fluxes = fluxes[:4097]/u.Unit('photon AA-1')
+        wavelengths = wavelengths[:4097]/u.AA
+        fluxes = fluxes[:4097]/u.Unit('photon AA-1')
 
-        # diff_arr = wavelengths[1:] - wavelengths[:-1]
-        # wavelengths = wavelengths[:-1]
-        # fluxes = fluxes[:-1]*diff_arr
+        diff_arr = wavelengths[1:] - wavelengths[:-1]
+        wavelengths = wavelengths[:-1]
+        fluxes = fluxes[:-1]*diff_arr
+
+        # plt.figure()
+        # plt.plot(wavelengths, fluxes/spec_s1d[id][:4096], label = 'e2ds/s1d')
+        # plt.plot(wavelengths, [1]*len(wavelengths))
+        # plt.show()
 
         # find overlapping regions 
         last_wavelengths = wave[order-1]

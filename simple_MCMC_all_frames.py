@@ -561,13 +561,80 @@ def task(all_frames, frames, counter):
     
     poly2 = np.poly1d([ 1.23455938e-05, -1.58205893e-01,  6.75786834e+02, -9.62216391e+05])
     
-    flux = (flux/mdl1)#/poly2(wavelengths)+0.5
-    error = (error/mdl1)#/poly2(wavelengths)
+    # plt.figure('flux before mdl...')
+    # plt.plot(wavelengths, flux)
+    # plt.show()
 
-    remove = tuple([flux<0])
+    flux = (flux/mdl1)
+    error = (error/mdl1)
+
+    ## adding in overlapped area
+    #idxx = np.logical_and(overlap_wave<np.max(wavelengths), overlap_wave>np.min(wavelengths))
+    wave_overlap = overlap_wave[overlap_sns==sn]
+    flux_overlap = overlap_flux[overlap_sns==sn]
+
+    if len(wave_overlap)==2:
+        wave_overlap=np.concatenate((wave_overlap[0], wave_overlap[1]))
+        flux_overlap = np.concatenate((flux_overlap[0], flux_overlap[1]))
+
+        idx = wave_overlap.argsort()
+        wave_overlap=wave_overlap[idx]
+        flux_overlap=flux_overlap[idx]
+
+    mins = []
+    maxs = []
+    for f in overlap_wave:
+        mins.append(np.min(f[f!=0]))
+        maxs.append(np.max(f))
+
+    max_to_exclusion_area = np.max(mins)
+    min_to_exclusion_area = np.min(maxs)
+
+    flux_overlap[np.isnan(flux_overlap)]=-1.
+
+    f2 = interp1d(wave_overlap[wave_overlap>0.], flux_overlap[wave_overlap>0.], bounds_error=False, fill_value = 'extrapolate')
+    flux_overlap_interp = f2(wavelengths)/mdl1
+
+    # plt.figure('overlap')
+    # plt.plot(wave_overlap, flux_overlap)
+    #plt.show()
+
+    idxxx = np.logical_and(wavelengths<max_to_exclusion_area, wavelengths>min_to_exclusion_area)
+    flux_overlap_interp_weight = 1/flux_overlap_interp
+    flux_overlap_interp_weight[idxxx]=0.
+    flux_overlap_interp[idxxx]=1.
+    idxxx = np.isnan(flux_overlap_interp)
+    flux_overlap_interp[idxxx]=1.
+    flux_overlap_interp_weight[idxxx]=0.
+
+    # ## flux including overlap regions
+    # plt.figure('flux and flux_interp')
+    # plt.plot(wavelengths, flux_overlap_interp, label = 'overlap')
+    # plt.plot(wavelengths, flux, label = 'flux')
+    # print(wavelengths[flux_overlap_interp_weight==0.])
+    # plt.scatter(wavelengths[flux_overlap_interp_weight==0.], flux_overlap_interp[flux_overlap_interp_weight==0.])
+    # plt.legend()
+    # plt.show()
+
+    flux=np.average([flux_overlap_interp, flux], axis = 0, weights=[flux_overlap_interp_weight, 1/error**2])
+
+    remove = tuple([flux<=0])
     flux[remove]=1.
     error[remove]=10000000000000000000
 
+    remove = np.isnan(flux)
+    flux[remove]=1.
+    error[remove]=10000000000000000000
+
+    remove = np.isinf(flux)
+    flux[remove]=1.
+    error[remove]=10000000000000000000
+
+    # plt.figure('flux before LSD...')
+    # plt.plot(wavelengths, flux)
+    # plt.show()
+    
+    # print(flux)
     idx = tuple([flux>0])
     
     if len(flux[idx])==0:
@@ -576,7 +643,7 @@ def task(all_frames, frames, counter):
         print('continuing... frame %s'%counter)
     
     else:
-        frames[counter]=flux
+        #frames[counter]=flux
 
         velocities1, profile1, profile_errors, alpha_here, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
@@ -619,8 +686,8 @@ def main():
 
     ccf_rvs = []
 
-    # order_range = np.arange(18,19)
-    order_range = np.arange(28,29)
+    order_range = np.arange(18,40)
+    # order_range = np.arange(28,29)
 
     filelist=findfiles(directory, file_type)
     print(filelist)
@@ -653,8 +720,8 @@ def main():
 
         if file_type == 's1d':include_overlap = 'n'
         else:include_overlap = 'y'
-        print(include_overlap)
-        #include_overlap = 'n'
+        # print(include_overlap)
+        # #include_overlap = 'n'
         if include_overlap =='y':
             fw = np.concatenate((frame_wavelengths.copy(), overlap_wave.copy()))
             f = np.concatenate((frames.copy(), overlap_flux.copy()))
@@ -889,6 +956,9 @@ def main():
 
         print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
 
+        # task(all_frames, frames, 0)
+
+        # inp=input('DONE...')
         task_part = partial(task, all_frames, frames)
         with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
         for i in range(len(frames)):
@@ -900,7 +970,7 @@ def main():
         #     print(pha[n])
         #     plt.plot(frame_wavelengths[n], frames[n])
         # plt.show()
-        inp = input('Enter to continue...')
+        #inp = input('Enter to continue...')
         #frame_ccf(frame_wavelengths, frames, np.array(pha))
 
     plt.close('all')
