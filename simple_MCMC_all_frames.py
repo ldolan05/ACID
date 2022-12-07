@@ -44,7 +44,7 @@ def remove_reflex(wavelengths, spectrum, errors, phi, K, e, omega, v0):
     
     return wavelengths, adjusted_spectrum, errors
 
-## test that calclates ccf based off frames and master out of transit frames - needs to be tested that it's working
+### test that calclates ccf based off frames and master out of transit frames - needs to be tested that it's working
 def frame_ccf(wavelengths, spectra, phases):
 
     ## interpolating all into the same wavelength grid (first in spectrum)
