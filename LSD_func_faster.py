@@ -16,6 +16,17 @@ import itertools
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
 
+    remove = tuple([flux_obs<=0])
+    flux_obs[remove]=1.
+    rms[remove]=10000000000000000000
+
+    remove = np.isnan(flux_obs)
+    flux_obs[remove]=1.
+    rms[remove]=10000000000000000000
+
+    remove = np.isinf(flux_obs)
+    flux_obs[remove]=1.
+    rms[remove]=10000000000000000000
 
     #idx = tuple([flux_obs>0])
     # in optical depth space

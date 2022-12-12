@@ -3,11 +3,9 @@ import emcee
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from astropy.io import  fits
-import emcee
-#import corner
+import corner
 import LSD_func_faster as LSD
 import time
-# import synthetic_data as syn
 import random
 import glob
 from scipy.interpolate import interp1d
@@ -175,7 +173,7 @@ def read_in_frames(order1, filelist):
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     #plt.figure()
     for n in range(len(frames)):
-        f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+        f2 = interp1d(frame_wavelengths[n].copy(), frames[n].copy(), kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
         div_frame = f2(reference_wave)/reference_frame
 
         ### creating windows to fit polynomial to
@@ -238,9 +236,11 @@ def read_in_frames(order1, filelist):
 ## performs a rough continuum fit to a given spectrum by windowing the data and fitting a polynomail to the maximum data point in each window
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
-        cont_factor = fluxes1[0]
+        for i in range(len(fluxes1)):
+            cont_factor = fluxes1[i]
+            if cont_factor!=0 and np.isnan(cont_factor)==False and np.isinf(cont_factor)==False:break
+        if i>0:fluxes1[:i]=[cont_factor]*(i)
 
-        fluxes1 = fluxes1
         ## taking out masked areas
         if np.max(fluxes1)<1:
             idx = [errors1<1]
@@ -288,12 +288,12 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         
         return coeffs, flux_obs, new_errors, fit
 
-### YOU ARE HERE
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
     #combine all spectra to one spectrum
     for n in range(len(wavelengths_f)):
 
+        # fitering out padded areas from overlap_flux, overlap_wave and overlap_error
         idx = np.where(wavelengths_f[n] != 0)[0]
 
         f2 = interp1d(wavelengths_f[n][idx], spectra_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'NaN')
@@ -302,7 +302,7 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
         errors_f[n] = f2_err(reference_wave)
 
         ## mask out out extrapolated areas
-        idx_ex = np.logical_and(reference_wave<np.max(wavelengths_f[n][idx]), reference_wave>np.min(wavelengths_f[n][idx]))
+        idx_ex = np.logical_and(reference_wave<=np.max(wavelengths_f[n][idx]), reference_wave>=np.min(wavelengths_f[n][idx]))
         idx_ex = tuple([idx_ex==False])
         spectra_f[n][idx_ex]=1.
         errors_f[n][idx_ex]=1000000000000
@@ -329,15 +329,18 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
         weights_f = (1/temp_err_f**2)
 
         idx = tuple([temp_err_f>=1000000000000])
-        print(weights_f[idx])
         weights_f[idx] = 0.
 
-        weights_f = weights_f/np.sum(weights_f)
-
-        spectrum_f[n]=sum(weights_f*temp_spec_f)
-        sn_f = sum(weights_f*sns_f)/sum(weights_f)
-
-        spec_errors_f[n]=1/(sum(weights_f**2))
+        if np.sum(weights_f)!=0:
+            weights_f = weights_f/np.sum(weights_f)
+            spectrum_f[n]=sum(weights_f*temp_spec_f)
+            sn_f = sum(weights_f*sns_f)/sum(weights_f)
+            spec_errors_f[n]=1/(sum(weights_f**2))
+        else:
+            weights_f = weights_f
+            spectrum_f[n]=sum(weights_f*temp_spec_f)
+            spec_errors_f[n]=1000000000000
+    
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
@@ -424,7 +427,14 @@ def log_probability(theta, x, y, yerr):
 
 ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_spec, order):
+    # print(initial_inputs)
+
     forward = model_func(initial_inputs, wavelengths)
+
+    # plt.figure()
+    # plt.plot(wavelengths, data_spec_in)
+    # plt.plot(wavelengths, forward)
+    # plt.show()
     
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
@@ -629,10 +639,6 @@ def task(all_frames, frames, counter):
     remove = np.isinf(flux)
     flux[remove]=1.
     error[remove]=10000000000000000000
-
-    # plt.figure('flux before LSD...')
-    # plt.plot(wavelengths, flux)
-    # plt.show()
     
     # print(flux)
     idx = tuple([flux>0])
@@ -670,9 +676,9 @@ def task(all_frames, frames, counter):
 def main():
     ## for real data
     global file_type, linelist, directory, save_path, run_name, ccf_rvs, overlap_wave, overlap_flux, overlap_error, overlap_sns, k_max, alpha, deltaphi, T, P
-    file_type = 'e2ds'
+    file_type = 's1d'
     linelist = '/home/lsd/Documents/55 Cnc/55Cnc_lines.txt'
-    directory = '/home/lsd/Documents/55 Cnc/group 2/*/*/*/'
+    directory = '/home/lsd/Documents/55 Cnc/group 1/*/*/*/'
     save_path = '/home/lsd/Documents/55 Cnc/results/'
     # linelist = '/home/lsd/Documents/55 Cnc/55Cnc_lines.txt'
     # directory = '/home/lsd/Documents/55 Cnc/N/'
@@ -694,7 +700,8 @@ def main():
     phasess=[]
     poptss=[]
     global velocities
-    velocities=np.arange(6, 50, 0.82)
+    #velocities=np.arange(6, 50, 0.82)
+    velocities=np.arange(6, 50, 0.01)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     global order
@@ -720,8 +727,6 @@ def main():
 
         if file_type == 's1d':include_overlap = 'n'
         else:include_overlap = 'y'
-        # print(include_overlap)
-        # #include_overlap = 'n'
         if include_overlap =='y':
             fw = np.concatenate((frame_wavelengths.copy(), overlap_wave.copy()))
             f = np.concatenate((frames.copy(), overlap_flux.copy()))
@@ -746,6 +751,7 @@ def main():
         ### getting the initial polynomial coefficents
         a = 2/(np.max(wavelengths)-np.min(wavelengths))
         b = 1 - a*np.max(wavelengths)
+
         poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
         #### getting the initial profile
