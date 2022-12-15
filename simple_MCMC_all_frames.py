@@ -341,6 +341,8 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
             spectrum_f[n]=sum(weights_f*temp_spec_f)
             spec_errors_f[n]=1000000000000
     
+    if len(sns_f)<=2:
+        sn_f = sns_f[0] ## make sure the sn is the same as for LSD run 
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
@@ -710,7 +712,7 @@ def main():
         poly_ord = 3
         for frame_no in range(len(filelist)):
             global frames, frame_wavelengths, frame_errors, sns
-            frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist[frame_no])
+            frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, [filelist[frame_no]])
 
             ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
             frame_wavelengths = np.array(frame_wavelengths)
