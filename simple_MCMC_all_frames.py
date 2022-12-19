@@ -694,7 +694,7 @@ def main():
 
     ccf_rvs = []
 
-    order_range = np.arange(18,40)
+    order_range = np.arange(18,20)
     # order_range = np.arange(28,29)
 
     filelist=findfiles(directory, file_type)
@@ -706,6 +706,7 @@ def main():
     # velocities=np.arange(6, 50, 0.01)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
+    true_all_frames = all_frames.copy()
     global order
     for order in order_range:
         global poly_ord
@@ -968,11 +969,13 @@ def main():
             # task(all_frames, frames, 0)
 
             # inp=input('DONE...')
-            task_part = partial(task, all_frames, frames)
-            with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-            for i in range(len(frames)):
-                all_frames[i]=results[0][i][0][i]
-                frames[i]=results[0][i][1][i]
+            all_frames, frames = task(all_frames, frames, 0)
+            true_all_frames[frame_no, order, :] = all_frames[0, order, :]
+            # task_part = partial(task, all_frames, frames)
+            # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+            # for i in range(len(frames)):
+            #     all_frames[i]=results[0][i][0][i]
+            #     frames[i]=results[0][i][1][i]
 
             # plt.figure()
             # for n in range(len(frames)):
@@ -1011,8 +1014,8 @@ def main():
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
-            profile = all_frames[frame_no, order, 0]
-            profile_err = all_frames[frame_no, order, 1]
+            profile = true_all_frames[frame_no, order, 0]
+            profile_err = true_all_frames[frame_no, order, 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
         hdu.writeto('%s%s_%s.fits'%(save_path, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
