@@ -627,7 +627,7 @@ def main():
     phasess=[]
     poptss=[]
     global velocities
-    velocities=np.arange(6, 50, 0.82)
+    velocities=np.arange(6+21, 50+21, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     global order
@@ -900,7 +900,7 @@ def main():
         #     print(pha[n])
         #     plt.plot(frame_wavelengths[n], frames[n])
         # plt.show()
-        inp = input('Enter to continue...')
+        # inp = input('Enter to continue...')
         #frame_ccf(frame_wavelengths, frames, np.array(pha))
 
     plt.close('all')
@@ -931,7 +931,9 @@ def main():
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
-            profile = all_frames[frame_no, order, 0]
+            new_velocities = np.arange(6, 50, 0.82)
+            f2 = interp1d(velocities+file[0].header['ESO DRS BERV'], all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
+            profile = f2(new_velocities)
             profile_err = all_frames[frame_no, order, 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
