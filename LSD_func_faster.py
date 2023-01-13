@@ -209,66 +209,66 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     blankwaves=wavelengths
     R_matrix=flux_obs
 
-    # alpha=np.zeros((len(blankwaves), len(velocities)))
+    alpha=np.zeros((len(blankwaves), len(velocities)))
 
-    # #limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
-    # # print(limit)
+    #limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
+    # print(limit)
 
-    # for j in range(0, len(blankwaves)):
-    #     for i in (range(0,len(wavelengths_expected))):
-    #         vdiff = ((blankwaves[j] - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
-    #         # limit_up = (np.max(velocities)+deltav)*(wavelengths_expected[i]/2.99792458e5)
-    #         # print(limit_up)
-    #         # limit_down = (np.min(velocities)-deltav)*(wavelengths_expected[i]/2.99792458e5)
-    #         # print(limit_down)
-    #         if vdiff<=(np.max(velocities)+deltav) and vdiff>=(np.min(velocities)-deltav):
-    #             diff=blankwaves[j]-wavelengths_expected[i]
+    for j in range(0, len(blankwaves)):
+        for i in (range(0,len(wavelengths_expected))):
+            vdiff = ((blankwaves[j] - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
+            # limit_up = (np.max(velocities)+deltav)*(wavelengths_expected[i]/2.99792458e5)
+            # print(limit_up)
+            # limit_down = (np.min(velocities)-deltav)*(wavelengths_expected[i]/2.99792458e5)
+            # print(limit_down)
+            if vdiff<=(np.max(velocities)+deltav) and vdiff>=(np.min(velocities)-deltav):
+                diff=blankwaves[j]-wavelengths_expected[i]
 
-    #             # id = np.logical_and(blankwaves<wavelengths_expected[i]+limit_up, blankwaves>wavelengths_expected[i]+limit_down)
-    #             # print(id)
-    #             # w = ((blankwaves - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
-    #             # p = flux_obs
+                # id = np.logical_and(blankwaves<wavelengths_expected[i]+limit_up, blankwaves>wavelengths_expected[i]+limit_down)
+                # print(id)
+                # w = ((blankwaves - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
+                # p = flux_obs
 
-    #             # print(blankwaves[id], flux_obs[id])
+                # print(blankwaves[id], flux_obs[id])
             
-    #             # id2 = np.logical_and(blankwaves<wavelengths_expected[i]+limit_up+1, blankwaves>wavelengths_expected[i]+limit_down-1)
-    #             if rms[j]<1:no_line.append(i)
-    #             vel=2.99792458e5*(diff/wavelengths_expected[i])
-    #             # plt.figure()
-    #             # plt.errorbar(blankwaves[id2], flux_obs[id2], rms[id2], color = 'k')
-    #             # plt.scatter(blankwaves[j], flux_obs[j], label = 'wavelength pixel')
-    #             # plt.scatter(wavelengths_expected[i], flux_obs[j], label = 'linelist wavelegngth')
-    #             # plt.plot(blankwaves[id], flux_obs[id], label = 'included area for line')
-    #             for k in range(0, len(velocities)):
-    #                 # if blankwaves[j]==blankwaves[0]:
-    #                 #     dv = ((blankwaves[j+1] - blankwaves[j])*2.99792458e5)/blankwaves[j]
-    #                 # else:
-    #                 #     dv = ((blankwaves[j] - blankwaves[j-1])*2.99792458e5)/blankwaves[j-1]
-    #                 x=abs((velocities[k]-vel)/deltav)
-    #                 if x<1.:
-    #                     delta_x=(1-x)
-    #                     alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
-    #                 # if -1.<x and x<0.:
-    #                 #     delta_x=(1-x)
-    #                 #     alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
-    #                 # elif 0.<=x and x<1.:
-    #                 #     delta_x=(1-x)
-    #                 #     alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
+                # id2 = np.logical_and(blankwaves<wavelengths_expected[i]+limit_up+1, blankwaves>wavelengths_expected[i]+limit_down-1)
+                if rms[j]<1:no_line.append(i)
+                vel=2.99792458e5*(diff/wavelengths_expected[i])
+                # plt.figure()
+                # plt.errorbar(blankwaves[id2], flux_obs[id2], rms[id2], color = 'k')
+                # plt.scatter(blankwaves[j], flux_obs[j], label = 'wavelength pixel')
+                # plt.scatter(wavelengths_expected[i], flux_obs[j], label = 'linelist wavelegngth')
+                # plt.plot(blankwaves[id], flux_obs[id], label = 'included area for line')
+                for k in range(0, len(velocities)):
+                    # if blankwaves[j]==blankwaves[0]:
+                    #     dv = ((blankwaves[j+1] - blankwaves[j])*2.99792458e5)/blankwaves[j]
+                    # else:
+                    #     dv = ((blankwaves[j] - blankwaves[j-1])*2.99792458e5)/blankwaves[j-1]
+                    x=abs((velocities[k]-vel)/deltav)
+                    if x<1.:
+                        delta_x=(1-x)
+                        alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
+                    # if -1.<x and x<0.:
+                    #     delta_x=(1-x)
+                    #     alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
+                    # elif 0.<=x and x<1.:
+                    #     delta_x=(1-x)
+                    #     alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
 
-    #             # print(alpha[j, :].shape)
-    #             # print(w)
-    #             # idx = tuple([alpha[j, :]!=0.])
-    #             # idx2 = tuple([alpha[j, :]==0.])
-    #             # w2 = 2.99792458e5*wavelengths_expected[i]/(2.99792458e5-velocities)
-    #             # plt.scatter(w2[idx2], np.zeros(velocities[idx2].shape), label = 'velocitiy grid and delta function = 0')
-    #             # plt.scatter(w2[idx], np.zeros(velocities[idx].shape), label = 'velocitiy grid and delta function !=0 ')
-    #             # plt.legend()
-    #             # plt.show()
-    #         else:
-    #             pass
+                # print(alpha[j, :].shape)
+                # print(w)
+                # idx = tuple([alpha[j, :]!=0.])
+                # idx2 = tuple([alpha[j, :]==0.])
+                # w2 = 2.99792458e5*wavelengths_expected[i]/(2.99792458e5-velocities)
+                # plt.scatter(w2[idx2], np.zeros(velocities[idx2].shape), label = 'velocitiy grid and delta function = 0')
+                # plt.scatter(w2[idx], np.zeros(velocities[idx].shape), label = 'velocitiy grid and delta function !=0 ')
+                # plt.legend()
+                # plt.show()
+            else:
+                pass
     
-    value, row, column = cvmt(blankwaves, velocities, np.array(wavelengths_expected), np.array(depths_expected))
-    M = csc_matrix((value, (row, column)), shape=(len(blankwaves), len(velocities)))
+    # value, row, column = cvmt(blankwaves, velocities, np.array(wavelengths_expected), np.array(depths_expected))
+    # M = csc_matrix((value, (row, column)), shape=(len(blankwaves), len(velocities)))
     # M=np.array(M)
     # print(M.type)
     # print(alpha.type)
@@ -280,35 +280,35 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     #     alpha = np.array(alpha)
     # else:print('THEY AGREE')
 
-    # no_line = list(dict.fromkeys(no_line))
+    no_line = list(dict.fromkeys(no_line))
     
-    # id_matrix=np.identity(len(flux_obs))
-    # S_matrix=(1/rms)*id_matrix
+    id_matrix=np.identity(len(flux_obs))
+    S_matrix=(1/rms)*id_matrix
 
-    # S_squared=np.dot(S_matrix, S_matrix)
-    # alpha_transpose=(np.transpose(alpha))
+    S_squared=np.dot(S_matrix, S_matrix)
+    alpha_transpose=(np.transpose(alpha))
 
-    # RHS_1=np.dot(alpha_transpose, S_squared)
-    # RHS_final=np.dot(RHS_1, R_matrix )
+    RHS_1=np.dot(alpha_transpose, S_squared)
+    RHS_final=np.dot(RHS_1, R_matrix )
 
-    # LHS_preinvert=np.dot(RHS_1, alpha)
-    # LHS_prep=np.matrix(LHS_preinvert)
+    LHS_preinvert=np.dot(RHS_1, alpha)
+    LHS_prep=np.matrix(LHS_preinvert)
 
-    # P,L,U=linalg.lu(LHS_prep)
+    P,L,U=linalg.lu(LHS_prep)
 
-    # n=len(LHS_prep)
-    # B=np.identity(n)
-    # Z = linalg.solve_triangular(L, B, lower=True)
-    # X = linalg.solve_triangular(U, Z, lower=False)
-    # LHS_final = np.matmul(X,np.transpose(P))
+    n=len(LHS_prep)
+    B=np.identity(n)
+    Z = linalg.solve_triangular(L, B, lower=True)
+    X = linalg.solve_triangular(U, Z, lower=False)
+    LHS_final = np.matmul(X,np.transpose(P))
 
-    # profile=np.dot(LHS_final, RHS_final)
-    # profile_errors_squared=np.diagonal(LHS_final)
-    # profile_errors=np.sqrt(profile_errors_squared)
+    profile=np.dot(LHS_final, RHS_final)
+    profile_errors_squared=np.diagonal(LHS_final)
+    profile_errors=np.sqrt(profile_errors_squared)
 
-    profile, profile_errors = runLSD_inv(value, row, column, len(blankwaves), len(velocities), 1/(rms**2), flux_obs)
+    # profile, profile_errors = runLSD_inv(value, row, column, len(blankwaves), len(velocities), 1/(rms**2), flux_obs)
 
-    return velocities, profile, profile_errors, M, wavelengths_expected, depths_expected1, len(no_line)
+    return velocities, profile, profile_errors, alpha, wavelengths_expected, depths_expected1, len(no_line)
 
 def get_wave(data,header):
 

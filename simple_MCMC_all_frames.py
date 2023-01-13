@@ -620,7 +620,7 @@ def main():
     ccf_rvs = []
 
     # order_range = np.arange(18,19)
-    order_range = np.arange(28,29)
+    order_range = np.arange(30,40)
 
     filelist=findfiles(directory, file_type)
     print(filelist)
@@ -652,7 +652,7 @@ def main():
         print(overlap_wave.shape)
 
         if file_type == 's1d':include_overlap = 'n'
-        else:include_overlap = 'y'
+        else:include_overlap = 'n'
         print(include_overlap)
         #include_overlap = 'n'
         if include_overlap =='y':
@@ -932,7 +932,7 @@ def main():
             hdr['CDELT1']=velocities[1]-velocities[0]
 
             new_velocities = np.arange(6, 50, 0.82)
-            f2 = interp1d(velocities+file[0].header['ESO DRS BERV'], all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
+            f2 = interp1d(velocities+fits_file[0].header['ESO DRS BERV'], all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
             profile = f2(new_velocities)
             profile_err = all_frames[frame_no, order, 1]
 
