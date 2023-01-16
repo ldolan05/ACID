@@ -602,7 +602,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         wave_nonad=get_wave(spec, header)
         # if berv_opt == 'y':
         #     print('BERV corrected')
-        wave = wave_nonad*(1.+brv/2.99792458e5)
+        wave = wave_nonad#*(1.+brv/2.99792458e5)
         # if berv_opt == 'n':
         #     print('BERV not corrected')
         # wave = wave_nonad

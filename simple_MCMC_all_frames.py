@@ -923,7 +923,7 @@ for month in months:
     phasess=[]
     poptss=[]
     global velocities
-    velocities=np.arange(-16, 11, 0.82)
+    velocities=np.arange(-21, 18+4, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     for order in order_range:
@@ -1091,7 +1091,7 @@ for month in months:
         print(frame_wavelengths.shape)
         print(overlap_wave.shape)
 
-        include_overlap = 'y'
+        include_overlap = 'n'
         if include_overlap =='y':
             fw = np.concatenate((frame_wavelengths.copy(), overlap_wave.copy()))
             f = np.concatenate((frames.copy(), overlap_flux.copy()))
@@ -1652,7 +1652,9 @@ for month in months:
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
-            profile = all_frames[frame_no, order, 0]
+            new_velocities = np.arange(-21, 18, 0.82)
+            f2 = interp1d(velocities+fits_file[0].header['ESO DRS BERV'], all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
+            profile = f2(new_velocities)
             profile_err = all_frames[frame_no, order, 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))

@@ -553,8 +553,8 @@ for month in months:
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
             if len(profile) == 48:
-                velocities = np.linspace(-21, 18, 48)
-            else:velocities=np.arange(-16, 11, 0.82)
+                velocities=np.arange(-21, 18, 0.82)
+            else:velocities=np.arange(-21, 18, 0.82)
             ccf_profile = ccf[0].data[order1]
             if order1 ==1:
                 header_rvs = list(header_rvs)
