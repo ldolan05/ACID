@@ -904,7 +904,7 @@ def task(all_frames, counter):
         return all_frames
 
 months1 = ['August2007']
-months = ['August2007', 'July2006', 'Sep2006']
+months = ['August2007', 'July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
 order_range = np.arange(10,70)
 # order_range = np.arange(28,29)
@@ -928,21 +928,15 @@ for month in months:
     velocities=np.arange(-21+offset, 18+offset, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
+    global true_all_frames
+    true_all_frames = all_frames.copy()
+    global order
     for order in order_range:
-
-        #plt.close('all')
+        global poly_ord
         poly_ord = 3
-
-        ### read in spectra for each frame, along with S/N of each frame
-        # for file in filelist:
-        #     fits_file = fits.open(file)
-        #     phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
-        #     print(phi)
-        #     print(file, order)
-        #     fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory1, 'unmasked', run_name, 'y')
-        #     fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
         for frame_no in range(len(filelist)):
-            frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist[frame_no])
+            global frames, frame_wavelengths, frame_errors, sns
+            frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, [filelist[frame_no]])
 
             #  ################## TEST - get the RV from each frame - see how it compares to CCF rv and unadjusted spectrum rv #####################
             # plt.figure('rvs after basic continuum fit')
@@ -1616,11 +1610,13 @@ for month in months:
             corrected_spec = []
             phases = []
             #plt.figure()
-            task_part = partial(task, all_frames)
-            with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-            results = np.array(results[0])
-            for i in range(len(frames)):
-                all_frames[i]=results[i][i]
+            # task_part = partial(task, all_frames)
+            # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+            # results = np.array(results[0])
+            # for i in range(len(frames)):
+            #     all_frames[i]=results[i][i]
+            all_frames, frames = task(all_frames, frames, 0)
+            true_all_frames[frame_no, order, :] = all_frames[0, order, :]
             
     # plt.show()
     plt.close('all')
@@ -1655,9 +1651,9 @@ for month in months:
             hdr['CDELT1']=velocities[1]-velocities[0]
 
             new_velocities = np.arange(-21, 18, 0.82)
-            f2 = interp1d(velocities+fits_file[0].header['ESO DRS BERV'], all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
+            f2 = interp1d(velocities+fits_file[0].header['ESO DRS BERV'], true_all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
             profile = f2(new_velocities)
-            profile_err = all_frames[frame_no, order, 1]
+            profile_err = true_all_frames[frame_no, order, 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
         hdu.writeto('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/%s_%s_%s.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
