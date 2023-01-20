@@ -324,7 +324,8 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         # plt.plot(clipped_waves, clipped_flux/cont_factor)
         # plt.show()
 
-        coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
+        try:coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
+        except:coeffs=np.polyfit(waves,flux/cont_factor, poly_ord)
 
         poly = np.poly1d(coeffs*cont_factor)
         fit = poly(wavelengths1)
@@ -1100,7 +1101,9 @@ for month in months:
                 s = sns.copy()
                 
             wavelengths, fluxes, flux_error_order, sn = combine_spec(fw, f, fe, s)
-
+            idx = np.isnan(fluxes)
+            fluxes[idx]=1.
+            flux_error_order[idx]=10000000000000000000.
             # plt.figure()
             # plt.errorbar(wavelengths, fluxes, flux_error_order, color = 'b', ecolor = 'k')
             # plt.show()
