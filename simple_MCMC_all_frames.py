@@ -1618,7 +1618,7 @@ for month in months:
             # results = np.array(results[0])
             # for i in range(len(frames)):
             #     all_frames[i]=results[i][i]
-            all_frames, frames = task(all_frames, frames, 0)
+            all_frames = task(all_frames, 0)
             true_all_frames[frame_no, order, :] = all_frames[0, order, :]
             
     # plt.show()

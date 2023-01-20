@@ -621,7 +621,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # print(rv_drift)
         wave_corr = (1.+brv/2.99792458e5)
         print(brv, (wave_corr/wave-1)*2.99792458e5)
-        av_vel = np.mean(((wave[:, 1:]-wave[:, :-1])/wave-1)*2.99792458e5)
+        av_vel = np.mean(((wave[:, 1:]-wave[:, :-1])/wave[:,:-1]-1)*2.99792458e5)
 
         # inp = input('Enter to continue...')
         '''
