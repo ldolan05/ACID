@@ -915,6 +915,13 @@ T=2454279.436714 #Cegla et al, 2006
 t=0.076125 #Torres et al, 2008
 deltaphi = t/(2*P)
 
+global velocities
+global all_frames
+global true_all_frames
+global order
+global poly_ord
+global frames, frame_wavelengths, frame_errors, sns
+
 month_spec = []
 for month in months:
     directory = '%s%s/'%(directory_p, month)
@@ -925,18 +932,17 @@ for month in months:
     poptss=[]
     temp_file = fits.open(filelist[0])
     offset = (-1)*temp_file[0].header['ESO DRS BERV']
-    global velocities
+    
     velocities=np.arange(-21+offset, 18+offset, 0.82)
-    global all_frames
+    
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
-    global true_all_frames
+    
     true_all_frames = all_frames.copy()
-    global order
     for order in order_range:
-        global poly_ord
+        
         poly_ord = 3
         for frame_no in range(len(filelist)):
-            global frames, frame_wavelengths, frame_errors, sns
+            
             frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, [filelist[frame_no]])
 
             #  ################## TEST - get the RV from each frame - see how it compares to CCF rv and unadjusted spectrum rv #####################
