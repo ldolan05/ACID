@@ -81,16 +81,16 @@ def read_in_frames(order, filelist):
         print('e2ds')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
         fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
-        if len(np.array(overlap[0, 1]))>0:
-            overlap_flux.append(np.array(overlap[0, 1]))
-            overlap_wave.append(np.array(overlap[0, 0]))
-            overlap_error.append(np.array(overlap[0, 2]))
-            overlap_sns.append(sn)
-        if len(np.array(overlap[1, 1]))>0:
-            overlap_flux.append(np.array(overlap[1, 1]))
-            overlap_wave.append(np.array(overlap[1, 0]))
-            overlap_error.append(np.array(overlap[1, 2]))
-            overlap_sns.append(sn)
+        # if len(np.array(overlap[0, 1]))>0:
+        #     overlap_flux.append(np.array(overlap[0, 1]))
+        #     overlap_wave.append(np.array(overlap[0, 0]))
+        #     overlap_error.append(np.array(overlap[0, 2]))
+        #     overlap_sns.append(sn)
+        # if len(np.array(overlap[1, 1]))>0:
+        #     overlap_flux.append(np.array(overlap[1, 1]))
+        #     overlap_wave.append(np.array(overlap[1, 0]))
+        #     overlap_error.append(np.array(overlap[1, 2]))
+        #     overlap_sns.append(sn)
 
         # plt.figure()
         # plt.title('overlaps stuff')
