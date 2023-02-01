@@ -65,6 +65,7 @@ def read_in_frames(order, filelist):
     errors = []
     frame_wavelengths = []
     sns = []
+    berv = []
     max_sn = 0
 
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
@@ -111,11 +112,15 @@ def read_in_frames(order, filelist):
         frames.append(fluxes)
         errors.append(flux_error_order)
         sns.append(sn)
+        berv.append(ccf[0].header['ESO DRS BERV'])
+
         ### finding highest S/N frame, saves this as reference frame
         if sn>max_sn:
             max_sn = sn
             global reference_wave
-            reference_wave = wavelengths
+            global ref_berv
+            ref_berv = ccf[0].header['ESO DRS BERV']
+            reference_wave = wavelengths*(1.+ref_berv/2.99792458e5)
             reference_frame=fluxes
             reference_frame[reference_frame == 0]=0.001
             reference_error=flux_error_order
@@ -133,7 +138,7 @@ def read_in_frames(order, filelist):
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     popts = []
     for n in range(len(frames)):
-        f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+        f2 = interp1d(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5), frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
         div_frame = f2(reference_wave)/reference_frame
 
         # bins = np.linspace(0, 1, floor(len(div_frame)/5))
@@ -144,7 +149,6 @@ def read_in_frames(order, filelist):
 
         # binned = np.array(binned)
         # binned_waves = np.array(binned_waves)
-        
         ## creating windows to fit polynomial to
         binned = np.zeros(int(len(div_frame)/5))
         binned_waves = np.zeros(int(len(div_frame)/5))
@@ -156,13 +160,9 @@ def read_in_frames(order, filelist):
 
         # print(len(binned_waves))
         
-        # plt.figure()
-        # plt.scatter(binned_waves, binned)
-        # plt.show()
-
         m = np.median(binned)
         sigma = np.std(binned)
-        a = 5
+        a = 1
 
         upper_clip = m+a*sigma
         lower_clip = m-a*sigma
@@ -170,18 +170,28 @@ def read_in_frames(order, filelist):
         rcopy = binned.copy()
 
         idx = np.logical_and(rcopy>=lower_clip, rcopy<=upper_clip)
-        print(idx)
+        #print(idx)
         binned = binned[idx]
         binned_waves = binned_waves[idx]
 
-        mid_line = 4594.08
         ### fitting polynomial to div_frame
-        coeffs=np.polyfit(reference_wave, div_frame, 2)
+        coeffs=np.polyfit(reference_wave, div_frame, 1)
         poly = np.poly1d(coeffs)
-        fit = poly(frame_wavelengths[n])
+        fit = poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5))
+
+        # plt.figure()
+        # plt.plot(frame_wavelengths[n], frames[n]/poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5)), label = 'berv corrected')
+        # #plt.plot(frame_wavelengths[n]/(1.+berv[n]/2.99792458e5), frames[n]/fit)
+        # plt.plot(frame_wavelengths[n], frames[n]/fit)
+        # plt.show()
+
+
         frames[n] = frames[n]/fit
         errors[n] = errors[n]/fit
        
+        # plt.figure()
+        # plt.scatter(binned_waves, binned)
+
         # plt.figure()
         # #plt.plot(reference_wave, div_frame)
         # plt.scatter(binned_waves, binned)
@@ -217,6 +227,7 @@ def read_in_frames(order, filelist):
     # for n in range(len(frames)):
     #     plt.plot(reference_wave, frames[n])
     # plt.show()
+
     ##adjusting overlap region in the same way that individual frames were adjusted
     for n in range(len(overlap_flux)):
         # print(overlap_wave[n], overlap_flux[n])
@@ -279,7 +290,7 @@ def read_in_frames(order, filelist):
         # plt.show()
 
         ### fitting polynomial to div_frame
-        coeffs=np.polyfit(reference_wave1, div_frame, 2)
+        coeffs=np.polyfit(reference_wave1, div_frame, 1)
         poly = np.poly1d(coeffs)
         fit = poly(overlap_wave[n])
         overlap_flux[n] = overlap_flux[n]/fit
@@ -301,7 +312,7 @@ def read_in_frames(order, filelist):
         # plt.errorbar(filled_wave[idx], filled_flux[idx], filled_error[idx], color = 'k')
     # plt.close()
 
-    return frame_wavelengths, frames, errors, sns, telluric_spec
+    return frame_wavelengths, frames, errors, sns, telluric_spec, berv
 
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
@@ -388,7 +399,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         
         return coeffs, flux_obs, new_errors, fit
 
-def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
+def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
 
     interp_spec = np.zeros(spectra_f.shape)
     #combine all spectra to one spectrum
@@ -396,8 +407,8 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
         idx = np.where(wavelengths_f[n] != 0)[0]
 
-        f2 = interp1d(wavelengths_f[n][idx], spectra_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'NaN')
-        f2_err = interp1d(wavelengths_f[n][idx], errors_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'NaN')
+        f2 = interp1d(wavelengths_f[n][idx]*(1.+berv_f[n]/2.99792458e5), spectra_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'NaN')
+        f2_err = interp1d(wavelengths_f[n][idx]*(1.+berv_f[n]/2.99792458e5), errors_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'NaN')
         spectra_f[n] = f2(reference_wave)
         errors_f[n] = f2_err(reference_wave)
 
@@ -405,7 +416,7 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
         # print(errors_f[n])
 
         ## mask out out extrapolated areas
-        idx_ex = np.logical_and(reference_wave<np.max(wavelengths_f[n][idx]), reference_wave>np.min(wavelengths_f[n][idx]))
+        idx_ex = np.logical_and(reference_wave<np.max(wavelengths_f[n][idx]*(1.+berv_f[n]/2.99792458e5)), reference_wave>np.min(wavelengths_f[n][idx]*(1.+berv_f[n]/2.99792458e5)))
         idx_ex = tuple([idx_ex==False])
 
         spectra_f[n][idx_ex]=1.
@@ -758,19 +769,19 @@ def task(all_frames, counter):
 
     # a = 2/(np.max(wavelengths)-np.min(wavelengths))
     # b = 1 - a*np.max(wavelengths)
-    a = 2/(np.max(wavelengths)-np.min(wavelengths))
-    b = 1 - a*np.max(wavelengths)
+    a = 2/(np.max(wavelengths*(1.+berv[counter]/2.99792458e5))-np.min(wavelengths*(1.+berv[counter]/2.99792458e5)))
+    b = 1 - a*np.max(wavelengths*(1.+berv[counter]/2.99792458e5))
 
     mdl1 =0
     for i in np.arange(0, len(poly_cos)-1):
-        mdl1 = mdl1+poly_cos[i]*((a*wavelengths)+b)**(i)
+        mdl1 = mdl1+poly_cos[i]*((a*wavelengths*(1.+berv[counter]/2.99792458e5))+b)**(i)
     mdl1 = mdl1*poly_cos[-1]
 
     #masking based off residuals (needs to be redone for each frame as wavelength grid is different) -- NO - the same masking needs to be applied to each frame
     #the mask therefore needs to be interpolated onto the new wavelength grid.
     mask_pos = np.ones(reference_wave.shape)
     mask_pos[mask_idx]=10000000000000000000
-    f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
+    f2 = interp1d(reference_wave/(1.+ref_berv/2.99792458e5), mask_pos, bounds_error = False, fill_value = np.nan)
     interp_mask_pos = f2(wavelengths)
     interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
     # yerr_resi, model_inputs_resi, mask_idx = residual_mask(wavelengths, flux, error, model_inputs, telluric_spec)
@@ -813,11 +824,13 @@ def task(all_frames, counter):
     else:
         #plt.plot(wavelengths, flux, label = '%s'%counter)
         #print(counter, order)
+        offset = (-1)*berv[counter]
+        velocities1=np.arange(-21+offset, 18+offset, 0.82)
 
-        velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities)
+        velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities1)
 
         p = np.exp(profile1)-1
-        popt, pcov = curve_fit(gauss, velocities, p)
+        popt, pcov = curve_fit(gauss, velocities1, p)
         popts_new.append(popt[0])
         
 
@@ -827,7 +840,9 @@ def task(all_frames, counter):
 
         # print(profile)
         # print(profile_f)
-
+        new_velocities = np.arange(-21, 18, 0.82)
+        f2 = interp1d(velocities1+berv[counter], profile_f, kind='linear', bounds_error=False, fill_value='extrapolate')
+        profile_f = f2(new_velocities)
         # inp = input('(od profile and flux profile above) Enter to continue...')
         #print(profile_f)
         all_frames[counter, order]=[profile_f, profile_errors_f]
@@ -931,7 +946,7 @@ def task(all_frames, counter):
         return all_frames
 
 months1 = ['August2007']
-months = ['August2007', 'July2006', 'Sep2006']
+months = ['August2007', 'July2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
 order_range = np.arange(10,70)
 # order_range = np.arange(28,29)
@@ -952,7 +967,7 @@ for month in months:
     temp_file = fits.open(filelist[0])
     offset = (-1)*temp_file[0].header['ESO DRS BERV']
     global velocities
-    velocities=np.arange(-21+offset, 18+offset, 0.82)
+    velocities=np.arange(-21, 18, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     for order in order_range:
@@ -968,7 +983,7 @@ for month in months:
         #     print(file, order)
         #     fluxes, wavelengths, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory1, 'unmasked', run_name, 'y')
         #     fluxes1, wavelengths1, flux_error_order, sn, mid_wave_order = LSD.blaze_correct('e2ds', 'order', order, file, directory2, 'unmasked', run_name, 'n')
-        frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist)
+        frame_wavelengths, frames, frame_errors, sns, telluric_spec, berv = read_in_frames(order, filelist)
 
         #  ################## TEST - get the RV from each frame - see how it compares to CCF rv and unadjusted spectrum rv #####################
         # plt.figure('rvs after basic continuum fit')
@@ -1121,6 +1136,7 @@ for month in months:
 
         include_overlap = 'n'
         if include_overlap =='y':
+            print('need to fix berv sections')
             fw = np.concatenate((frame_wavelengths.copy(), overlap_wave.copy()))
             f = np.concatenate((frames.copy(), overlap_flux.copy()))
             fe = np.concatenate((frame_errors.copy(), overlap_error.copy()))
@@ -1131,7 +1147,7 @@ for month in months:
             fe = frame_errors.copy()
             s = sns.copy()
             
-        wavelengths, fluxes, flux_error_order, sn = combine_spec(fw, f, fe, s)
+        wavelengths, fluxes, flux_error_order, sn = combine_spec(fw, f, fe, s, berv)
 
         # plt.figure()
         # plt.errorbar(wavelengths, fluxes, flux_error_order, color = 'b', ecolor = 'k')
@@ -1680,9 +1696,7 @@ for month in months:
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
-            new_velocities = np.arange(-21, 18, 0.82)
-            f2 = interp1d(velocities+fits_file[0].header['ESO DRS BERV'], all_frames[frame_no, order, 0], kind='linear', bounds_error=False, fill_value='extrapolate')
-            profile = f2(new_velocities)
+            profile = all_frames[frame_no, order, 0]
             profile_err = all_frames[frame_no, order, 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
