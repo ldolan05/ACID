@@ -957,13 +957,6 @@ T=2454279.436714 #Cegla et al, 2006
 t=0.076125 #Torres et al, 2008
 deltaphi = t/(2*P)
 
-global velocities
-global all_frames
-global true_all_frames
-global order
-global poly_ord
-global frames, frame_wavelengths, frame_errors, sns
-
 month_spec = []
 for month in months:
     directory = '%s%s/'%(directory_p, month)
