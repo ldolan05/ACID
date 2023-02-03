@@ -15,11 +15,18 @@ from scipy.interpolate import interp1d,LSQUnivariateSpline
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
 
-
+    plt.figure()
+    plt.plot(wavelengths, flux_obs)
+    plt.show()
     #idx = tuple([flux_obs>0])
     # in optical depth space
     rms = rms/flux_obs
     flux_obs = np.log(flux_obs)
+
+    plt.figure()
+    plt.errorbar(wavelengths, flux_obs, rms)
+    plt.show()
+
     # flux_obs = flux_obs -1
     #wavelengths = wavelengths[idx]
 

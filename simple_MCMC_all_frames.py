@@ -29,7 +29,7 @@ def gauss(x1, rv, sd, height, cont):
 ## for real data
 fits_file = '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733/August2007_master_out_ccfs.fits'
 file_type = 'e2ds'
-linelist = '/home/lsd/Documents/Starbase/novaprime/Documents/fulllinelist0001.txt'
+linelist = '/home/lsd/Documents/Starbase/novaprime/Documents/NRESfulllinelist0001.txt'
 #linelist = '/home/lsd/Documents/norm.txt'
 #linelist = '/home/lsd/Documents/sme_linelist_result_48.txt'
 #linelist = '/home/lsd/Documents/HD189733b_tloggmvsini.txt'
@@ -37,7 +37,7 @@ linelist = '/home/lsd/Documents/Starbase/novaprime/Documents/fulllinelist0001.tx
 #linelist = '/home/lsd/Documents/fulllinelist018.txt'
 #linelist = '/Users/lucydolan/Starbase/fulllinelist004.txt'
 #linelist = '/home/lsd/Documents/fulllinelist004.txt'
-directory_p = '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733 old/HD189733/'
+directory_p = '/home/lsd/Documents/Starbase/novaprime/Documents/HIP41378f_NRES_data_for_upload/'
 #directory = '/Users/lucydolan/Documents/CCF_method/HD189733/August2007/'
 month = 'August2007'
 
@@ -48,7 +48,7 @@ ccf_rvs = []
 def findfiles(directory, file_type):
 
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
-    filelist=glob.glob('%s/*/*%s**A*.fits'%(directory, file_type))               #finding all A band spectra
+    filelist=glob.glob('%s/*%s.fits.fz'%(directory, file_type))               #finding all A band spectra
 
     filelist_final=[]
 
@@ -58,13 +58,14 @@ def findfiles(directory, file_type):
             if file1 == file:count=1
         if count==0:filelist_final.append(file)
 
-    return filelist_final
+    return filelist
 
 def read_in_frames(order, filelist):
     frames = []
     errors = []
     frame_wavelengths = []
     sns = []
+    global berv
     berv = []
     max_sn = 0
 
@@ -79,9 +80,19 @@ def read_in_frames(order, filelist):
     overlap_sns = []
     plt.figure('spectra after blaze_correct')
     for file in filelist:
-        print('e2ds')
+        #print('e2ds')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
-        fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+        #fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+
+        ## opening NRES files
+        fits_file = fits.open(file)
+        idx = np.logical_and(fits_file[1].data['order']==order, np.sum(fits_file[1].data['normflux'], axis=1)!=0)
+        fluxes = fits_file[1].data['normflux'][idx]
+        wavelengths = fits_file[1].data['wavelength'][idx]
+        flux_error_order = fits_file[1].data['normuncertainty'][idx]
+        sn = fits_file[0].header['SNR']
+        telluric_spec = []
+
         # if len(np.array(overlap[0, 1]))>0:
         #     overlap_flux.append(np.array(overlap[0, 1]))
         #     overlap_wave.append(np.array(overlap[0, 0]))
@@ -104,26 +115,34 @@ def read_in_frames(order, filelist):
         #         fluxes[i] = fluxes[i]*(0.01/(2.99792458e5*(wavelengths[1]-wavelengths[0])))
         #     else:
         #         fluxes[i] = fluxes[i]*(0.01/(2.99792458e5*(wavelengths[i]-wavelengths[i-1])))
-        try: ccf = fits.open(file.replace('e2ds', 'ccf_K5'))
-        except: ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
-        ccf_rvs.append([ccf[0].header['ESO DRS CCF RV']])
-        plt.plot(wavelengths, fluxes)
-        frame_wavelengths.append(wavelengths)
-        frames.append(fluxes)
-        errors.append(flux_error_order)
+
+        # try: ccf = fits.open(file.replace('e2ds', 'ccf_K5'))
+        # except: ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
+        # ccf_rvs.append([ccf[0].header['ESO DRS CCF RV']])
+        # plt.plot(wavelengths, fluxes)
+        idx2 =tuple([fluxes!=0])
+        frame_wavelengths.append(wavelengths[idx2])
+        frames.append(fluxes[idx2])
+        idx3 = tuple([fluxes>1.5])
+        flux_error_order[idx3]=1000000000000
+        errors.append(flux_error_order[idx2])
         sns.append(sn)
-        berv.append(ccf[0].header['ESO DRS BERV'])
+        berv.append(fits_file[0].header['BARYCORR']/1000)
+
+        # plt.figure()
+        # plt.scatter(wavelengths[idx2], fluxes[idx2])
+        # plt.show()
 
         ### finding highest S/N frame, saves this as reference frame
         if sn>max_sn:
             max_sn = sn
             global reference_wave
             global ref_berv
-            ref_berv = ccf[0].header['ESO DRS BERV']
-            reference_wave = wavelengths*(1.+ref_berv/2.99792458e5)
-            reference_frame=fluxes
+            ref_berv = fits_file[0].header['BARYCORR']/1000
+            reference_wave = wavelengths[idx2]*(1.+ref_berv/2.99792458e5)
+            reference_frame=fluxes[idx2]
             reference_frame[reference_frame == 0]=0.001
-            reference_error=flux_error_order
+            reference_error=flux_error_order[idx2]
             reference_error[reference_frame == 0]=1000000000000000000
 
     frames = np.array(frames)
@@ -134,189 +153,198 @@ def read_in_frames(order, filelist):
     global frame_errors_unadjusted
     frame_errors_unadjusted = errors
 
+    plt.figure()
+    for n in range(len(frames)):
+        plt.errorbar(frame_wavelengths[n], frames[n], errors[n])
+    plt.show()
+
     # plt.figure('divided spectra (by reference frame)')
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
-    popts = []
-    for n in range(len(frames)):
-        f2 = interp1d(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5), frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-        div_frame = f2(reference_wave)/reference_frame
+    # popts = []
+    # for n in range(len(frames)):
+    #     f2 = interp1d(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5), frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+    #     div_frame = f2(reference_wave)/reference_frame
 
-        # bins = np.linspace(0, 1, floor(len(div_frame)/5))
-        # digitized = np.digitize(div_frame, bins)
-        # binned = [div_frame[digitized == i].mean() for i in range(1, len(bins))]
-        # #digitized = np.digitize(div_frame, bins)
-        # binned_waves = [reference_wave[digitized == i].mean() for i in range(1, len(bins))]
+    #     # bins = np.linspace(0, 1, floor(len(div_frame)/5))
+    #     # digitized = np.digitize(div_frame, bins)
+    #     # binned = [div_frame[digitized == i].mean() for i in range(1, len(bins))]
+    #     # #digitized = np.digitize(div_frame, bins)
+    #     # binned_waves = [reference_wave[digitized == i].mean() for i in range(1, len(bins))]
 
-        # binned = np.array(binned)
-        # binned_waves = np.array(binned_waves)
-        ## creating windows to fit polynomial to
-        binned = np.zeros(int(len(div_frame)/5))
-        binned_waves = np.zeros(int(len(div_frame)/5))
-        pos=-1
-        for i in range(0, len(div_frame)-1, 5):
-            pos +=1
-            binned[pos] = np.nanmean(div_frame[i:i+4])
-            binned_waves[pos] = np.nanmean(reference_wave[i:i+4])
+    #     # binned = np.array(binned)
+    #     # binned_waves = np.array(binned_waves)
 
-        # print(len(binned_waves))
+    #     ## creating windows to fit polynomial to
+    #     binned = np.zeros(int(len(div_frame)/5))
+    #     binned_waves = np.zeros(int(len(div_frame)/5))
+    #     pos=-1
+    #     for i in range(0, len(div_frame)-5, 5):
+    #         pos +=1
+    #         binned[pos] = np.nanmean(div_frame[i:i+4])
+    #         binned_waves[pos] = np.nanmean(reference_wave[i:i+4])
+
+    #     # print(len(binned_waves))
+    #     binned_waves = binned_waves[np.logical_and(binned<=2, binned>=-2)]
+    #     binned = binned[np.logical_and(binned<=2, binned>=-2)]
         
-        m = np.median(binned)
-        sigma = np.std(binned)
-        a = 1
 
-        upper_clip = m+a*sigma
-        lower_clip = m-a*sigma
+    #     m = np.median(binned)
+    #     sigma = np.std(binned)
+    #     a = 1
 
-        rcopy = binned.copy()
+    #     upper_clip = m+a*sigma
+    #     lower_clip = m-a*sigma
 
-        idx = np.logical_and(rcopy>=lower_clip, rcopy<=upper_clip)
-        #print(idx)
-        binned = binned[idx]
-        binned_waves = binned_waves[idx]
+    #     rcopy = binned.copy()
 
-        ### fitting polynomial to div_frame
-        coeffs=np.polyfit(reference_wave, div_frame, 1)
-        poly = np.poly1d(coeffs)
-        fit = poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5))
+    #     idx = np.logical_and(rcopy>=lower_clip, rcopy<=upper_clip)
+    #     #print(idx)
+    #     binned = binned[idx]
+    #     binned_waves = binned_waves[idx]
 
-        # plt.figure()
-        # plt.plot(frame_wavelengths[n], frames[n]/poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5)), label = 'berv corrected')
-        # #plt.plot(frame_wavelengths[n]/(1.+berv[n]/2.99792458e5), frames[n]/fit)
-        # plt.plot(frame_wavelengths[n], frames[n]/fit)
-        # plt.show()
+    #     ### fitting polynomial to div_frame
+    #     coeffs=np.polyfit(reference_wave, div_frame, 1)
+    #     poly = np.poly1d(coeffs)
+    #     fit = poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5))
 
+    #     # plt.figure()
+    #     # plt.plot(frame_wavelengths[n], frames[n]/poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5)), label = 'berv corrected')
+    #     # #plt.plot(frame_wavelengths[n]/(1.+berv[n]/2.99792458e5), frames[n]/fit)
+    #     # plt.plot(frame_wavelengths[n], frames[n]/fit)
+    #     # plt.show()
 
-        frames[n] = frames[n]/fit
-        errors[n] = errors[n]/fit
+    #     frames[n] = frames[n]/fit
+    #     errors[n] = errors[n]/fit
        
-        # plt.figure()
-        # plt.scatter(binned_waves, binned)
+    #     # plt.figure()
+    #     # plt.scatter(binned_waves, binned)
+    #     # plt.show()
 
-        # plt.figure()
-        # #plt.plot(reference_wave, div_frame)
-        # plt.scatter(binned_waves, binned)
-        # plt.plot(frame_wavelengths[n], fit)
-        # plt.show()
+    #     # plt.figure()
+    #     # #plt.plot(reference_wave, div_frame)
+    #     # plt.scatter(binned_waves, binned)
+    #     # plt.plot(frame_wavelengths[n], fit)
+    #     # plt.show()
 
-    #     id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
-    #     w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
-    #     p = frames_unadjusted[n]/frames_unadjusted[n, 0]
+    # #     id = np.logical_and(frame_wavelengths[n]<mid_line+0.5, frame_wavelengths[n]>mid_line-0.5)
+    # #     w = ((frame_wavelengths[n] - mid_line)*2.99792458e5)/frame_wavelengths[n]
+    # #     p = frames_unadjusted[n]/frames_unadjusted[n, 0]
 
-    #     try:   
-    #         popt, pcov = curve_fit(gauss, w[id], p[id])
-    #         popts.append(popt[0])
-    #     except: 
-    #         plt.figure()
-    #         plt.plot(w[id], p[id])
-    #         plt.show()
+    # #     try:   
+    # #         popt, pcov = curve_fit(gauss, w[id], p[id])
+    # #         popts.append(popt[0])
+    # #     except: 
+    # #         plt.figure()
+    # #         plt.plot(w[id], p[id])
+    # #         plt.show()
 
-    #     plt.plot(w[id], p[id])
-    #     # plt.plot(frame_wavelengths[n], frames[n], color = 'g', label = 'adjusted')
-    #     if n==0:
-    #         plt.legend()
-    # plt.xlim(np.min(w[id]), np.max(w[id]))
+    # #     plt.plot(w[id], p[id])
+    # #     # plt.plot(frame_wavelengths[n], frames[n], color = 'g', label = 'adjusted')
+    # #     if n==0:
+    # #         plt.legend()
+    # # plt.xlim(np.min(w[id]), np.max(w[id]))
     
-    # plt.figure()
-    # plt.scatter(np.arange(len(frames)), popts - np.median(popts), label = 'e2ds')
-    # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
-    # plt.legend()
-    # plt.show()
+    # # plt.figure()
+    # # plt.scatter(np.arange(len(frames)), popts - np.median(popts), label = 'e2ds')
+    # # plt.scatter(np.arange(len(frames)), ccf_rvs - np.median(ccf_rvs), label = 'ccf')
+    # # plt.legend()
     # # plt.show()
-    # plt.close()
+    # # # plt.show()
+    # # plt.close()
     # plt.figure()
     # for n in range(len(frames)):
     #     plt.plot(reference_wave, frames[n])
     # plt.show()
+    # ##adjusting overlap region in the same way that individual frames were adjusted
+    # for n in range(len(overlap_flux)):
+    #     # print(overlap_wave[n], overlap_flux[n])
+    #     # print(len(overlap_wave[n]))
+    #     # print(len(overlap_flux[n]))
+    #     # plt.figure()
+    #     # plt.plot(overlap_wave[n], overlap_flux[n])
+    #     # plt.show()
 
-    ##adjusting overlap region in the same way that individual frames were adjusted
-    for n in range(len(overlap_flux)):
-        # print(overlap_wave[n], overlap_flux[n])
-        # print(len(overlap_wave[n]))
-        # print(len(overlap_flux[n]))
-        # plt.figure()
-        # plt.plot(overlap_wave[n], overlap_flux[n])
-        # plt.show()
+    #     f2 = interp1d(overlap_wave[n], overlap_flux[n], kind = 'linear', bounds_error=False, fill_value=np.nan)
+    #     div_frame = f2(reference_wave)
 
-        f2 = interp1d(overlap_wave[n], overlap_flux[n], kind = 'linear', bounds_error=False, fill_value=np.nan)
-        div_frame = f2(reference_wave)
+    #     # plt.figure()
+    #     # plt.plot(reference_wave, reference_frame, label = 'ref')
+    #     # plt.plot(overlap_wave[n], overlap_flux[n], label = 'overlap')
+    #     # plt.plot(reference_wave, div_frame, label = 'div_frame')
+    #     #plt.show()
 
-        # plt.figure()
-        # plt.plot(reference_wave, reference_frame, label = 'ref')
-        # plt.plot(overlap_wave[n], overlap_flux[n], label = 'overlap')
-        # plt.plot(reference_wave, div_frame, label = 'div_frame')
-        #plt.show()
+    #     # print(len(reference_frame))
+    #     # print(len(div_frame))
 
-        # print(len(reference_frame))
-        # print(len(div_frame))
+    #     # plt.figure()
+    #     # plt.plot(reference_wave, div_frame, label = 'full div frame')
+    #     dfcop = div_frame.copy()
+    #     #remove extrapolated regions
+    #     idx = np.logical_and(reference_wave<np.max(overlap_wave[n]), reference_wave>np.min(overlap_wave[n]))
+    #     div_frame=div_frame[idx]
+    #     print(len(div_frame))
+    #     reference_frame1 = reference_frame[idx]
+    #     reference_wave1 = reference_wave[idx]
+    #     # plt.plot(reference_wave1, div_frame, label = 'part of div frame')
+    #     # plt.legend()
+    #     # plt.close()
+    #     # plt.show()
 
-        # plt.figure()
-        # plt.plot(reference_wave, div_frame, label = 'full div frame')
-        dfcop = div_frame.copy()
-        #remove extrapolated regions
-        idx = np.logical_and(reference_wave<np.max(overlap_wave[n]), reference_wave>np.min(overlap_wave[n]))
-        div_frame=div_frame[idx]
-        print(len(div_frame))
-        reference_frame1 = reference_frame[idx]
-        reference_wave1 = reference_wave[idx]
-        # plt.plot(reference_wave1, div_frame, label = 'part of div frame')
-        # plt.legend()
-        # plt.close()
-        # plt.show()
+    #     # plt.figure()
+    #     # plt.plot(reference_wave1, reference_frame1, label = 'ref')
+    #     # plt.plot(overlap_wave[n], overlap_flux[n], label = 'overlap')
+    #     # plt.plot(reference_wave1, div_frame, label = 'div_frame')
+    #     # plt.show()
 
-        # plt.figure()
-        # plt.plot(reference_wave1, reference_frame1, label = 'ref')
-        # plt.plot(overlap_wave[n], overlap_flux[n], label = 'overlap')
-        # plt.plot(reference_wave1, div_frame, label = 'div_frame')
-        # plt.show()
+    #     div_frame = div_frame/reference_frame1
 
-        div_frame = div_frame/reference_frame1
-
-        # plt.figure()
-        # plt.plot(reference_wave1, div_frame)
-        # plt.plot(reference_wave, dfcop/reference_frame)
-        # plt.show()
-        ### creating windows to fit polynomial to
-        # binned = np.zeros(int(len(div_frame)/2))
-        # binned_waves = np.zeros(int(len(div_frame)/2))
-        # for i in range(0, len(div_frame)-1, 2):
-        #     pos = int(i/2)
-        #     binned[pos] = (div_frame[i]+div_frame[i+1])/2
-        #     binned_waves[pos] = (reference_wave[i]+reference_wave[i+1])/2
+    #     # plt.figure()
+    #     # plt.plot(reference_wave1, div_frame)
+    #     # plt.plot(reference_wave, dfcop/reference_frame)
+    #     # plt.show()
+    #     ### creating windows to fit polynomial to
+    #     # binned = np.zeros(int(len(div_frame)/2))
+    #     # binned_waves = np.zeros(int(len(div_frame)/2))
+    #     # for i in range(0, len(div_frame)-1, 2):
+    #     #     pos = int(i/2)
+    #     #     binned[pos] = (div_frame[i]+div_frame[i+1])/2
+    #     #     binned_waves[pos] = (reference_wave[i]+reference_wave[i+1])/2
         
-        # print(div_frame[div_frame==np.isnan])
-        # print(len(div_frame))
-        # plt.figure()
-        # plt.plot(reference_wave1, div_frame)
-        # plt.show()
+    #     # print(div_frame[div_frame==np.isnan])
+    #     # print(len(div_frame))
+    #     # plt.figure()
+    #     # plt.plot(reference_wave1, div_frame)
+    #     # plt.show()
 
-        ### fitting polynomial to div_frame
-        coeffs=np.polyfit(reference_wave1, div_frame, 1)
-        poly = np.poly1d(coeffs)
-        fit = poly(overlap_wave[n])
-        overlap_flux[n] = overlap_flux[n]/fit
-        overlap_error[n] = overlap_error[n]/fit
+    #     ### fitting polynomial to div_frame
+    #     coeffs=np.polyfit(reference_wave1, div_frame, 1)
+    #     poly = np.poly1d(coeffs)
+    #     fit = poly(overlap_wave[n])
+    #     overlap_flux[n] = overlap_flux[n]/fit
+    #     overlap_error[n] = overlap_error[n]/fit
 
-        filled_flux = np.zeros((len(frame_wavelengths[0]),))
-        filled_wave = np.zeros((len(frame_wavelengths[0]),))
-        filled_error = np.zeros((len(frame_wavelengths[0]),))
+    #     filled_flux = np.zeros((len(frame_wavelengths[0]),))
+    #     filled_wave = np.zeros((len(frame_wavelengths[0]),))
+    #     filled_error = np.zeros((len(frame_wavelengths[0]),))
         
-        filled_flux[:len(overlap_flux[n])]=overlap_flux[n]
-        filled_wave[:len(overlap_wave[n])]=overlap_wave[n]
-        filled_error[:len(overlap_error[n])]=overlap_error[n]
+    #     filled_flux[:len(overlap_flux[n])]=overlap_flux[n]
+    #     filled_wave[:len(overlap_wave[n])]=overlap_wave[n]
+    #     filled_error[:len(overlap_error[n])]=overlap_error[n]
 
-        overlap_flux[n] = filled_flux
-        overlap_wave[n] = filled_wave
-        overlap_error[n] = filled_error
+    #     overlap_flux[n] = filled_flux
+    #     overlap_wave[n] = filled_wave
+    #     overlap_error[n] = filled_error
         
-        idx = tuple([filled_flux!=0])
-        # plt.errorbar(filled_wave[idx], filled_flux[idx], filled_error[idx], color = 'k')
-    # plt.close()
+    #     idx = tuple([filled_flux!=0])
+    #     # plt.errorbar(filled_wave[idx], filled_flux[idx], filled_error[idx], color = 'k')
+
+    # # plt.close()
 
     return frame_wavelengths, frames, errors, sns, telluric_spec, berv
 
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
-        cont_factor = fluxes1[0]
+        cont_factor = 1
 
         fluxes1 = fluxes1
         ## taking out masked areas
@@ -350,30 +378,44 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
                 # plt.scatter(waves, flux)
                 # plt.show()
 
-                clipped_flux.append(flux[len(flux)-1])
-                clipped_waves.append(waves[len(waves)-1])
+                clipped_flux.append(np.mean(flux))
+                clipped_waves.append(np.mean(waves))
         
         ## trying to find bug - delete after
         # print(clipped_waves, clipped_flux/cont_factor, poly_ord)
         # plt.figure()
         # plt.plot(clipped_waves, clipped_flux)
+        print(cont_factor)
 
         # plt.figure()
-        # plt.plot(clipped_waves, clipped_flux/cont_factor)
+        # plt.plot(clipped_waves, clipped_flux)
         # plt.show()
 
-        try:coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
-        except:coeffs=np.polyfit(waves,flux/cont_factor, poly_ord)
+        # plt.figure()
+        # plt.plot(waves, flux)
+        # plt.show()
+
+        try:coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        except:coeffs=np.polyfit(waves,flux, poly_ord)
+
+        coeffs=np.polyfit(waves,np.ones((len(waves),)), poly_ord)
 
         poly = np.poly1d(coeffs*cont_factor)
         fit = poly(wavelengths1)
         flux_obs = fluxes1/fit
         new_errors = errors1/fit
 
-        idx = [flux_obs<=0]
+        idx = tuple([flux_obs<=0])
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
 
+        idx = np.isnan(flux_obs)
+        flux_obs[idx] = 0.00000000000000001
+        new_errors[idx]=1000000000000000
+
+        idx = np.isinf(flux_obs)
+        flux_obs[idx] = 0.00000000000000001
+        new_errors[idx]=1000000000000000
         
         # fig = plt.figure('Continuum fit')
         # plt.title('Continuum fit')
@@ -401,8 +443,17 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         return coeffs, flux_obs, new_errors, fit
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
+    
+    # print((len(spectra_f1), len(spectra_f1[0])))
 
-    interp_spec = np.zeros(spectra_f.shape)
+    # spectra_f = np.zeros(shape = (len(spectra_f1), len(spectra_f1[0])))
+    # errors_f = np.zeros(shape = (len(spectra_f1), len(spectra_f1[0])))
+
+    # for no in range(len(spectra_f1)):
+    #     spectra_f[no, :]=spectra_f1[no]
+    #     errors_f[no, :]=errors_f1[no]
+
+    #interp_spec = np.zeros(spectra_f.shape())
     #combine all spectra to one spectrum
     for n in range(len(wavelengths_f)):
 
@@ -438,32 +489,49 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
     spectrum_f = np.zeros((width,))
     spec_errors_f = np.zeros((width,))
 
+    plt.figure()
+    for f in range(len(spectra_f)):
+        plt.errorbar(wavelengths_f[f], spectra_f[f], errors_f[f])
+    plt.show()
+
     for n in range(0,width):
         temp_spec_f = spectra_f[:, n]
         temp_err_f = errors_f[:, n]
-
+        print(temp_spec_f)
+        print(temp_err_f)
         weights_f = (1/temp_err_f**2)
 
-        idx = tuple([temp_err_f>=1000000000000])
+        idx = tuple([temp_err_f>=1000000])
         print(weights_f[idx])
         weights_f[idx] = 0.
 
-        weights_f = weights_f/np.sum(weights_f)
+        #weights_f = weights_f/np.sum(weights_f)
 
-        spectrum_f[n]=sum(weights_f*temp_spec_f)
+        # plt.figure()
+        # plt.scatter(np.arange(len(weights_f)), weights_f)
+
+        # plt.figure()
+        # plt.errorbar(np.arange(len(temp_spec_f)), temp_spec_f, temp_err_f)
+        # #plt.show()
+
+        spectrum_f[n]=sum(weights_f*temp_spec_f)/np.sum(weights_f)
         sn_f = sum(weights_f*sns_f)/sum(weights_f)
 
-        spec_errors_f[n]=1/(sum(weights_f**2))
+        # print(weights_f)
+        spec_errors_f[n]=np.sqrt(1/(sum(weights_f)))
+        # print(spec_errors_f[n])
+
+        # plt.show()
    
-    # plt.figure()
-    # plt.title('spectra for each frame and combined spectrum')
-    # for n in range(0, len(spectra_f)):
-    #     #plt.errorbar(wavelengths, frames[n], yerr=errors[n], ecolor = 'k')
-    #     plt.plot(reference_wave, spectra_f[n], label = '%s'%n)
-    # plt.errorbar(reference_wave, spectrum_f, label = 'combined', color = 'b', yerr = spec_errors_f, ecolor = 'k')
-    # #plt.xlim(np.min(frames[n])-1, np.max(frames[n])+1)
-    # #plt.legend()
-    # plt.show()
+    plt.figure()
+    plt.title('spectra for each frame and combined spectrum')
+    for n in range(0, len(spectra_f)):
+        #plt.errorbar(wavelengths, frames[n], yerr=errors[n], ecolor = 'k')
+        plt.plot(reference_wave, spectra_f[n], label = '%s'%n)
+    plt.errorbar(reference_wave, spectrum_f, label = 'combined', color = 'b', yerr = spec_errors_f, ecolor = 'k')
+    #plt.xlim(np.min(frames[n])-1, np.max(frames[n])+1)
+    #plt.legend()
+    plt.show()
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
@@ -841,7 +909,7 @@ def task(all_frames, counter):
 
         # print(profile)
         # print(profile_f)
-        new_velocities = np.arange(-21, 18, 0.82)
+        new_velocities = np.arange(-21+22, 18+22, 0.82)
         f2 = interp1d(velocities1+berv[counter], profile_f, kind='linear', bounds_error=False, fill_value='extrapolate')
         profile_f = f2(new_velocities)
         # inp = input('(od profile and flux profile above) Enter to continue...')
@@ -947,9 +1015,9 @@ def task(all_frames, counter):
         return all_frames
 
 months1 = ['August2007']
-months = ['August2007', 'July2007', 'July2006', 'Sep2006']
+months = ['all']
 #filelist = filelist[0]
-order_range = np.arange(10,70)
+order_range = np.arange(60,119)
 # order_range = np.arange(28,29)
 
 P=2.21857567 #Cegla et al, 2006 - days
@@ -959,16 +1027,16 @@ deltaphi = t/(2*P)
 
 month_spec = []
 for month in months:
-    directory = '%s%s/'%(directory_p, month)
+    directory = '%s'%(directory_p)
     print(directory)
-    filelist=findfiles(directory, file_type)
+    filelist=findfiles(directory, '1d')
     print(filelist)
     phasess=[]
     poptss=[]
-    temp_file = fits.open(filelist[0])
-    offset = (-1)*temp_file[0].header['ESO DRS BERV']
+    # temp_file = fits.open(filelist[0])
+    # offset = (-1)*temp_file[0].header['ESO DRS BERV']
     global velocities
-    velocities=np.arange(-21, 18, 0.82)
+    velocities=np.arange(-21+22, 18+22, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     
@@ -1267,10 +1335,26 @@ for month in months:
         b = 1 - a*np.max(wavelengths)
         poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
+        plt.figure()
+        plt.plot(wavelengths, fluxes)
+        plt.plot(wavelengths, fluxes1)
+        plt.show()
+
         print(poly_inputs)
 
         #### getting the initial profile
-        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name, velocities)
+        m = np.median(fluxes1)
+        sigma = np.std(fluxes1)
+        a = 1
+
+        upper_clip = m+a*sigma
+        lower_clip = m-a*sigma
+
+        rcopy = fluxes1.copy()
+
+        idx1 = np.logical_and(rcopy<=upper_clip, rcopy>=lower_clip)
+        
+        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths[idx1], fluxes1[idx1], flux_error_order1[idx1], linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
         # plt.figure('forward model after first LSD')
         # plt.plot(wavelengths, np.log(fluxes1))
