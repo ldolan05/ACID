@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 from scipy import linalg
 from astropy.io import  fits
@@ -15,17 +16,17 @@ from scipy.interpolate import interp1d,LSQUnivariateSpline
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
 
-    plt.figure()
-    plt.plot(wavelengths, flux_obs)
-    plt.show()
+    # plt.figure('read into LSD')
+    # plt.plot(wavelengths, flux_obs)
+    # plt.show()
     #idx = tuple([flux_obs>0])
     # in optical depth space
     rms = rms/flux_obs
     flux_obs = np.log(flux_obs)
 
-    plt.figure()
-    plt.errorbar(wavelengths, flux_obs, rms)
-    plt.show()
+    # plt.figure()
+    # plt.errorbar(wavelengths, flux_obs, rms, ecolor = 'r')
+    # plt.show()
 
     # flux_obs = flux_obs -1
     #wavelengths = wavelengths[idx]
@@ -64,14 +65,37 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     depths_expected1 = np.array(linelist_expected[:,1])
     # print(len(depths_expected1))
 
+    # print(wavelengths_expected1)
+    # print(depths_expected1)
+    # counter = 0
+    # for line in reversed(open(linelist).readlines()):
+    #     if len(line.split(",")) > 10:
+    #         break
+    #     counter += 1
+    # num_lines = sum(1 for line in open(linelist))
+    # last_line = num_lines - counter + 3
+
+    # with open(linelist) as f_in:
+    #     linelist_expected = np.genfromtxt(itertools.islice(f_in, 3, last_line, 4), dtype=str,delimiter=',')
+
+    # #linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
+    # wavelengths_expected1 =np.array(linelist_expected[:,1], dtype = 'float')
+    # depths_expected1 = np.array(linelist_expected[:,9], dtype = 'float')
+    # if np.max(depths_expected1)>1:
+    #     depths_expected1 = np.array(linelist_expected[:,13], dtype = 'float')
+    # print(len(depths_expected1))
+
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
+
+    # print(wavelength_min)
+    # print(wavelength_max)
 
     wavelengths_expected=[]
     depths_expected=[]
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
-        line_min = 1/(3*sn)
+        line_min = 0.
         # line_min = 0.25
         #line_min = np.log(1+line_min)
         #print(line_)
@@ -105,6 +129,12 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     #depths_expected = -np.log(1-depths_expected1)
 
     # print(len(depths_expected))
+    # print(depths_expected)
+
+    plt.figure('hi')
+    plt.plot(wavelengths, flux_obs)
+    plt.vlines(wavelengths_expected, depths_expected, np.max(flux_obs), alpha = 0.5, color = 'c')
+    plt.show()
 
     blankwaves=wavelengths
     R_matrix=flux_obs

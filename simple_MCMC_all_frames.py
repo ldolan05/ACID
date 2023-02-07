@@ -153,10 +153,10 @@ def read_in_frames(order, filelist):
     global frame_errors_unadjusted
     frame_errors_unadjusted = errors
 
-    plt.figure()
-    for n in range(len(frames)):
-        plt.errorbar(frame_wavelengths[n], frames[n], errors[n])
-    plt.show()
+    # plt.figure()
+    # for n in range(len(frames)):
+    #     plt.errorbar(frame_wavelengths[n], frames[n], errors[n])
+    # plt.show()
 
     # plt.figure('divided spectra (by reference frame)')
     ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
@@ -395,24 +395,24 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         # plt.plot(waves, flux)
         # plt.show()
 
-        try:coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
-        except:coeffs=np.polyfit(waves,flux, poly_ord)
-
-        coeffs=np.polyfit(waves,np.ones((len(waves),)), poly_ord)
-
+        # try:coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        # except:coeffs=np.polyfit(waves,flux, poly_ord)
+        print('hi')
+        coeffs=np.polyfit(waves, np.ones((len(waves),)), poly_ord)
+        print('hi1')
         poly = np.poly1d(coeffs*cont_factor)
         fit = poly(wavelengths1)
         flux_obs = fluxes1/fit
         new_errors = errors1/fit
-
+        print('hi2')
         idx = tuple([flux_obs<=0])
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
-
+        print('hi3')
         idx = np.isnan(flux_obs)
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
-
+        print('hi4')
         idx = np.isinf(flux_obs)
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
@@ -439,19 +439,23 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         coeffs = list(coeffs)
         coeffs.append(cont_factor)
         coeffs = np.array(coeffs)
-        
+        print('hi5')
         return coeffs, flux_obs, new_errors, fit
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
     
     # print((len(spectra_f1), len(spectra_f1[0])))
+    spectra_f1 = spectra_f.copy()
+    errors_f1 = errors_f.copy()
+    spectra_f = np.zeros(shape = (len(spectra_f1), len(reference_wave)))
+    errors_f = np.zeros(shape = (len(spectra_f1), len(reference_wave)))
 
-    # spectra_f = np.zeros(shape = (len(spectra_f1), len(spectra_f1[0])))
-    # errors_f = np.zeros(shape = (len(spectra_f1), len(spectra_f1[0])))
-
-    # for no in range(len(spectra_f1)):
-    #     spectra_f[no, :]=spectra_f1[no]
-    #     errors_f[no, :]=errors_f1[no]
+    for no in range(len(spectra_f1)):
+        f2 = interp1d(wavelengths_f[no], spectra_f1[no], kind = 'linear', bounds_error=False, fill_value = 'NaN')
+        spectra_f[no, :]= f2(reference_wave)
+        f2 = interp1d(wavelengths_f[no], errors_f1[no], kind = 'linear', bounds_error=False, fill_value = 'NaN')
+        errors_f[no, :] = f2(reference_wave)
+        wavelengths_f[no] = reference_wave
 
     #interp_spec = np.zeros(spectra_f.shape())
     #combine all spectra to one spectrum
@@ -489,10 +493,10 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
     spectrum_f = np.zeros((width,))
     spec_errors_f = np.zeros((width,))
 
-    plt.figure()
-    for f in range(len(spectra_f)):
-        plt.errorbar(wavelengths_f[f], spectra_f[f], errors_f[f])
-    plt.show()
+    # plt.figure()
+    # for f in range(len(spectra_f)):
+    #     plt.errorbar(wavelengths_f[f], spectra_f[f], errors_f[f])
+    # plt.show()
 
     for n in range(0,width):
         temp_spec_f = spectra_f[:, n]
@@ -523,15 +527,15 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
 
         # plt.show()
    
-    plt.figure()
-    plt.title('spectra for each frame and combined spectrum')
-    for n in range(0, len(spectra_f)):
-        #plt.errorbar(wavelengths, frames[n], yerr=errors[n], ecolor = 'k')
-        plt.plot(reference_wave, spectra_f[n], label = '%s'%n)
-    plt.errorbar(reference_wave, spectrum_f, label = 'combined', color = 'b', yerr = spec_errors_f, ecolor = 'k')
-    #plt.xlim(np.min(frames[n])-1, np.max(frames[n])+1)
-    #plt.legend()
-    plt.show()
+    # plt.figure()
+    # plt.title('spectra for each frame and combined spectrum')
+    # for n in range(0, len(spectra_f)):
+    #     #plt.errorbar(wavelengths, frames[n], yerr=errors[n], ecolor = 'k')
+    #     plt.plot(reference_wave, spectra_f[n], label = '%s'%n)
+    # plt.errorbar(reference_wave, spectrum_f, label = 'combined', color = 'b', yerr = spec_errors_f, ecolor = 'k')
+    # #plt.xlim(np.min(frames[n])-1, np.max(frames[n])+1)
+    # #plt.legend()
+    # plt.show()
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
@@ -598,7 +602,7 @@ def log_prior(theta):
 
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
-            if -10<=theta[i]<=0.5: pass
+            if -10<=theta[i]<=1: pass
             else:
                 check = 1
 
@@ -672,10 +676,10 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_
     ### (roughly) normalise the data (easier to set standard threshold for residuals)
     #residuals=(data_spec/data_spec[0]-forward/forward[0])
     # residuals = residuals-np.max(residuals)
-    # plt.figure()
-    # plt.plot(wavelengths, data_spec_in)
-    # plt.plot(wavelengths, forward)
-    # plt.show()
+    plt.figure()
+    plt.plot(wavelengths, data_spec_in)
+    plt.plot(wavelengths, forward)
+    plt.show()
 
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(x)
@@ -761,19 +765,19 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_
     # plt.figure()
     # plt.plot(wavelengths, 1-telluric_spec)
 
-    peaks = find_peaks(1-telluric_spec, height=0.01)
-    # print(peaks[0])
-    for peak in peaks[0]:
-        limit = int(limit_pix*wavelengths[peak])
-        # print('the limit is...')
-        # print(limit)
-        st = peak-limit
-        end = peak+limit
-        if st <0:st =0
-        if end>len(data_err):end=len(data_err)
-        for i in range(st, end):
-            # print(wavelengths[i])
-            data_err[i] = 1000000000000000000
+    # peaks = find_peaks(1-telluric_spec, height=0.01)
+    # # print(peaks[0])
+    # for peak in peaks[0]:
+    #     limit = int(limit_pix*wavelengths[peak])
+    #     # print('the limit is...')
+    #     # print(limit)
+    #     st = peak-limit
+    #     end = peak+limit
+    #     if st <0:st =0
+    #     if end>len(data_err):end=len(data_err)
+    #     for i in range(st, end):
+    #         # print(wavelengths[i])
+    #         data_err[i] = 1000000000000000000
 
     tell_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
     for line in tell_lines:
@@ -914,7 +918,7 @@ def task(all_frames, counter):
         profile_f = f2(new_velocities)
         # inp = input('(od profile and flux profile above) Enter to continue...')
         #print(profile_f)
-        all_frames[counter, order]=[profile_f, profile_errors_f]
+        all_frames[counter, order-np.min(order_range)]=[profile_f, profile_errors_f]
         #print(all_frames[counter, order, 0])
 
         #plt.show()
@@ -1017,7 +1021,7 @@ def task(all_frames, counter):
 months1 = ['August2007']
 months = ['all']
 #filelist = filelist[0]
-order_range = np.arange(60,119)
+order_range = np.arange(104,119)
 # order_range = np.arange(28,29)
 
 P=2.21857567 #Cegla et al, 2006 - days
@@ -1335,10 +1339,10 @@ for month in months:
         b = 1 - a*np.max(wavelengths)
         poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
-        plt.figure()
-        plt.plot(wavelengths, fluxes)
-        plt.plot(wavelengths, fluxes1)
-        plt.show()
+        # plt.figure()
+        # plt.plot(wavelengths, fluxes)
+        # plt.plot(wavelengths, fluxes1)
+        # plt.show()
 
         print(poly_inputs)
 
@@ -1353,17 +1357,25 @@ for month in months:
         rcopy = fluxes1.copy()
 
         idx1 = np.logical_and(rcopy<=upper_clip, rcopy>=lower_clip)
+        flux_error_order1[idx1]=100000000000
         
-        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths[idx1], fluxes1[idx1], flux_error_order1[idx1], linelist, 'False', poly_ord, sn, order, run_name, velocities)
+        idx2 = tuple([flux_error_order1<100000000000])
 
-        # plt.figure('forward model after first LSD')
-        # plt.plot(wavelengths, np.log(fluxes1))
-        # plt.plot(wavelengths, np.dot(alpha, profile))
+        # # plt.figure()
+        # plt.scatter(wavelengths[idx2], fluxes1[idx2], flux_error_order1[idx2])
         # plt.show()
 
-        # plt.figure('initial profile')
-        # plt.plot(velocities, profile)
-        # plt.show()
+        if len(fluxes1[idx2])/len(fluxes1)<0.25:continue
+        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name, velocities)
+
+        plt.figure('forward model after first LSD')
+        plt.plot(wavelengths, np.log(fluxes1))
+        plt.plot(wavelengths, np.dot(alpha, profile))
+        plt.show()
+
+        plt.figure('initial profile')
+        plt.plot(velocities, profile)
+        plt.show()
 
         # plt.figure()
         # plt.title('SPEC BEFORE 1st LSD')
@@ -1768,7 +1780,7 @@ for month in months:
         hdr = fits.Header()
 
         for order in range(0, 71):
-            hdr['ORDER'] = order
+            hdr['ORDER'] = order_range[order]
             hdr['PHASE'] = phi
 
             if phi<deltaphi:
