@@ -112,7 +112,8 @@ def read_in_frames(order, filelist):
         frames.append(fluxes)
         errors.append(flux_error_order)
         sns.append(sn)
-        berv.append(ccf[0].header['ESO DRS BERV'])
+        #berv.append(ccf[0].header['ESO DRS BERV'])
+        berv.append(0.)
 
         ### finding highest S/N frame, saves this as reference frame
         if sn>max_sn:
@@ -175,7 +176,7 @@ def read_in_frames(order, filelist):
         binned_waves = binned_waves[idx]
 
         ### fitting polynomial to div_frame
-        coeffs=np.polyfit(reference_wave, div_frame, 1)
+        coeffs=np.polyfit(np.array(reference_wave, dtype = 'float64'), np.array(div_frame, dtype = 'float64'), 1)
         poly = np.poly1d(coeffs)
         fit = poly(frame_wavelengths[n]*(1.+berv[n]/2.99792458e5))
 
@@ -290,7 +291,7 @@ def read_in_frames(order, filelist):
         # plt.show()
 
         ### fitting polynomial to div_frame
-        coeffs=np.polyfit(reference_wave1, div_frame, 1)
+        coeffs=np.polyfit(np.array(reference_wave1, dtype = 'float64'), np.array(div_frame, dtype = 'float64'), 1)
         poly = np.poly1d(coeffs)
         fit = poly(overlap_wave[n])
         overlap_flux[n] = overlap_flux[n]/fit
@@ -350,8 +351,8 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
                 # plt.scatter(waves, flux)
                 # plt.show()
 
-                clipped_flux.append(flux[len(flux)-1])
-                clipped_waves.append(waves[len(waves)-1])
+                clipped_flux.append(float(flux[len(flux)-1]))
+                clipped_waves.append(float(waves[len(waves)-1]))
         
         ## trying to find bug - delete after
         # print(clipped_waves, clipped_flux/cont_factor, poly_ord)
@@ -363,7 +364,12 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         # plt.show()
 
         try:coeffs=np.polyfit(clipped_waves, clipped_flux/cont_factor, poly_ord)
-        except:coeffs=np.polyfit(waves,flux/cont_factor, poly_ord)
+        except:
+            # plt.figure()
+            # plt.plot(waves, flux/cont_factor)
+            # plt.show()
+            coeffs=np.polyfit(np.array(waves, dtype = 'float64'),np.array(flux, dtype ='float64'), poly_ord)
+            cont_factor = 1
 
         poly = np.poly1d(coeffs*cont_factor)
         fit = poly(wavelengths1)

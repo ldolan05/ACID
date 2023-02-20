@@ -13,7 +13,7 @@ from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import inv, spsolve
 from scipy.interpolate import interp1d,LSQUnivariateSpline
 
-def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
+def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, berv, offset, velocities):
 
 
     #idx = tuple([flux_obs>0])
@@ -107,6 +107,8 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     #limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
     # print(limit)
 
+    delta_x_array = alpha.copy()
+
     for j in range(0, len(blankwaves)):
         for i in (range(0,len(wavelengths_expected))):
             vdiff = ((blankwaves[j] - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
@@ -140,9 +142,13 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                     x=(velocities[k]-vel)/deltav
                     if -1.<x and x<0.:
                         delta_x=(1+x)
+                        if i == int(len(depths_expected)/2)+1:
+                            delta_x_array[j, k] = delta_x
                         alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
                     elif 0.<=x and x<1.:
                         delta_x=(1-x)
+                        if i == int(len(depths_expected)/2)+1:
+                            delta_x_array[j, k] = delta_x
                         alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
 
                 # print(alpha[j, :].shape)
@@ -156,7 +162,28 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                 # plt.show()
             else:
                 pass
-            
+    
+    # plt.figure('alpha')
+    # plt.title('alpha matrix - %s'%berv)
+    # plt.pcolormesh(velocities-offset, blankwaves, alpha)
+    # plt.vlines(0., np.min(blankwaves), np.max(blankwaves))
+    # plt.hlines(wavelengths_expected[int(len(depths_expected)/2)+1], np.min(velocities-offset), np.max(velocities-offset))
+    # plt.ylabel('Spectrum wavelength at position j')
+    # plt.xlabel('Profile Velocity (-offset) at position k')
+    # plt.ylim(4595, 4596)
+    # plt.colorbar()
+
+    # plt.figure('delta x')
+    # plt.title('delta x matrix - %s'%berv)
+    # plt.pcolormesh(velocities - offset, blankwaves, delta_x_array)
+    # plt.vlines(0., np.min(blankwaves), np.max(blankwaves))
+    # plt.hlines(wavelengths_expected[int(len(depths_expected)/2)+1], np.min(velocities-offset), np.max(velocities-offset))
+    # plt.colorbar()
+    # plt.ylabel('Spectrum wavelength at position j')
+    # plt.xlabel('Profile Velocity -(offset) at position k')
+    # plt.ylim(4595, 4596)
+    # plt.show()
+
     no_line = list(dict.fromkeys(no_line))
     
     id_matrix=np.identity(len(flux_obs))
@@ -169,7 +196,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     RHS_final=np.dot(RHS_1, R_matrix )
 
     LHS_preinvert=np.dot(RHS_1, alpha)
-    LHS_prep=np.matrix(LHS_preinvert)
+    LHS_prep=np.matrix(LHS_preinvert, dtype = 'float64')
 
     P,L,U=linalg.lu(LHS_prep)
 
@@ -184,29 +211,30 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
 
-    return velocities, profile, profile_errors, alpha, wavelengths_expected, depths_expected1, len(no_line)
+    return velocities, profile, profile_errors, delta_x_array, wavelengths_expected, depths_expected1, len(no_line)
 
-def get_wave(data,header):
+def get_wave(data,header): 
 
-  wave=data*0.
-  no=data.shape[0]
-  npix=data.shape[1]
-  d=header['ESO DRS CAL TH DEG LL']
-  xx0=np.arange(npix)
-  xx=[]
-  for i in range(d+1):
-      xx.append(xx0**i)
-  xx=np.asarray(xx)
+    wave=np.float128(data*0.) 
+    no=data.shape[0] 
+    npix=data.shape[1] 
+    try:d=header['ESO DRS CAL TH DEG LL'] 
+    except:d=header['TNG DRS CAL TH DEG LL'] 
+    xx0=np.arange(npix) 
+    xx=[] 
+    for i in range(d+1): 
+        xx.append(xx0**i) 
+    xx=np.asarray(xx) 
 
-  for o in range(no):
-      for i in range(d+1):
-          idx=i+o*(d+1)
-          par=header['ESO DRS CAL TH COEFF LL%d' % idx]
-          wave[o,:]=wave[o,:]+par*xx[i,:]
-       #for x in range(npix):
-       #  wave[o,x]=wave[o,x]+par*xx[i,x]#float(x)**float(i)
-
-  return wave
+    for o in range(no): 
+        for i in range(d+1): 
+            idx=i+o*(d+1) 
+            try:par=np.float128(header['ESO DRS CAL TH COEFF LL%d' % idx]) 
+            except:par=np.float128(header['TNG DRS CAL TH COEFF LL%d' % idx]) 
+            wave[o,:]=wave[o,:]+par*xx[i,:] 
+    #for x in range(npix): 
+    #  wave[o,x]=wave[o,x]+par*xx[i,x]#float(x)**float(i) 
+    return wave 
 
 def continuumfit(wavelengths1, fluxes1, poly_ord):
 
@@ -597,12 +625,12 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         '''
         # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
         # print(file_ccf[0].header['ESO DRS BERV'])
-        brv=header['ESO DRS BERV']
+        brv=np.float128(header['ESO DRS BERV'])
         # print(brv)
         wave_nonad=get_wave(spec, header)
         # if berv_opt == 'y':
         #     print('BERV corrected')
-        wave = wave_nonad#*(1.+brv/2.99792458e5)
+        wave = wave_nonad*(1.+brv/2.99792458e5)
         # if berv_opt == 'n':
         #     print('BERV not corrected')
         # wave = wave_nonad
@@ -1125,7 +1153,6 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
     tapas_trans = tapas[1].data["transmittance"]
     tapas.close()
-    brv=header['ESO DRS BERV']
     tapas_wvl = tapas_wvl[::-1]/(1.+brv/2.99792458e5)
     tapas_trans = tapas_trans[::-1]
 
@@ -1142,5 +1169,5 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     # plt.show()
     print('overlap accounted for')
 
-    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), f(wavelengths), overlap ## for just LSD
+    return np.array(fluxes, dtype = 'float128'), np.array(wavelengths, dtype = 'float128'), np.array(flux_error_order, dtype = 'float128'), sn, np.median(wavelengths), f(np.array(wavelengths, dtype = 'float64')), overlap ## for just LSD
 ############################################################################################################
