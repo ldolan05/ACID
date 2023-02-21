@@ -839,7 +839,7 @@ def task(all_frames, counter):
         # print(profile)
         # print(profile_f)
         new_velocities = np.arange(-21, 18, 0.82)
-        f2 = interp1d(velocities1+berv[counter], profile_f, kind='linear', bounds_error=False, fill_value='extrapolate')
+        f2 = interp1d(velocities1, profile_f, kind='linear', bounds_error=False, fill_value='extrapolate')
         profile_f = f2(new_velocities)
         # inp = input('(od profile and flux profile above) Enter to continue...')
         #print(profile_f)
