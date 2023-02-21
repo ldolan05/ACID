@@ -1265,6 +1265,16 @@ for month in months:
         ### getting the initial polynomial coefficents
         a = 2/(np.max(wavelengths)-np.min(wavelengths))
         b = 1 - a*np.max(wavelengths)
+        idx = np.isnan(fluxes)
+        fluxes[idx]=0.0000001
+        flux_error_order[idx]=10000000000000
+        idx = np.isinf(fluxes)
+        fluxes[idx]=0.0000001
+        flux_error_order[idx]=10000000000000
+        idx = tuple([fluxes<=0])
+        fluxes[idx]=0.0000001
+        flux_error_order[idx]=10000000000000
+        
         poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
         print(poly_inputs)

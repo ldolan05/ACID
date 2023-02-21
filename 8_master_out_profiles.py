@@ -178,10 +178,12 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     #print(velo)
     adjusted_velocities = velocities-velo
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value='extrapolate')
-    velocity_grid = np.linspace(-10,10,len(spectrum))
+    velocity_grid = np.arange(-10,10,0.82)
     adjusted_spectrum = f2(velocity_grid)
+    f2 = interp1d(adjusted_velocities, errors, kind='linear', bounds_error=False, fill_value='extrapolate')
+    adjusted_errors = f2(velocity_grid)
     
-    return velocity_grid, adjusted_spectrum, errors
+    return velocity_grid, adjusted_spectrum, adjusted_errors
 
 
 def remove_berv(velocities, spectrum, berv):
@@ -457,10 +459,10 @@ save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = [#'August2007',
+months = ['August2007',
           'July2007',
-          #'July2006',
-          #'Sep2006'
+          'July2006',
+          'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -716,6 +718,7 @@ for month in months:
         all_ccf_profiles = list(all_ccf_profiles)
         ccf_phases = list(ccf_phases)
         all_phases = list(all_phases)
+        all_results = list(all_results)
         all_profiles.append(spectrum)
         all_profile_errors.append(errors)
         all_ccf_profiles.append(spectrum_ccf/np.mean(spectrum_ccf[:5])-1)
@@ -789,6 +792,7 @@ for month in months:
     all_profiles = all_profiles[idx]
     all_phases = list(all_phases)
     all_results = all_results[idx]
+    all_results = list(all_results)
 
     ccf_phases = np.array(ccf_phases)
     header_rvs = np.array(header_rvs)
@@ -797,8 +801,8 @@ for month in months:
     all_ccf_profiles = np.array(all_ccf_profiles)
     all_ccf_profiles = all_ccf_profiles[idc]
     header_rvs = header_rvs[idc]
-    berv = berv[idc]
-    berv = list(berv)
+    # berv = berv[idc]
+    # berv = list(berv)
 
     print(ccf_phases)
     print(phases)
@@ -827,23 +831,22 @@ for month in months:
     #     all_ccfs[i][0] = profile3
 
     #making master out
-
-    idx_out = tuple([all_results=='out'])
+    results = np.array(results)
+    idx_out = tuple([results=='out'])
+    results = list(results)
     out_ccfs= all_ccfs[idx_out]
     out_errors = out_ccfs[:, 1]
     out_ccfs = out_ccfs[:, 0]
+    new_out = np.zeros((len(out_ccfs), len(out_ccfs[0])))
+    new_err = np.zeros((len(out_ccfs), len(out_ccfs[0])))
+    for c in range(len(out_ccfs)):
+        new_out[c, :] = np.array(out_ccfs[c])
+        new_err[c, :] = np.array(out_errors[c])
+    out_ccfs = new_out
+    out_errors = new_err
     frame = 'master_out'
     count = 0
     if len(out_ccfs)>1:
-        plt.figure('all ccfs')
-        for ccf in all_ccf_profiles:
-            plt.plot(velocities_ccf, ccf, label = 'Frame %s'%count)
-            count+=1
-        plt.xlabel('Velocity (km/s)')
-        plt.ylabel('Normalised Flux')
-        plt.title('CCF Profiles')
-        plt.savefig('CCFprofs.png')
-        plt.show()
         master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors ,ccf, 'yes', velocities)
     else:
         master_out_spec = out_ccfs[0]
@@ -862,7 +865,7 @@ for month in months:
     results.append('master_out')
     bjds.append('out')
     mjds.append('out')
-    berv.append('out')
+    # berv.append('out')
 
     #write in header
     for p in range(len(phases)):
@@ -877,7 +880,7 @@ for month in months:
         hdr['PHASE']=phase
         hdr['bjd']=bjds[p]
         hdr['mjd']=mjds[p]
-        hdr['berv']=berv[p]
+        # hdr['berv']=berv[p]
         hdr['RESULT']=results[p]
         hdu[p].header=hdr
     

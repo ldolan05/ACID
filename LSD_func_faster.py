@@ -1169,5 +1169,5 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     # plt.show()
     print('overlap accounted for')
 
-    return np.array(fluxes, dtype = 'float128'), np.array(wavelengths, dtype = 'float128'), np.array(flux_error_order, dtype = 'float128'), sn, np.median(wavelengths), f(np.array(wavelengths, dtype = 'float64')), overlap ## for just LSD
+    return np.array(fluxes, dtype = 'float64'), np.array(wavelengths, dtype = 'float64'), np.array(flux_error_order, dtype = 'float64'), sn, np.median(wavelengths), f(np.array(wavelengths, dtype = 'float64')), overlap ## for just LSD
 ############################################################################################################
