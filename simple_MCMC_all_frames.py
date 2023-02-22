@@ -904,7 +904,7 @@ def task(all_frames, counter):
         return all_frames
 
 months1 = ['August2007']
-months = ['July2007']#, 'August2007', 'July2006', 'Sep2006']
+months = ['July2007', 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
 order_range = np.arange(10,70)
 # order_range = np.arange(28,29)
@@ -923,7 +923,7 @@ for month in months:
     phasess=[]
     poptss=[]
     global velocities
-    velocities=np.arange(-16, 11, 0.82)
+    velocities=np.arange(-21, 18, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     for order in order_range:

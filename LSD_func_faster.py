@@ -188,7 +188,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
 def get_wave(data,header):
 
-  wave=data*0.
+  wave=np.array(data*0., dtype = 'float128')
   no=data.shape[0]
   npix=data.shape[1]
   d=header['ESO DRS CAL TH DEG LL']
@@ -196,7 +196,7 @@ def get_wave(data,header):
   xx=[]
   for i in range(d+1):
       xx.append(xx0**i)
-  xx=np.asarray(xx)
+  xx=np.asarray(xx, dtype = 'float128')
 
   for o in range(no):
       for i in range(d+1):
