@@ -133,7 +133,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     plt.figure('hi')
     plt.plot(wavelengths, flux_obs)
-    plt.vlines(wavelengths_expected, depths_expected, np.max(flux_obs), alpha = 0.5, color = 'c')
+    plt.vlines(wavelengths_expected, depths_expected, 0, alpha = 0.5, color = 'c')
     plt.show()
 
     blankwaves=wavelengths
