@@ -795,7 +795,7 @@ def task(all_frames, counter):
         
 
         profile_f = np.exp(profile1)
-        profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
+        profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
         profile_f = profile_f-1
 
         # print(profile)

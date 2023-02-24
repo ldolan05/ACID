@@ -201,7 +201,7 @@ def get_wave(data,header):
   for o in range(no):
       for i in range(d+1):
           idx=i+o*(d+1)
-          par=header['ESO DRS CAL TH COEFF LL%d' % idx]
+          par=np.float128(header['ESO DRS CAL TH COEFF LL%d' % idx])
           wave[o,:]=wave[o,:]+par*xx[i,:]
        #for x in range(npix):
        #  wave[o,x]=wave[o,x]+par*xx[i,x]#float(x)**float(i)
@@ -597,12 +597,13 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         '''
         # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
         # print(file_ccf[0].header['ESO DRS BERV'])
-        brv=header['ESO DRS BERV']
+        brv=np.float128(header['ESO DRS BERV'])
         # print(brv)
         wave_nonad=get_wave(spec, header)
         # if berv_opt == 'y':
         #     print('BERV corrected')
         wave = wave_nonad*(1.+brv/2.99792458e5)
+        wave = np.array(wave, dtype = 'float64')
         # if berv_opt == 'n':
         #     print('BERV not corrected')
         # wave = wave_nonad
