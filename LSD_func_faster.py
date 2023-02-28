@@ -226,12 +226,65 @@ def get_wave(data,header):
         xx.append(xx0**i) 
     xx=np.asarray(xx) 
 
+    print(d)
     for o in range(no): 
         for i in range(d+1): 
             idx=i+o*(d+1) 
             try:par=np.float128(header['ESO DRS CAL TH COEFF LL%d' % idx]) 
-            except:par=np.float128(header['TNG DRS CAL TH COEFF LL%d' % idx]) 
-            wave[o,:]=wave[o,:]+par*xx[i,:] 
+            except:par=np.float128(header['TNG DRS CAL TH COEFF LL%d' % idx])
+            # if i==0 and o==0:
+            #     print('par')
+            #     print(f'{par:.20}')
+            if o==0:
+                print('wave %s'%i)
+                print(f'{wave[o, 0]:.20}')
+            
+            b = np.float128(wave[o,0]+par*xx[i,0])
+            wave[o,:]=wave[o,:]+par*xx[i,:]
+            
+            if i==0 and o==0:
+                print('par x')
+                print(f'{b:.20}')
+                print(f'{par*xx[i, 0]:.20}')
+                print(f'{wave[o, 0]:.20}') 
+    #for x in range(npix): 
+    #  wave[o,x]=wave[o,x]+par*xx[i,x]#float(x)**float(i) 
+    return wave 
+
+def get_wave_old(data,header): 
+
+    wave=data*0.
+    print(f'{wave[5, 10]:.20}') 
+    no=data.shape[0] 
+    npix=data.shape[1] 
+    try:d=header['ESO DRS CAL TH DEG LL'] 
+    except:d=header['TNG DRS CAL TH DEG LL'] 
+    xx0=np.arange(npix) 
+    xx=[] 
+    for i in range(d+1): 
+        xx.append(xx0**i) 
+    xx=np.asarray(xx) 
+
+    for o in range(no): 
+        for i in range(d+1): 
+            idx=i+o*(d+1) 
+            try:par=header['ESO DRS CAL TH COEFF LL%d' % idx]
+            except:par=header['TNG DRS CAL TH COEFF LL%d' % idx]
+            # if i==0 and o==0:
+            #     print('par_old')
+            #     print(f'{par:.20}') 
+            if o==0:
+                print('wave %s'%i)
+                print(f'{wave[o, 0]:.20}')
+
+            b = wave[o,0]+par*xx[i,0]
+            wave[o,:]=wave[o,:]+par*xx[i,:]
+            
+            if i==0 and o==0:
+                print('par_old x')
+                print(f'{b:.20}')
+                print(f'{par*xx[i, 0]:.20}')
+                print(f'{wave[o, 0]:.20}') 
     #for x in range(npix): 
     #  wave[o,x]=wave[o,x]+par*xx[i,x]#float(x)**float(i) 
     return wave 
@@ -626,11 +679,27 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
         # print(file_ccf[0].header['ESO DRS BERV'])
         brv=np.float128(header['ESO DRS BERV'])
+        brv_old = header['ESO DRS BERV']
         # print(brv)
         wave_nonad=get_wave(spec, header)
+        wave_nonad_old = get_wave_old(spec, header)
+
+        print(f'{wave_nonad[0, 0]:.20}')
+        print(f'{wave_nonad_old[0, 0]:.20}')
         # if berv_opt == 'y':
         #     print('BERV corrected')
         wave = wave_nonad*(1.+brv/2.99792458e5)
+        wave_old = wave_nonad_old*(1.+brv_old/2.99792458e5)
+
+        print(f'{wave[0, 0]:.20}')
+        print(f'{wave_old[0, 0]:.20}')
+
+        print((wave[0, 0]-wave_old[0, 0])*2.99792458e5/wave[0, 0])
+        print((wave[0, 0]-wave_old[0, 0])*2.99792458e5/wave_old[0, 0])
+
+        print((wave[0, 0]-wave_old[0, 0]))
+
+        inp = input('Stop here')
         # if berv_opt == 'n':
         #     print('BERV not corrected')
         # wave = wave_nonad
