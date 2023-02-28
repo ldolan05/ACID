@@ -216,8 +216,6 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, be
 def get_wave(data,header): 
 
     wave=np.float128(data*0.) 
-    print('wave')
-    print(f'{wave[5, 10]:.20}'.format()) 
     no=data.shape[0] 
     npix=data.shape[1] 
     try:d=header['ESO DRS CAL TH DEG LL'] 
@@ -226,7 +224,7 @@ def get_wave(data,header):
     xx=[] 
     for i in range(d+1): 
         xx.append(xx0**i) 
-    xx=np.asarray(xx)
+    xx=np.asarray(xx) 
 
     print(d)
     for o in range(no): 
@@ -239,15 +237,14 @@ def get_wave(data,header):
             #     print(f'{par:.20}')
             if o==0:
                 print('wave %s'%i)
-                print(format(wave[o, 0], '.12g'))
+                print(f'{wave[o, 0]:.20}')
             
-            b = np.float128(wave[o,:]+par*xx[i,:])
-            print(xx[i, 0])
+            b = np.float128(wave[o,0]+par*xx[i,0])
             wave[o,:]=wave[o,:]+par*xx[i,:]
             
             if i==0 and o==0:
                 print('par x')
-                print(f'{b[0]:.20}')
+                print(f'{b:.20}')
                 print(f'{par*xx[i, 0]:.20}')
                 print(f'{wave[o, 0]:.20}') 
     #for x in range(npix): 
@@ -257,6 +254,7 @@ def get_wave(data,header):
 def get_wave_old(data,header): 
 
     wave=data*0.
+    print(f'{wave[5, 10]:.20}') 
     no=data.shape[0] 
     npix=data.shape[1] 
     try:d=header['ESO DRS CAL TH DEG LL'] 
@@ -277,15 +275,14 @@ def get_wave_old(data,header):
             #     print(f'{par:.20}') 
             if o==0:
                 print('wave %s'%i)
-                print(format(wave[o, 0], '.12g'))
+                print(f'{wave[o, 0]:.20}')
 
-            b = wave[o,:]+par*xx[i,:]
-            print(xx[i, 0])
-            wave[o,:]=xx[i,:]
+            b = wave[o,0]+par*xx[i,0]
+            wave[o,:]=wave[o,:]+par*xx[i,:]
             
             if i==0 and o==0:
                 print('par_old x')
-                print(f'{b[0]:.20}')
+                print(f'{b:.20}')
                 print(f'{par*xx[i, 0]:.20}')
                 print(f'{wave[o, 0]:.20}') 
     #for x in range(npix): 
