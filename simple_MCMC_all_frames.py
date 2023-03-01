@@ -448,6 +448,7 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f, berv_f):
         weights_f = weights_f/np.sum(weights_f)
 
         spectrum_f[n]=sum(weights_f*temp_spec_f)
+        
         sn_f = sum(weights_f*sns_f)/sum(weights_f)
 
         spec_errors_f[n]=1/(sum(weights_f**2))
