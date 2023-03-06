@@ -20,6 +20,8 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     # plt.plot(wavelengths, flux_obs)
     # plt.show()
     #idx = tuple([flux_obs>0])
+    flux_obs1 = flux_obs.copy()
+
     # in optical depth space
     rms = rms/flux_obs
     flux_obs = np.log(flux_obs)
@@ -95,7 +97,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     depths_expected=[]
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
-        line_min = 0.
+        line_min = 1/(3*sn)
         # line_min = 0.25
         #line_min = np.log(1+line_min)
         #print(line_)
@@ -107,6 +109,13 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
             depths_expected.append(depths_expected1[some])
         else:
             pass
+    
+    # print(sn)
+    # print(line_min)
+    # plt.figure('hi')
+    # plt.plot(wavelengths, flux_obs1)
+    # plt.vlines(wavelengths_expected, np.array(depths_expected)*-1, 1, alpha = 0.5, color = 'c')
+    # plt.show()
 
     # # ### TEST SECTION ####
     # count_range = np.array([len(wavelengths_expected)]*10)*np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
@@ -131,10 +140,10 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     # print(len(depths_expected))
     # print(depths_expected)
 
-    plt.figure('hi')
-    plt.plot(wavelengths, flux_obs)
-    plt.vlines(wavelengths_expected, depths_expected, 0, alpha = 0.5, color = 'c')
-    plt.show()
+    # plt.figure('hi')
+    # plt.plot(wavelengths, flux_obs)
+    # plt.vlines(wavelengths_expected, -depths_expected, 0, alpha = 0.5, color = 'c')
+    # plt.show()
 
     blankwaves=wavelengths
     R_matrix=flux_obs
