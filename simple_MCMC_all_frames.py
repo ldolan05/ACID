@@ -996,12 +996,12 @@ def task(all_frames, counter):
 
         # print(profile)
         # print(profile_f)
-        new_velocities=np.arange(-25, 25, deltav)
-        f2 = interp1d(velocities1+berv[counter], profile_f, kind='linear', bounds_error=False, fill_value='extrapolate')
-        profile_f = f2(new_velocities)
+        # new_velocities=np.arange(-25, 25, deltav)
+        # f2 = interp1d(velocities1+berv[counter], profile_f, kind='linear', bounds_error=False, fill_value='extrapolate')
+        # profile_f = f2(new_velocities)
 
-        f2 = interp1d(velocities1+berv[counter], profile_errors_f, kind='linear', bounds_error=False, fill_value='extrapolate')
-        profile_errors_f = f2(new_velocities)
+        # f2 = interp1d(velocities1+berv[counter], profile_errors_f, kind='linear', bounds_error=False, fill_value='extrapolate')
+        # profile_errors_f = f2(new_velocities)
         
         # inp = input('(od profile and flux profile above) Enter to continue...')
         #print(profile_f)
@@ -1134,7 +1134,7 @@ for month in months:
     global velocities
     deltav = 1.5
     velocities=np.arange(-60, 0, deltav)
-    new_velocities=np.arange(-25, 25, deltav)
+    new_velocities=velocities.copy()
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(new_velocities)))
     
