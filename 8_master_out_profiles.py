@@ -878,7 +878,7 @@ for month in months:
         # hdr['berv']=berv[p]
         hdr['RESULT']=results[p]
         hdu[p].header=hdr
-    
+
     print(velocities)
 
     hdu.writeto('%s%s_master_out_LSD_profile.fits'%(save_path, month), output_verify='fix', overwrite = 'True')
