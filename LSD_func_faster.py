@@ -733,28 +733,5 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         
         overlap = np.array(([list(last_wavelengths[last_idx]), list(last_spec[last_idx]), list(last_error[last_idx])], [list(next_wavelengths[next_idx]), list(next_spec[next_idx]), list(next_error[next_idx])]))
         
-
-    ## telluric correction
-    tapas = fits.open('tapas_000001.fits')
-    tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
-    tapas_trans = tapas[1].data["transmittance"]
-    tapas.close()
-    #try:brv=header['ESO DRS BERV']
-    tapas_wvl = tapas_wvl[::-1]/(1.+brv/2.99792458e5)
-    tapas_trans = tapas_trans[::-1]
-
-    background = upper_envelope(tapas_wvl, tapas_trans)
-    f = interp1d(tapas_wvl, tapas_trans / background, bounds_error=False)
-
-    # plt.figure('telluric spec and real spec')
-    # plt.plot(wavelengths, continuumfit(wavelengths, fluxes, 3))
-    # plt.plot(wavelengths, f(wavelengths))
-    # plt.show()
-    
-    # plt.figure()
-    # plt.plot(tapas_wvl, tapas_trans)
-    # plt.show()
-    print('overlap accounted for')
-
-    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), f(wavelengths), overlap ## for just LSD
+    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), [], overlap ## for just LSD
 ############################################################################################################
