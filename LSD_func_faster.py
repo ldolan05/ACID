@@ -4,6 +4,7 @@ from astropy.io import  fits
 import glob
 import matplotlib.pyplot as plt
 import random
+import pandas as pd
 from astropy import units as u
 from specutils import Spectrum1D
 from scipy.signal import find_peaks
@@ -13,91 +14,6 @@ from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import inv, spsolve
 from scipy.interpolate import interp1d,LSQUnivariateSpline
 import itertools
-
-def cvmt(wavelengths_o, vel, vlambda,vdepth):
-    c = 2.99792458e5
-    dv = vel[1]-vel[0]
-
-    lenk = 3
-    
-    row2 = np.array([])
-    column2 = np.array([])
-    value2 = np.array([])
-    
-    b = len(wavelengths_o)//lenk
-    
-    for k in np.arange(lenk):
-        #wvls in this chunk
-        wavelengths_sub = wavelengths_o[b*k:b*(k+1)]
-        # print(wavelengths_sub)
-        #min wvl and max wvl to include
-        lmin = wavelengths_sub.min()*(1.-(vel.max()+dv)/c)
-        lmax = wavelengths_sub.max()*(1.-(vel.min()-dv)/c)
-        
-        #only include vald abslines that are withinn lmin and lmax
-        idx1 = np.logical_and((vlambda>lmin), (vlambda<lmax))
-        # print(idx1)
-        # print(vlambda.shape)
-        vlambdaincl = vlambda[idx1]
-        vdepthincl = vdepth[idx1]
-        
-        #compute velocity shift between vald lines and wvls
-        v_shift = c*(np.tile(wavelengths_sub,(len(vlambdaincl),1)) / (np.tile(vlambdaincl,(len(wavelengths_sub),1))).transpose()-1.)
-
-        #only keep those with velocity shift within velocity grid
-        # l = index of vald absorption line
-        # i = index of affected flux/wvl
-        l,i = np.where((v_shift<=(vel.max()+dv)) & (v_shift>=(vel.min()-dv)))
-        value0 = v_shift[l,i]
-        
-        #index shift b*k due to wvl-chunk-splitting for this look
-        i += b*k
-
-        #velocity position between two points of velocity grid
-        pos = ((value0-vel[0])%dv)/dv
-        #left velocity grid point
-        jleft = (value0-vel[0])//dv
-        
-        #check which ones falll within velocity grid
-        woleft = (jleft>=0) & (jleft<len(vel))
-        woright = (jleft>=-1) & (jleft<len(vel)-1)
-        
-        #stack information
-        i1 = np.hstack((i[woleft],i[woright]))
-        j1 = np.hstack((jleft[woleft],jleft[woright]+1))
-
-        #contribution to flux from each vald absorption line
-        vstl1 = ((1.-np.hstack((pos[woleft],1.-pos[woright])))*vdepthincl[np.hstack((l[woleft],l[woright]))])
-        
-        sorter = i1+j1/len(vel)/10.
-        indexorder = np.argsort(sorter)
-        i1 = i1[indexorder]
-        j1 = j1[indexorder]
-        vstl1 = vstl1[indexorder]
-        sorter = sorter[indexorder]
-        uniquejs,whereuniquejindex,samejs = np.unique(sorter,return_inverse=True,return_index=True)
-
-        row2 = np.hstack((row2,i1[whereuniquejindex]))
-        value2 = np.hstack((value2,np.bincount(samejs,vstl1)))
-        column2 = np.hstack((column2,j1[whereuniquejindex]))
-    return value2,row2,column2
-
-def runLSD_inv(values, row_no, col_no, n, m, weights, fluxes):
-    # MATRIX CALCULATIONS USING 'csc_matrix' TO IMPROVE EFFICIENCY
-    # The uncertainties are computed here (necessitates inverting the MtWM matrix
-
-    M = csc_matrix((values, (row_no, col_no)), shape=(n, m))
-    Mt = M.transpose()
-    MtW = Mt.dot(csc_matrix((weights, (np.arange(n), np.arange(n))), shape=(n, n)))
-    MtWM = MtW.dot(M)
-
-    A = MtWM
-
-    B = MtW.dot(csc_matrix(fluxes).transpose())
-    #Z = spsolve(A, B, use_umfpack=True)
-    inverse = inv(csc_matrix(MtWM))
-    Z = inverse.dot(B)
-    return np.asarray(Z.todense()).ravel(), np.sqrt(np.diag(inverse.todense()))
     
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
 
@@ -143,16 +59,10 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     #print('Matrix S has been set up')
 
     #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
-    counter = 0
-    for line in reversed(open(linelist).readlines()):
-        if len(line.split(",")) > 10:
-            break
-        counter += 1
-    num_lines = sum(1 for line in open(linelist))
-    last_line = num_lines - counter + 3
+    df = pd.read_csv(linelist, header=None, skiprows=lambda x: x % 4 != 3)
+    df = df.iloc[:-(df.apply(lambda x: len(x.dropna()), axis=1) <= 10).idxmax()]
+    linelist_expected = df.values.astype(str)
 
-    with open(linelist) as f_in:
-        linelist_expected = np.genfromtxt(itertools.islice(f_in, 3, last_line, 4), dtype=str,delimiter=',')
 
     #linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
     wavelengths_expected1 =np.array(linelist_expected[:,1], dtype = 'float')
