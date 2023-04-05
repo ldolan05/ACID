@@ -930,7 +930,7 @@ def task(all_frames, counter):
     plt.title('Frame: %s, Order: %s, Continuum Corrected Spectrum'%(counter,order-np.min(order_range)))
     plt.plot(wavelengths, flux)
     plt.plot(wavelengths, mdl1)
-    plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/SPec%s_%s_%s1.png'%(run_name, counter, order-np.min(order_range)))
+    plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/SPec%s_%s_%s.png'%(run_name, counter, order-np.min(order_range)))
 
     ## get new alpha
     global alpha
@@ -967,8 +967,8 @@ def task(all_frames, counter):
     idx = tuple([flux>0])
     
     if len(flux[idx])==0:
-        plt.plot(flux)
-        plt.show()
+        # plt.plot(flux)
+        # plt.show()
         print('continuing... frame %s'%counter)
     
     else:
@@ -1877,11 +1877,16 @@ for month in months:
         corrected_spec = []
         phases = []
         #plt.figure()
+
         task_part = partial(task, all_frames)
         with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
         results = np.array(results[0])
         for i in range(len(frames)):
             all_frames[i]=results[i][i]
+
+        # for counter in range(len(frames)):
+        #     all_frames_temp = task(all_frames, counter)
+        #     all_frames[counter] = all_frames_temp[counter]
             
     # plt.show()
     plt.close('all')
