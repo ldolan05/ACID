@@ -1077,37 +1077,37 @@ def task(all_frames, counter):
         # #############################################################################
         # #############################################################################
         
-        # mcmc_mdl = model_func(np.concatenate((profile, poly_cos)), wavelengths)
+        mcmc_mdl = model_func(np.concatenate((profile, poly_cos)), wavelengths)
         # f2 = interp1d(velocities_ccf, ccf_spec/ccf_spec[0]-1, kind='linear', bounds_error=False, fill_value=np.nan)
         # ccf_profile = f2(velocities)
         # ccf_mdl = model_func(np.concatenate((ccf_profile, poly_cos)), wavelengths)
 
 
-        # residuals_2 = (flux_b) - (mcmc_mdl)
+        residuals_2 = (flux_b) - (mcmc_mdl)
 
-        # fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'final LSD forward and true model', sharex = True)
-        # non_masked = tuple([error_b<1000000000000000000])
-        # #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
-        # #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
-        # ax[1].scatter(wavelengths[non_masked], residuals_2[non_masked], marker = '.')
-        # ax[0].plot(wavelengths, flux_b, 'r', alpha = 0.3, label = 'data')
-        # ax[0].plot(wavelengths, mcmc_mdl, 'k', alpha =0.3, label = 'LSD spec')
+        fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'final LSD forward and true model', sharex = True)
+        non_masked = tuple([error_b<1000000000000000000])
+        #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
+        #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
+        ax[1].scatter(wavelengths[non_masked], residuals_2[non_masked], marker = '.')
+        ax[0].plot(wavelengths, flux_b, 'r', alpha = 0.3, label = 'data')
+        ax[0].plot(wavelengths, mcmc_mdl, 'k', alpha =0.3, label = 'LSD spec')
         # ax[0].plot(wavelengths, ccf_mdl, 'g', alpha =0.3, label = 'CCF spec')
-        # residual_masks = tuple([error_b>=1000000000000000000])
+        residual_masks = tuple([error_b>=1000000000000000000])
 
-        # print(wavelengths[residual_masks])
-        # #residual_masks = tuple([yerr>10])
-        # ax[0].scatter(wavelengths[residual_masks], flux_b[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-        # ax[0].legend(loc = 'lower right')
-        # #ax[0].set_ylim(0, 1)
-        # #plotdepths = -np.array(line_depths)
-        # #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-        # #ax[1].plot(x, residuals_2, '.')
-        # #ax[1].scatter(wavelengths[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-        # #z_line = [0]*len(wavelengths)
-        # #ax[1].plot(wavelengths, z_line, '--')
-        # plt.savefig('/home/lsd/Documents/LSD_Figures/forward_models/order%s_FINALforward_%s'%(order, run_name))
-        #plt.show()
+        print(wavelengths[residual_masks])
+        #residual_masks = tuple([yerr>10])
+        ax[0].scatter(wavelengths[residual_masks], flux_b[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+        ax[0].legend(loc = 'lower right')
+        #ax[0].set_ylim(0, 1)
+        #plotdepths = -np.array(line_depths)
+        #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+        #ax[1].plot(x, residuals_2, '.')
+        #ax[1].scatter(wavelengths[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+        #z_line = [0]*len(wavelengths)
+        #ax[1].plot(wavelengths, z_line, '--')
+        plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/order%s_FINALforward_%s'%(order, run_name))
+        
         return all_frames
 
 months1 = ['August2007']
@@ -1534,7 +1534,6 @@ for month in months:
         p_var = 0.001
         v_min = -10
         v_max = 10
-
 
         # ##plots
         # forward = model_func(model_inputs, x)

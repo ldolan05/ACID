@@ -549,10 +549,10 @@ for month in months:
             profile = file[order1].data[0]
             if len(profile) == 48:
                 deltav = 1.5
-                velocities=np.arange(-80, 40, deltav)
+                velocities=np.arange(-60, 0, deltav)
             else:
                 deltav = 1.5
-                velocities=np.arange(-80, 40, deltav)
+                velocities=np.arange(-60, 0, deltav)
             # ccf_profile = ccf[0].data[order1]
             # if order1 ==1:
             #     header_rvs = list(header_rvs)
