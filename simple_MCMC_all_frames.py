@@ -81,6 +81,14 @@ def read_in_frames(order, filelist):
         print('e2ds')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
         fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
+        cont = fluxes[0]
+        for i in range(len(fluxes)):
+            fluxes[i] = fluxes[i]+(np.random.normal(0, cont))
+
+        # plt.figure()
+        # plt.plot(wavelengths, fluxes)
+        # plt.show()
+
         if len(np.array(overlap[0, 1]))>0:
             overlap_flux.append(np.array(overlap[0, 1]))
             overlap_wave.append(np.array(overlap[0, 0]))
@@ -790,8 +798,8 @@ def task(all_frames, counter):
         velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
         p = np.exp(profile1)-1
-        popt, pcov = curve_fit(gauss, velocities, p)
-        popts_new.append(popt[0])
+        # popt, pcov = curve_fit(gauss, velocities, p)
+        # popts_new.append(popt[0])
         
 
         profile_f = np.exp(profile1)
