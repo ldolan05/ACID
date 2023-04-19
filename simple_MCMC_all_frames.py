@@ -975,7 +975,7 @@ def task(all_frames, counter):
         #plt.plot(wavelengths, flux, label = '%s'%counter)
         #print(counter, order)
         offset = (-1)*berv[counter]
-        velocities1=np.arange(-60, 0, deltav)
+        velocities1=np.arange(-80, 25, deltav)
 
         # plt.figure()
         # plt.title('Frame: %s, Order: %s, Continuum Corrected Spectrum'%(counter,order-np.min(order_range)))
@@ -1122,7 +1122,7 @@ for month in months:
     # offset = (-1)*temp_file[0].header['ESO DRS BERV']
     global velocities
     deltav = 1.5
-    velocities=np.arange(-60, 0, deltav)
+    velocities=np.arange(-80, 25, deltav)
     new_velocities=velocities.copy()
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(new_velocities)))
@@ -1464,9 +1464,9 @@ for month in months:
         
         idx2 = tuple([flux_error_order1<100000000000])
 
-        # # plt.figure()
-        # plt.scatter(wavelengths[idx2], fluxes1[idx2], flux_error_order1[idx2])
-        # plt.show()
+        plt.figure()
+        plt.scatter(wavelengths[idx2], fluxes1[idx2], flux_error_order1[idx2])
+        plt.show()
 
         #if len(fluxes1[idx2])/len(fluxes1)<0.25:continue
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name, velocities)
@@ -1476,9 +1476,9 @@ for month in months:
         # plt.plot(wavelengths, np.dot(alpha, profile))
         # plt.show()
 
-        # plt.figure('initial profile')
-        # plt.plot(velocities, profile)
-        # plt.show()
+        plt.figure('initial profile')
+        plt.plot(velocities, profile)
+        plt.show()
 
         # plt.figure()
         # plt.title('SPEC BEFORE 1st LSD')
@@ -1537,13 +1537,15 @@ for month in months:
 
         #masking based off residuals
         yerr_unmasked = yerr
-        yerr, model_inputs, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec)
-
+        # print(model_inputs)
+        yerr, model_inputs_discard, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec)
+        # print(model_inputs)
+        # inp = input('Pause to check')
         # #################### TEST - get the RV from each frame after residual masking - see how it compares to CCF rv and unadjusted spectrum rv #####################
         # plt.figure('rvs after basic continuum fit and residual mask')
         # popts = []
         # popts_unad = []
-        # for n in range(len(frame_wavelengths)):
+        # for n in range(len(frame_wavele3ngths)):
         #     wavelengths1 = frame_wavelengths[n]
         #     a = 2/(np.max(wavelengths1)-np.min(wavelengths1))
         #     b = 1 - a*np.max(wavelengths1)
@@ -1622,10 +1624,7 @@ for month in months:
         print('MODEL INPUTS')
         forward = model_func(model_inputs, x)
         
-        # plt.figure()
-        # plt.plot(x, y)
-        # plt.plot(x, forward)
-        # plt.show()
+        plt.figure
 
         ### starting values of walkers with indpendent variation
         sigma = 0.8*0.005
@@ -1633,13 +1632,19 @@ for month in months:
         for i in range(0, ndim):
             if i <ndim-poly_ord-2:
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+                print(model_inputs[i], pos2)
             else:
                 print(model_inputs[i])
-                sigma = abs(round_sig(model_inputs[i], 1))/10
+                sigma = abs(round_sig(model_inputs[i], 1)/10)
                 print(sigma)
                 # print(sigma_cont[i-k_max])
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+                print(model_inputs[i], pos2)
             pos.append(pos2)
+        
+        # print('This is the most recent one')
+        # print(np.random.randn(nwalkers, ndim))
+        # pos = model_inputs + 0.1 * np.random.randn(nwalkers, ndim)
 
         pos = np.array(pos)
         pos = np.transpose(pos)
