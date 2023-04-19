@@ -81,9 +81,9 @@ def read_in_frames(order, filelist):
         print('e2ds')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
         fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
-        cont = fluxes[0]
+        cont_flux = np.median(fluxes)
         for i in range(len(fluxes)):
-            fluxes[i] = fluxes[i]+(np.random.normal(0, cont))
+            fluxes[i] = fluxes[i]+cont_flux*(np.random.normal(0, 1))
 
         # plt.figure()
         # plt.plot(wavelengths, fluxes)
