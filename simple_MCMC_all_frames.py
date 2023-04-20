@@ -636,7 +636,7 @@ def log_prior(theta):
 
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
-            if -10<=theta[i]<=1: pass
+            if -10<=theta[i]<=10: pass
             else:
                 check = 1
 
