@@ -80,10 +80,67 @@ def read_in_frames(order, filelist):
     for file in filelist:
         print('e2ds')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('s1d', 'order', order, file.replace('e2ds', 's1d'), directory, 'unmasked', run_name, 'y')
-        fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order, file, directory, 'unmasked', run_name, 'y')
-        cont_flux = np.median(fluxes)
-        for i in range(len(fluxes)):
-            fluxes[i] = fluxes[i]+cont_flux*(np.random.normal(0, 1))
+        plt.figure()
+        for i in range(0, 5):
+            fluxes1, wavelengths1, flux_error_order1, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct('e2ds', 'order', order+i, file, directory, 'unmasked', run_name, 'y')
+            plt.plot(wavelengths1, fluxes1, 'b')
+            if i==0:
+                fluxes=list([fluxes1])
+                wavelengths=list([wavelengths1])
+                flux_error_order=list([flux_error_order1])
+            else:
+                fluxes.append(fluxes1)
+                wavelengths.append(wavelengths1)
+                flux_error_order.append(flux_error_order1)
+
+
+        fluxes = np.array(fluxes)
+        wavelengths = np.array(wavelengths)
+        flux_error_order = np.array(flux_error_order)
+
+        length = 0
+        for n in range(len(fluxes)):
+            if n==0:
+                length = len(fluxes[n])
+                continue
+            else:
+                # plt.figure()
+                reference_wavef = wavelengths[n-1]
+                reference_flux = fluxes[n-1]
+                f2 = interp1d(wavelengths[n], fluxes[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                idx = np.logical_and(min(wavelengths[n])<reference_wavef, reference_wavef<np.max(wavelengths[n]))
+                div_frame = f2(reference_wavef[idx])/reference_flux[idx]
+                # plt.plot(reference_wavef, reference_flux)
+                # plt.plot(wavelengths[n], fluxes[n])
+                ### creating windows to fit polynomial to
+                binned = np.zeros(int(len(div_frame)/2))
+                binned_waves = np.zeros(int(len(div_frame)/2))
+                for i in range(0, len(div_frame)-1, 2):
+                    pos = int(i/2)
+                    binned[pos] = (div_frame[i]+div_frame[i+1])/2
+                    binned_waves[pos] = (reference_wavef[idx][i]+reference_wavef[idx][i+1])/2
+
+                ### fitting polynomial to div_fram
+                coeffs=np.polyfit(binned_waves, binned, 2)
+                poly = np.poly1d(coeffs)
+                fit = poly(wavelengths[n])
+                fluxes[n] = fluxes[n]/fit
+                flux_error_order[n] = flux_error_order[n]/fit
+                # plt.plot(wavelengths[n], fluxes[n])
+                # plt.show()
+
+            length+=len(fluxes[n])
+
+        fluxes = fluxes.reshape((length,))
+        wavelengths = wavelengths.reshape((length,))
+        flux_error_order = fluxes.reshape((length,))
+
+        plt.plot(wavelengths, fluxes, 'r')
+        plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/combined.png')
+
+        # cont_flux = np.median(fluxes)
+        # for i in range(len(fluxes)):
+        #     fluxes[i] = fluxes[i]+cont_flux*(np.random.normal(0, 1))
 
         # plt.figure()
         # plt.plot(wavelengths, fluxes)
@@ -811,6 +868,15 @@ def task(all_frames, counter):
 
         # inp = input('(od profile and flux profile above) Enter to continue...')
         #print(profile_f)
+
+        plt.figure()
+        plt.plot(velocities1, profile1)
+        plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/profiles/order%s_odprof_%s%s.png'%(order, counter, run_name))
+        
+        plt.figure()
+        plt.plot(velocities1, profile_f)
+        plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/profiles/order%s_fluxprof_%s%s.png'%(order, counter, run_name))
+        
         all_frames[counter, order]=[profile_f, profile_errors_f]
         #print(all_frames[counter, order, 0])
 
