@@ -78,7 +78,7 @@ def read_in_frames(order, filelist):
     overlap_error = []
     overlap_sns = []
     
-    plt.figure('spectra after blaze_correct')
+    # plt.figure('spectra after blaze_correct')
     for file in filelist:
 
         
@@ -89,7 +89,7 @@ def read_in_frames(order, filelist):
         ## opening NRES files
         fits_file = fits.open(file)
         idx = tuple([fits_file[1].data['order'][1::2]==order])
-        print(fits_file[1].data['order'][1::2])
+        # print(fits_file[1].data['order'][1::2])
         #inp1 = input('HI')
         # plt.figure()
         # color = 'r'
@@ -108,7 +108,7 @@ def read_in_frames(order, filelist):
         sn = fits_file[0].header['SNR']
         telluric_spec = []
 
-        print(normflux.shape)
+        # print(normflux.shape)
 
         # if len(np.array(overlap[0, 1]))>0:
         #     overlap_flux.append(np.array(overlap[0, 1]))
@@ -180,7 +180,7 @@ def read_in_frames(order, filelist):
     #     plt.errorbar(frame_wavelengths[n], frames[n], errors[n])
     # plt.show()
 
-    plt.figure('divided spectra (by reference frame)')
+    # plt.figure('divided spectra (by reference frame)')
     ## each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
     popts = []
     for n in range(len(frames)):
@@ -303,7 +303,7 @@ def read_in_frames(order, filelist):
         #remove extrapolated regions
         idx = np.logical_and(reference_wave<np.max(overlap_wave[n]), reference_wave>np.min(overlap_wave[n]))
         div_frame=div_frame[idx]
-        print(len(div_frame))
+        # print(len(div_frame))
         reference_frame1 = reference_frame[idx]
         reference_wave1 = reference_wave[idx]
         # plt.plot(reference_wave1, div_frame, label = 'part of div frame')
@@ -359,7 +359,7 @@ def read_in_frames(order, filelist):
         idx = tuple([filled_flux!=0])
         # plt.errorbar(filled_wave[idx], filled_flux[idx], filled_error[idx], color = 'k')
 
-    plt.close()
+    # plt.close()
 
     return frame_wavelengths, frames, errors, sns, telluric_spec, berv
 
@@ -936,7 +936,7 @@ def task(all_frames, counter):
     plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/SPec%s_%s_%s.png'%(run_name, counter, order-np.min(order_range)))
 
     ## get new alpha
-    global alpha
+    # global alpha
     v, p, pe, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
     residuals = flux - model_func(np.concatenate((profile, poly_inputs)), wavelengths)
@@ -1099,7 +1099,7 @@ def task(all_frames, counter):
         z_line = [0]*len(x)
         ax[1].plot(x, z_line, '--')
         plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/order%s_FINALforward_%s'%(order, run_name))
-
+        plt.close('all')
         return all_frames
 
 months1 = ['August2007']
@@ -1875,7 +1875,7 @@ for month in months:
         #plt.figure()
 
         task_part = partial(task, all_frames)
-        with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+        with mp.Pool(25) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
         results = np.array(results[0])
         for i in range(len(frames)):
             all_frames[i]=results[i][i]
