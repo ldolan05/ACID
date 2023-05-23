@@ -7,8 +7,7 @@ import emcee
 #import corner
 import LSD_func_faster as LSD
 import time
-import synthetic_data as syn
-import random
+
 import glob
 from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
@@ -1418,9 +1417,9 @@ for month in months:
         # plt.figure()
         # plt.errorbar(x, y, yerr, color = 'b', ecolor = 'k')
         # plt.show()
-        with mp.Pool(mp.cpu_count()) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool = pool)
-            sampler.run_mcmc(pos, steps_no, progress=True)
+        # with mp.Pool(mp.cpu_count()) as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+        sampler.run_mcmc(pos, steps_no, progress=True)
         
         idx = tuple([yerr<=10000000000000000000])
 
@@ -1614,11 +1613,13 @@ for month in months:
         corrected_spec = []
         phases = []
         #plt.figure()
-        task_part = partial(task, all_frames)
-        with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-        results = np.array(results[0])
-        for i in range(len(frames)):
-            all_frames[i]=results[i][i]
+        # task_part = partial(task, all_frames)
+        # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+        # results = np.array(results[0])
+        # for i in range(len(frames)):
+        #     all_frames[i]=results[i][i]
+        for counter in range(len(frames)):
+                all_frames = task(all_frames, counter)
             
     # plt.show()
     plt.close('all')
