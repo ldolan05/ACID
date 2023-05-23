@@ -133,7 +133,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     ## depths from linelist in optical depth space
     depths_expected1 = np.array(depths_expected)
-    depths_expected = np.log(1+depths_expected1)
+    depths_expected = -np.log(1-depths_expected1)
     ## conversion for depths from SME
     #depths_expected = -np.log(1-depths_expected1)
 
