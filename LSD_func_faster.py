@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 from scipy import linalg
 from astropy.io import  fits
@@ -30,6 +31,9 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
+
+    # print(wavelength_min)
+    # print(wavelength_max)
 
     wavelengths_expected=[]
     depths_expected=[]

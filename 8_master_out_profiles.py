@@ -71,11 +71,13 @@ def classify(phase):
     #print(z, phi)
     phi = phase-np.round(phase)
 
-    P=2.21857567 #Cegla et al, 2016 - days
-    T=2454279.436714 #cegla et al,2016
-    a_Rs = 8.786 #Cristo et al - 8.786
-    b=0.687 #Cristo et al, 2022
-    RpRs = 0.15667
+    P=542
+    T=2457186.91451
+    t=13/24 
+    deltaphi = t/(2*P)
+    a_Rs = 460
+    b=0.227 
+    RpRs = 0.066
     RpRs_max = RpRs
 
     z = np.sqrt( ( (a_Rs)*np.sin(2 * np.pi * phi) )**2 + ( b*np.cos(2. * np.pi * phi))**2)
@@ -422,16 +424,8 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
 ####################################################################################################################################################################
 
 
-P=2.21857567 #Cegla et al, 2006 - days
-#rstar= 0.805*6.96*10**8 #Boyajian et al, 2015)
-#a_rstar= 8.863 #Agol et al, 2010
-#a = a_rstar*rstar
-#rp_rstar= 0.15667 #Agol et al, 2010
-#rp = rstar*rp_rstar
-i = 85.71*np.pi/180 #got quickly of exoplanet.eu
-T=2454279.436714 #cegla et al,2006
-#b=a_rstar*np.cos(i)
-#t=(P/math.pi)*np.arcsin(np.sqrt(((rp+rstar)**2-(b*rstar)**2))/a)
+
+i = 89.98
 t=0.076125 #Torres et al, 2008
 e =0
 omega=(np.pi/2)
@@ -442,13 +436,14 @@ v0=-2.2765#-0.1875 #km/s Boisse et al, 2009
 #v0=-2.23
 #v0=-2.317 #Gaia
 
-#rstar= 0.805*6.96*10**8 #Boyajian et al, 2015)
-a_rstar= 8.863 #Agol et al, 2010
-rp_rstar= 0.15667 #Agol et al, 2010
-#a = a_rstar*rstar
-u1=0.816
-u2=0            #Sing et al, 2011
-#b=a_rstar*np.cos(i)
+P=542
+T=2457186.91451
+t=13/24 
+deltaphi = t/(2*P)
+a_Rs = 460
+b=0.227 
+RpRs = 0.066
+RpRs_max = RpRs
 
 
 path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
@@ -460,7 +455,7 @@ save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 month = 'August2007' #August, July, Sep
 
 months = ['August2007',
-          'July2007',
+          'all',
           'July2006',
           'Sep2006'
           ]
@@ -535,9 +530,9 @@ for month in months:
         counter +=1
         file = fits.open(filelist[frame])
         print(file)
-        ccf_file = ccf_list[frame]
-        print(ccf_file)
-        ccf = fits.open(ccf_file)
+        # ccf_file = ccf_list[frame]
+        # print(ccf_file)
+        # ccf = fits.open(ccf_file)
         order_errors = []
         order_profiles = []
         ccf_profiles = []
@@ -550,24 +545,27 @@ for month in months:
         # plt.xlabel('Velocity (km/s)')
         # plt.ylabel('Normalised Flux')
         # plt.title('ACID Profiles (All Orders)')
-        for order1 in range(1,71):
+        for order1 in range(0,len(file)):
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
             if len(profile) == 48:
-                velocities=np.arange(-21, 18, 0.82)
-            else:velocities=np.arange(-21, 18, 0.82)
-            ccf_profile = ccf[0].data[order1]
-            if order1 ==1:
-                header_rvs = list(header_rvs)
-                header_rvs.append(ccf[0].header['HIERARCH ESO DRS CCF RV'])#+ccf[0].header['ESO DRS BERV'])
-            velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
+                deltav = 1.5
+                velocities=np.arange(-60, 0, deltav)
+            else:
+                deltav = 1.5
+                velocities=np.arange(-60, 0, deltav)
+            # ccf_profile = ccf[0].data[order1]
+            # if order1 ==1:
+            #     header_rvs = list(header_rvs)
+            #     header_rvs.append(ccf[0].header['HIERARCH ESO DRS CCF RV'])#+ccf[0].header['ESO DRS BERV'])
+            # velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
             # if np.sum(abs(profile))>0:
             #     plt.plot(velocities, profile)
-            ccf_phi = (((ccf[0].header['ESO DRS BJD'])-T)/P)%1
+            # ccf_phi = (((ccf[0].header['ESO DRS BJD'])-T)/P)%1
             print(berv)
-            mjd = ccf[0].header["MJD-OBS"]
-            if ccf_phi>0.5: ccf_phi = ccf_phi-1
+            # mjd = ccf[0].header["MJD-OBS"]
+            # if ccf_phi>0.5: ccf_phi = ccf_phi-1
             order = file[order1].header['ORDER']
             phase = file[order1].header['PHASE']
             # print(phase)
@@ -635,19 +633,19 @@ for month in months:
             #else:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
-            print(np.mean(ccf_profile[:5]))
-            print(ccf_profile/np.mean(ccf_profile[:5])-1)
-            ccf_profile = ccf_profile/np.mean(ccf_profile[:5])-1
-            for n in range(len(ccf_profile)):
-                if ccf_profile[n] == 'nan':
-                    if n==0 or n==len(ccf_profile): ccf_profile[n]=0.
-                    else:
-                        ccf_profile[n] = np.mean([ccf_profile[n-1], ccf_profile[n+1]])
-                        print('nan found')
-                        print(ccf_profile[n])
-                        inp = input('Enter to continue...')
+            # print(np.mean(ccf_profile[:5]))
+            # print(ccf_profile/np.mean(ccf_profile[:5])-1)
+            # ccf_profile = ccf_profile/np.mean(ccf_profile[:5])-1
+            # for n in range(len(ccf_profile)):
+            #     if ccf_profile[n] == 'nan':
+            #         if n==0 or n==len(ccf_profile): ccf_profile[n]=0.
+            #         else:
+            #             ccf_profile[n] = np.mean([ccf_profile[n-1], ccf_profile[n+1]])
+            #             print('nan found')
+            #             print(ccf_profile[n])
+            #             inp = input('Enter to continue...')
 
-            ccf_profiles.append(ccf_profile)
+            # ccf_profiles.append(ccf_profile)
             
             plt.ylim(-0.75, 0.15)
             # plt.savefig('all_orders/ACIDprof_orders%s'%frame)
@@ -657,10 +655,10 @@ for month in months:
 
         # print(len(ccf_profiles))
         # print(len(order_profiles))
-        berv.append(ccf[0].header['ESO DRS BERV'])
-        mjds.append(mjd)
+        # berv.append(ccf[0].header['ESO DRS BERV'])
+        # mjds.append(mjd)
         all_order_rvs.append(order_rvs)
-        all_order_rvs_ccf.append(order_rvs_ccf)
+        # all_order_rvs_ccf.append(order_rvs_ccf)
 
         if frame == framelist[0]:
             plt.figure('LSD')
@@ -672,11 +670,11 @@ for month in months:
             for prof in order_profiles:
                 plt.plot(velocities, prof)
 
-            plt.figure('CCFs')
-            plt.imshow(np.array(ccf_profiles), extent = [velocities_ccf[0], velocities_ccf[-1], 0, len(order_profiles)-1])
-            plt.vlines(-2.276, 0, len(order_profiles)-1)
-            plt.colorbar()
-            plt.show()
+            # plt.figure('CCFs')
+            # plt.imshow(np.array(ccf_profiles), extent = [velocities_ccf[0], velocities_ccf[-1], 0, len(order_profiles)-1])
+            # plt.vlines(-2.276, 0, len(order_profiles)-1)
+            # plt.colorbar()
+            # plt.show()
 
         print(phase, result)
         result, phi, phase = classify(phase) #phi is adjusted, phase is original
@@ -695,7 +693,7 @@ for month in months:
         order_profiles = np.array(order_profiles)
         order_profiles[idx] = 0.
 
-        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, ccf, 'no', velocities)
+        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, file, 'yes', velocities)
         print(abs(np.max(spectrum)-np.min(spectrum)))
         if abs(np.max(spectrum)-np.min(spectrum))<0.1:
             spectrum = order_profiles[27]
@@ -704,26 +702,26 @@ for month in months:
         # plt.plot(spectrum)
         # plt.show()
         
-        spectrum_ccf = ccf[0].data[72]
-        velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
+        # spectrum_ccf = ccf[0].data[72]
+        # velocities_ccf=ccf[0].header['CRVAL1']+(np.arange(ccf_profile.shape[0]))*ccf[0].header['CDELT1']
         # spectrum_ccf, errors_ccf, weights_ccf = combineprofiles(ccf_profiles, np.ones(ccf_profiles.shape)*0.0001, ccf, 'no', velocities_ccf)
 
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
         # velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, ccf_phi, K, e, omega, v0)
-        velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi,K, e, omega, v0)
+        # velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi,K, e, omega, v0)
 
         all_profiles = list(all_profiles)
         all_profile_errors = list(all_profile_errors)
-        all_ccf_profiles = list(all_ccf_profiles)
-        ccf_phases = list(ccf_phases)
+        # all_ccf_profiles = list(all_ccf_profiles)
+        # ccf_phases = list(ccf_phases)
         all_phases = list(all_phases)
         all_results = list(all_results)
         all_profiles.append(spectrum)
         all_profile_errors.append(errors)
-        all_ccf_profiles.append(spectrum_ccf/np.mean(spectrum_ccf[:5])-1)
+        # all_ccf_profiles.append(spectrum_ccf/np.mean(spectrum_ccf[:5])-1)
         all_phases.append(phi)
-        ccf_phases.append(ccf_phi)
+        # ccf_phases.append(ccf_phi)
         all_results.append(result)
 
         fig = plt.figure('all frames')
@@ -735,7 +733,7 @@ for month in months:
         # plt.plot(velocities, [0]*len(spectrum))
         # print(file[0].header['ESO DRS BJD'])
         # print(ccf[0].header['ESO DRS BJD'])
-        bjds.append(ccf[0].header['ESO DRS BJD'])
+        # bjds.append(ccf[0].header['ESO DRS BJD'])
         phases1.append(phi)
         
         #plt.plot(velocities, spectrum)
@@ -794,17 +792,17 @@ for month in months:
     all_results = all_results[idx]
     all_results = list(all_results)
 
-    ccf_phases = np.array(ccf_phases)
-    header_rvs = np.array(header_rvs)
-    idc = ccf_phases.argsort()
-    ccf_phases = ccf_phases[idc]
-    all_ccf_profiles = np.array(all_ccf_profiles)
-    all_ccf_profiles = all_ccf_profiles[idc]
-    header_rvs = header_rvs[idc]
+    # ccf_phases = np.array(ccf_phases)
+    # header_rvs = np.array(header_rvs)
+    # idc = ccf_phases.argsort()
+    # ccf_phases = ccf_phases[idc]
+    # all_ccf_profiles = np.array(all_ccf_profiles)
+    # all_ccf_profiles = all_ccf_profiles[idc]
+    # header_rvs = header_rvs[idc]
     # berv = berv[idc]
     # berv = list(berv)
 
-    print(ccf_phases)
+    # print(ccf_phases)
     print(phases)
     inp = input('Above should be the same')
 
@@ -847,7 +845,16 @@ for month in months:
     frame = 'master_out'
     count = 0
     if len(out_ccfs)>1:
-        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors ,ccf, 'yes', velocities)
+        # plt.figure('all ccfs')
+        # for ccf in all_ccf_profiles:
+        #     plt.plot(velocities_ccf, ccf, label = 'Frame %s'%count)
+        #     count+=1
+        # plt.xlabel('Velocity (km/s)')
+        # plt.ylabel('Normalised Flux')
+        # plt.title('CCF Profiles')
+        # plt.savefig('CCFprofs.png')
+        # plt.show()
+        master_out_spec, master_out_errors, master_weights = combineprofiles(out_ccfs, out_errors ,file, 'yes', velocities)
     else:
         master_out_spec = out_ccfs[0]
         master_out_errors = out_errors[0]
@@ -863,8 +870,8 @@ for month in months:
     hdu.append(fits.PrimaryHDU(data=master_out))
     phases.append('out')
     results.append('master_out')
-    bjds.append('out')
-    mjds.append('out')
+    # bjds.append('out')
+    # mjds.append('out')
     # berv.append('out')
 
     #write in header
@@ -873,17 +880,17 @@ for month in months:
         hdr=fits.Header()
         hdr['CRVAL1']=np.min(velocities)
         hdr['CDELT1']=velocities[1]-velocities[0]
-        hdr['OBJECT']='HD189733b'
+        hdr['OBJECT']='HIP41378f'
         hdr['NIGHT']='%s'%month
-        hdr['K']=K
-        hdr['V0']=v0
+        # hdr['K']=K
+        # hdr['V0']=v0
         hdr['PHASE']=phase
-        hdr['bjd']=bjds[p]
-        hdr['mjd']=mjds[p]
+        # hdr['bjd']=bjds[p]
+        # hdr['mjd']=mjds[p]
         # hdr['berv']=berv[p]
         hdr['RESULT']=results[p]
         hdu[p].header=hdr
-    
+
     print(velocities)
 
     hdu.writeto('%s%s_master_out_LSD_profile.fits'%(save_path, month), output_verify='fix', overwrite = 'True')

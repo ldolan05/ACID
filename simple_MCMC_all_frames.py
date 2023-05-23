@@ -81,8 +81,20 @@ def read_in_frames(order, filelist):
     errors = []
     frame_wavelengths = []
     sns = []
+    global berv
+    berv = []
     max_sn = 0
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
+    global overlap_flux
+    global overlap_wave
+    global overlap_error
+    global overlap_sns
+    overlap_flux = []
+    overlap_wave = []
+    overlap_error = []
+    overlap_sns = []
+    
+    # plt.figure('spectra after blaze_correct')
     for file in filelist:
         if file_type == 'e2ds_A' or file_type == 's1d':
             fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(file_type, 'order', order, file, directory, 'unmasked', run_name, 'y')
@@ -105,7 +117,7 @@ def read_in_frames(order, filelist):
             reference_wave = wavelengths
             reference_frame=fluxes
             reference_frame[reference_frame == 0]=0.001
-            reference_error=flux_error_order
+            reference_error=flux_error_order[idx2][500:-500]
             reference_error[reference_frame == 0]=1000000000000000000
 
     frames = np.array(frames)
@@ -130,6 +142,7 @@ def read_in_frames(order, filelist):
             binned_waves[pos] = (reference_wave[i]+reference_wave[i+1])/2
 
         ### fitting polynomial to div_frame
+        coeffs=np.polyfit(binned_waves, binned, 1)
         coeffs=np.polyfit(binned_waves, binned, 2)
         poly = np.poly1d(coeffs)
         fit = poly(frame_wavelengths[n])
@@ -142,10 +155,9 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
         cont_factor = fluxes1[0]
 
-        fluxes1 = fluxes1
         ## taking out masked areas
-        if np.max(fluxes1)<1:
-            idx = [errors1<1]
+        if np.max(fluxes1)<10000000000:
+            idx = [errors1<10000000000]
             print(idx)
             errors = errors1[tuple(idx)]
             fluxes = fluxes1[tuple(idx)]
@@ -178,8 +190,16 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         fit = poly(wavelengths1)
         flux_obs = fluxes1/fit
         new_errors = errors1/fit
-
-        idx = [flux_obs<=0]
+        print('hi2')
+        idx = tuple([flux_obs<=0])
+        flux_obs[idx] = 0.00000000000000001
+        new_errors[idx]=1000000000000000
+        print('hi3')
+        idx = np.isnan(flux_obs)
+        flux_obs[idx] = 0.00000000000000001
+        new_errors[idx]=1000000000000000
+        print('hi4')
+        idx = np.isinf(flux_obs)
         flux_obs[idx] = 0.00000000000000001
         new_errors[idx]=1000000000000000
         
@@ -187,7 +207,7 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         coeffs = list(coeffs)
         coeffs.append(cont_factor)
         coeffs = np.array(coeffs)
-        
+        print('hi5')
         return coeffs, flux_obs, new_errors, fit
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
@@ -225,20 +245,47 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
     spectrum_f = np.zeros((width,))
     spec_errors_f = np.zeros((width,))
 
+    # plt.figure()
+    # for f in range(len(spectra_f)):
+    #     plt.plot(wavelengths_f[f], spectra_f[f])    
+    # plt.show()
+
     for n in range(0,width):
         temp_spec_f = spectra_f[:, n]
         temp_err_f = errors_f[:, n]
 
-        weights_f = (1/temp_err_f**2)
+        m = np.median(temp_spec_f)
+        sigma = np.std(temp_spec_f)
+        a = 10
 
-        idx = tuple([temp_err_f>=1000000000000])
+        upper_clip = m+a*sigma
+        lower_clip = m-a*sigma
+
+        print(lower_clip)
+        print(upper_clip)
+        print(temp_spec_f)
+        idx = np.logical_and(temp_spec_f<=lower_clip, temp_spec_f>=upper_clip)
+
+        print(temp_spec_f)
+        print(temp_err_f)
+        weights_f = (1/temp_err_f**2)
+        weights_f[idx] = 0.
+
+        idx = tuple([temp_err_f>=10000000000000])
         print(weights_f[idx])
         weights_f[idx] = 0.
 
-        weights_f = weights_f/np.sum(weights_f)
+        #weights_f = weights_f/np.sum(weights_f)
 
-        spectrum_f[n]=sum(weights_f*temp_spec_f)
-        sn_f = sum(weights_f*sns_f)/sum(weights_f)
+        # plt.figure()
+        # plt.scatter(np.arange(len(weights_f)), weights_f)
+
+        # plt.figure()
+        # plt.errorbar(np.arange(len(temp_spec_f)), temp_spec_f, temp_err_f)
+        # #plt.show()
+        if np.sum(weights_f)!=0:
+            spectrum_f[n]=np.sum(weights_f*temp_spec_f)/np.sum(weights_f)
+            sn_f = sum(weights_f*sns_f)/sum(weights_f)
 
         spec_errors_f[n]=1/(sum(weights_f**2))
     
@@ -270,6 +317,7 @@ def model_func(inputs, x):
 
     mdl1 = mdl1 * inputs[-1]
 
+
     mdl = mdl * mdl1
    
     return mdl
@@ -295,7 +343,7 @@ def log_prior(theta):
 
     for i in range(len(theta)):
         if i<k_max: ## must lie in z
-            if -10<=theta[i]<=0.5: pass
+            if -10<=theta[i]<=10: pass
             else:
                 check = 1
 
@@ -341,6 +389,10 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     mdl1 = mdl1 * initial_inputs[-1]
 
     residuals = data_spec_in/mdl1 -1
+    # plt.figure()
+    # plt.plot(residuals)
+    # plt.show()
+
     ### finds consectuative sections where at least 40 points have no conitnuum points in between - these are masked
     flag = ['False']*len(residuals)
     flagged = []
@@ -375,7 +427,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
             if len(flagged)>0:
                 flagged.append(i-1)
                 print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
-                if len(flagged)<20 or abs(np.mean(residuals[flagged[0]:flagged[-1]]))<0.45:
+                if len(flagged)<20:# or abs(np.mean(residuals[flagged[0]:flagged[-1]]))<0.45:
                     for no in flagged:
                         flag[no] = 'False'
                 else:
@@ -396,11 +448,16 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 
     residual_masks = tuple([data_err>=1000000000000000000])
     
-    plt.figure()
-    plt.scatter(wavelengths[residual_masks], data_spec_in[residual_masks], color = 'r')
-    plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/order%s_masking_%s'%(order, run_name))
-    plt.close()
-    
+    # plt.figure()
+    # plt.plot(wavelengths, data_spec_in, 'k')
+    # # print(residual_masks)
+    # # print(wavelengths[residual_masks]) 
+    # # print(data_spec_in[residual_masks])
+    # plt.scatter(wavelengths[residual_masks], data_spec_in[residual_masks], color = 'r')
+    # plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/order%s_masking_%s'%(order, run_name))
+    # plt.close()
+
+    ###################################
     ###      sigma clip masking     ###
 
     m = np.median(residuals)
@@ -418,8 +475,17 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     data_err[idx1]=10000000000000000000
     data_err[idx2]=10000000000000000000
 
+    a = 2/(np.max(wavelengths)-np.min(wavelengths))
+    b = 1 - a*np.max(x)
+
     poly_inputs, bin, bye, fit=continuumfit(data_spec_in,  (wavelengths*a)+b, data_err, poly_ord)
+    # plt.figure()
+    # for n in np.arange(-80, 80, 5):
+    #     velocities = np.arange(-10+n, +10+n, 1.75)
+    #     # print(velocities)
     velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, sn, order, run_name, velocities)
+    # plt.plot(velocities1, profile)
+    # plt.show()
 
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
@@ -449,7 +515,10 @@ def task(all_frames, counter):
 
     flux = flux/mdl1
     error = error/mdl1
-
+    plt.figure()
+    plt.plot(wavelengths, flux)
+    plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/SPec%s_%s_%s.png'%(run_name, counter, order-np.min(order_range)))
+    
     remove = tuple([flux<0])
     flux[remove]=1.
     error[remove]=10000000000000000000
@@ -467,8 +536,18 @@ def task(all_frames, counter):
     return all_frames
 
 for month in months:
-    directory = '%s%s/'%(directory_p, month)
-    filelist=findfiles(directory, file_type)
+    directory = '%s'%(directory_p)
+    print(directory)
+    filelist=findfiles(directory, '1d')
+    print(filelist)
+    phasess=[]
+    poptss=[]
+    # temp_file = fits.open(filelist[0])
+    # offset = (-1)*temp_file[0].header['ESO DRS BERV']
+    global velocities
+    deltav = 1.5
+    velocities=np.arange(-80, 25, deltav)
+    new_velocities=velocities.copy()
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     for order in order_range:
@@ -489,6 +568,25 @@ for month in months:
         poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes, (wavelengths*a)+b, flux_error_order, poly_ord)
 
         #### getting the initial profile
+        m = np.median(fluxes1)
+        sigma = np.std(fluxes1)
+        a = 1
+
+        upper_clip = m+a*sigma
+        lower_clip = m-a*sigma
+
+        rcopy = fluxes1.copy()
+
+        idx1 = np.logical_and(rcopy<=upper_clip, rcopy>=lower_clip)
+        flux_error_order1[idx1]=100000000000
+        
+        idx2 = tuple([flux_error_order1<100000000000])
+
+        plt.figure()
+        plt.scatter(wavelengths[idx2], fluxes1[idx2], flux_error_order1[idx2])
+        plt.show()
+
+        #if len(fluxes1[idx2])/len(fluxes1)<0.25:continue
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
         ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
@@ -519,13 +617,19 @@ for month in months:
         for i in range(0, ndim):
             if i <ndim-poly_ord-2:
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+                print(model_inputs[i], pos2)
             else:
                 print(model_inputs[i])
-                sigma = abs(round_sig(model_inputs[i], 1))/10
+                sigma = abs(round_sig(model_inputs[i], 1)/10)
                 print(sigma)
                 # print(sigma_cont[i-k_max])
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+                print(model_inputs[i], pos2)
             pos.append(pos2)
+        
+        # print('This is the most recent one')
+        # print(np.random.randn(nwalkers, ndim))
+        # pos = model_inputs + 0.1 * np.random.randn(nwalkers, ndim)
 
         pos = np.array(pos)
         pos = np.transpose(pos)
@@ -536,6 +640,8 @@ for month in months:
             sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool = pool)
             sampler.run_mcmc(pos, steps_no, progress=True)
         
+        # cinp = input('Checking...')
+
         idx = tuple([yerr<=10000000000000000000])
 
         ## discarding all values except the last 1000 steps.
@@ -613,7 +719,7 @@ for month in months:
             mcmc_mdl = model_func(mcmc_inputs, x)
             mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
 
-            print('Likelihood for mcmc: %s'%mcmc_liklihood)
+        # print('Likelihood for mcmc: %s'%mcmc_liklihood)
 
             residuals_2 = (y+1) - (mcmc_mdl+1)
 
@@ -679,7 +785,7 @@ for month in months:
        
 
         task_part = partial(task, all_frames)
-        with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+        with mp.Pool(25) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
         results = np.array(results[0])
         for i in range(len(frames)):
             all_frames[i]=results[i][i]
@@ -691,13 +797,13 @@ for month in months:
     for frame_no in range(0, len(frames)):
         file = filelist[frame_no]
         fits_file = fits.open(file)
-        phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
+        phi = (((fits_file[0].header['TCORR'])-T)/P)%1
         phases.append(phi)
         hdu = fits.HDUList()
         hdr = fits.Header()
 
-        for order in range(0, 71):
-            hdr['ORDER'] = order
+        for order in range(0, len(order_range)):
+            hdr['ORDER'] = order_range[order]
             hdr['PHASE'] = phi
 
             if phi<deltaphi:

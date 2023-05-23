@@ -80,7 +80,7 @@ for month in months:
     all_profiles = fits.open(file)
 
     profile_spec = all_profiles[0].data[0]
-    velocities = np.linspace(-10,10,len(profile_spec))
+    velocities = np.arange(-10,10,0.82)
 
 
     count = 0
