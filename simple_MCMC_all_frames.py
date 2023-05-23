@@ -1,21 +1,65 @@
 import numpy as np
 import emcee
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize
 from astropy.io import  fits
 import emcee
-#import corner
 import LSD_func_faster as LSD
-import time
-import synthetic_data as syn
-import random
 import glob
 from scipy.interpolate import interp1d
-from scipy.signal import find_peaks
 import multiprocessing as mp
 from functools import partial
-
 from math import log10, floor
+
+### INPUTS HERE ###
+
+# Enter file_type
+# Enter path to line list:
+linelist = '/home/lsd/Documents/Ernst_object/tmp_linelist.txt'
+
+# Enter file path to directory containing all data files (doesn't get used in this version):
+directory_p = '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733 old/HD189733/'
+
+# NOTE: ACID should be applied on a night-by-night basis. Files should be orgainised such that each observation night has a subdirectory in the main file directory.
+# Enter subdirectory name for each observation night:
+months = ['']
+
+# Enter figure prefereance. Do you want figures to be saved ('y' or 'n'):
+save_figs = 'y'
+
+# If yes then enter path to directory where figures should be stored:
+fig_save_path = '/home/lsd/Documents/Ernst_object/'
+
+# Enter path to results folder (where final ACID profile files will be saved):
+data_save_path = '/home/lsd/Documents/Ernst_object/'
+
+# Enter the minimum and maximum order to be included in run: 
+order_min = 0
+order_max = 2
+order_range = np.arange(order_min, order_max)
+
+# Enter minimum and maximum velocities (in km/s) so that the entire profile will be included:
+min_vel = -150
+max_vel = 150
+
+# Enter velocity pixel size (in km/s). Enter 'calc' if you need it calculated based off the wavelength pixel size:
+deltav = 'calc'
+
+# Enter polynomial order for continuum fit (3rd order is recommended for HARPS spectra):
+poly_ord = 3
+
+# Enter phase preference ('y' or 'n'):
+include_phase = 'n'
+
+# If yes then include planetary parameters:
+P=2.2359835                 # Period (days )
+T=2456912.35105             # Tranist Midpoint (BJD)
+t=0.0631                    # Tranist Duration (days)
+
+# The user will be prompted before each run to input a nickname for the run. This allows subsequent runs to be saved seperatly for the same data files. 
+# If the same name is used as for a previosu run these files will be overwirtten.
+run_name = input('Input nickname for this version of code (for saving figures and final files): ')
+
+
 
 def round_sig(x1, sig):
     return round(x1, sig-int(floor(log10(abs(x1))))-1)
@@ -25,23 +69,6 @@ from scipy.optimize import curve_fit
 def gauss(x1, rv, sd, height, cont):
     y1 = height*np.exp(-(x1-rv)**2/(2*sd**2)) + cont
     return y1
-
-## for real data
-file_type = 'e2ds_A'
-linelist = '/Users/lucydolan/Documents/HD189733/TEST/fulllinelist004.txt'
-directory_p = '/Users/lucydolan/Documents/HD189733/TEST'
-global velocities
-if file_type == 'e2ds_A':
-    velocities=np.arange(-21, 18, 0.82)
-else: velocities = np.arange(-21, 18, 0.82) ## input alternative here
-poly_ord = 3
-months = [''] ## observation nights - subfolders in the directory
-order_range = np.arange(10,70) ## orders to be covered
-run_name = input('Input nickname for this version of code (for saving figures): ')
-P=2.21857567 #Cegla et al, 2006 - days
-T=2454279.436714 #Cegla et al, 2006
-t=0.076125 #Torres et al, 2008
-deltaphi = t/(2*P)
 
 def findfiles(directory, file_type):
 
