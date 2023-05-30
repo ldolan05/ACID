@@ -3,16 +3,7 @@ import numpy as np
 from scipy import linalg
 from astropy.io import  fits
 import glob
-import matplotlib.pyplot as plt
-import random
-from astropy import units as u
-from specutils import Spectrum1D
-from scipy.signal import find_peaks
-from specutils.manipulation import FluxConservingResampler, LinearInterpolatedResampler
 import pandas as pd
-from scipy.sparse import csc_matrix
-from scipy.sparse.linalg import inv, spsolve
-from scipy.interpolate import interp1d,LSQUnivariateSpline
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
 
@@ -31,9 +22,6 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
-
-    # print(wavelength_min)
-    # print(wavelength_max)
 
     wavelengths_expected=[]
     depths_expected=[]

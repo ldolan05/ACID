@@ -551,7 +551,7 @@ for month in months:
             profile = file[order1].data[0]
             if len(profile) == 48:
                 deltav = 1.5
-                velocities=np.arange(-60, 0, deltav)
+                velocities=np.arange(-21, 18, 0.82)
             else:
                 deltav = 1.5
                 velocities=np.arange(-60, 0, deltav)

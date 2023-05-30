@@ -12,14 +12,18 @@ from math import log10, floor
 
 ### INPUTS HERE ###
 
-# Enter file_type
+# Enter file_type (e2ds_A or s1d). If using data other than HAPRS data input 'other'.
+file_type = 'e2ds'
+
 # Enter path to line list:
 linelist = '/home/lsd/Documents/Ernst_object/tmp_linelist.txt'
 
-# Enter file path to directory containing all data files (doesn't get used in this version):
+# Enter file path to directory containing all data files:
 directory_p = '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733 old/HD189733/'
 
-# NOTE: ACID should be applied on a night-by-night basis. Files should be orgainised such that each observation night has a subdirectory in the main file directory.
+# NOTE: ACID should be applied on a night-by-night basis. Files should be orgainised such that each observation night has a subdirectory
+# in the main file directory. If using HARPS data the blaze file for that night should be contained in the subdirectory also.
+
 # Enter subdirectory name for each observation night:
 months = ['']
 
@@ -47,7 +51,7 @@ deltav = 'calc'
 # Enter polynomial order for continuum fit (3rd order is recommended for HARPS spectra):
 poly_ord = 3
 
-# Enter phase preference ('y' or 'n'):
+# Enter phase calculation preference ('y' or 'n'). If 'y' phase will be saved in header of esulting fits files:
 include_phase = 'n'
 
 # If yes then include planetary parameters:
@@ -60,11 +64,8 @@ t=0.0631                    # Tranist Duration (days)
 run_name = input('Input nickname for this version of code (for saving figures and final files): ')
 
 
-
 def round_sig(x1, sig):
     return round(x1, sig-int(floor(log10(abs(x1))))-1)
-
-from scipy.optimize import curve_fit
 
 def gauss(x1, rv, sd, height, cont):
     y1 = height*np.exp(-(x1-rv)**2/(2*sd**2)) + cont
@@ -81,18 +82,8 @@ def read_in_frames(order, filelist):
     errors = []
     frame_wavelengths = []
     sns = []
-    global berv
-    berv = []
     max_sn = 0
     ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
-    global overlap_flux
-    global overlap_wave
-    global overlap_error
-    global overlap_sns
-    overlap_flux = []
-    overlap_wave = []
-    overlap_error = []
-    overlap_sns = []
     
     # plt.figure('spectra after blaze_correct')
     for file in filelist:
@@ -115,10 +106,7 @@ def read_in_frames(order, filelist):
             max_sn = sn
             global reference_wave
             reference_wave = wavelengths
-            reference_frame=fluxes
-            reference_frame[reference_frame == 0]=0.001
-            reference_error=flux_error_order[idx2][500:-500]
-            reference_error[reference_frame == 0]=1000000000000000000
+            reference_frame = fluxes
 
     frames = np.array(frames)
     errors = np.array(errors)
@@ -626,17 +614,13 @@ for month in months:
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
                 print(model_inputs[i], pos2)
             pos.append(pos2)
-        
-        # print('This is the most recent one')
-        # print(np.random.randn(nwalkers, ndim))
-        # pos = model_inputs + 0.1 * np.random.randn(nwalkers, ndim)
 
         pos = np.array(pos)
         pos = np.transpose(pos)
 
         steps_no = 10000
     
-        with mp.Pool(mp.cpu_count()) as pool:
+        with mp.Pool(25) as pool:
             sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool = pool)
             sampler.run_mcmc(pos, steps_no, progress=True)
         
@@ -671,7 +655,6 @@ for month in months:
         profile = np.array(profile)
         profile_err = np.array(profile_err)
 
-        fig_opt = 'n'
         if fig_opt == 'y':
             # plots the mcmc profile - will have extra panel if it's for data
             fig, ax0 = plt.subplots()
@@ -685,7 +668,7 @@ for month in months:
             secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
             secax.set_ylabel('flux')
             ax0.legend()
-            plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/profiles/order%s_profile_%s'%(order, run_name))
+            plt.savefig('%s/order%s_profile_%s'%(fig_save_path, order, run_name))
             plt.close()
 
             # plots mcmc continuum fit on top of data
@@ -711,7 +694,7 @@ for month in months:
             plt.title('continuum from mcmc')
             plt.xlabel("wavelengths")
             plt.ylabel("flux")
-            plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
+            plt.savefig('%s/order%s_cont_%s'%(fig_save_path, order, run_name))
             plt.close()
         
             ## last section is a bit of a mess but plots the two forward models
@@ -719,7 +702,7 @@ for month in months:
             mcmc_mdl = model_func(mcmc_inputs, x)
             mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
 
-        # print('Likelihood for mcmc: %s'%mcmc_liklihood)
+            # print('Likelihood for mcmc: %s'%mcmc_liklihood)
 
             residuals_2 = (y+1) - (mcmc_mdl+1)
 
@@ -736,7 +719,7 @@ for month in months:
             ax[1].plot(x, residuals_2, '.')
             z_line = [0]*len(x)
             ax[1].plot(x, z_line, '--')
-            plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/forward_models/order%s_forward_%s'%(order, run_name))
+            plt.savefig('%s/order%s_forward_%s'%(fig_save_path, order, run_name))
             plt.close()
 
             fig, ax0 = plt.subplots()
@@ -748,7 +731,7 @@ for month in months:
             ax0.set_xlabel('velocities')
             ax0.set_ylabel('optical depth')
             ax0.legend()
-            plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/profiles/order%s_final_profile_%s'%(order, run_name))
+            plt.savefig('%s/order%s_final_profile_%s'%(fig_save_path, order, run_name))
             plt.close()
 
             # plots the model for 'walks' of the all walkers for the first 5 profile points
@@ -776,7 +759,7 @@ for month in months:
             plt.xlabel("wavelengths")
             plt.ylabel("flux")
             plt.title('mcmc models and data')
-            plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
+            plt.savefig('%s/order%s_mc_mdl_%s'%(fig_save_path, order, run_name))
             plt.close()
 
         profile_f = np.exp(profile)
@@ -797,23 +780,27 @@ for month in months:
     for frame_no in range(0, len(frames)):
         file = filelist[frame_no]
         fits_file = fits.open(file)
-        phi = (((fits_file[0].header['TCORR'])-T)/P)%1
-        phases.append(phi)
+        if include_phase == 'y':
+            phi = (((fits_file[0].header['TCORR'])-T)/P)%1
+            phases.append(phi)
         hdu = fits.HDUList()
         hdr = fits.Header()
 
         for order in range(0, len(order_range)):
             hdr['ORDER'] = order_range[order]
-            hdr['PHASE'] = phi
+            if include_phase == 'y':
+                hdr['PHASE'] = phi
 
-            if phi<deltaphi:
-                result = 'in'
-            elif phi>1-deltaphi:
-                result = 'in'
-            else:
-                result = 'out'
-            
-            hdr['result'] = result
+                deltaphi = t/(2*P)
+
+                if phi<deltaphi:
+                    result = 'in'
+                elif phi>1-deltaphi:
+                    result = 'in'
+                else:
+                    result = 'out'
+                
+                hdr['result'] = result
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
@@ -821,5 +808,5 @@ for month in months:
             profile_err = all_frames[frame_no, order, 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
-        hdu.writeto('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/%s_%s_%s.fits'%(month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
+        hdu.writeto('%s/%s_%s_%s.fits'%(data_save_path, month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
 
