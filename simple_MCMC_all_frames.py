@@ -439,9 +439,9 @@ def model_func(inputs, x):
     z = inputs[:k_max]
 
     mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
-    mdl = mdl+1
+    #mdl = mdl+1
     #converting model from optical depth to flux
-    # mdl = np.exp(mdl)
+    mdl = np.exp(mdl)
 
     ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
     a = 2/(np.max(x)-np.min(x))
@@ -788,16 +788,14 @@ def task(all_frames, counter):
 
         velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
-        # p = np.exp(profile1)-1
+        p = np.exp(profile1)-1
         popt, pcov = curve_fit(gauss, velocities, p)
         popts_new.append(popt[0])
+        
 
-        # profile_f = np.exp(profile1)
-        # profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
-        # profile_f = profile_f-1
-
-        profile_f = profile1
-        profile_errors_f = profile_errors
+        profile_f = np.exp(profile1)
+        profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+        profile_f = profile_f-1
 
         # print(profile)
         # print(profile_f)
