@@ -789,8 +789,8 @@ def task(all_frames, counter):
         velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, flux, error, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
         # p = np.exp(profile1)-1
-        # popt, pcov = curve_fit(gauss, velocities, p)
-        # popts_new.append(popt[0])
+        popt, pcov = curve_fit(gauss, velocities, p)
+        popts_new.append(popt[0])
 
         # profile_f = np.exp(profile1)
         # profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
