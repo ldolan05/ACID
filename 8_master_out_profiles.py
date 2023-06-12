@@ -32,10 +32,9 @@ def findfiles(directory, file_type):
 
     filelist_final = glob.glob('%s*_%s.fits'%(directory, run_name))
 
-    if len(filelist_final)>40:
+    if len(filelist_final)>5:
         filelist=glob.glob('%s*_%s.fits'%(directory, run_name))    #finding corrected spectra
-        filelist1=glob.glob('%s*_syn_%s.fits'%(directory, run_name))               #finding all A band spectra
-
+        filelist1=glob.glob('%s**BERVebfore_old_%s.fits'%(directory, run_name))               #finding all A band spectra
         filelist_final=[]
 
         for file in filelist:                                                        #filtering out corrected spectra
@@ -178,7 +177,7 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     #print(velo)
     adjusted_velocities = velocities-velo
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value='extrapolate')
-    velocity_grid = np.arange(-10,10,0.82)
+    velocity_grid = np.arange(-20,20,0.82)
     adjusted_spectrum = f2(velocity_grid)
     f2 = interp1d(adjusted_velocities, errors, kind='linear', bounds_error=False, fill_value='extrapolate')
     adjusted_errors = f2(velocity_grid)
@@ -554,9 +553,7 @@ for month in months:
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
-            if len(profile) == 48:
-                velocities=np.arange(-21, 18, 0.82)
-            else:velocities=np.arange(-21, 18, 0.82)
+            velocities=np.arange(-25, 25, 0.82)
             ccf_profile = ccf[0].data[order1]
             if order1 ==1:
                 header_rvs = list(header_rvs)

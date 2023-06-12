@@ -795,6 +795,7 @@ def task(all_frames, counter):
 
         profile_f = np.exp(profile1)
         profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+        profile_errors_f = profile_errors*profile_f
         profile_f = profile_f-1
 
         # print(profile)
@@ -922,7 +923,7 @@ for month in months:
     phasess=[]
     poptss=[]
     global velocities
-    velocities=np.arange(-21, 18, 0.82)
+    velocities=np.arange(-25, 25, 0.82)
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
     for order in order_range:
@@ -1581,7 +1582,7 @@ for month in months:
         #plt.show()
 
         profile_f = np.exp(profile)
-        profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
+        profile_errors_f = profile_err*profile_f
         profile_f = profile_f-1
 
         fig, ax0 = plt.subplots()
