@@ -174,7 +174,7 @@ def ccfprofiles(ccf):
 
 def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     velo = v0 + K*(e*np.cos(omega)+np.cos(2*np.pi*phi+omega))
-    #print(velo)
+    print(velo)
     adjusted_velocities = velocities-velo
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value='extrapolate')
     velocity_grid = np.arange(-20,20,0.82)
