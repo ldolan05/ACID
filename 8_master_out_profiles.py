@@ -708,7 +708,7 @@ for month in months:
         all_weights_total.append(weights)
         #plt.plot(velocities, spectrum)
         # velocities_ccf, spectrum_ccf, ccf_errors = remove_reflex(velocities_ccf, spectrum_ccf, spectrum_ccf/100, ccf_phi, K, e, omega, v0)
-        velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi,K, e, omega, v0)
+        velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0)
 
         all_profiles = list(all_profiles)
         all_profile_errors = list(all_profile_errors)
