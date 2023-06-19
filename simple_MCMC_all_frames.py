@@ -16,7 +16,7 @@ from math import log10, floor
 file_type = 'e2ds'
 
 # Enter path to line list:
-linelist = '/home/lsd/Documents/Ernst_object/tmp_linelist.txt'
+linelist = './HD13808/HD13808.txt'
 
 # Enter file path to directory containing all data files:
 directory_p = '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733 old/HD189733/'
