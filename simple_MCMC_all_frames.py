@@ -719,6 +719,9 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, telluric_
     poly_inputs, bin, bye, fit=continuumfit(data_spec_in,  (wavelengths*a)+b, data_err, poly_ord)
     velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, sn, order, run_name, velocities)
 
+    ## uncomment if you would like to keep sigma clipping masking in for final LSD run 
+    residual_masks = tuple([data_err>=1000000000000000000])
+
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
 def task(all_frames, counter):
