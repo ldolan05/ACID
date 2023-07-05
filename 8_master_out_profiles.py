@@ -71,14 +71,14 @@ def classify(phase):
     #print(z, phi)
     phi = phase-np.round(phase)
 
-    P=542
-    T=2457186.91451
-    t=13/24 
-    deltaphi = t/(2*P)
-    a_Rs = 460
-    b=0.227 
-    RpRs = 0.066
-    RpRs_max = RpRs
+    # P=542
+    # T=2457186.91451
+    # t=13/24 
+    # deltaphi = t/(2*P)
+    # a_Rs = 460
+    # b=0.227 
+    # RpRs = 0.066
+    # RpRs_max = RpRs
 
     z = np.sqrt( ( (a_Rs)*np.sin(2 * np.pi * phi) )**2 + ( b*np.cos(2. * np.pi * phi))**2)
 
@@ -425,39 +425,39 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
 
 
 
-i = 89.98
-t=0.076125 #Torres et al, 2008
-e =0
-omega=(np.pi/2)
-#omega = 0
-K=0.20056 #km/s Boisse et al, 2009
-#K=0.230
-v0=-2.2765#-0.1875 #km/s Boisse et al, 2009
-#v0=-2.23
-#v0=-2.317 #Gaia
+# i = 89.98
+# t=0.076125 #Torres et al, 2008
+# e =0
+# omega=(np.pi/2)
+# #omega = 0
+# K=0.20056 #km/s Boisse et al, 2009
+# #K=0.230
+# v0=-2.2765#-0.1875 #km/s Boisse et al, 2009
+# #v0=-2.23
+# #v0=-2.317 #Gaia
 
 P=542
 T=2457186.91451
-t=13/24 
-deltaphi = t/(2*P)
-a_Rs = 460
-b=0.227 
-RpRs = 0.066
-RpRs_max = RpRs
+# t=13/24 
+# deltaphi = t/(2*P)
+# a_Rs = 460
+# b=0.227 
+# RpRs = 0.066
+# RpRs_max = RpRs
 
 
-path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
-save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
+path = './HD13808/'
+save_path = './HD13808/'
 
 #path = '/Users/lucydolan/Starbase/LSD_Figures/'
 #save_path = '/Users/lucydolan/Starbase/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = ['August2007',
-          'all',
-          'July2006',
-          'Sep2006'
+months = [#'August2007',
+          '',
+          #'July2006',
+          #'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -549,12 +549,14 @@ for month in months:
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
-            if len(profile) == 48:
-                deltav = 1.5
-                velocities=np.arange(-21, 18, 0.82)
-            else:
-                deltav = 1.5
-                velocities=np.arange(-60, 0, deltav)
+            deltav = file[order1].header['CDELT1']
+            velocities = np.arange(20, 60, deltav)
+            if len(profile[np.isnan(profile)])==len(profile):
+                print('continue')
+                continue
+            if len(profile[profile==0.])==len(profile):
+                print('continue')
+                continue
             # ccf_profile = ccf[0].data[order1]
             # if order1 ==1:
             #     header_rvs = list(header_rvs)
@@ -567,9 +569,11 @@ for month in months:
             # mjd = ccf[0].header["MJD-OBS"]
             # if ccf_phi>0.5: ccf_phi = ccf_phi-1
             order = file[order1].header['ORDER']
-            phase = file[order1].header['PHASE']
+            bjd = file[order1].header['BJD']
+            phase = (((bjd)-T)/P)%1
+            # phase = file[order1].header['PHASE']
             # print(phase)
-            result = file[order1].header['result']
+            result = 'out'
 
             ## investigation section - delete/comment out when done
             # velocities_ccf_temp, spectrum_ccf_temp, ccf_errors_temp = remove_reflex(velocities_ccf, ccf_profile/np.mean(ccf_profile[:5])-1, ccf_profile/100, ccf_phi, K, e, omega, v0)
@@ -659,11 +663,11 @@ for month in months:
         # mjds.append(mjd)
         all_order_rvs.append(order_rvs)
         # all_order_rvs_ccf.append(order_rvs_ccf)
-
+        if len(order_profiles)<1:continue
         if frame == framelist[0]:
             plt.figure('LSD')
             plt.imshow(np.array(order_profiles), extent = [velocities[0], velocities[-1], 0, len(order_profiles)-1])
-            plt.vlines(-2.276, 0, len(order_profiles)-1)
+            # plt.vlines(-2.276, 0, len(order_profiles)-1)
             plt.colorbar()
 
             plt.figure()
@@ -677,7 +681,7 @@ for month in months:
             # plt.show()
 
         print(phase, result)
-        result, phi, phase = classify(phase) #phi is adjusted, phase is original
+        # result, phi, phase = classify(phase) #phi is adjusted, phase is original
         print(phase, result)
         # inp = input('Enter to continue...')
         if phase>0.5:
@@ -720,7 +724,7 @@ for month in months:
         all_profiles.append(spectrum)
         all_profile_errors.append(errors)
         # all_ccf_profiles.append(spectrum_ccf/np.mean(spectrum_ccf[:5])-1)
-        all_phases.append(phi)
+        all_phases.append(bjd)
         # ccf_phases.append(ccf_phi)
         all_results.append(result)
 
@@ -880,15 +884,15 @@ for month in months:
         hdr=fits.Header()
         hdr['CRVAL1']=np.min(velocities)
         hdr['CDELT1']=velocities[1]-velocities[0]
-        hdr['OBJECT']='HIP41378f'
+        hdr['OBJECT']='HD13808'
         hdr['NIGHT']='%s'%month
         # hdr['K']=K
         # hdr['V0']=v0
-        hdr['PHASE']=phase
+        # hdr['BJD']=phase
         # hdr['bjd']=bjds[p]
         # hdr['mjd']=mjds[p]
         # hdr['berv']=berv[p]
-        hdr['RESULT']=results[p]
+        # hdr['RESULT']=results[p]
         hdu[p].header=hdr
 
     print(velocities)

@@ -13,13 +13,13 @@ from math import log10, floor
 ### INPUTS HERE ###
 
 # Enter file_type (e2ds_A or s1d). If using data other than HAPRS data input 'other'.
-file_type = 'e2ds'
+file_type = 'e2ds_A'
 
 # Enter path to line list:
-linelist = './HD13808/HD13808.txt'
+linelist = 'HD13808/HD13808.txt'
 
 # Enter file path to directory containing all data files:
-directory_p = '/home/lsd/Documents/Starbase/novaprime/Documents/HD189733 old/HD189733/'
+directory_p = 'HD13808/*'
 
 # NOTE: ACID should be applied on a night-by-night basis. Files should be orgainised such that each observation night has a subdirectory
 # in the main file directory. If using HARPS data the blaze file for that night should be contained in the subdirectory also.
@@ -31,19 +31,19 @@ months = ['']
 save_figs = 'y'
 
 # If yes then enter path to directory where figures should be stored:
-fig_save_path = '/home/lsd/Documents/Ernst_object/'
+fig_save_path = 'HD13808'
 
 # Enter path to results folder (where final ACID profile files will be saved):
-data_save_path = '/home/lsd/Documents/Ernst_object/'
+data_save_path = 'HD13808'
 
 # Enter the minimum and maximum order to be included in run: 
-order_min = 0
-order_max = 2
+order_min = 20
+order_max = 68
 order_range = np.arange(order_min, order_max)
 
 # Enter minimum and maximum velocities (in km/s) so that the entire profile will be included:
-min_vel = -150
-max_vel = 150
+min_vel = 20
+max_vel = 60
 
 # Enter velocity pixel size (in km/s). Enter 'calc' if you need it calculated based off the wavelength pixel size:
 deltav = 'calc'
@@ -73,9 +73,13 @@ def gauss(x1, rv, sd, height, cont):
 
 def findfiles(directory, file_type):
 
-    filelist1=glob.glob('%s/%s*.fits'%(directory, file_type))    #finding spectra
+    print('%s/**%s*.fits'%(directory, file_type))
+    filelist1=glob.glob('%s/**%s*.fits'%(directory, file_type))    #finding spectra
     
-    return filelist1
+    filelist2 = glob.glob('%s/*/*/**%s*.fits'%(directory, file_type))
+    print(filelist1)
+    print(filelist2)
+    return np.concatenate((filelist1, filelist2))
 
 def read_in_frames(order, filelist):
     frames = []
@@ -88,7 +92,13 @@ def read_in_frames(order, filelist):
     # plt.figure('spectra after blaze_correct')
     for file in filelist:
         if file_type == 'e2ds_A' or file_type == 's1d':
+            print(file)
             fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(file_type, 'order', order, file, directory, 'unmasked', run_name, 'y')
+            flux_error_order = flux_error_order/np.nanmean(fluxes)
+            fluxes = fluxes/np.nanmean(fluxes)
+            plt.figure('initial flux')
+            plt.plot(wavelengths, fluxes)
+            plt.close()
         else:
             data_file = fits.open(file)
             sn = data_file[0].header['S/N']
@@ -135,32 +145,39 @@ def read_in_frames(order, filelist):
         poly = np.poly1d(coeffs)
         fit = poly(frame_wavelengths[n])
         frames[n] = frames[n]/fit
+
+        plt.figure('adjusted frame')
+        plt.plot(frame_wavelengths[n], frames[n])
+        plt.close()
+
         errors[n] = errors[n]/fit
 
     return frame_wavelengths, frames, errors, sns
 
 def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
 
-        cont_factor = fluxes1[0]
+        cont_factor = np.nanmean(fluxes1)
 
-        ## taking out masked areas
-        if np.max(fluxes1)<10000000000:
-            idx = [errors1<10000000000]
-            print(idx)
-            errors = errors1[tuple(idx)]
-            fluxes = fluxes1[tuple(idx)]
-            wavelengths = wavelengths1[tuple(idx)]
-        else:
-            errors = errors1
-            fluxes = fluxes1
-            wavelengths = wavelengths1
+        # ## taking out masked areas
+        # if np.max(fluxes1)<10000000000:
+        #     idx = [errors1<10000000000]
+        #     print(idx)
+        #     errors = errors1[tuple(idx)]
+        #     fluxes = fluxes1[tuple(idx)]
+        #     wavelengths = wavelengths1[tuple(idx)]
+        # else:
+        errors = errors1
+        fluxes = fluxes1
+        wavelengths = wavelengths1
 
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
         fluxe = fluxes[idx]
         clipped_flux = []
         clipped_waves = []
-        binsize = int(round(len(fluxes)/10, 1))
+        binsize = int(round(len(fluxes)/5, 1))
+        # print(binsize)
+        # print(len(fluxes))
         for i in range(0, len(wavelength), binsize):
             if i+binsize<len(wavelength):
                 waves = wavelength[i:i+binsize]
@@ -196,6 +213,12 @@ def continuumfit(fluxes1, wavelengths1, errors1, poly_ord):
         coeffs.append(cont_factor)
         coeffs = np.array(coeffs)
         print('hi5')
+
+        plt.figure('continuum fit')
+        plt.plot(wavelengths, fluxes1)
+        plt.plot(wavelengths, fit)
+        plt.close()
+
         return coeffs, flux_obs, new_errors, fit
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
@@ -233,10 +256,10 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
     spectrum_f = np.zeros((width,))
     spec_errors_f = np.zeros((width,))
 
-    # plt.figure()
-    # for f in range(len(spectra_f)):
-    #     plt.plot(wavelengths_f[f], spectra_f[f])    
-    # plt.show()
+    plt.figure('combined spec plot')
+    for f in range(len(spectra_f)):
+        plt.plot(reference_wave, spectra_f[f])    
+    # plt.close()
 
     for n in range(0,width):
         temp_spec_f = spectra_f[:, n]
@@ -270,13 +293,16 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
         # plt.figure()
         # plt.errorbar(np.arange(len(temp_spec_f)), temp_spec_f, temp_err_f)
-        # #plt.show()
+        # #plt.close()
         if np.sum(weights_f)!=0:
             spectrum_f[n]=np.sum(weights_f*temp_spec_f)/np.sum(weights_f)
             sn_f = sum(weights_f*sns_f)/sum(weights_f)
 
         spec_errors_f[n]=1/(sum(weights_f**2))
     
+    plt.plot(reference_wave, spectrum_f, 'k')
+    plt.close()
+
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
 def od2flux(x):
@@ -301,10 +327,14 @@ def model_func(inputs, x):
 
     mdl1=0
     for i in range(k_max,len(inputs)-1):
+        print(mdl1)
+        print(inputs[i])
         mdl1 = mdl1 + (inputs[i]*((x*a)+b)**(i-k_max))
-
+        print(x)
+        print(a, b)
+        print((x*a)+b)
+        print(mdl1)
     mdl1 = mdl1 * inputs[-1]
-
 
     mdl = mdl * mdl1
    
@@ -379,52 +409,60 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     residuals = data_spec_in/mdl1 -1
     # plt.figure()
     # plt.plot(residuals)
-    # plt.show()
+    # plt.close()
 
-    ### finds consectuative sections where at least 40 points have no conitnuum points in between - these are masked
-    flag = ['False']*len(residuals)
-    flagged = []
-    for i in range(len(residuals)):
-        if abs(residuals[i])>0.1:
-            flag[i] = 'True'
-            if i>0 and flag[i-1] == 'True':
-                flagged.append(i-1)
-        else:
-            if len(flagged)>0:
-                flagged.append(i-1)
-                print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
-                if len(flagged)<300:
-                    for no in flagged:
-                        flag[no] = 'False'
-                else:
-                    idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
-                    data_err[idx]=10000000000000000000
-            flagged = []
+    # ### finds consectuative sections where at least 40 points have no conitnuum points in between - these are masked
+    # flag = ['False']*len(residuals)
+    # flagged = []
+    # for i in range(len(residuals)):
+    #     if abs(residuals[i])>0.1:
+    #         flag[i] = 'True'
+    #         if i>0 and flag[i-1] == 'True':
+    #             flagged.append(i-1)
+    #     else:
+    #         if len(flagged)>0:
+    #             flagged.append(i-1)
+    #             print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
+    #             if len(flagged)<300:
+    #                 for no in flagged:
+    #                     flag[no] = 'False'
+    #             else:
+    #                 idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
+    #                 data_err[idx]=10000000000000000000
+    #         flagged = []
 
     residuals = (data_spec_in - np.min(data_spec_in))/(np.max(data_spec_in)-np.min(data_spec_in)) - (forward - np.min(forward))/(np.max(forward)-np.min(forward)) 
 
+    print('RESIDUALS')
+    plt.figure('residuals')
+    plt.plot(wavelengths, residuals)
+
+    plt.figure('forward')
+    plt.plot(wavelengths, data_spec_in)
+    plt.plot(wavelengths, forward)
+    plt.close()
+
     ### finds consectuative sections where at least 20 points have residuals greater than 0.25 - these are masked
-    flag = ['False']*len(residuals)
-    flagged = []
-    for i in range(len(residuals)):
-        if abs(residuals[i])>0.25:
-            flag[i] = 'True'
-            if i>0 and (flag[i-1] == 'True' or flag[i-2] == 'True'):
-                flagged.append(i-1)
-        else:
-            if len(flagged)>0:
-                flagged.append(i-1)
-                print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
-                if len(flagged)<20:# or abs(np.mean(residuals[flagged[0]:flagged[-1]]))<0.45:
-                    for no in flagged:
-                        flag[no] = 'False'
-                else:
-                    idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
-                    data_err[idx]=10000000000000000000
-            flagged = []
+    # flag = ['False']*len(residuals)
+    # flagged = []
+    # for i in range(len(residuals)):
+    #     if abs(residuals[i])>0.25:
+    #         flag[i] = 'True'
+    #         if i>0 and (flag[i-1] == 'True' or flag[i-2] == 'True'):
+    #             flagged.append(i-1)
+    #     else:
+    #         if len(flagged)>0:
+    #             flagged.append(i-1)
+    #             print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
+    #             if len(flagged)<20:# or abs(np.mean(residuals[flagged[0]:flagged[-1]]))<0.45:
+    #                 for no in flagged:
+    #                     flag[no] = 'False'
+    #             else:
+    #                 idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
+    #                 data_err[idx]=10000000000000000000
+    #         flagged = []
 
     ###     masking tellurics      ###
-
     limit_wave =21/2.99792458e5 #needs multiplied by wavelength to give actual limit
     limit_pix = limit_wave/((max(wavelengths)-min(wavelengths))/len(wavelengths))
     
@@ -436,17 +474,18 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
 
     residual_masks = tuple([data_err>=1000000000000000000])
     
-    # plt.figure()
-    # plt.plot(wavelengths, data_spec_in, 'k')
-    # # print(residual_masks)
-    # # print(wavelengths[residual_masks]) 
-    # # print(data_spec_in[residual_masks])
-    # plt.scatter(wavelengths[residual_masks], data_spec_in[residual_masks], color = 'r')
-    # plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/order%s_masking_%s'%(order, run_name))
-    # plt.close()
+    plt.figure('masking plot')
+    plt.plot(wavelengths, data_spec_in, 'k')
+    # print(residual_masks)
+    # print(wavelengths[residual_masks]) 
+    # print(data_spec_in[residual_masks])
+    plt.scatter(wavelengths[residual_masks], data_spec_in[residual_masks], color = 'r')
+    plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/order%s_masking_%s'%(order, run_name))
+    plt.close()
 
     ###################################
     ###      sigma clip masking     ###
+    ###################################
 
     m = np.median(residuals)
     sigma = np.std(residuals)
@@ -473,7 +512,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs):
     #     # print(velocities)
     velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, sn, order, run_name, velocities)
     # plt.plot(velocities1, profile)
-    # plt.show()
+    # plt.close()
 
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
@@ -503,7 +542,7 @@ def task(all_frames, counter):
 
     flux = flux/mdl1
     error = error/mdl1
-    plt.figure()
+    plt.figure('continuum corrected flux')
     plt.plot(wavelengths, flux)
     plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/SPec%s_%s_%s.png'%(run_name, counter, order-np.min(order_range)))
     
@@ -519,25 +558,34 @@ def task(all_frames, counter):
     profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
     profile_f = profile_f-1
 
+    plt.figure('profile (in flux)')
+    plt.plot(velocities, profile_f)
+    plt.savefig('profile%s_%s.png'%(counter, order))
+
     all_frames[counter, order]=[profile_f, profile_errors_f]
     
-    return all_frames
+    return all_frames.copy()
 
 for month in months:
     directory = '%s'%(directory_p)
     print(directory)
-    filelist=findfiles(directory, '1d')
+    filelist=findfiles(directory, file_type)
     print(filelist)
     phasess=[]
     poptss=[]
     # temp_file = fits.open(filelist[0])
     # offset = (-1)*temp_file[0].header['ESO DRS BERV']
     global velocities
-    deltav = 1.5
-    velocities=np.arange(-80, 25, deltav)
+    if deltav == 'calc':
+        frame_wavelengths, frames, frame_errors, sns= read_in_frames(int(np.median(order_range)), [filelist[0]])
+        wavelengths = frame_wavelengths[0]
+        resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+        deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
+    velocities = np.arange(min_vel, max_vel, deltav)
     new_velocities=velocities.copy()
     global all_frames
     all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
+    global order
     for order in order_range:
 
         ## reads in data
@@ -570,12 +618,16 @@ for month in months:
         
         idx2 = tuple([flux_error_order1<100000000000])
 
-        plt.figure()
-        plt.scatter(wavelengths[idx2], fluxes1[idx2], flux_error_order1[idx2])
-        plt.show()
-
+        # plt.figure()
+        # plt.scatter(wavelengths[idx2], fluxes1[idx2])
+        # plt.close()
+        
         #if len(fluxes1[idx2])/len(fluxes1)<0.25:continue
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name, velocities)
+
+        plt.figure('profile (in od)')
+        plt.plot(velocities, profile)
+        plt.close()
 
         ## Setting the number of point in the spectrum (j_max) and vgrid (k_max)
         j_max = int(len(fluxes))
@@ -608,7 +660,7 @@ for month in months:
                 print(model_inputs[i], pos2)
             else:
                 print(model_inputs[i])
-                sigma = abs(round_sig(model_inputs[i], 1)/10)
+                sigma = abs(round_sig(model_inputs[i], 1)/100)
                 print(sigma)
                 # print(sigma_cont[i-k_max])
                 pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
@@ -618,11 +670,13 @@ for month in months:
         pos = np.array(pos)
         pos = np.transpose(pos)
 
+        print(pos)
+
         steps_no = 10000
     
-        with mp.Pool(25) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool = pool)
-            sampler.run_mcmc(pos, steps_no, progress=True)
+        # with mp.Pool(25) as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))#, pool = pool)
+        sampler.run_mcmc(pos, steps_no, progress=True)
         
         # cinp = input('Checking...')
 
@@ -655,7 +709,12 @@ for month in months:
         profile = np.array(profile)
         profile_err = np.array(profile_err)
 
+        fig_opt = 'y'
         if fig_opt == 'y':
+
+            a = 2/(np.max(x)-np.min(x))
+            b = 1 - a*np.max(x)
+
             # plots the mcmc profile - will have extra panel if it's for data
             fig, ax0 = plt.subplots()
             ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
@@ -744,7 +803,7 @@ for month in months:
             axes[-1].set_xlabel("step number")
 
             # plots random models from flat_samples - lets you see if it's converging
-            plt.figure()
+            plt.figure('mcmc models')
             inds = np.random.randint(len(flat_samples), size=100)
             for ind in inds:
                 sample = flat_samples[ind]
@@ -766,12 +825,13 @@ for month in months:
         profile_errors_f = np.sqrt(profile_err**2/profile_f**2)
         profile_f = profile_f-1
        
-
-        task_part = partial(task, all_frames)
-        with mp.Pool(25) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-        results = np.array(results[0])
-        for i in range(len(frames)):
-            all_frames[i]=results[i][i]
+        # task_part = partial(task, all_frames)
+        # with mp.Pool(25) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+        # results = np.array(results[0])
+        # for i in range(len(frames)):
+        #     all_frames[i]=results[i][i]
+        for counter in range(len(frames)):
+            all_frames = task(all_frames, counter)
             
     plt.close('all')
 
@@ -803,6 +863,7 @@ for month in months:
                 hdr['result'] = result
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
+            hdr['BJD']=fits_file[0].header['ESO DRS BJD']
 
             profile = all_frames[frame_no, order, 0]
             profile_err = all_frames[frame_no, order, 1]

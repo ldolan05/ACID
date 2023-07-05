@@ -4,15 +4,30 @@ from scipy import linalg
 from astropy.io import  fits
 import glob
 import pandas as pd
+import matplotlib.pyplot as plt
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
+    
+    idx = np.isnan(flux_obs)
+    flux_obs[idx] = 0.00001
+    rms[idx]=1000000000000
 
+    idx = np.isinf(flux_obs)
+    flux_obs[idx] = 0.00001
+    rms[idx]=1000000000000
+
+    idx =(flux_obs<=0.)
+    flux_obs[idx] = 0.00001
+    rms[idx]=1000000000000
+
+    flux_obs_f = flux_obs.copy()
     rms = rms/flux_obs
     flux_obs = np.log(flux_obs)
+    # flux_obs = flux_obs-1
     deltav = velocities[1]-velocities[0]
     
     df = pd.read_csv(linelist, header=None, skiprows=lambda x: x % 4 != 3)
-    df = df.iloc[:-(df.apply(lambda x: len(x.dropna()), axis=1) <= 10).idxmax()]
+    df = df.iloc[:]
     linelist_expected = df.values.astype(str)
 
     wavelengths_expected1 =np.array(linelist_expected[:,1], dtype = 'float')
@@ -23,7 +38,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
 
-    wavelengths_expected=[]
+    wavelengths_expected=[] 
     depths_expected=[]
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
@@ -34,7 +49,14 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
         else:
             pass
 
+
     depths_expected1 = np.array(depths_expected)
+
+    plt.figure()
+    plt.plot(wavelengths, flux_obs_f)
+    plt.vlines(wavelengths_expected, 1-depths_expected1, 1)
+    plt.show()
+
     depths_expected = -np.log(1-depths_expected1)
     blankwaves=wavelengths
     R_matrix=flux_obs
@@ -60,7 +82,12 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                 pass
             
     no_line = list(dict.fromkeys(no_line))
-    
+
+    plt.figure()
+    plt.plot(wavelengths, flux_obs)
+    plt.vlines(wavelengths_expected, -depths_expected, 0)
+    plt.show()
+
     id_matrix=np.identity(len(flux_obs))
     S_matrix=(1/rms)*id_matrix
 
@@ -212,8 +239,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             wavelengths = wave
             fluxes = spec
 
-    elif file_type == 'e2ds':
+    elif file_type == 'e2ds_A':
         hdu=fits.open('%s'%file)
+        print(file)
         spec=hdu[0].data
         header=hdu[0].header
         sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
@@ -232,9 +260,9 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         wave = wave_nonad*(1.+brv/2.99792458e5)
         wave = np.array(wave, dtype = 'float64')
     
-        blaze_file = glob.glob('%sblaze_folder/**blaze_A*.fits'%(directory))
-        blaze_file = blaze_file[0]
-        blaze =fits.open('%s'%blaze_file)
+        blaze_file = './blaze_folder/%s'%(header['ESO DRS BLAZE FILE'])
+        try:blaze =fits.open('%s'%blaze_file)
+        except:blaze = fits.open('./blaze_folder/HARPS.2003-12-11T22:25:05.819_blaze_A.fits')
         blaze_func = blaze[0].data
         spec = spec/blaze_func
         flux_error = flux_error/blaze_func
