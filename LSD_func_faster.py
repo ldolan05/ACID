@@ -1119,8 +1119,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
     tapas_trans = tapas[1].data["transmittance"]
     tapas.close()
-    brv=header['ESO DRS BERV']
-    tapas_wvl = tapas_wvl[::-1]/(1.+brv/2.99792458e5)
+    tapas_wvl = tapas_wvl[::-1]
     tapas_trans = tapas_trans[::-1]
 
     background = upper_envelope(tapas_wvl, tapas_trans)

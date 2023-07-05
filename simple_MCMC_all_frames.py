@@ -909,7 +909,7 @@ def task(all_frames, counter):
 months1 = ['August2007']
 months = ['July2007', 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(10,70)
+order_range = np.arange(33,35)
 # order_range = np.arange(28,29)
 
 P=2.21857567 #Cegla et al, 2006 - days
@@ -1534,6 +1534,21 @@ for month in months:
         plt.ylabel("flux")
         plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
         plt.close()
+
+        ### section on errors ###
+        plt.figure('profile errors from mcmc')
+        plt.plot(velocities, profile_err)
+        plt.xlabel('Velocities (km/s)')
+        plt.ylabel('MCMC profile error')
+        plt.savefig('mcmc_profile_errors.png')
+
+        plt.figure('continuum errors')
+        plt.plot(x, (mdl1_poserr-mdl1_neg)/2)
+        plt.xlabel('Wavelengths')
+        plt.ylabel('Error of continuum fit')
+        plt.savefig('mcmc_cont_errors.png')
+        plt.show()
+
         #plt.show()
 
         ## last section is a bit of a mess but plots the two forward models
