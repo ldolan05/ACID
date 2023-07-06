@@ -55,7 +55,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     plt.figure()
     plt.plot(wavelengths, flux_obs_f)
     plt.vlines(wavelengths_expected, 1-depths_expected1, 1)
-    plt.show()
+    plt.close()
 
     depths_expected = -np.log(1-depths_expected1)
     blankwaves=wavelengths
@@ -86,7 +86,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     plt.figure()
     plt.plot(wavelengths, flux_obs)
     plt.vlines(wavelengths_expected, -depths_expected, 0)
-    plt.show()
+    plt.close()
 
     id_matrix=np.identity(len(flux_obs))
     S_matrix=(1/rms)*id_matrix
