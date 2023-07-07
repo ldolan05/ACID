@@ -458,10 +458,10 @@ save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = ['August2007',
+months = [#'August2007',
           'July2007',
-          'July2006',
-          'Sep2006'
+          #'July2006',
+          #'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -550,7 +550,6 @@ for month in months:
         # plt.ylabel('Normalised Flux')
         # plt.title('ACID Profiles (All Orders)')
         for order1 in range(1,71):
-
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
             velocities=np.arange(-25, 25, 0.82)
@@ -659,21 +658,16 @@ for month in months:
         all_order_rvs.append(order_rvs)
         all_order_rvs_ccf.append(order_rvs_ccf)
 
-        if frame == framelist[0]:
-            plt.figure('LSD')
-            plt.imshow(np.array(order_profiles), extent = [velocities[0], velocities[-1], 0, len(order_profiles)-1])
-            plt.vlines(-2.276, 0, len(order_profiles)-1)
-            plt.colorbar()
+        plt.figure()
+        plt.imshow(np.array(order_profiles), extent = [velocities[0], velocities[-1], 0, len(order_profiles)-1])
+        plt.vlines(-2.276, 0, len(order_profiles)-1)
+        plt.colorbar()
+        plt.savefig('./%s_order_profiles_map.png'%counter)
 
-            plt.figure()
-            for prof in order_profiles:
-                plt.plot(velocities, prof)
-
-            plt.figure('CCFs')
-            plt.imshow(np.array(ccf_profiles), extent = [velocities_ccf[0], velocities_ccf[-1], 0, len(order_profiles)-1])
-            plt.vlines(-2.276, 0, len(order_profiles)-1)
-            plt.colorbar()
-            plt.show()
+        plt.figure()
+        for profile in order_profiles:
+            plt.plot(velocities, profile)
+        plt.savefig('./%s_order_profiles.png'%counter)
 
         print(phase, result)
         result, phi, phase = classify(phase) #phi is adjusted, phase is original

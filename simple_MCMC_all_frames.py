@@ -909,7 +909,7 @@ def task(all_frames, counter):
 months1 = ['August2007']
 months = ['July2007', 'August2007', 'July2006', 'Sep2006']
 #filelist = filelist[0]
-order_range = np.arange(33,35)
+order_range = np.arange(48,50)
 # order_range = np.arange(28,29)
 
 P=2.21857567 #Cegla et al, 2006 - days
@@ -1448,6 +1448,7 @@ for month in months:
         # plots random models from flat_samples - lets you see if it's converging
         plt.figure()
         inds = np.random.randint(len(flat_samples), size=100)
+        conts = []
         for ind in inds:
             sample = flat_samples[ind]
             mdl = model_func(sample, x)
@@ -1457,6 +1458,7 @@ for month in months:
             for i in np.arange(k_max, len(sample)-1):
                 mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
             mdl1 = mdl1*sample[-1]
+            conts.append(mdl1)
             plt.plot(x, mdl1, "C1", alpha=0.1)
             plt.plot(x, mdl, "g", alpha=0.1)
         plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
@@ -1540,13 +1542,13 @@ for month in months:
         plt.plot(velocities, profile_err)
         plt.xlabel('Velocities (km/s)')
         plt.ylabel('MCMC profile error')
-        plt.savefig('mcmc_profile_errors.png')
+        plt.savefig('mcmc_profile_errors_order%s.png'%order)
 
         plt.figure('continuum errors')
-        plt.plot(x, (mdl1_poserr-mdl1_neg)/2)
+        plt.plot(x, np.std(np.array(conts), axis = 0))
         plt.xlabel('Wavelengths')
         plt.ylabel('Error of continuum fit')
-        plt.savefig('mcmc_cont_errors.png')
+        plt.savefig('mcmc_cont_errors_order%s.png'%order)
         plt.show()
 
         #plt.show()
