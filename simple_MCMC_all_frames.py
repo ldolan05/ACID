@@ -768,10 +768,25 @@ def task(all_frames, counter):
     # plt.plot(wavelengths, flux)
     # plt.plot(wavelengths, mdl1)
 
+    conts = []
+    for ind in inds:
+        sample = flat_samples[ind]
+        mdl = model_func(sample, wavelengths)
+        #mdl = model_func(sample, x)
+        #mdl = mdl[idx]
+        mdl1 = 0
+        for i in np.arange(k_max, len(sample)-1):
+            mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
+        mdl1 = mdl1*sample[-1]
+        conts.append(mdl1)
+    
+    continuum_error = np.std(np.array(conts), axis = 0)
+
     # plt.show()
 
+    error = (error/flux) + (continuum_error/mdl1)
     flux = flux/mdl1
-    error = error/mdl1
+    error  = flux*error
 
     remove = tuple([flux<0])
     flux[remove]=1.

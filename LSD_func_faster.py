@@ -58,7 +58,8 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     depths_expected=[]
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
-        line_min = 1/(3*sn)
+        # line_min = 1/(3*sn)
+        line_min = 0.1
         # line_min = 0.25
         #line_min = np.log(1+line_min)
         #print(line_)

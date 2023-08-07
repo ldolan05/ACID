@@ -184,7 +184,6 @@ def remove_reflex(velocities, spectrum, errors, phi, K, e, omega, v0):
     
     return velocity_grid, adjusted_spectrum, adjusted_errors
 
-
 def remove_berv(velocities, spectrum, berv):
     adjusted_velocities = velocities+berv
     f2 = interp1d(adjusted_velocities, spectrum, kind='linear', bounds_error=False, fill_value='extrapolate')
@@ -222,9 +221,9 @@ def combineprofiles(spectra, errors, ccf, master, velocities):
     if master == 'no':
 
         weights_csv = np.genfromtxt('/home/lsd/Documents/Starbase/novaprime/Documents/order_weights.csv', delimiter=',')
-        orders = np.array(weights_csv[7:,0], dtype = int)
+        orders = np.array(weights_csv[40:len(spectra)+40,0], dtype = int)-40
         # print(orders)
-        weights = np.array(weights_csv[7:,1])
+        weights = np.array(weights_csv[40:len(spectra)+40:,1])
         # print(weights)
 
         '''
@@ -458,10 +457,10 @@ save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 
 month = 'August2007' #August, July, Sep
 
-months = ['August2007',
+months = [#'August2007',
           'July2007',
-          'July2006',
-          'Sep2006'
+          #'July2006',
+          #'Sep2006'
           ]
 #linelist = '/Users/lucydolan/Documents/Least_Squares_Deconvolution/LSD/Archive_stuff/archive/fulllinelist018.txt'
 # s1d or e2ds
@@ -549,7 +548,7 @@ for month in months:
         # plt.xlabel('Velocity (km/s)')
         # plt.ylabel('Normalised Flux')
         # plt.title('ACID Profiles (All Orders)')
-        for order1 in range(1,71):
+        for order1 in range(40,71):
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
@@ -797,7 +796,7 @@ for month in months:
     ccf_phases = ccf_phases[idc]
     all_ccf_profiles = np.array(all_ccf_profiles)
     all_ccf_profiles = all_ccf_profiles[idc]
-    header_rvs = header_rvs[idc]
+    # header_rvs = header_rvs[idc]
     # berv = berv[idc]
     # berv = list(berv)
 
