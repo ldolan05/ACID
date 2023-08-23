@@ -9,41 +9,12 @@ from scipy.interpolate import interp1d,LSQUnivariateSpline
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
 
-
     #idx = tuple([flux_obs>0])
     # in optical depth space
     rms = rms/flux_obs
     flux_obs = np.log(flux_obs)
-    # flux_obs = flux_obs -1
-    #wavelengths = wavelengths[idx]
-
-    # width = 20
-    # centre = -2.1
-
-    # #vmin=-vmax
-    
-    # resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    # deltav = resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
-    # print(deltav)
-
-    # resol1 = deltav*(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
-    # shift = int(centre/deltav)
-    # centre1 = shift*deltav
-
-    # vmin = int(centre1-(width/2))
-    # vmax = int(centre1+(width/2))
-    
-    # pix_size = 0.82
-    # vmin = -15
-    # vmax = 10
-    # print(vmin, vmax)
-
-    # velocities=np.linspace(vmin,vmax,no_pix)
-    # velocities=np.arange(vmin,vmax,pix_size)
-    # print(velocities[1]-velocities[0])
+   
     deltav = velocities[1]-velocities[0]
-    #print(vgrid[1]-vgrid[0])
-    #print('Matrix S has been set up')
 
     #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
     linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
@@ -56,11 +27,11 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
 
     wavelengths_expected=[]
     depths_expected=[]
-    no_line =[]
+    no_line =0
     for some in range(0, len(wavelengths_expected1)):
-        # line_min = 1/(3*sn)
-        line_min = 0.1
-        # line_min = 0.25
+        line_min = 1/(3*sn)
+        # line_min = 0.1
+        # line_min = 0.94
         #line_min = np.log(1+line_min)
         #print(line_)
         #line_min = np.log(1+line_min)
@@ -69,6 +40,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
             wavelengths_expected.append(wavelengths_expected1[some])
             #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))
             depths_expected.append(depths_expected1[some])
+            no_line+=1
         else:
             pass
 
@@ -102,36 +74,14 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     #limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
     # print(limit)
 
+
     for j in range(0, len(blankwaves)):
         for i in (range(0,len(wavelengths_expected))):
             vdiff = ((blankwaves[j] - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
-            # limit_up = (np.max(velocities)+deltav)*(wavelengths_expected[i]/2.99792458e5)
-            # print(limit_up)
-            # limit_down = (np.min(velocities)-deltav)*(wavelengths_expected[i]/2.99792458e5)
-            # print(limit_down)
             if vdiff<=(np.max(velocities)+deltav) and vdiff>=(np.min(velocities)-deltav):
                 diff=blankwaves[j]-wavelengths_expected[i]
-
-                # id = np.logical_and(blankwaves<wavelengths_expected[i]+limit_up, blankwaves>wavelengths_expected[i]+limit_down)
-                # print(id)
-                # w = ((blankwaves - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
-                # p = flux_obs
-
-                # print(blankwaves[id], flux_obs[id])
-            
-                # id2 = np.logical_and(blankwaves<wavelengths_expected[i]+limit_up+1, blankwaves>wavelengths_expected[i]+limit_down-1)
-                if rms[j]<1:no_line.append(i)
                 vel=2.99792458e5*(diff/wavelengths_expected[i])
-                # plt.figure()
-                # plt.errorbar(blankwaves[id2], flux_obs[id2], rms[id2], color = 'k')
-                # plt.scatter(blankwaves[j], flux_obs[j], label = 'wavelength pixel')
-                # plt.scatter(wavelengths_expected[i], flux_obs[j], label = 'linelist wavelegngth')
-                # plt.plot(blankwaves[id], flux_obs[id], label = 'included area for line')
                 for k in range(0, len(velocities)):
-                    # if blankwaves[j]==blankwaves[0]:
-                    #     dv = ((blankwaves[j+1] - blankwaves[j])*2.99792458e5)/blankwaves[j]
-                    # else:
-                    #     dv = ((blankwaves[j] - blankwaves[j-1])*2.99792458e5)/blankwaves[j-1]
                     x=(velocities[k]-vel)/deltav
                     if -1.<x and x<0.:
                         delta_x=(1+x)
@@ -139,20 +89,9 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
                     elif 0.<=x and x<1.:
                         delta_x=(1-x)
                         alpha[j, k] = alpha[j, k]+depths_expected[i]*delta_x
-
-                # print(alpha[j, :].shape)
-                # print(w)
-                # idx = tuple([alpha[j, :]!=0.])
-                # idx2 = tuple([alpha[j, :]==0.])
-                # w2 = 2.99792458e5*wavelengths_expected[i]/(2.99792458e5-velocities)
-                # plt.scatter(w2[idx2], np.zeros(velocities[idx2].shape), label = 'velocitiy grid and delta function = 0')
-                # plt.scatter(w2[idx], np.zeros(velocities[idx].shape), label = 'velocitiy grid and delta function !=0 ')
-                # plt.legend()
-                # plt.show()
             else:
                 pass
             
-    no_line = list(dict.fromkeys(no_line))
     
     id_matrix=np.identity(len(flux_obs))
     S_matrix=(1/rms)*id_matrix
@@ -174,12 +113,11 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     X = linalg.solve_triangular(U, Z, lower=False)
     LHS_final = np.matmul(X,np.transpose(P))
 
-
     profile=np.dot(LHS_final, RHS_final)
     profile_errors_squared=np.diagonal(LHS_final)
     profile_errors=np.sqrt(profile_errors_squared)
 
-    return velocities, profile, profile_errors, alpha, wavelengths_expected, depths_expected1, len(no_line)
+    return velocities, profile, profile_errors, alpha, wavelengths_expected, depths_expected1, no_line
 
 def get_wave(data,header):
 
@@ -627,7 +565,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         plt.ylabel('flux')
         plt.show()
         '''
-        blaze_file = glob.glob('%sblaze_folder/**blaze_A*.fits'%(directory))
+        blaze_file = glob.glob('/Users/lucydolan/Starbase/HD189733/July2007/blaze_folder/**blaze_A*.fits')
         # print('%sblaze_folder/**blaze_A*.fits'%(directory))
         # print(blaze_file)
         blaze_file = blaze_file[0]
@@ -977,28 +915,28 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # plt.show()
 
         # find overlapping regions 
-        last_wavelengths = wave[order-1]
-        next_wavelengths = wave[order+1]
-        last_spec = spec[order-1]
-        next_spec = spec[order+1]
-        last_error = flux_error[order-1]
-        next_error = flux_error[order+1]
-        min_overlap = np.min(wavelengths)
-        max_overlap = np.max(wavelengths)
+        # last_wavelengths = wave[order-1]
+        # next_wavelengths = wave[order+1]
+        # last_spec = spec[order-1]
+        # next_spec = spec[order+1]
+        # last_error = flux_error[order-1]
+        # next_error = flux_error[order+1]
+        # min_overlap = np.min(wavelengths)
+        # max_overlap = np.max(wavelengths)
 
         
         # idx_ = tuple([wavelengths>min_overlap])
-        last_idx = np.logical_and(last_wavelengths>min_overlap, last_wavelengths<max_overlap)
-        next_idx = np.logical_and(next_wavelengths>min_overlap, next_wavelengths<max_overlap)
+        # last_idx = np.logical_and(last_wavelengths>min_overlap, last_wavelengths<max_overlap)
+        # next_idx = np.logical_and(next_wavelengths>min_overlap, next_wavelengths<max_overlap)
         
-        overlap = np.array(([list(last_wavelengths[last_idx]), list(last_spec[last_idx]), list(last_error[last_idx])], [list(next_wavelengths[next_idx]), list(next_spec[next_idx]), list(next_error[next_idx])]))
+        # overlap = np.array(([list(last_wavelengths[last_idx]), list(last_spec[last_idx]), list(last_error[last_idx])], [list(next_wavelengths[next_idx]), list(next_spec[next_idx]), list(next_error[next_idx])]))
         
-        # overlap[0, 0] = list(last_wavelengths[last_idx])
-        # overlap[0, 1] = list(last_spec[last_idx])
-        # overlap[1, 0] = list(next_wavelengths[next_idx])
-        # overlap[1, 1] = list(next_spec[next_idx])
+        # # overlap[0, 0] = list(last_wavelengths[last_idx])
+        # # overlap[0, 1] = list(last_spec[last_idx])
+        # # overlap[1, 0] = list(next_wavelengths[next_idx])
+        # # overlap[1, 1] = list(next_spec[next_idx])
 
-        print(overlap)
+        # print(overlap)
         # plt.figure()
         # plt.plot(wavelengths, fluxes)
         # plt.plot(wavelengths[idx_overlap], fluxes[idx_overlap])
@@ -1116,7 +1054,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     plt.show()
     '''
     ## telluric correction
-    tapas = fits.open('/home/lsd/Documents/Starbase/novaprime/Documents/tapas_000001.fits')
+    tapas = fits.open('/Users/lucydolan/Starbase/tapas_000001.fits')
     tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
     tapas_trans = tapas[1].data["transmittance"]
     tapas.close()
@@ -1136,6 +1074,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     # plt.plot(tapas_wvl, tapas_trans)
     # plt.show()
     print('overlap accounted for')
+    overlap = []
 
     return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), f(wavelengths), overlap ## for just LSD
 ############################################################################################################
