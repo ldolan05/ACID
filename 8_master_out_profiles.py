@@ -15,11 +15,9 @@ from scipy.interpolate import interp1d
 from statistics import stdev
 import LSD_func_faster as LSD
 from scipy.optimize import curve_fit
-from scipy.special import erf
-from matplotlib.pyplot import cm
 
 # run_name = input('Run name (all_frames or jvc):' )
-run_name = 'NEWSIG'
+run_name = 'newdepths'
 
 def gauss(x, rv, sd, height, cont):
     y = cont+(height*np.exp(-(x-rv)**2/(2*sd**2)))
@@ -60,21 +58,26 @@ def combineprofiles(spectra, errors, master, velocities):
 
         weights_csv = np.genfromtxt('%sorder_weights.csv'%file_path, delimiter=',')
         orders = np.array(weights_csv[:len(spectra),0], dtype = int)
-        weights = np.array(weights_csv[:len(spectra):,1])
+        weights_temp = np.array(weights_csv[:len(spectra):,1])
         spectra_to_combine = []
         errorss = []
+        weights = []
         for i in orders:
-            spectra_to_combine.append(list(spectra[i-1]))
-            errorss.append(list(errors[i-1]))
+            if np.sum(spectra[i-1])!=0:
+                spectra_to_combine.append(list(spectra[i-1]))
+                errorss.append(list(errors[i-1]))
+                weights.append(weights_temp[i-1])
+        weights = np.array(weights/sum(weights))
 
     else:
         spectra_to_combine = []
         weights=[]
         for n in range(0, len(spectra)):
-            spectra_to_combine.append(list(spectra[n]))
-            temp_err = np.array(errors[n, :])
-            weight = (1/temp_err**2)
-            weights.append(np.mean(weight))
+            if np.sum(spectra[n])!=0:
+                spectra_to_combine.append(list(spectra[n]))
+                temp_err = np.array(errors[n, :])
+                weight = (1/temp_err**2)
+                weights.append(np.mean(weight))
         weights = np.array(weights/sum(weights))
 
     spectra_to_combine = np.array(spectra_to_combine)
@@ -113,8 +116,37 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
         fit = poly(wavelengths)
         flux_obs = fluxes/fit
         new_errors = errors/fit
-        
+
         return flux_obs, new_errors
+
+
+def classify(ccf, P, t, T):
+    #working out if in- or out- of transit
+    #print(t, b)
+    deltaphi = t/(2*P)
+    #print(deltaphi)
+    phi = (((ccf[0].header['ESO DRS BJD'])-T)/P)%1
+    #z = np.sqrt((a_rstar*(np.sin(2*math.pi*phi))**2)+b**2*(np.cos(2*math.pi*phi))**2)
+    #part1=a_rstar*np.sin(2*math.pi*phi)**2
+    #part2=b**2*np.cos(2*math.pi*phi)**2
+    #z=np.sqrt(part1+part2)
+    #print(z, phi)
+    '''
+    if z < 1+rp_rstar:
+        result = 'in'
+    else:result = 'out'
+    '''
+    phase = phi
+    if phi < deltaphi:
+        result ='in'
+    elif phi > 1-deltaphi:
+        result = 'in'
+    else:result = 'out'
+    #print(result)
+    if phi>0.5:
+        phi = phi-1
+
+    return result, phi, phase
 ####################################################################################################################################################################
 
 # Parameters for HD189733b
@@ -141,7 +173,7 @@ RpRs = 0.15667
 # path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 # save_path = '/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/'
 
-path = '/Users/lucydolan/Starbase/NEWSIG/'
+path = '/Users/lucydolan/Starbase/newdepths/'
 file_path = '/Users/lucydolan/Starbase/'
 
 months = ['August2007',
@@ -151,10 +183,10 @@ months = ['August2007',
           ]
 
 for month in months:
-    filelist = findfiles( '%s%s'%(path,month))
-    velocities=np.arange(-25, 25, 0.82)
+    filelist = findfiles('%s%s'%(path,month))
+    velocities=np.arange(-21, 18, 0.82)
 
-    frame_profiles = np.zeros((len(filelist), 3, len(np.arange(-20,20,0.82)),))
+    frame_profiles = np.zeros((len(filelist), 3, len(np.arange(-20,20,0.82))))
     for frame_no in range(len(filelist)):
         file = fits.open(filelist[frame_no])
         order_errors = []
@@ -164,8 +196,14 @@ for month in months:
 
             profile_errors = file[order1].data[1]
             profile = file[order1].data[0]
+
+            if order1>38 and order1<43:
+                print('ignoring order %s'%order1)
+                profile_errors = np.zeros(profile_errors.shape)
+                profile = np.zeros(profile.shape)
             
-            if order1==0:phase = file[order1].header['PHASE']
+            if order1==0:
+                phase = file[order1].header['PHASE']
             elif file[order1].header['PHASE']!=file[order1-1].header['PHASE']:
                 raise ValueError('Phase does not match for the same frame!')
 
@@ -197,6 +235,11 @@ for month in months:
     for p in range(len(frame_profiles)):
         hdu.append(fits.PrimaryHDU(data=frame_profiles[p, 1:]))
         phase = frame_profiles[p, 0, 0]
+        phi = phase
+        z = np.sqrt( ( (a_Rs)*np.sin(2 * np.pi * phi) )**2 + ( b*np.cos(2. * np.pi * phi))**2)
+        if z>1+RpRs:
+            result = 'out'
+        else: result = 'in'
         hdr=fits.Header()
         hdr['CRVAL1']=np.min(final_velocities)
         hdr['CDELT1']=final_velocities[1]-final_velocities[0]
@@ -205,6 +248,7 @@ for month in months:
         hdr['K']=K
         hdr['V0']=v0
         hdr['PHASE']=phase
+        hdr['RESULT']=result
         hdu[p].header=hdr
     
     hdu.append(fits.PrimaryHDU(data=master_out))
@@ -216,9 +260,10 @@ for month in months:
     hdr['K']=K
     hdr['V0']=v0
     hdr['PHASE']='master out'
+    hdr['RESULT']='out'
     hdu[p+1].header=hdr
 
-    # hdu.writeto('%s%s_master_out_LSD_profile.fits'%(path, month), output_verify='fix', overwrite = 'True')
+    hdu.writeto('%s%s_master_out_LSD_profile.fits'%(path, month), output_verify='fix', overwrite = 'True')
 
     rvs = []
     for y in range(len(frame_profiles[:])):
@@ -230,5 +275,8 @@ for month in months:
 
     rvs = np.array(rvs)
     plt.figure('RVs')
-    plt.errorbar(frame_profiles[:, 0, 0], rvs[:, 0]-np.median(rvs[:, 0]), rvs[:, 1], marker ='o', color = 'orange', linestyle='')
-plt.show()
+    phi = frame_profiles[:, 0, 0]
+    z = np.sqrt( ( (a_Rs)*np.sin(2 * np.pi * phi) )**2 + ( b*np.cos(2. * np.pi * phi))**2)
+    out_idx = (z>1+RpRs)
+    plt.errorbar(frame_profiles[:, 0, 0], rvs[:, 0], rvs[:, 1], marker ='o', color = 'orange', linestyle='')
+    plt.show()

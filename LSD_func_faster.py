@@ -30,12 +30,6 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     no_line =0
     for some in range(0, len(wavelengths_expected1)):
         line_min = 1/(3*sn)
-        # line_min = 0.1
-        # line_min = 0.94
-        #line_min = np.log(1+line_min)
-        #print(line_)
-        #line_min = np.log(1+line_min)
-        #print(line_min)
         if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max and depths_expected1[some]>=line_min:
             wavelengths_expected.append(wavelengths_expected1[some])
             #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))
@@ -44,36 +38,13 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
         else:
             pass
 
-    # # ### TEST SECTION ####
-    # count_range = np.array([len(wavelengths_expected)]*10)*np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-    # count_range = np.array(count_range, dtype = int)
-
-    # wavelengths_expected1 = wavelengths_expected
-    # depths_expected1 = depths_expected
-    # depths_expected = []
-    # wavelengths_expected = []
-    # for line in count_range:
-    #     wavelengths_expected.append(wavelengths_expected1[line])
-    #     depths_expected.append(depths_expected1[line])
-
-    ######## END OF TEST SECTION ########
-
-    ## depths from linelist in optical depth space
     depths_expected1 = np.array(depths_expected)
     depths_expected = -np.log(1-depths_expected1)
-    ## conversion for depths from SME
-    #depths_expected = -np.log(1-depths_expected1)
-
-    # print(len(depths_expected))
-
+    
     blankwaves=wavelengths
     R_matrix=flux_obs
 
     alpha=np.zeros((len(blankwaves), len(velocities)))
-
-    #limit=max(abs(velocities))*max(wavelengths_expected)/2.99792458e5
-    # print(limit)
-
 
     for j in range(0, len(blankwaves)):
         for i in (range(0,len(wavelengths_expected))):
@@ -92,7 +63,6 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
             else:
                 pass
             
-    
     id_matrix=np.identity(len(flux_obs))
     S_matrix=(1/rms)*id_matrix
 
@@ -187,7 +157,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     if file_type == 's1d':
         #### Finding min and max wavelength from e2ds for the specified order ######
         file_e2ds = file.replace('s1d', 'e2ds')
-        print(file_e2ds)
+        # print(file_e2ds)
         hdu=fits.open('%s'%file_e2ds)
         sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
         spec=hdu[0].data
@@ -195,14 +165,12 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         brv=header['ESO DRS BERV']
         # print('hi')
         spec_check = spec[spec<=0]
-        if len(spec_check)>0:
-            print('WARNING NEGATIVE/ZERO FLUX - corrected')
+        # if len(spec_check)>0:
+            # print('WARNING NEGATIVE/ZERO FLUX - corrected')
 
+        where_are_zeros = (spec<=0)
+        spec[where_are_zeros] = 1000000000000
         flux_error = np.sqrt(spec)
-        where_are_NaNs = np.isnan(flux_error)
-        flux_error[where_are_NaNs] = 1000000000000
-        where_are_zeros = np.where(spec == 0)[0]
-        flux_error[where_are_zeros] = 1000000000000
 
         wave=get_wave(spec, header)*(1.+brv/2.99792458e5)
         wavelengths_order = wave[order]
@@ -233,7 +201,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # plt.plot(wavelengths_order, spec[order], label = 'e2ds')
 
         #### Now reading in s1d file ########
-        print(file)
+        # print(file)
         hdu=fits.open('%s'%file)
         spec=hdu[0].data
         header=hdu[0].header
@@ -252,7 +220,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         
         wave=hdu[0].header['CRVAL1']+(np.arange(spec.shape[0]))*hdu[0].header['CDELT1']
 
-        print(wave)
+        # print(wave)
 
         if spec_type == 'order':
             wavelengths=[]
@@ -287,8 +255,8 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             # plt.show()
 
             spec_check = fluxes[fluxes<=0]
-            if len(spec_check)>0:
-                print('WARNING NEGATIVE/ZERO FLUX - corrected')
+            # if len(spec_check)>0:
+            #     print('WARNING NEGATIVE/ZERO FLUX - corrected')
 
             flux_error = np.sqrt(fluxes)
             where_are_NaNs = np.isnan(flux_error)
@@ -481,7 +449,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
                     plt.figure('telluric masking')
                     plt.title('Spectrum - after telluric masking')
                     plt.plot(wavelengths, fluxes)
-                    print(masked_waves)
+                    # print(masked_waves)
                     for masked_wave in masked_waves:
                         plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
                     #print('new version')
@@ -510,16 +478,17 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         spec=hdu[0].data
         header=hdu[0].header
         sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
-        print('S/N: %s'%sn)
+        # print('S/N: %s'%sn)
         spec_check = spec[spec<=0]
-        if len(spec_check)>0:
-            print('WARNING NEGATIVE/ZERO FLUX - corrected')
+        # if len(spec_check)>0:
+        #     print('WARNING NEGATIVE/ZERO FLUX - corrected')
 
+
+        # where_are_NaNs = np.isnan(flux_error)
+        # flux_error[where_are_NaNs] = 1000000000000
+        where_are_zeros = (spec<=0)
+        spec[where_are_zeros] = 1000000000000
         flux_error = np.sqrt(spec)
-        where_are_NaNs = np.isnan(flux_error)
-        flux_error[where_are_NaNs] = 1000000000000
-        where_are_zeros = np.where(spec == 0)[0]
-        flux_error[where_are_zeros] = 1000000000000
         '''
         flux_error1 = header['HIERARCH ESO DRS SPE EXT SN%s'%order]
 
@@ -554,7 +523,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # rv_drift=header['ESO DRS DRIFT RV'] 
         # print(rv_drift)
         wave_corr = (1.+brv/2.99792458e5)
-        print(brv, (wave_corr-1)*2.99792458e5)
+        # print(brv, (wave_corr-1)*2.99792458e5)
 
         # inp = input('Enter to continue...')
         '''
@@ -565,10 +534,15 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         plt.ylabel('flux')
         plt.show()
         '''
-        blaze_file = glob.glob('/Users/lucydolan/Starbase/HD189733/July2007/blaze_folder/**blaze_A*.fits')
-        # print('%sblaze_folder/**blaze_A*.fits'%(directory))
-        # print(blaze_file)
-        blaze_file = blaze_file[0]
+        try:
+            blaze_file = glob.glob('./**blaze_A*.fits')
+            # print('%sblaze_folder/**blaze_A*.fits'%(directory))
+            # print(blaze_file)
+            blaze_file = blaze_file[0]
+        except: 
+            blaze_file = glob.glob('/Users/lucydolan/Starbase/problem_frames/**blaze_A*.fits')
+            blaze_file = blaze_file[0]
+
         blaze =fits.open('%s'%blaze_file)
         blaze_func = blaze[0].data
         spec = spec/blaze_func
@@ -1005,7 +979,7 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
                 plt.figure('Telluric masking')
                 plt.title('Spectrum - telluric masking')
                 plt.plot(wavelengths, fluxes)
-                print(masked_waves)
+                # print(masked_waves)
                 for masked_wave in masked_waves:
                     plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
                 #print('new version')
@@ -1054,16 +1028,16 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     plt.show()
     '''
     ## telluric correction
-    tapas = fits.open('/Users/lucydolan/Starbase/tapas_000001.fits')
-    tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
-    tapas_trans = tapas[1].data["transmittance"]
-    tapas.close()
-    brv=header['ESO DRS BERV']
-    tapas_wvl = tapas_wvl[::-1]/(1.+brv/2.99792458e5)
-    tapas_trans = tapas_trans[::-1]
+    # tapas = fits.open('/Users/lucydolan/Starbase/tapas_000001.fits')
+    # tapas_wvl = (tapas[1].data["wavelength"]) * 10.0
+    # tapas_trans = tapas[1].data["transmittance"]
+    # tapas.close()
+    # brv=header['ESO DRS BERV']
+    # tapas_wvl = tapas_wvl[::-1]/(1.+brv/2.99792458e5)
+    # tapas_trans = tapas_trans[::-1]
 
-    background = upper_envelope(tapas_wvl, tapas_trans)
-    f = interp1d(tapas_wvl, tapas_trans / background, bounds_error=False)
+    # background = upper_envelope(tapas_wvl, tapas_trans)
+    # f = interp1d(tapas_wvl, tapas_trans / background, bounds_error=False)
 
     # plt.figure('telluric spec and real spec')
     # plt.plot(wavelengths, continuumfit(wavelengths, fluxes, 3))
@@ -1073,8 +1047,8 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
     # plt.figure()
     # plt.plot(tapas_wvl, tapas_trans)
     # plt.show()
-    print('overlap accounted for')
+    # print('overlap accounted for')
     overlap = []
 
-    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), f(wavelengths), overlap ## for just LSD
+    return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), np.zeros(wavelengths.shape), overlap ## for just LSD
 ############################################################################################################
