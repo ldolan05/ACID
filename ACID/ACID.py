@@ -472,7 +472,6 @@ def task(all_frames, counter, order, poly_cos):
 
 def ACID_e2ds(velocities1, filelist, linelist1, poly_ord1=3, order_range=np.arange(10,70), save_path = './', file_type = 'e2ds', pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]):
 
-    # masking inputs = (pix_chunk, dev_perc, n)
     global velocities
     velocities = velocities1.copy()
     global all_frames
@@ -562,58 +561,19 @@ def ACID_e2ds(velocities1, filelist, linelist1, poly_ord1=3, order_range=np.aran
         pos = np.array(pos)
         pos = np.transpose(pos)
 
-
         ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
         print('Running emcee fit for order %s/%s...'%(order-min(order_range)+1, max(order_range)-min(order_range)+1))
         steps_no = 8000
-        # with Pool() as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-        sampler.run_mcmc(pos, steps_no, progress=True)
-        
-        idx = tuple([yerr<=10000000000000000000])
-
-        t1 = time.time()
+        with Pool() as pool:
+            sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+            sampler.run_mcmc(pos, steps_no, progress=True)
 
         ## discarding all vales except the last 1000 steps.
         dis_no = int(np.floor(steps_no-1000))
 
-        # plots the model for 'walks' of the all walkers for the first 5 profile points
-        samples = sampler.get_chain(discard = dis_no)
-        fig, axes = plt.subplots(len(samples[0, 0, :]), figsize=(10, 7), sharex=True)
-        for i in range(len(samples[0, 0, :10])):
-            ax = axes[i]
-            ax.plot(samples[:, :, i], "k", alpha=0.3)
-            ax.set_xlim(0, len(samples))
-        axes[-1].set_xlabel("step number")
-        #plt.show()
-
         global flat_samples
         ## combining all walkers together
         flat_samples = sampler.get_chain(discard=dis_no, flat=True)
-
-        # plots random models from flat_samples - lets you see if it's converging
-        plt.figure()
-        inds = np.random.randint(len(flat_samples), size=100)
-        for ind in inds:
-            sample = flat_samples[ind]
-            mdl = model_func(sample, x)
-            #mdl = model_func(sample, x)
-            #mdl = mdl[idx]
-            mdl1 = 0
-            for i in np.arange(k_max, len(sample)-1):
-                mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
-            mdl1 = mdl1*sample[-1]
-            plt.plot(x, mdl1, "C1", alpha=0.1)
-            plt.plot(x, mdl, "g", alpha=0.1)
-        plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
-        plt.xlabel("wavelengths")
-        plt.ylabel("flux")
-        plt.title('mcmc models and data')
-        #plt.savefig('/home/lsd/Documents/mcmc_and_data.png')
-        # plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/mc_mdl/order%s_mc_mdl_%s'%(order, run_name))
-        # plt.show()
-        plt.close()
-        #plt.show()
 
         ## getting the final profile and continuum values - median of last 1000 steps
         profile = []
@@ -637,151 +597,125 @@ def ACID_e2ds(velocities1, filelist, linelist1, poly_ord1=3, order_range=np.aran
         profile = np.array(profile)
         profile_err = np.array(profile_err)
 
-        prof_flux = np.exp(profile)-1
 
-        # plots the mcmc profile - will have extra panel if it's for data
-        fig, ax0 = plt.subplots()
-        ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
-        zero_line = [0]*len(velocities)
-        ax0.plot(velocities, zero_line)
-        ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
-        ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
-        ax0.set_xlabel('velocities')
-        ax0.set_ylabel('optical depth')
-        secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
-        secax.set_ylabel('flux')
-        ax0.legend()
-        #plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/profiles/order%s_profile_%s'%(order, run_name))
-        plt.close()
-        # plt.show()
+        fig_opt = 'n'
+        if fig_opt =='y':
 
-        # plots mcmc continuum fit on top of data
-        plt.figure('continuum fit from mcmc')
-        plt.plot(x, y, color = 'k', label = 'data')
-        mdl1 =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
-        mdl1 = mdl1*poly_cos[-1]
-        plt.plot(x, mdl1, label = 'mcmc continuum fit')
-        mdl1_poserr =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
-        mdl1_poserr = mdl1_poserr*poly_cos[-1]
-        mdl1_neg =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
-        mdl1_neg = mdl1_neg*poly_cos[-1]
-        plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
+            # plots random models from flat_samples - lets you see if it's converging
+            plt.figure()
+            inds = np.random.randint(len(flat_samples), size=100)
+            for ind in inds:
+                sample = flat_samples[ind]
+                mdl = model_func(sample, x)
+                mdl1 = 0
+                for i in np.arange(k_max, len(sample)-1):
+                    mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
+                mdl1 = mdl1*sample[-1]
+                plt.plot(x, mdl1, "C1", alpha=0.1)
+                plt.plot(x, mdl, "g", alpha=0.1)
+            plt.scatter(x, y, color = 'k', marker = '.', label = 'data')
+            plt.xlabel("wavelengths")
+            plt.ylabel("flux")
+            plt.title('mcmc models and data')
+            plt.savefig('figures/mcmc_and_data.png')
 
-        mdl1_err =abs(mdl1-mdl1_neg)
+            prof_flux = np.exp(profile)-1
 
-        plt.legend()
-        plt.title('continuum from mcmc')
-        plt.xlabel("wavelengths")
-        plt.ylabel("flux")
-        #plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/continuum_fit/order%s_cont_%s'%(order, run_name))
-        plt.close()
-        # plt.show()
+            # plots the mcmc profile - will have extra panel if it's for data
+            fig, ax0 = plt.subplots()
+            ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
+            zero_line = [0]*len(velocities)
+            ax0.plot(velocities, zero_line)
+            ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+            ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
+            ax0.set_xlabel('velocities')
+            ax0.set_ylabel('optical depth')
+            secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
+            secax.set_ylabel('flux')
+            ax0.legend()
+            plt.savefig('figures/order%s_profile_%s'%(order, run_name))
 
-        ## last section is a bit of a mess but plots the two forward models
-
-        mcmc_inputs = np.concatenate((profile, poly_cos))
-        mcmc_mdl = model_func(mcmc_inputs, x)
-        #mcmc_mdl = mcmc_mdl[idx]
-        mcmc_liklihood = log_probability(mcmc_inputs, x, y, yerr)
-
-        print('Likelihood for mcmc: %s'%mcmc_liklihood)
-
-        residuals_2 = (y+1) - (mcmc_mdl+1)
-
-        fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
-        non_masked = tuple([yerr<10])
-        #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
-        #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
-        ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
-        ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
-        ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
-        residual_masks = tuple([yerr>=100000000000000])
-
-        #residual_masks = tuple([yerr>10])
-        ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-        ax[0].legend(loc = 'lower right')
-        #ax[0].set_ylim(0, 1)
-        #plotdepths = -np.array(line_depths)
-        #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
-        ax[1].plot(x, residuals_2, '.')
-        #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
-        z_line = [0]*len(x)
-        ax[1].plot(x, z_line, '--')
-        #plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/forward_models/order%s_forward_%s'%(order, run_name))
-        # plt.show()
-        plt.close()
-        # plt.show()
-
-        fig, ax0 = plt.subplots()
-        ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
-        zero_line = [0]*len(velocities)
-        ax0.plot(velocities, zero_line)
-        ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
-        ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
-        ax0.set_xlabel('velocities')
-        ax0.set_ylabel('optical depth')
-        ax0.legend()
-        #plt.savefig('/home/lsd/Documents/Starbase/novaprime/Documents/LSD_Figures/profiles/order%s_final_profile_%s'%(order, run_name))
-        plt.close()
-        # plt.show()
-
-        profile_f = np.exp(profile)
-        profile_errors_f = profile_err*profile_f
-        profile_f = profile_f-1
-
-        fig, ax0 = plt.subplots()
-        ax0.plot(velocities, profile_f, color = 'r', label = 'LSD')
-        zero_line = [0]*len(velocities)
-        ax0.plot(velocities, zero_line)
-        ax0.plot(velocities, np.exp(model_inputs[:k_max])-1, label = 'initial')
-        ax0.fill_between(velocities, profile_f-profile_errors_f, profile_f+profile_errors_f, alpha = 0.3, color = 'r')
-        ax0.set_xlabel('velocities')
-        ax0.set_ylabel('flux')
-        ax0.legend()
-        # plt.close()
-       
-        print('Profile: %s\nContinuum Coeffs: %s\n'%(profile, poly_cos))
+            # plots mcmc continuum fit on top of data
+            plt.figure('continuum fit from mcmc')
+            plt.plot(x, y, color = 'k', label = 'data')
+            mdl1 =0
+            for i in np.arange(0, len(poly_cos)-1):
+                mdl1 = mdl1+poly_cos[i]*((a*x)+b)**(i)
+            mdl1 = mdl1*poly_cos[-1]
+            plt.plot(x, mdl1, label = 'mcmc continuum fit')
+            mdl1_poserr =0
+            for i in np.arange(0, len(poly_cos)-1):
+                mdl1_poserr = mdl1_poserr+(poly_cos[i]+poly_cos_err[i])*((a*x)+b)**(i)
+            mdl1_poserr = mdl1_poserr*poly_cos[-1]
+            mdl1_neg =0
+            for i in np.arange(0, len(poly_cos)-1):
+                mdl1_neg = mdl1_neg+(poly_cos[i]-poly_cos_err[i])*((a*x)+b)**(i)
+            mdl1_neg = mdl1_neg*poly_cos[-1]
+            plt.fill_between(x, mdl1_neg, mdl1_poserr, alpha = 0.3)
+            mdl1_err =abs(mdl1-mdl1_neg)
+            plt.legend()
+            plt.title('continuum from mcmc')
+            plt.xlabel("wavelengths")
+            plt.ylabel("flux")
+            plt.savefig('figures/order%s_cont_%s'%(order, run_name))
         
-        phases = []
-        #plt.figure()
-        # task_part = partial(task, all_frames)
-        # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-        # results = np.array(results[0])
-        # for i in range(len(frames)):
-        #     all_frames[i]=results[i][i]
-        for counter in range(len(frames)):
-            all_frames = task(all_frames, counter, order, poly_cos)
+            mcmc_inputs = np.concatenate((profile, poly_cos))
+            mcmc_mdl = model_func(mcmc_inputs, x)
+
+            residuals_2 = (y+1) - (mcmc_mdl+1)
+
+            fig, ax = plt.subplots(2,figsize=(16,9), gridspec_kw={'height_ratios': [2, 1]}, num = 'MCMC and true model', sharex = True)
+            non_masked = tuple([yerr<10])
+            #ax[0].plot(x, y+1, color = 'r', alpha = 0.3, label = 'data')
+            #ax[0].plot(x[non_masked], mcmc_mdl[non_masked]+1, color = 'k', alpha = 0.3, label = 'mcmc spec')
+            ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
+            ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
+            ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
+            residual_masks = tuple([yerr>=100000000000000])
+
+            #residual_masks = tuple([yerr>10])
+            ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+            ax[0].legend(loc = 'lower right')
+            #ax[0].set_ylim(0, 1)
+            #plotdepths = -np.array(line_depths)
+            #ax[0].vlines(line_waves, plotdepths, 1, label = 'line list', color = 'c', alpha = 0.5)
+            ax[1].plot(x, residuals_2, '.')
+            #ax[1].scatter(x[residual_masks], residuals_2[residual_masks], label = 'masked', color = 'b', alpha = 0.3)
+            z_line = [0]*len(x)
+            ax[1].plot(x, z_line, '--')
+            plt.savefig('figures/order%s_forward_%s'%(order, run_name))
             
-    # plt.show()
-    plt.close('all')
+
+            fig, ax0 = plt.subplots()
+            ax0.plot(velocities, profile, color = 'r', label = 'mcmc')
+            zero_line = [0]*len(velocities)
+            ax0.plot(velocities, zero_line)
+            ax0.plot(velocities, model_inputs[:k_max], label = 'initial')
+            ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
+            ax0.set_xlabel('velocities')
+            ax0.set_ylabel('optical depth')
+            ax0.legend()
+            plt.savefig('figures/order%s_final_profile_%s'%(order, run_name))
+        
+        task_part = partial(task, all_frames)
+        with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+        results = np.array(results[0])
+        for i in range(len(frames)):
+            all_frames[i]=results[i][i]
+        # for counter in range(len(frames)):
+        #     all_frames = task(all_frames, counter, order, poly_cos)      
 
     # adding into fits files for each frame
     phases = []
     for frame_no in range(0, len(frames)):
         file = filelist[frame_no]
         fits_file = fits.open(file)
-        # phi = (((fits_file[0].header['ESO DRS BJD'])-T)/P)%1
-        # phases.append(phi)
         hdu = fits.HDUList()
         hdr = fits.Header()
 
         for order in range(0, 71):
             hdr['ORDER'] = order
             hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
-            # if phi<deltaphi:
-            #     result = 'in'
-            # elif phi>1-deltaphi:
-            #     result = 'in'
-            # else:
-            #     result = 'out'
-            
-            # hdr['result'] = result
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
@@ -793,7 +727,7 @@ def ACID_e2ds(velocities1, filelist, linelist1, poly_ord1=3, order_range=np.aran
     
     return all_frames
 
-def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, telluric_spec=None, velocities1=np.arange(-25, 25, 0.82), poly_ord1=3):
+def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, velocities1=np.arange(-25, 25, 0.82), poly_ord1=3):
 
     global velocities
     velocities = velocities1.copy()
@@ -849,7 +783,7 @@ def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, telluric_s
     #masking based off residuals
     yerr_unmasked = yerr
     global mask_idx
-    yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, telluric_spec, poly_ord, linelist)
+    yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist)
 
     ## setting number of walkers and their start values(pos)
     ndim = len(model_inputs)
