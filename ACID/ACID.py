@@ -13,6 +13,7 @@ from scipy.signal import find_peaks
 import multiprocessing as mp
 from functools import partial
 from multiprocessing import Pool
+from statistics import stdev
 
 from math import log10, floor
 
@@ -393,14 +394,14 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     data_err[idx2]=10000000000000000000
 
     poly_inputs, bin, bye, fit=continuumfit(data_spec_in,  (wavelengths*a)+b, data_err, poly_ord)
-    velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
+    velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, 100, 30, run_name, velocities)
 
-    ## uncomment if you would like to keep sigma clipping masking in for final LSD run 
-    residual_masks = tuple([data_err>=1000000000000000000])
+    # ## comment if you would like to keep sigma clipping masking in for final LSD run 
+    # residual_masks = tuple([data_err>=1000000000000000000])
 
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
-def task(all_frames, counter, order, poly_cos):
+def get_profiles(all_frames, counter, order, poly_cos):
     flux = frames[counter]
     error = frame_errors[counter]
     wavelengths = frame_wavelengths[counter]
@@ -426,7 +427,6 @@ def task(all_frames, counter, order, poly_cos):
 
     error[interp_mask_idx]=10000000000000000000
     
-
     # finding error for the continuuum fit
     inds = np.random.randint(len(flat_samples), size=50)
     conts = []
@@ -470,24 +470,91 @@ def task(all_frames, counter, order, poly_cos):
         
         return all_frames
 
-def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, velocities1=np.arange(-25, 25, 0.82), poly_ord1=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]):
+def combineprofiles(spectra, errors):
+    spectra = np.array(spectra)
+    idx = np.isnan(spectra)
+    shape_og = spectra.shape
+    if len(spectra[idx])>0:
+        spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
+        for n in range(len(spectra)):
+            if spectra[n] == np.nan:
+                spectra[n] = (spectra[n+1]+spectra[n-1])/2
+                if spectra[n] == np.nan:
+                    spectra[n] = 0.
+    spectra = spectra.reshape(shape_og)
+    errors = np.array(errors)
+
+    
+    spectra_to_combine = []
+    weights=[]
+    for n in range(0, len(spectra)):
+        if np.sum(spectra[n])!=0:
+            spectra_to_combine.append(list(spectra[n]))
+            temp_err = np.array(errors[n, :])
+            weight = (1/temp_err**2)
+            weights.append(np.mean(weight))
+    weights = np.array(weights/sum(weights))
+
+    spectra_to_combine = np.array(spectra_to_combine)
+
+    length, width = np.shape(spectra_to_combine)
+    spectrum = np.zeros((1,width))
+    spec_errors = np.zeros((1,width))
+
+    for n in range(0,width):
+        temp_spec = spectra_to_combine[:, n]
+        spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
+        spec_errors[0,n]=(stdev(temp_spec)**2)*np.sqrt(sum(weights**2))
+
+    spectrum = list(np.reshape(spectrum, (width,)))
+    spec_errors = list(np.reshape(spec_errors, (width,)))
+
+    return  spectrum, spec_errors
+
+def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns, vgrid, all_frames='default', poly_or=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96], order = 0):
+    """Accurate Continuum fItting and Deconvolution
+
+    Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
+    Spectra must cover a similiar wavelength range.
+
+    Args:
+        input_wavelengths (list): Wavelengths for each frame (in Angstroms).
+        input_spectra (list): Spectral frames (in flux).
+        input_spectral_errors (list): Errors for each frame (in flux).
+        line (str): Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
+        frame_sns (list): Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list. 
+        vgrid (array): Velocity grid for LSD profiles (in km/s).
+        all_frames (str or array, optional): Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, no. of orders, 2, no. of velocity pixels). 
+        poly_or (int, optional): Order of polynomial to fit as the continuum.
+        pix_chunk (int, optional): Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the region the less aggresive the masking applied will be.
+        dev_perc (int, optional): Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the deviation percentage the less aggresive the masking applied will be.
+        n_sig (int, optional): Number of sigma to clip in sigma clipping. Ill fitting lines are identified by sigma-clipping the residuals between an inital model and the data. The regions that are clipped from the residuals will be masked in the spectra. This masking is only applied to find the continuum fit and is removed when LSD is applied to obtain the final profiles. 
+        telluric_lines (list, optional): List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked.
+        order (int, optional): Only applicable if an all_frames output array has been provided as this is the order position in that array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in all_frames[:, 5].
+
+    Returns:
+        array: Resulting profiles and errors for spectra.
+    """ 
 
     global velocities
-    velocities = velocities1.copy()
+    velocities = vgrid.copy()
     global linelist
-    linelist = linelist1
+    linelist = line
     global poly_ord
-    poly_ord = poly_ord1
+    poly_ord = poly_or
 
     ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
     global frames
     global frame_wavelengths
     global frame_errors
     global sns
-    frame_wavelengths = np.array(frame_wavelengths1)
-    frames = np.array(frames1)
-    frame_errors = np.array(frame_errors1)
-    sns = np.array(sns1)
+    frame_wavelengths = np.array(input_wavelengths)
+    frames = np.array(input_spectra)
+    frame_errors = np.array(input_spectral_errors)
+    sns = np.array(frame_sns)
+
+    if all_frames == []:
+        all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
 
     fw = frame_wavelengths.copy()
     f = frames.copy()
@@ -505,7 +572,7 @@ def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, velocities
 
     #### getting the initial profile
     global alpha
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, order, run_name, velocities)
+    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
 
     ## Setting the number of points in vgrid (k_max)
     global k_max
@@ -524,7 +591,7 @@ def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, velocities
     #masking based off residuals
     global mask_idx
     
-    yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines = telluric_lines, sig_n=n_sig)
+    yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines = telluric_lines, n_sig=n_sig)
 
     ## setting number of walkers and their start values(pos)
     ndim = len(model_inputs)
@@ -547,9 +614,13 @@ def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, velocities
 
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
     steps_no = 8000
-    with Pool() as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-        sampler.run_mcmc(pos, steps_no, progress=True)
+
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+    sampler.run_mcmc(pos, steps_no, progress=True)
+
+    # with Pool() as pool:
+    #     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+    #     sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
@@ -679,27 +750,50 @@ def ACID(frame_wavelengths1, frames1, frame_errors1, linelist1, sns1, velocities
         ax0.set_ylabel('optical depth')
         ax0.legend()
         plt.savefig('figures/final_profile_%s'%(run_name))
-    
-    task_part = partial(task, all_frames)
-    with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-    results = np.array(results[0])
-    for i in range(len(frames)):
-        all_frames[i]=results[i][i]
-    # for counter in range(len(frames)):
-    #     all_frames = task(all_frames, counter, order, poly_cos)  
+
+    # task_part = partial(get_profiles, all_frames)
+    # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
+    # results = np.array(results[0])
+    # for i in range(len(frames)):
+    #     all_frames[i]=results[i][i]
+    for counter in range(len(frames)):
+        all_frames = get_profiles(all_frames, counter, order, poly_cos)  
 
     return all_frames
 
-def ACID_HARPS(velocities1, filelist, linelist1, poly_ord1=3, order_range=np.arange(10,70), save_path = './', file_type = 'e2ds', pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]):
+def ACID_HARPS(filelist, line, vgrid, poly_or=3, order_range=np.arange(10,70), save_path = './', file_type = 'e2ds', pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]):
 
+    """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
+
+    Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each file given. Files must all be kept in the same folder as well as thier corresponding blaze files. If 's1d' are being used their e2ds equivalents must also be in this folder. Result files containing profiles and associated errors for each order (or corresponding wavelength range in the case of 's1d' files) will be created and saved to a specified folder. It is recommended that this folder is seperate to the input files.
+
+    Args:
+        filelist (list): List of files. Files must come from the same observation night as continuum is fit for a combined spectrum of all frames. A profile and associated errors will be produced for each file specified.
+        line (str): Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
+        vgrid (array): Velocity grid for LSD profiles (in km/s).
+        poly_or (int, optional): Order of polynomial to fit as the continuum.
+        order_range (array, optional): Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths will be considered.
+        save_path (array, optional): Path to folder that result files will be saved to.
+        file_type (str, optional): 'e2ds' or 's1d'.
+        pix_chunk (int, optional): Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the region the less aggresive the masking applied will be.
+        dev_perc (int, optional): Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the deviation percentage the less aggresive the masking applied will be.
+        n_sig (int, optional): Number of sigma to clip in sigma clipping. Ill fitting lines are identified by sigma-clipping the residuals between an inital model and the data. The regions that are clipped from the residuals will be masked in the spectra. This masking is only applied to find the continuum fit and is removed when LSD is applied to obtain the final profiles. 
+        telluric_lines (list, optional): List of wavelengths of telluric lines to be masked in Angstroms. This can also include problematic lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked.
+
+    Returns:
+        list: Barycentric Julian Date for files 
+        list: Profiles (in normalised flux)
+        list: Profile Errors (in normalised flux)
+    """ 
+     
     global velocities
-    velocities = velocities1.copy()
+    velocities = vgrid.copy()
     global all_frames
-    all_frames = np.zeros((len(filelist), 71, 2, len(velocities)))
+    all_frames = np.zeros((len(filelist), len(order_range), 2, len(velocities)))
     global linelist
-    linelist = linelist1
+    linelist = line
     global poly_ord
-    poly_ord = poly_ord1
+    poly_ord = poly_or
 
     global frames
     global frame_wavelengths
@@ -707,34 +801,42 @@ def ACID_HARPS(velocities1, filelist, linelist1, poly_ord1=3, order_range=np.ara
     global sns
 
     for order in order_range:
-        print(order)
-        t0 = time.time()
+    
         print('Running for order %s/%s...'%(order-min(order_range)+1, max(order_range)-min(order_range)+1))
 
         frame_wavelengths, frames, frame_errors, sns, telluric_spec = read_in_frames(order, filelist, file_type)
 
-        all_frames = ACID(frame_wavelengths, frames, frame_errors, linelist, sns, velocities, poly_ord1, pix_chunk, dev_perc, n_sig, telluric_lines)  
+        all_frames = ACID(frame_wavelengths, frames, frame_errors, linelist, sns, velocities, all_frames,  poly_or, pix_chunk, dev_perc, n_sig, telluric_lines, order = order-min(order_range))  
 
     # adding into fits files for each frame
-    phases = []
+    BJDs = []
+    profiles = []
+    errors = []
     for frame_no in range(0, len(frames)):
         file = filelist[frame_no]
         fits_file = fits.open(file)
         hdu = fits.HDUList()
         hdr = fits.Header()
-
-        for order in range(0, 71):
+        
+        for order in order_range:
             hdr['ORDER'] = order
             hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
+            if order == order_range[0]:
+                BJDs.append(fits_file[0].header['ESO DRS BJD'])
             hdr['CRVAL1']=np.min(velocities)
             hdr['CDELT1']=velocities[1]-velocities[0]
 
-            profile = all_frames[frame_no, order, 0]
-            profile_err = all_frames[frame_no, order, 1]
+            profile = all_frames[frame_no, order-min(order_range), 0]
+            profile_err = all_frames[frame_no, order-min(order_range), 1]
 
             hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
-        hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
-    
-    return all_frames
+            if save_path!='no save':
+                hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
+
+        result1, result2 = combineprofiles(all_frames[frame_no, :, 0], all_frames[frame_no, :, 1])
+        profiles.append(result1)
+        errors.append(result2)
+
+    return BJDs, profiles, errors
 
 
