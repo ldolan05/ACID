@@ -23,7 +23,6 @@ User Guide
 
    installation.rst
    using_ACID.rst
-   tutorials.rst
    ACID.rst
 
 License and Attribution

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installation &mdash; ACID 0.0.0 documentation</title>
+  <title>Installation &mdash; ACID_code 0.0.0 documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -32,7 +32,7 @@
           
           
           <a href="index.html" class="icon icon-home">
-            ACID
+            ACID_code
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -43,11 +43,13 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="using_ACID.html">Using ACID</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorials.html">Tutorials</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installing-the-package">Installing the package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installing-from-the-source">Installing from the source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#testing-the-installation">Testing the installation</a></li>
 </ul>
-<ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="using_ACID.html">Using ACID</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ACID.html">ACID Functions</a></li>
 </ul>
 
@@ -57,7 +59,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">ACID</a>
+          <a href="index.html">ACID_code</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -77,8 +79,37 @@
              
   <div class="section" id="installation">
 <span id="id1"></span><h1>Installation<a class="headerlink" href="#installation" title="Permalink to this heading"></a></h1>
-<p>Here is how to install the package (once I’ve figured it out).
-Will involve creating an environment with conda and pip installing the requirements list (including the ACID package).</p>
+<div class="section" id="installing-the-package">
+<h2>Installing the package<a class="headerlink" href="#installing-the-package" title="Permalink to this heading"></a></h2>
+<p>ACID is currently compatable with python=3.7 due to issues arising from the multiprocessing module in newer versions of python (hopefully to be remedied in upcoming releases!).
+It is therefore recommended to create a conda environment to avoid downgrading your local python installation.</p>
+<p>In this example we create an environment named ‘acid’ and activate it using:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>acid<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.7
+conda<span class="w"> </span>acivate<span class="w"> </span>acid
+</pre></div>
+</div>
+<p>Once the environment has been activated ACID can be installed using <a class="reference external" href="https://pip.pypa.io/en/stable/">pip</a>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>ACID_code
+</pre></div>
+</div>
+</div>
+<div class="section" id="installing-from-the-source">
+<span id="source"></span><h2>Installing from the source<a class="headerlink" href="#installing-from-the-source" title="Permalink to this heading"></a></h2>
+<p>In order to use the example data (for the <a class="reference external" href="file:///Users/lucydolan/Documents/GitHub/ACID/docs/_build/html/using_ACID.html">tutorials</a>) or the test suite ACID will need to be installed from the source (i.e. directly from the GitHub repository).
+This can be done by cloning the source repository and installing from there.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/ldolan05/ACID.git
+<span class="nb">cd</span><span class="w"> </span>ACID_code
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+</pre></div>
+</div>
+</div>
+<div class="section" id="testing-the-installation">
+<span id="test"></span><h2>Testing the installation<a class="headerlink" href="#testing-the-installation" title="Permalink to this heading"></a></h2>
+<p>Test your installation by running our test file in the root repository. This should run without any errors if the installation has gone smoothly.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>easy_test.py
+</pre></div>
+</div>
+</div>
 </div>
 
 

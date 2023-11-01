@@ -1,7 +1,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../ACID'))
+sys.path.insert(0, os.path.abspath('../ACID_code'))
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath('../ACID'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'ACID'
+project = 'ACID_code'
 copyright = '2023, Lucy Dolan'
 author = 'Lucy Dolan'
 root_doc = 'index'
