@@ -1,0 +1,6 @@
+numpy
+emcee
+matplotlib
+scipy
+astropy
+statistics

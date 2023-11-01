@@ -2,7 +2,7 @@ import glob
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
-import ACID
+import ACID_code
 from specutils.analysis import equivalent_width as eww
 from specutils import Spectrum1D
 import astropy.units as u
@@ -38,7 +38,7 @@ folder_name=("/Users/lucydolan/Starbase/HD189733/July2007/*/*/*/")
 e2ds_files=glob.glob("{0}*e2ds_A*.fits".format(folder_name))
 print(e2ds_files)
 
-frame_wavelengths, frames, frame_errors, sns, telluric_spec = ACID.read_in_frames(order, e2ds_files)
+frame_wavelengths, frames, frame_errors, sns, telluric_spec = ACID_code.read_in_frames(order, e2ds_files)
 
 frame_wavelengths = np.array(frame_wavelengths)
 for f in range(len(frames)):

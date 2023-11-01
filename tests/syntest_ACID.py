@@ -1,4 +1,4 @@
-import ACID as ACID
+import ACID_code as ACID_code
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -136,7 +136,7 @@ plt.show()
 
 ## create synthetic spectrum
 linelist = '/Users/lucydolan/Starbase/novaprime/Documents/fulllinelist0001.txt'
-filelist=ACID.findfiles('/Users/lucydolan/Starbase/novaprime/Documents/HD189733 old/HD189733/August2007', 'e2ds')
+filelist=ACID_code.findfiles('/Users/lucydolan/Starbase/novaprime/Documents/HD189733 old/HD189733/August2007', 'e2ds')
 file = fits.open(filelist[0])
 wavelengths =get_wave(file[0].data, file[0].header)[30]
 alpha = create_alpha(velocities, linelist, wavelengths)
@@ -221,7 +221,7 @@ plt.figure()
 plt.plot(wavelengths, spectrum)
 plt.show()
 
-all_frames = ACID.ACID([wavelengths], [spectrum], [errors], linelist, sns1=[1/(3*0.01)])
+all_frames = ACID_code.ACID([wavelengths], [spectrum], [errors], linelist, sns1=[1/(3*0.01)])
 
 output_profile = all_frames[0, 0, 0]
 output_profile_err = all_frames[0, 0, 1]

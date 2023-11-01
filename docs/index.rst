@@ -31,5 +31,7 @@ License and Attribution
 
 Copyright 2022, Lucy Dolan.
 
+ACID is free software made available under the MIT License.
+
 If you make use of ACID in your work please cite our paper (L.Dolan et al, 2023).
 

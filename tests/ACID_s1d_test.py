@@ -1,5 +1,5 @@
 import numpy as np
-import ACID as ACID
+import ACID_code as ACID_code
 import glob
 from astropy.io import fits
 import LSD_func_faster as LSD 
@@ -22,7 +22,7 @@ if len(e2ds_files)==0:
 velocities = np.arange(-25, 25, 0.82)
 
 # run ACID on e2ds and s1d files
-ACID_results_e2ds = ACID.ACID_e2ds(velocities, e2ds_files, linelist, save_path = save_path, order_range = np.arange(41, 45))
+ACID_results_e2ds = ACID_code.ACID_e2ds(velocities, e2ds_files, linelist, save_path = save_path, order_range = np.arange(41, 45))
 # ACID_results_s1d = ACID.ACID_e2ds(velocities, s1d_files, linelist, save_path = save_path, order_range = np.arange(15, 70), file_type='s1d')
 
 ## running on seperate order ranges
