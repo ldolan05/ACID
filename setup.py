@@ -11,7 +11,7 @@ def get_property(prop, project):
 
 def get_requires():
     reqs = []
-    for line in open('requirements.txt', 'r').readlines():
+    for line in open('docs/requirements.txt', 'r').readlines():
         reqs.append(line)
     return reqs
 
