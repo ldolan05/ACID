@@ -60,12 +60,18 @@ def create_alpha(velocities, linelist, wavelengths):
 
     return alpha
 
-for i in range(4):
+# making alpha
+linelist = '/Users/lucydolan/Starbase/novaprime/Documents/fulllinelist0001.txt'
+wavelengths = np.arange(3000, 6000, 0.5)
+velocities = np.arange(-25, 25, 0.82)
+alpha = create_alpha(velocities, linelist, wavelengths)
+
+for spec_no in range(1, 4):
+    print('Running for spectrum %s/4'%spec_no)
     ## create synthetic profile
     # velocities = np.concatenate((-np.arange(0.83, 25, 0.83), np.arange(0, 25, 0.83)))
     velocities = np.concatenate((-np.arange(0.82+0.5, 25+0.5, 0.82), np.arange(0-0.5, 25-0.5, 0.82)))
     # velocities.sort()
-    velocities = np.arange(-25, 25, 0.82)
     number = np.random.normal(0, 0.01)
     profile = gauss(velocities, 0.+number, 4, -0.4, 1)
     # profile_errors = (1-profile)/10
@@ -76,9 +82,6 @@ for i in range(4):
     profile = profile + number
 
     ## create synthetic spectrum
-    linelist = '/Users/lucydolan/Starbase/novaprime/Documents/fulllinelist0001.txt'
-    wavelengths = np.arange(3000, 6000, 0.5)
-    alpha = create_alpha(velocities, linelist, wavelengths)
     # creates a fake data set to fit a polynomial to - is just an easy way to get continuum coefficents that make sense for the wavelength range
     flux = [0.98, 1.048, 0.85, 1.03, 0.9, 1, 0.82, 1.037]
     waves = np.linspace(np.min(wavelengths), np.max(wavelengths), len(flux))
@@ -102,5 +105,5 @@ for i in range(4):
     hdu = fits.HDUList()
     for dat in data:
         hdu.append(fits.PrimaryHDU(data = dat))
-    hdu.writeto('.example/sample_spec_%s.fits'%i, output_verify = 'fix', overwrite = True)
+    hdu.writeto('sample_spec_%s.fits'%spec_no, output_verify = 'fix', overwrite = True)
 
