@@ -48,6 +48,6 @@ Test your installation by running our test file in the root repository. This sho
 
 .. code-block:: bash
     
-    python easy_test.py
+    python tests/easy_test.py
 
 
