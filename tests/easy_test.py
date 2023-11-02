@@ -1,4 +1,4 @@
-import ACID_code as acid
+import ACID_code.ACID as acid
 import numpy as np
 import glob
 
