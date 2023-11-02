@@ -36,7 +36,7 @@ This can be done by cloning the source repository and installing from there.
 .. code-block:: bash
 
     git clone https://github.com/ldolan05/ACID.git
-    cd ACID_code
+    cd ACID
     python -m pip install -e .
 
 .. _test:
