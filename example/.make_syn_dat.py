@@ -105,5 +105,5 @@ for spec_no in range(1, 4):
     hdu = fits.HDUList()
     for dat in data:
         hdu.append(fits.PrimaryHDU(data = dat))
-    hdu.writeto('sample_spec_%s.fits'%spec_no, output_verify = 'fix', overwrite = True)
+    hdu.writeto('examples/sample_spec_%s.fits'%spec_no, output_verify = 'fix', overwrite = True)
 
