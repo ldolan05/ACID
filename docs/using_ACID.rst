@@ -21,10 +21,10 @@ In the 'example' directory we can set up our inputs are follows:
 
    spec_file = fits.open('sample_spec_1.fits')
 
-   wavelength = spec_file[0].data[0]   # Wavelengths in Angstroms
-   spectrum = spec_file[0].data[1]     # Spectral Flux
-   error = spec_file[0].data[2]        # Spectral Flux Errors
-   sn = spec_file[0].data[3]           # SN of Spectrum
+   wavelength = spec_file[0].data   # Wavelengths in Angstroms
+   spectrum = spec_file[1].data     # Spectral Flux
+   error = spec_file[2].data        # Spectral Flux Errors
+   sn = spec_file[3].data           # SN of Spectrum
 
    linelist = './example_linelist.txt' # Insert path to line list
 
@@ -82,10 +82,10 @@ As in the previous example, we must first read in the data:
    for file in files:
       spec_file = fits.open('%s'%file)
 
-      wavelengths.append(spec_file[0].data[0])    # Wavelengths in Angstroms
-      spectra.append(spec_file[0].data[1])        # Spectral Flux
-      errors.append(spec_file[0].data[2])         # Spectral Flux Errors
-      sns.append(spec_file[0].data[3])            # SN of Spectrum
+      wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
+      spectra.append(spec_file[1].data)        # Spectral Flux
+      errors.append(spec_file[2].data)         # Spectral Flux Errors
+      sns.append(spec_file[3].data)            # SN of Spectrum
 
    linelist = './example_linelist.txt' # Insert path to line list
 
@@ -131,10 +131,10 @@ Firstly, we will read in the data (exactly how we did in the Quickstart_ tutoria
 
    spec_file = fits.open('sample_spec_1.fits')
 
-   wavelength = spec_file[0].data[0]   # Wavelengths in Angstroms
-   spectrum = spec_file[0].data[1]     # Spectral Flux
-   error = spec_file[0].data[2]        # Spectral Flux Errors
-   sn = spec_file[0].data[3]           # SN of Spectrum
+   wavelength = spec_file[0].data   # Wavelengths in Angstroms
+   spectrum = spec_file[1].data     # Spectral Flux
+   error = spec_file[2].data        # Spectral Flux Errors
+   sn = spec_file[3].data           # SN of Spectrum
 
    linelist = './example_linelist.txt' # Insert path to line list
 
