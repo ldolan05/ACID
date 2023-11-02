@@ -3,7 +3,7 @@ import emcee
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from astropy.io import  fits
-import LSD_func_faster as LSD
+import ACID_code.LSD_func_faster as LSD
 import glob
 from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
