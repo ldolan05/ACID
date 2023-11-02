@@ -5,3 +5,4 @@ scipy
 astropy
 statistics
 sphinx_rtd_theme
+tqdm
