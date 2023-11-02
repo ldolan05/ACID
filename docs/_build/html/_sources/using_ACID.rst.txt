@@ -202,7 +202,7 @@ If applying to 's1d' files, the corresponding 'e2ds' files must also be containe
 If applying to 'e2ds' files, the corresponding blaze files must be present in this directory as indicated in the FITS header of the e2ds file.
 
 This application only requires a filelist of the HARPS FITS files, a line list that covers the entire wavelength range and a chosen velocity range.
-For 'e2ds' spectra the resolution of the profiles are optimized when the velocity pixel size is equal to the spectral resolution, i.e. is 0.82 km/s.
+For 'e2ds' spectra the resolution of the profiles are optimized when the velocity pixel size is equal to the spectral resolution, i.e. 0.82 km/s.
 
 .. code-block:: python
 
