@@ -414,7 +414,7 @@ def get_profiles(all_frames, counter, order, poly_cos):
 
     #masking based off residuals (needs to be redone for each frame as wavelength grid is different) -- NO - the same masking needs to be applied to each frame
     #the mask therefore needs to be interpolated onto the new wavelength grid.
-
+    reference_wave = wavelengths[sns==max(sns)]
     mask_pos = np.ones(reference_wave.shape)
     mask_pos[mask_idx]=10000000000000000000
     f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
