@@ -532,6 +532,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     Returns:
         array: Resulting profiles and errors for spectra.
     """ 
+    print('Initialising...')
 
     global velocities
     velocities = vgrid.copy()
@@ -562,7 +563,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         wavelengths, fluxes, flux_error_order, sn = combine_spec(fw, f, fe, s)
     else: wavelengths, fluxes, flux_error_order, sn = fw[0], f[0], fe[0], s[0]
 
-        ### getting the initial polynomial coefficents
+    ### getting the initial polynomial coefficents
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
@@ -612,12 +613,13 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
     steps_no = 8000
 
-    # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    # sampler.run_mcmc(pos, steps_no, progress=True)
+    print('Fitting the Continuum...')
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+    sampler.run_mcmc(pos, steps_no, progress=True)
 
-    with Pool() as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-        sampler.run_mcmc(pos, steps_no, progress=True)
+    # with Pool() as pool:
+    #     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+    #     sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
@@ -748,6 +750,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         ax0.legend()
         plt.savefig('figures/final_profile_%s'%(run_name))
 
+    print('Getting the final profiles...')
     # task_part = partial(get_profiles, all_frames)
     # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
     # results = np.array(results[0])
