@@ -39,6 +39,7 @@ We can then run ACID and plot the final results:
 
    import ACID_code.ACID as acid
    import numpy as np
+   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = 0.82   # velocity pixel size must not be smaller than the spectral pixel size
@@ -95,6 +96,7 @@ Once the inputs have been constructed ACID can be applied and the results plotte
 
    import ACID_code.ACID as acid
    import numpy as np
+   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = 0.82  
@@ -145,6 +147,7 @@ When looping over wavelength ranges we also need to provide the result array ('a
 
    import ACID_code.ACID as acid
    import numpy as np
+   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = 0.82   # velocity pixel size must not be smaller than the spectral pixel size
