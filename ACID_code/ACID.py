@@ -612,12 +612,12 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
     steps_no = 8000
 
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    sampler.run_mcmc(pos, steps_no, progress=True)
+    # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+    # sampler.run_mcmc(pos, steps_no, progress=True)
 
-    # with Pool() as pool:
-    #     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-    #     sampler.run_mcmc(pos, steps_no, progress=True)
+    with Pool() as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+        sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
