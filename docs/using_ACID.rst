@@ -37,7 +37,7 @@ We can then run ACID and plot the final results:
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
@@ -93,7 +93,7 @@ Once the inputs have been constructed ACID can be applied and the results plotte
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
@@ -143,7 +143,7 @@ When looping over wavelength ranges we also need to provide the result array ('a
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
@@ -221,7 +221,7 @@ These inputs can be input into the HARPS function of ACID (ACID_HARPS):
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
 
    # run ACID function
    BJDs, profiles, errors = acid.ACID_HARPS(filelist, linelist, velocities)
