@@ -11,6 +11,7 @@ import multiprocessing as mp
 from functools import partial
 from multiprocessing import Pool
 from statistics import stdev
+import time
 
 from math import log10, floor
 
@@ -305,36 +306,16 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
 
-    # plt.figure()
     mdl1=0
     for i in range(k_max,len(initial_inputs)-1):
         mdl1 = mdl1 + (initial_inputs[i]*((wavelengths*a)+b)**(i-k_max))
 
     mdl1 = mdl1 * initial_inputs[-1]
 
-    # residuals = data_spec_in/mdl1 -1
-    # ### finds consectuative sections where at least 40 points have no conitnuum points in between - these are masked
-    # flag = ['False']*len(residuals)
-    # flagged = []
-    # for i in range(len(residuals)):
-    #     if abs(residuals[i])>0.1:
-    #         flag[i] = 'True'
-    #         if i>0 and flag[i-1] == 'True':
-    #             flagged.append(i-1)
-    #     else:
-    #         if len(flagged)>0:
-    #             flagged.append(i-1)
-    #             # print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
-    #             if len(flagged)<300:
-    #                 for no in flagged:
-    #                     flag[no] = 'False'
-    #             else:
-    #                 idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
-    #                 data_err[idx]=10000000000000000000
-    #         flagged = []
-
     residuals = (data_spec_in - np.min(data_spec_in))/(np.max(data_spec_in)-np.min(data_spec_in)) - (forward - np.min(forward))/(np.max(forward)-np.min(forward)) 
 
+    data_err_compare = data_err.copy()
+    
     ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
     flag = ['False']*len(residuals)
     flagged = []
@@ -353,6 +334,24 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
                     idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
                     data_err[idx]=10000000000000000000
             flagged = []
+
+    idx = (abs(residuals)>dev_perc/100)
+
+    flag_min = 0
+    flag_max = 0
+    for value in range(len(idx)):
+        if idx[value] == True and flag_min <= value:
+            flag_min = value
+            flag_max = value
+        elif idx[value] == True and flag_max < value:
+            flag_max = value
+        elif idx[value] == False and flag_max-flag_min>=pix_chunk:
+            data_err[flag_min:flag_max]=10000000000000000000
+            flag_min = value
+            flag_max = value
+
+    if np.sum(data_err_compare-data_err)>0.0000001:
+        raise ValueError('Masked Areas do not match!!')
 
     ##############################################
     #                  TELLURICS                 #   
@@ -414,13 +413,15 @@ def get_profiles(all_frames, counter, order, poly_cos):
 
     #masking based off residuals (needs to be redone for each frame as wavelength grid is different) -- NO - the same masking needs to be applied to each frame
     #the mask therefore needs to be interpolated onto the new wavelength grid.
-    reference_wave = wavelengths[sns==max(sns)]
+    if len(frame_wavelengths)>1:
+        reference_wave = frame_wavelengths[sns==max(sns)]
+    else:
+        reference_wave = frame_wavelengths[0]
     mask_pos = np.ones(reference_wave.shape)
     mask_pos[mask_idx]=10000000000000000000
     f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
     interp_mask_pos = f2(wavelengths)
     interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
-    
 
     error[interp_mask_idx]=10000000000000000000
     
@@ -534,6 +535,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     """ 
     print('Initialising...')
 
+    t0 = time.time()
+
     global velocities
     velocities = vgrid.copy()
     global linelist
@@ -612,6 +615,10 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
     steps_no = 8000
+
+    t1 = time.time()
+
+    print('Time for initialising: %s'%(t1-t0))
 
     print('Fitting the Continuum...')
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
