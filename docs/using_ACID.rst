@@ -154,7 +154,7 @@ When looping over wavelength ranges we also need to provide the result array ('a
    velocities = np.arange(-25, 25, deltav)  
 
    # choose size of wavelength ranges (or chunks)
-   wave_chunk = 1000
+   wave_chunk = 500
    chunks_no = floor((max(wavelength)-min(wavelength))/wave_chunk)
    min_wave = min(wavelength)
    max_wave = wave_chunk
