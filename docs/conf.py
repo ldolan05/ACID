@@ -15,7 +15,6 @@ project = 'ACID_code'
 copyright = '2023, Lucy Dolan'
 author = 'Lucy Dolan'
 root_doc = 'index'
-release = '0.0.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

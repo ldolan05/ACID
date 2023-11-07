@@ -11,6 +11,7 @@ import multiprocessing as mp
 from functools import partial
 from multiprocessing import Pool
 from statistics import stdev
+import time
 
 from math import log10, floor
 
@@ -256,7 +257,7 @@ def log_likelihood(theta, x, y, yerr):
 
     return lnlike
 
-## imposes the prior restrictions on the inputs - rejects if profile point if less than -10 or greater than 0.5.
+## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
 def log_prior(theta):
 
     check = 0
@@ -305,67 +306,41 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     a = 2/(np.max(wavelengths)-np.min(wavelengths))
     b = 1 - a*np.max(wavelengths)
 
-    # plt.figure()
     mdl1=0
     for i in range(k_max,len(initial_inputs)-1):
         mdl1 = mdl1 + (initial_inputs[i]*((wavelengths*a)+b)**(i-k_max))
 
     mdl1 = mdl1 * initial_inputs[-1]
 
-    # residuals = data_spec_in/mdl1 -1
-    # ### finds consectuative sections where at least 40 points have no conitnuum points in between - these are masked
-    # flag = ['False']*len(residuals)
-    # flagged = []
-    # for i in range(len(residuals)):
-    #     if abs(residuals[i])>0.1:
-    #         flag[i] = 'True'
-    #         if i>0 and flag[i-1] == 'True':
-    #             flagged.append(i-1)
-    #     else:
-    #         if len(flagged)>0:
-    #             flagged.append(i-1)
-    #             # print(abs(np.median(residuals[flagged[0]:flagged[-1]])))
-    #             if len(flagged)<300:
-    #                 for no in flagged:
-    #                     flag[no] = 'False'
-    #             else:
-    #                 idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
-    #                 data_err[idx]=10000000000000000000
-    #         flagged = []
-
     residuals = (data_spec_in - np.min(data_spec_in))/(np.max(data_spec_in)-np.min(data_spec_in)) - (forward - np.min(forward))/(np.max(forward)-np.min(forward)) 
 
+    data_err_compare = data_err.copy()
+    
     ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
-    flag = ['False']*len(residuals)
-    flagged = []
-    for i in range(len(residuals)):
-        if abs(residuals[i])>(dev_perc/100):
-            flag[i] = 'True'
-            if i>0 and (flag[i-1] == 'True' or flag[i-2] == 'True'):
-                flagged.append(i-1)
-        else:
-            if len(flagged)>0:
-                flagged.append(i-1)
-                if len(flagged)<pix_chunk or abs(np.mean(residuals[flagged[0]:flagged[-1]]))<0.45:
-                    for no in flagged:
-                        flag[no] = 'False'
-                else:
-                    idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
-                    data_err[idx]=10000000000000000000
-            flagged = []
+    idx = (abs(residuals)>dev_perc/100)
+
+    flag_min = 0
+    flag_max = 0
+    for value in range(len(idx)):
+        if idx[value] == True and flag_min <= value:
+            flag_min = value
+            flag_max = value
+        elif idx[value] == True and flag_max < value:
+            flag_max = value
+        elif idx[value] == False and flag_max-flag_min>=pix_chunk:
+            data_err[flag_min:flag_max]=10000000000000000000
+            flag_min = value
+            flag_max = value
 
     ##############################################
     #                  TELLURICS                 #   
     ##############################################
 
+    data_err_compare = data_err.copy()
+
     ## masking tellurics
-
-    limit_wave =21/2.99792458e5 #needs multiplied by wavelength to give actual limit
-    limit_pix = limit_wave/((max(wavelengths)-min(wavelengths))/len(wavelengths))
-
-    
     for line in tell_lines:
-        limit = limit_wave*line +3
+        limit = (21/2.99792458e5)*line +3
         idx = np.logical_and((line-limit)<=wavelengths, wavelengths<=(limit+line))
         data_err[idx] = 1000000000000000000
 
@@ -398,7 +373,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
 
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
-def get_profiles(all_frames, counter, order, poly_cos):
+def get_profiles(all_frames, order, poly_cos, continuum_error, counter):
     flux = frames[counter]
     error = frame_errors[counter]
     wavelengths = frame_wavelengths[counter]
@@ -412,33 +387,18 @@ def get_profiles(all_frames, counter, order, poly_cos):
         mdl1 = mdl1+poly_cos[i]*((a*wavelengths)+b)**(i)
     mdl1 = mdl1*poly_cos[-1]
 
-    #masking based off residuals (needs to be redone for each frame as wavelength grid is different) -- NO - the same masking needs to be applied to each frame
-    #the mask therefore needs to be interpolated onto the new wavelength grid.
-    reference_wave = wavelengths[sns==max(sns)]
+    #masking based off residuals interpolated onto new wavelength grid
+    if len(frame_wavelengths)>1:
+        reference_wave = frame_wavelengths[sns==max(sns)][0]
+    else:
+        reference_wave = frame_wavelengths[0]
     mask_pos = np.ones(reference_wave.shape)
     mask_pos[mask_idx]=10000000000000000000
     f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
     interp_mask_pos = f2(wavelengths)
     interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
-    
 
     error[interp_mask_idx]=10000000000000000000
-    
-    # finding error for the continuuum fit
-    inds = np.random.randint(len(flat_samples), size=50)
-    conts = []
-    for ind in inds:
-        sample = flat_samples[ind]
-        mdl = model_func(sample, wavelengths)
-        #mdl = model_func(sample, x)
-        #mdl = mdl[idx]
-        mdl1_temp = 0
-        for i in np.arange(k_max, len(sample)-1):
-            mdl1_temp = mdl1_temp+sample[i]*((a*wavelengths)+b)**(i-k_max)
-        mdl1_temp = mdl1_temp*sample[-1]
-        conts.append(mdl1_temp)
-
-    continuum_error = np.std(np.array(conts), axis = 0)
 
     # corrrecting continuum
     error = (error/flux) + (continuum_error/mdl1)
@@ -534,6 +494,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     """ 
     print('Initialising...')
 
+    t0 = time.time()
+
     global velocities
     velocities = vgrid.copy()
     global linelist
@@ -568,9 +530,14 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     b = 1 - a*np.max(wavelengths)
     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
+    # t2 = time.time()
+    # print('Set up before LSD %s'%(t2-t0))
     #### getting the initial profile
     global alpha
     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
+
+    # t3 = time.time()
+    # print('LSD run takes: %s'%(t3-t2))
 
     ## Setting the number of points in vgrid (k_max)
     global k_max
@@ -590,6 +557,9 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     global mask_idx
     
     yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines = telluric_lines, n_sig=n_sig)
+
+    # t4 = time.time()
+    # print('residual masking takes: %s' %(t4-t3))
 
     ## setting number of walkers and their start values(pos)
     ndim = len(model_inputs)
@@ -613,13 +583,17 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
     steps_no = 8000
 
-    print('Fitting the Continuum...')
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    sampler.run_mcmc(pos, steps_no, progress=True)
+    t1 = time.time()
+    # print('MCMC set up takes: %s'%(t1-t4))
+    # print('Initialised in %ss'%round((t1-t0), 2))
 
-    # with Pool() as pool:
-    #     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-    #     sampler.run_mcmc(pos, steps_no, progress=True)
+    print('Fitting the Continuum...')
+    # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+    # sampler.run_mcmc(pos, steps_no, progress=True)
+
+    with Pool() as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+        sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
@@ -649,7 +623,6 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     profile = np.array(profile)
     profile_err = np.array(profile_err)
-
 
     fig_opt = 'n'
     if fig_opt =='y':
@@ -751,13 +724,31 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         plt.savefig('figures/final_profile_%s'%(run_name))
 
     print('Getting the final profiles...')
-    # task_part = partial(get_profiles, all_frames)
-    # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-    # results = np.array(results[0])
-    # for i in range(len(frames)):
-    #     all_frames[i]=results[i][i]
-    for counter in range(len(frames)):
-        all_frames = get_profiles(all_frames, counter, order, poly_cos)  
+
+    # finding error for the continuuum fit
+    inds = np.random.randint(len(flat_samples), size=50)
+    conts = []
+    for ind in inds:
+        sample = flat_samples[ind]
+        mdl = model_func(sample, wavelengths)
+        #mdl = model_func(sample, x)
+        #mdl = mdl[idx]
+        mdl1_temp = 0
+        for i in np.arange(k_max, len(sample)-1):
+            mdl1_temp = mdl1_temp+sample[i]*((a*wavelengths)+b)**(i-k_max)
+        mdl1_temp = mdl1_temp*sample[-1]
+        conts.append(mdl1_temp)
+
+    continuum_error = np.std(np.array(conts), axis = 0)
+
+    task_part = partial(get_profiles, all_frames, order, poly_cos, continuum_error)
+    with mp.Pool(mp.cpu_count()) as pool:
+        results=[pool.map(task_part, np.arange(len(frames)))]
+    results = np.array(results[0])
+    for i in range(len(frames)): 
+        all_frames[i]=results[i][i]
+    # for counter in range(len(frames)):
+    #     all_frames = get_profiles(all_frames, counter, order, poly_cos)  
 
     return all_frames
 
