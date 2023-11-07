@@ -317,24 +317,6 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     data_err_compare = data_err.copy()
     
     ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
-    flag = ['False']*len(residuals)
-    flagged = []
-    for i in range(len(residuals)):
-        if abs(residuals[i])>(dev_perc/100):
-            flag[i] = 'True'
-            if i>0 and (flag[i-1] == 'True' or flag[i-2] == 'True'):
-                flagged.append(i-1)
-        else:
-            if len(flagged)>0:
-                flagged.append(i-1)
-                if len(flagged)<pix_chunk or abs(np.mean(residuals[flagged[0]:flagged[-1]]))<0.45:
-                    for no in flagged:
-                        flag[no] = 'False'
-                else:
-                    idx = np.logical_and(wavelengths>=wavelengths[np.min(flagged)]-1, wavelengths<=wavelengths[np.max(flagged)]+1)
-                    data_err[idx]=10000000000000000000
-            flagged = []
-
     idx = (abs(residuals)>dev_perc/100)
 
     flag_min = 0
@@ -350,21 +332,15 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
             flag_min = value
             flag_max = value
 
-    if np.sum(data_err_compare-data_err)>0.0000001:
-        raise ValueError('Masked Areas do not match!!')
-
     ##############################################
     #                  TELLURICS                 #   
     ##############################################
 
+    data_err_compare = data_err.copy()
+
     ## masking tellurics
-
-    limit_wave =21/2.99792458e5 #needs multiplied by wavelength to give actual limit
-    limit_pix = limit_wave/((max(wavelengths)-min(wavelengths))/len(wavelengths))
-
-    
     for line in tell_lines:
-        limit = limit_wave*line +3
+        limit = (21/2.99792458e5)*line +3
         idx = np.logical_and((line-limit)<=wavelengths, wavelengths<=(limit+line))
         data_err[idx] = 1000000000000000000
 
@@ -397,7 +373,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
 
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
-def get_profiles(all_frames, counter, order, poly_cos):
+def get_profiles(all_frames, order, poly_cos, continuum_error, counter):
     flux = frames[counter]
     error = frame_errors[counter]
     wavelengths = frame_wavelengths[counter]
@@ -411,10 +387,9 @@ def get_profiles(all_frames, counter, order, poly_cos):
         mdl1 = mdl1+poly_cos[i]*((a*wavelengths)+b)**(i)
     mdl1 = mdl1*poly_cos[-1]
 
-    #masking based off residuals (needs to be redone for each frame as wavelength grid is different) -- NO - the same masking needs to be applied to each frame
-    #the mask therefore needs to be interpolated onto the new wavelength grid.
+    #masking based off residuals interpolated onto new wavelength grid
     if len(frame_wavelengths)>1:
-        reference_wave = frame_wavelengths[sns==max(sns)]
+        reference_wave = frame_wavelengths[sns==max(sns)][0]
     else:
         reference_wave = frame_wavelengths[0]
     mask_pos = np.ones(reference_wave.shape)
@@ -424,22 +399,6 @@ def get_profiles(all_frames, counter, order, poly_cos):
     interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
 
     error[interp_mask_idx]=10000000000000000000
-    
-    # finding error for the continuuum fit
-    inds = np.random.randint(len(flat_samples), size=50)
-    conts = []
-    for ind in inds:
-        sample = flat_samples[ind]
-        mdl = model_func(sample, wavelengths)
-        #mdl = model_func(sample, x)
-        #mdl = mdl[idx]
-        mdl1_temp = 0
-        for i in np.arange(k_max, len(sample)-1):
-            mdl1_temp = mdl1_temp+sample[i]*((a*wavelengths)+b)**(i-k_max)
-        mdl1_temp = mdl1_temp*sample[-1]
-        conts.append(mdl1_temp)
-
-    continuum_error = np.std(np.array(conts), axis = 0)
 
     # corrrecting continuum
     error = (error/flux) + (continuum_error/mdl1)
@@ -571,9 +530,14 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     b = 1 - a*np.max(wavelengths)
     poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
+    # t2 = time.time()
+    # print('Set up before LSD %s'%(t2-t0))
     #### getting the initial profile
     global alpha
     velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
+
+    # t3 = time.time()
+    # print('LSD run takes: %s'%(t3-t2))
 
     ## Setting the number of points in vgrid (k_max)
     global k_max
@@ -593,6 +557,9 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     global mask_idx
     
     yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines = telluric_lines, n_sig=n_sig)
+
+    # t4 = time.time()
+    # print('residual masking takes: %s' %(t4-t3))
 
     ## setting number of walkers and their start values(pos)
     ndim = len(model_inputs)
@@ -617,16 +584,16 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     steps_no = 8000
 
     t1 = time.time()
-
-    print('Time for initialising: %s'%(t1-t0))
+    # print('MCMC set up takes: %s'%(t1-t4))
+    # print('Initialised in %ss'%round((t1-t0), 2))
 
     print('Fitting the Continuum...')
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    sampler.run_mcmc(pos, steps_no, progress=True)
+    # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+    # sampler.run_mcmc(pos, steps_no, progress=True)
 
-    # with Pool() as pool:
-    #     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-    #     sampler.run_mcmc(pos, steps_no, progress=True)
+    with Pool() as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+        sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
@@ -656,7 +623,6 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     profile = np.array(profile)
     profile_err = np.array(profile_err)
-
 
     fig_opt = 'n'
     if fig_opt =='y':
@@ -758,13 +724,31 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         plt.savefig('figures/final_profile_%s'%(run_name))
 
     print('Getting the final profiles...')
-    # task_part = partial(get_profiles, all_frames)
-    # with mp.Pool(mp.cpu_count()) as pool:results=[pool.map(task_part, np.arange(len(frames)))]
-    # results = np.array(results[0])
-    # for i in range(len(frames)):
-    #     all_frames[i]=results[i][i]
-    for counter in range(len(frames)):
-        all_frames = get_profiles(all_frames, counter, order, poly_cos)  
+
+    # finding error for the continuuum fit
+    inds = np.random.randint(len(flat_samples), size=50)
+    conts = []
+    for ind in inds:
+        sample = flat_samples[ind]
+        mdl = model_func(sample, wavelengths)
+        #mdl = model_func(sample, x)
+        #mdl = mdl[idx]
+        mdl1_temp = 0
+        for i in np.arange(k_max, len(sample)-1):
+            mdl1_temp = mdl1_temp+sample[i]*((a*wavelengths)+b)**(i-k_max)
+        mdl1_temp = mdl1_temp*sample[-1]
+        conts.append(mdl1_temp)
+
+    continuum_error = np.std(np.array(conts), axis = 0)
+
+    task_part = partial(get_profiles, all_frames, order, poly_cos, continuum_error)
+    with mp.Pool(mp.cpu_count()) as pool:
+        results=[pool.map(task_part, np.arange(len(frames)))]
+    results = np.array(results[0])
+    for i in range(len(frames)): 
+        all_frames[i]=results[i][i]
+    # for counter in range(len(frames)):
+    #     all_frames = get_profiles(all_frames, counter, order, poly_cos)  
 
     return all_frames
 
