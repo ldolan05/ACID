@@ -257,7 +257,7 @@ def log_likelihood(theta, x, y, yerr):
 
     return lnlike
 
-## imposes the prior restrictions on the inputs - rejects if profile point if less than -10 or greater than 0.5.
+## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
 def log_prior(theta):
 
     check = 0
