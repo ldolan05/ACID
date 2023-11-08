@@ -37,8 +37,9 @@ We can then run ACID and plot the final results:
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
    import numpy as np
+   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calculate_deltav(wavelength)   # velocity pixel size must not be smaller than the spectral pixel size - can use calculate_deltav function if unsure what this would be.
@@ -93,8 +94,9 @@ Once the inputs have been constructed ACID can be applied and the results plotte
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
    import numpy as np
+   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calc_deltav(wavelength)  
@@ -143,8 +145,9 @@ When looping over wavelength ranges we also need to provide the result array ('a
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
    import numpy as np
+   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calc_deltav(wavelength)  
@@ -153,6 +156,7 @@ When looping over wavelength ranges we also need to provide the result array ('a
    # choose size of wavelength ranges (or chunks)
    wave_chunk = 25
    chunks_no = int(np.floor((max(wavelength)-min(wavelength))/wave_chunk))
+
    min_wave = min(wavelength)
    max_wave = min_wave+wave_chunk
    
@@ -221,7 +225,7 @@ These inputs can be input into the HARPS function of ACID (ACID_HARPS):
 
 .. code-block:: python
 
-   import ACID_code as acid
+   import ACID_code.ACID as acid
 
    # run ACID function
    BJDs, profiles, errors = acid.ACID_HARPS(filelist, linelist, velocities)
