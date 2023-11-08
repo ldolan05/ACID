@@ -2,7 +2,7 @@ import numpy as np
 import emcee
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
-from astropy.io import  fits
+from astropy.io import fits
 import ACID_code.LSD_func_faster as LSD
 import glob
 from scipy.interpolate import interp1d
@@ -12,6 +12,7 @@ from functools import partial
 from multiprocessing import Pool
 from statistics import stdev
 import time
+import warnings
 
 from math import log10, floor
 
@@ -29,8 +30,6 @@ directory = '/Users/lucydolan/Starbase/HD189733 old/HD189733/'
 
 # run_name = input('Input nickname for this version of code (for saving figures): ')
 run_name = 'test'
-
-ccf_rvs = []
 
 def findfiles(directory, file_type):
 
@@ -151,12 +150,29 @@ def read_in_frames(order, filelist, file_type):
 
     return frame_wavelengths, frames, errors, sns, telluric_spec
 
+def calc_deltav(wavelengths):
+    """Calculates velocity pixel size
+
+    Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
+
+    Args:
+        wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
+        
+    Returns:
+        float: Velocity pixel size in km/s
+    """ 
+    resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    return resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
     interp_spec = np.zeros(spectra_f.shape)
     #combine all spectra to one spectrum
     for n in range(len(wavelengths_f)):
+
+        global reference_wave
+        idx_ref = (sns_f==np.max(sns_f))
+        reference_wave = wavelengths_f[idx_ref][0]
 
         idx = np.where(wavelengths_f[n] != 0)[0]
 
@@ -270,7 +286,6 @@ def log_prior(theta):
             else:
                 check = 1
 
-
     if check==0:
 
         # excluding the continuum points in the profile (in flux)
@@ -336,7 +351,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     #                  TELLURICS                 #   
     ##############################################
 
-    data_err_compare = data_err.copy()
+    # data_err_compare = data_err.copy()
 
     ## masking tellurics
     for line in tell_lines:
@@ -481,7 +496,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         line (str): Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
         frame_sns (list): Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list. 
         vgrid (array): Velocity grid for LSD profiles (in km/s).
-        all_frames (str or array, optional): Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, no. of orders, 2, no. of velocity pixels). 
+        all_frames (str or array, optional): Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, 1, 2, no. of velocity pixels). 
         poly_or (int, optional): Order of polynomial to fit as the continuum.
         pix_chunk (int, optional): Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the region the less aggresive the masking applied will be.
         dev_perc (int, optional): Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the deviation percentage the less aggresive the masking applied will be.
@@ -513,8 +528,9 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     frame_errors = np.array(input_spectral_errors)
     sns = np.array(frame_sns)
 
-    if all_frames == []:
-        all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
+    if type(all_frames)!=np.ndarray:
+        if all_frames=='default':
+            all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
 
     fw = frame_wavelengths.copy()
     f = frames.copy()
@@ -742,13 +758,15 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     continuum_error = np.std(np.array(conts), axis = 0)
 
     task_part = partial(get_profiles, all_frames, order, poly_cos, continuum_error)
-    with mp.Pool(mp.cpu_count()) as pool:
-        results=[pool.map(task_part, np.arange(len(frames)))]
-    results = np.array(results[0])
-    for i in range(len(frames)): 
-        all_frames[i]=results[i][i]
-    # for counter in range(len(frames)):
-    #     all_frames = get_profiles(all_frames, counter, order, poly_cos)  
+    if len(frames)>1:
+        with mp.Pool(mp.cpu_count()) as pool:
+            results=[pool.map(task_part, np.arange(len(frames)))]
+        results = np.array(results[0])
+        for i in range(len(frames)): 
+            all_frames[i]=results[i][i]
+        # for counter in range(len(frames)):
+        #     all_frames = get_profiles(all_frames, order, poly_cos, continuum_error, counter)  
+    else: all_frames = get_profiles(all_frames, order, poly_cos, continuum_error, 0)
 
     return all_frames
 

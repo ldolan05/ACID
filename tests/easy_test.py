@@ -14,7 +14,7 @@ def test_run_e2ds():
 
     e2ds_files = glob.glob('/Users/lucydolan/Documents/HD189733/July2007/*/*/*/*e2ds*A*.fits')
     
-    linelist = '/Users/lucydolan/Starbase/fulllinelist0001.txt'
+    linelist = 'example/example_linelist.txt'
     save_path = 'no save'
 
     if len(e2ds_files)==0:
@@ -32,7 +32,7 @@ def test_run_e2ds():
 def test_run_s1d():
 
     s1d_files = glob.glob('/Users/lucydolan/Starbase/problem_frames/*s1d*.fits')
-    linelist = '/Users/lucydolan/Starbase/fulllinelist0001.txt'
+    linelist = 'example/example_linelist.txt'
     save_path = 'no save'
 
     velocities = np.arange(-25, 25, 0.82)
