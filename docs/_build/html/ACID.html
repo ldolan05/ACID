@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ACID Functions &mdash; ACID_code 0.0.0 documentation</title>
+  <title>ACID Functions &mdash; ACID_code  documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -47,6 +48,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">ACID Functions</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#ACID.ACID"><code class="docutils literal notranslate"><span class="pre">ACID()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#ACID.ACID_HARPS"><code class="docutils literal notranslate"><span class="pre">ACID_HARPS()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ACID.calc_deltav"><code class="docutils literal notranslate"><span class="pre">calc_deltav()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -75,7 +77,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="section" id="module-ACID">
+  <section id="module-ACID">
 <span id="acid-functions"></span><span id="acid"></span><h1>ACID Functions<a class="headerlink" href="#module-ACID" title="Permalink to this heading"></a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="ACID.ACID">
@@ -84,7 +86,7 @@
 <p>Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given.
 Spectra must cover a similiar wavelength range.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>input_wavelengths</strong> (<em>list</em>) – Wavelengths for each frame (in Angstroms).</p></li>
 <li><p><strong>input_spectra</strong> (<em>list</em>) – Spectral frames (in flux).</p></li>
@@ -92,7 +94,7 @@ Spectra must cover a similiar wavelength range.</p>
 <li><p><strong>line</strong> (<em>str</em>) – Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra.</p></li>
 <li><p><strong>frame_sns</strong> (<em>list</em>) – Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list.</p></li>
 <li><p><strong>vgrid</strong> (<em>array</em>) – Velocity grid for LSD profiles (in km/s).</p></li>
-<li><p><strong>all_frames</strong> (<em>str</em><em> or </em><em>array</em><em>, </em><em>optional</em>) – Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, no. of orders, 2, no. of velocity pixels).</p></li>
+<li><p><strong>all_frames</strong> (<em>str</em><em> or </em><em>array</em><em>, </em><em>optional</em>) – Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, 1, 2, no. of velocity pixels).</p></li>
 <li><p><strong>poly_or</strong> (<em>int</em><em>, </em><em>optional</em>) – Order of polynomial to fit as the continuum.</p></li>
 <li><p><strong>pix_chunk</strong> (<em>int</em><em>, </em><em>optional</em>) – Size of ‘bad’ regions in pixels. ‘bad’ areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the region the less aggresive the masking applied will be.</p></li>
 <li><p><strong>dev_perc</strong> (<em>int</em><em>, </em><em>optional</em>) – Allowed deviation percentage. ‘bad’ areas are identified by the residuals between an inital model and the data. If a residual deviates by a specified percentage (dev_perv) for a specified number of pixels (pix_chunk) it is masked. The smaller the deviation percentage the less aggresive the masking applied will be.</p></li>
@@ -101,10 +103,10 @@ Spectra must cover a similiar wavelength range.</p>
 <li><p><strong>order</strong> (<em>int</em><em>, </em><em>optional</em>) – Only applicable if an all_frames output array has been provided as this is the order position in that array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in all_frames[:, 5].</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Resulting profiles and errors for spectra.</p>
 </dd>
-<dt class="field-odd">Return type</dt>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>array</p>
 </dd>
 </dl>
@@ -116,7 +118,7 @@ Spectra must cover a similiar wavelength range.</p>
 <dd><p>Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)</p>
 <p>Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each file given. Files must all be kept in the same folder as well as thier corresponding blaze files. If ‘s1d’ are being used their e2ds equivalents must also be in this folder. Result files containing profiles and associated errors for each order (or corresponding wavelength range in the case of ‘s1d’ files) will be created and saved to a specified folder. It is recommended that this folder is seperate to the input files.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>filelist</strong> (<em>list</em>) – List of files. Files must come from the same observation night as continuum is fit for a combined spectrum of all frames. A profile and associated errors will be produced for each file specified.</p></li>
 <li><p><strong>line</strong> (<em>str</em>) – Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra.</p></li>
@@ -131,18 +133,36 @@ Spectra must cover a similiar wavelength range.</p>
 <li><p><strong>telluric_lines</strong> (<em>list</em><em>, </em><em>optional</em>) – List of wavelengths of telluric lines to be masked in Angstroms. This can also include problematic lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked.</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Barycentric Julian Date for files
 list: Profiles (in normalised flux)
 list: Profile Errors (in normalised flux)</p>
 </dd>
-<dt class="field-odd">Return type</dt>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>list</p>
 </dd>
 </dl>
 </dd></dl>
 
-</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="ACID.calc_deltav">
+<span class="sig-prename descclassname"><span class="pre">ACID.</span></span><span class="sig-name descname"><span class="pre">calc_deltav</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wavelengths</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#ACID.calc_deltav" title="Permalink to this definition"></a></dt>
+<dd><p>Calculates velocity pixel size</p>
+<p>Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>wavelengths</strong> (<em>array</em>) – Wavelengths for ACID input spectrum (in Angstroms).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Velocity pixel size in km/s</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 
 
            </div>

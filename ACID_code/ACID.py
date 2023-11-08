@@ -31,8 +31,6 @@ directory = '/Users/lucydolan/Starbase/HD189733 old/HD189733/'
 # run_name = input('Input nickname for this version of code (for saving figures): ')
 run_name = 'test'
 
-ccf_rvs = []
-
 def findfiles(directory, file_type):
 
     filelist1=glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
@@ -152,6 +150,19 @@ def read_in_frames(order, filelist, file_type):
 
     return frame_wavelengths, frames, errors, sns, telluric_spec
 
+def calc_deltav(wavelengths):
+    """Calculates velocity pixel size
+
+    Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
+
+    Args:
+        wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
+        
+    Returns:
+        float: Velocity pixel size in km/s
+    """ 
+    resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    return resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
@@ -517,8 +528,9 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     frame_errors = np.array(input_spectral_errors)
     sns = np.array(frame_sns)
 
-    if all_frames == 'default':
-        all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
+    if type(all_frames)!=np.ndarray:
+        if all_frames=='default':
+            all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
 
     fw = frame_wavelengths.copy()
     f = frames.copy()

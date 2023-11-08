@@ -41,7 +41,7 @@ We can then run ACID and plot the final results:
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
-   deltav = 0.82   # velocity pixel size must not be smaller than the spectral pixel size
+   deltav = acid.calculate_deltav(wavelength)   # velocity pixel size must not be smaller than the spectral pixel size - can use calculate_deltav function if unsure what this would be.
    velocities = np.arange(-25, 25, deltav)  
 
    # run ACID function
@@ -85,7 +85,7 @@ As in the previous example, we must first read in the data:
       wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
       spectra.append(spec_file[1].data)        # Spectral Flux
       errors.append(spec_file[2].data)         # Spectral Flux Errors
-      sns.append(spec_file[3].data)            # SN of Spectrum
+      sns.append(float(spec_file[3].data))     # SN of Spectrum
 
    linelist = './example_linelist.txt' # Insert path to line list
 
@@ -97,7 +97,7 @@ Once the inputs have been constructed ACID can be applied and the results plotte
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
-   deltav = 0.82  
+   deltav = acid.calc_deltav(wavelength)  
    velocities = np.arange(-25, 25, deltav)  
 
    # run ACID function
@@ -147,17 +147,17 @@ When looping over wavelength ranges we also need to provide the result array ('a
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
-   deltav = 0.82   # velocity pixel size must not be smaller than the spectral pixel size
-   velocities = np.arange(-25, 25, deltav)  
+   deltav = acid.calc_deltav(wavelength)  
+   velocities = np.arange(-25, 25, deltav)
 
    # choose size of wavelength ranges (or chunks)
-   wave_chunk = 1000
-   chunks_no = floor((max(wavelength)-min(wavelength))/wave_chunk)
+   wave_chunk = 25
+   chunks_no = int(np.floor((max(wavelength)-min(wavelength))/wave_chunk))
    min_wave = min(wavelength)
-   max_wave = wave_chunk
+   max_wave = min_wave+wave_chunk
    
    # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
-   results = np.zeros(1, chunks_no, 2, len(velocities))
+   results = np.zeros((1, chunks_no, 2, len(velocities)))
    
    for i in range(chunks_no):
 
@@ -172,7 +172,7 @@ When looping over wavelength ranges we also need to provide the result array ('a
 
    # reset min and max wavelengths
    min_wave = min(wavelength)
-   max_wave = wave_chunk
+   max_wave = min_wave+wave_chunk
 
    # plot results
    plt.figure()
@@ -211,10 +211,10 @@ For 'e2ds' spectra the resolution of the profiles are optimized when the velocit
 
    file_type = 'e2ds'
    filelist = glob.glob('/path/to/files/**%s**.fits')%file_type   # returns list of HARPS fits files
-   linelist = './example_linelist.txt'                            # Insert path to line list
+   linelist = '/path/to/files/example_linelist.txt'                            # Insert path to line list
 
    # choose a velocity grid for the final profile(s)
-   deltav = 0.82  
+   deltav = 0.82     # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
    velocities = np.arange(-25, 25, deltav)  
 
 These inputs can be input into the HARPS function of ACID (ACID_HARPS):

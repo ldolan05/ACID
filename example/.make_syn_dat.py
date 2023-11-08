@@ -25,8 +25,8 @@ def create_alpha(velocities, linelist, wavelengths):
     depths_expected=[]
     no_line =[]
     for some in range(0, len(wavelengths_expected1)):
-        # line_min = 1/300
-        line_min = 0.01
+        line_min = 1/300
+        # line_min = 0.01
         if wavelengths_expected1[some]>=wavelength_min and wavelengths_expected1[some]<=wavelength_max and depths_expected1[some]>=line_min:
             wavelengths_expected.append(wavelengths_expected1[some])
             #depths_expected.append(depths_expected1[some]+random.uniform(-0.1, 0.1))
@@ -87,17 +87,14 @@ alpha = create_alpha(velocities, linelist, wavelengths)
 for spec_no in range(1, 4):
     print('Running for spectrum %s/4'%spec_no)
     ## create synthetic profile
-    # velocities = np.concatenate((-np.arange(0.83, 25, 0.83), np.arange(0, 25, 0.83)))
-    velocities = np.concatenate((-np.arange(0.82+0.5, 25+0.5, 0.82), np.arange(0-0.5, 25-0.5, 0.82)))
-    # velocities.sort()
-    number = np.random.normal(0, 0.01)
+    number = np.random.normal(0, 4)
     profile = gauss(velocities, 0.+number, 4, -0.4, 1)
     # profile_errors = (1-profile)/10
     input_profile = profile.copy()
-    number = np.random.normal(0, 0.01, size=profile.shape)
+    number = np.random.normal(0, 0.001, size=profile.shape)
     profile_errors = abs(number)
     input_profile_err = profile_errors.copy()
-    profile = profile + number
+    # profile = profile + number
 
     ## create synthetic spectrum
     # creates a fake data set to fit a polynomial to - is just an easy way to get continuum coefficents that make sense for the wavelength range
