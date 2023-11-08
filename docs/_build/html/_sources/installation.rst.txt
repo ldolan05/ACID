@@ -36,7 +36,7 @@ This can be done by cloning the source repository and installing from there.
 .. code-block:: bash
 
     git clone https://github.com/ldolan05/ACID.git
-    cd ACID_code
+    cd ACID
     python -m pip install -e .
 
 .. _test:
@@ -44,10 +44,10 @@ This can be done by cloning the source repository and installing from there.
 Testing the installation
 ==========================
 
-Test your installation by running our test file in the root repository. This should run without any errors if the installation has gone smoothly.
+Test your installation by running our test file in the root repository. This mau take a while but should run without any errors if the installation has gone smoothly.
 
 .. code-block:: bash
     
-    python easy_test.py
+    python tests/easy_test.py
 
 
