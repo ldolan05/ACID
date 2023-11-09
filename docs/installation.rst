@@ -44,10 +44,12 @@ This can be done by cloning the source repository and installing from there.
 Testing the installation
 ==========================
 
-Test your installation by running our test file in the root repository. This mau take a while but should run without any errors if the installation has gone smoothly.
+Test your installation by running our test file in the test directory using pytest_. This may take a while but should run without any errors if the installation has gone smoothly.
+
+.. _pytest: https://docs.pytest.org/en/7.4.x/contents.html
 
 .. code-block:: bash
     
-    python tests/easy_test.py
+    pytest tests.py
 
 
