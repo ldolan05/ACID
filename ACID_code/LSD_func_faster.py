@@ -252,24 +252,34 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
         # wave=hdu[0].header['CRVAL1']+(hdu[0].header['CRPIX1']+np.arange(spec.shape[0]))*hdu[0].header['CDELT1']
         
         wave=hdu[0].header['CRVAL1']+(np.arange(spec.shape[0]))*hdu[0].header['CDELT1']
+        
+        where_are_zeros = (spec<=0)
+        spec[where_are_zeros] = 1000000000000
+        flux_error = np.sqrt(spec)
 
         # print(wave)
 
         if spec_type == 'order':
             wavelengths=[]
             fluxes=[]
+            errors = []
             for value in range(0, len(wave)):
                 l_wave=wave[value]
                 l_flux=spec[value]
+                l_error=flux_error[value]
                 if l_wave>=wavelength_min and l_wave<=wavelength_max:
                     wavelengths.append(l_wave)
                     fluxes.append(l_flux)
+                    errors.append(l_error)
             wavelengths = np.array(wavelengths)
             fluxes = np.array(fluxes)
+            errors = np.array(errors)
+
 
             if len(wavelengths)>5144:
                 wavelengths = wavelengths[:5144]
                 fluxes = fluxes[:5144]
+                flux_error = errors[:5144]
             # print(len(wavelengths))
             # print(np.max(wavelengths), np.min(wavelengths))
             # print(min_overlap)
@@ -291,12 +301,10 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             # if len(spec_check)>0:
             #     print('WARNING NEGATIVE/ZERO FLUX - corrected')
 
-            flux_error = np.sqrt(fluxes)
-            where_are_NaNs = np.isnan(flux_error)
-            flux_error[where_are_NaNs] = 1000000000000
-            where_are_zeros = np.where(fluxes == 0)[0]
-            flux_error[where_are_zeros] = 1000000000000
-
+            # where_are_zeros = (spec<=0)
+            # spec[where_are_zeros] = 1000000000000
+            # flux_error = np.sqrt(spec)
+            
             flux_error_order = flux_error
             masked_waves = []
             masked_waves = np.array(masked_waves)

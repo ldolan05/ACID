@@ -129,8 +129,8 @@ def read_in_frames(order, filelist, file_type):
             if i+binsize<len(reference_wave):
                 waves = reference_wave[i:i+binsize]
                 flux = div_frame[i:i+binsize]
-                waves = waves[abs(flux-np.median(div_frame))<0.1]
-                flux = flux[abs(flux-np.median(div_frame))<0.1]
+                waves = waves[abs(flux-np.median(flux))<0.1]
+                flux = flux[abs(flux-np.median(flux))<0.1]
                 binned.append(np.median(flux))
                 binned_waves.append(np.median(waves))
 
@@ -809,6 +809,7 @@ def ACID_HARPS(filelist, line, vgrid, poly_or=3, order_range=np.arange(10,70), s
     global frame_errors
     global sns
 
+    
     for order in order_range:
     
         print('Running for order %s/%s...'%(order-min(order_range)+1, max(order_range)-min(order_range)+1))
