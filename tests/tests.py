@@ -131,7 +131,7 @@ def mulitple_orders():
 
 def test_run_e2ds():
 
-    e2ds_files = glob.glob('data/*e2ds*A*.fits')
+    e2ds_files = glob.glob('data/*e2ds_A*.fits')
     linelist = '../example/example_linelist.txt'
     save_path = 'no save'
 
@@ -144,7 +144,7 @@ def test_run_e2ds():
 
 def test_run_s1d():
 
-    s1d_files = glob.glob('data/*s1d*.fits')
+    s1d_files = glob.glob('data/*s1d_A*.fits')
     linelist = '../example/example_linelist.txt'
     save_path = 'no save'
 
@@ -153,8 +153,8 @@ def test_run_s1d():
     # run ACID on s1d files
     ACID_results_s1d = acid.ACID_HARPS(s1d_files, linelist, vgrid = velocities, save_path = save_path, order_range = np.arange(41, 43), file_type = 's1d')
 
-# quickstart()
-# multiple_frames()
-# mulitple_orders()
+quickstart()
+multiple_frames()
+mulitple_orders()
 test_run_e2ds()
 test_run_s1d()
