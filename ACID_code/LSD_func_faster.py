@@ -581,8 +581,11 @@ def blaze_correct(file_type, spec_type, order, file, directory, masking, run_nam
             # print(blaze_file)
             blaze_file = blaze_file[0]
         except: 
-            blaze_file = glob.glob('/Users/lucydolan/Starbase/problem_frames/**blaze_A*.fits')
-            blaze_file = blaze_file[0]
+            try:
+                blaze_file = glob.glob('/Users/lucydolan/Starbase/problem_frames/**blaze_A*.fits')
+                blaze_file = blaze_file[0]
+            except:
+                blaze_file = glob.glob('data/**blaze_A*.fits')
 
         blaze =fits.open('%s'%blaze_file)
         blaze_func = blaze[0].data
