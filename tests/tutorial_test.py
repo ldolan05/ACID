@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import glob
 
 def quickstart():
-    spec_file = fits.open('../example/sample_spec_1.fits')
+    spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
@@ -35,7 +35,7 @@ def quickstart():
 def multiple_frames():
 
     # finds sample files in 'example directory'. Each file is a different frame.
-    files = glob.glob('../example/sample_spec_*.fits')
+    files = glob.glob('example/sample_spec_*.fits')
 
     # create lists for wavelengths, spectra, errors and sn for all frames
     wavelengths = []
@@ -51,7 +51,7 @@ def multiple_frames():
         errors.append(spec_file[2].data)         # Spectral Flux Errors
         sns.append(float(spec_file[3].data))     # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelengths[0])
@@ -74,14 +74,14 @@ def multiple_frames():
     plt.close('all')
 
 def mulitple_orders():
-    spec_file = fits.open('../example/sample_spec_1.fits')
+    spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelength)  

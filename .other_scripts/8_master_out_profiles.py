@@ -13,11 +13,12 @@ import math
 import glob
 from scipy.interpolate import interp1d
 from statistics import stdev
-import LSD_func_faster as LSD
+# import LSD_func_faster as LSD
 from scipy.optimize import curve_fit
 
 # run_name = input('Run name (all_frames or jvc):' )
 run_name = 'newdepths'
+# run_name = '550_masked'
 
 def gauss(x, rv, sd, height, cont):
     y = cont+(height*np.exp(-(x-rv)**2/(2*sd**2)))
@@ -176,8 +177,8 @@ RpRs = 0.15667
 path = '/Users/lucydolan/Starbase/newdepths/'
 file_path = '/Users/lucydolan/Starbase/'
 
-months = ['August2007',
-          'July2007',
+months = ['July2007',
+          'August2007',
           'July2006',
           'Sep2006'
           ]
@@ -210,7 +211,7 @@ for month in months:
             order_errors.append(profile_errors)
             order_profiles.append(profile)
 
-        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, 'no', velocities)
+        spectrum, errors, weights = combineprofiles(order_profiles, order_errors, 'yes', velocities)
         
         final_velocities, spectrum, errors = remove_reflex(velocities, spectrum, errors, phase, K, e, omega, v0)
 
