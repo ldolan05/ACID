@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: ACID-code
+Version: 0.1.0
+Summary: Returns line profiles from input spectra by fitting the stellar continuum and performing LSD
+License-File: LICENSE

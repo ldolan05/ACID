@@ -1,0 +1,11 @@
+LICENSE
+README.md
+setup.py
+ACID_code/ACID.py
+ACID_code/LSD_func_faster.py
+ACID_code/__init__.py
+ACID_code.egg-info/PKG-INFO
+ACID_code.egg-info/SOURCES.txt
+ACID_code.egg-info/dependency_links.txt
+ACID_code.egg-info/requires.txt
+ACID_code.egg-info/top_level.txt
