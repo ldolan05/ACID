@@ -14,7 +14,7 @@ In this example we create an environment named 'acid' and activate it using:
 .. code-block:: bash
 
     conda create -n acid python=3.7
-    conda acivate acid
+    conda activate acid
 
 Once the environment has been activated ACID can be installed using pip_:
 
