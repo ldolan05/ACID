@@ -886,19 +886,22 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     return all_frames
 
-def ACID_HARPS(filelist, line, vgrid, order_range=np.arange(10,70), save_path = './', file_type = 'e2ds', **kwargs):
+def ACID_HARPS(filelist, line, vgrid, order_range=None, save_path = './', file_type = 'e2ds', **kwargs):
     """_summary_
 
     Parameters
     ----------
     filelist : list of strings
-        List of files. Files must come from the same observation night as continuum is fit for a combined spectrum of all frames. A profile and associated errors will be produced for each file specified.
+        List of files. Files must come from the same observation night as continuum is fit for a combined
+        spectrum of all frames. A profile and associated errors will be produced for each file specified.
     line : str
-        Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
+        Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
+        be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
     vgrid : array
         Velocity grid for LSD profiles (in km/s).
     order_range : array, optional
-        Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths will be considered, by default np.arange(10,70)
+        Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths 
+        will be considered, by default None, the function generates np.arange(10,70) in the body.
     save_path : str, optional
         Path to the directory where output files will be saved, by default './'
     file_type : str, optional
@@ -928,6 +931,8 @@ def ACID_HARPS(filelist, line, vgrid, order_range=np.arange(10,70), save_path = 
     global frame_errors
     global sns
 
+    if order_range is None:
+        order_range = np.arange(10, 70)
     
     for order in order_range:
     
