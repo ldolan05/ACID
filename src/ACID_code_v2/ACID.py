@@ -800,7 +800,14 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     return all_frames
 
 def ACID_HARPS(filelist, line, vgrid, order_range=None, save_path = './', file_type = 'e2ds', **kwargs):
-    """_summary_
+    """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
+
+    Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
+    returning an LSD profile for each file given. Files must all be kept in the same folder as well
+    as their corresponding blaze files. If 's1d' are being used their e2ds equivalents must also be
+    in this folder. Result files containing profiles and associated errors for each order (or
+    corresponding wavelength range in the case of 's1d' files) will be created and saved to a
+    specified folder. It is recommended that this folder is seperate to the input files.
 
     Parameters
     ----------
@@ -886,5 +893,3 @@ def ACID_HARPS(filelist, line, vgrid, order_range=None, save_path = './', file_t
         errors.append(result2)
 
     return BJDs, profiles, errors
-
-

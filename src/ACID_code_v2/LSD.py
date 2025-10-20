@@ -1,13 +1,12 @@
 import numpy as np
 from scipy import linalg
 from astropy.io import  fits
-import glob, time, warnings, sys, psutil
+import glob, time, warnings, sys, psutil, os
 import scipy.constants as const
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
-import os
 ckms = float(const.c/1e3)  # speed of light in km/s
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, 
@@ -199,9 +198,9 @@ def continuumfit(wavelengths1, fluxes1, poly_ord):
         
         return flux_obs
 
-# from MM-LSD code - give credit if needed
 def upper_envelope(x, y):
-    #used to compute the tapas continuum. find peaks then fit spline to it.
+    # from MM-LSD code - give credit if needed
+    # used to compute the tapas continuum. find peaks then fit spline to it.
     peaks = find_peaks(y, height=0.2, distance=len(x) // 500)[0]
     # t= knot positions
     spl = LSQUnivariateSpline(x=x[peaks], y=y[peaks], t=x[peaks][5::10])

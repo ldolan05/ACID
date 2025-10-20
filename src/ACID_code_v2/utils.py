@@ -21,7 +21,6 @@ def ensure_list(x, allow_none=False):
     else:
         raise TypeError("Input must be a list or numpy array")
 
-
 def round_sig(x1, sig):
     return round(x1, sig-int(floor(log10(abs(x1))))-1)
 
