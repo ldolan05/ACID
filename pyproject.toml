@@ -4,7 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ACID_code_v2"
-version = "0.1.9"
 authors = [
     {name = "Benjamin Cadell", email="bcadell01@qub.ac.uk"},
     {name = "Lucy Dolan"}
@@ -28,6 +27,7 @@ dependencies = [
     "tqdm",
     "psutil"
 ]
+dynamic = ["version"]
 
 [project.optional-dependencies]
 docs = [
@@ -39,6 +39,11 @@ Homepage = "https://github.com/Benjamin-Cadell/ACID"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "dirty-tag"
+
 
 # ... other project metadata fields as listed in:
 #     https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
