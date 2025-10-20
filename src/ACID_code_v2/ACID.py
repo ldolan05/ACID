@@ -841,7 +841,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     return all_frames
 
-def ACID_HARPS(filelist, line, vgrid, order_range=None, save_path = './', file_type = 'e2ds', **kwargs):
+def ACID_HARPS(filelist, line, vgrid, order_range=None, save_path = './',
+               file_type = 'e2ds', name="test", **kwargs):
     """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
     Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -892,6 +893,8 @@ def ACID_HARPS(filelist, line, vgrid, order_range=None, save_path = './', file_t
     global frame_wavelengths
     global frame_errors
     global sns
+    global run_name
+    run_name = name
 
     if order_range is None:
         order_range = np.arange(10, 70)
