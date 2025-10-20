@@ -8,7 +8,6 @@ from functools import partial
 from multiprocessing import Pool
 from . import utils
 from . import LSD
-from . import mcmc_utils
 
 warnings.filterwarnings("ignore")
 importlib.reload(LSD)
@@ -201,14 +200,92 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
+def model_func(inputs, x):
+    ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
+    z = inputs[:k_max]
+
+    mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
+
+    #converting model from optical depth to flux
+    mdl = np.exp(mdl)
+
+    ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
+    a = 2/(np.max(x)-np.min(x))
+    b = 1 - a*np.max(x)
+
+    mdl1 = 0
+    for i in range(k_max, len(inputs) - 1):
+        mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - k_max))
+
+    # coefs = np.asarray(inputs[k_max:-1], dtype=float) # Potential improvement - Ben
+    # X = (a * x) + b
+    # if coefs.size:
+    #     powers = np.arange(coefs.size)
+    #     # X[:, None] ** powers -> shape (len(x), coefs.size); dot with coefs -> (len(x),)
+    #     mdl1 = np.dot(X[:, None] ** powers[None, :], coefs)
+    # else:
+    #     mdl1 = 0.0
+
+    mdl1 = mdl1 * inputs[-1]
+    
+    mdl = mdl * mdl1
+   
+    return mdl
+
+def log_likelihood(theta, x, y, yerr):
+    ## maximum likelihood estimation for the mcmc model.
+    model = model_func(theta, x)
+
+    lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
+
+    return lnlike
+
+def log_prior(theta):
+    ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
+    check = 0
+    z = theta[:k_max]
+
+    for i in range(len(theta)):
+        if i < k_max: ## must lie in z
+            if -10 <= theta[i] <= 0.5:
+                pass
+            else:
+                check = 1
+
+    if check == 0:
+
+        # excluding the continuum points in the profile (in flux)
+        z_cont = []
+        v_cont = []
+        for i in range(0, 5):
+                z_cont.append(np.exp(z[len(z)-i-1])-1)
+                v_cont.append(velocities[len(velocities)-i-1])
+                z_cont.append(np.exp(z[i])-1)
+                v_cont.append(velocities[i])
+
+        z_cont = np.array(z_cont)
+        v_cont = np.array(v_cont)
+
+        p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
+
+        return p_pent
+
+    return -np.inf
+
+def log_probability(theta):
+    ## calculates log probability - used for mcmc
+    lp = log_prior(theta)
+    if not np.isfinite(lp):
+        return -np.inf
+    final = lp + log_likelihood(theta, x, y, yerr)
+    return final
+
 def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord, linelist,
                   velocities=np.arange(-25, 25, 0.82), pix_chunk=20, dev_perc=25, 
-                  tell_lines=[3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55,
-                              4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81,
-                              7593.70, 8226.96], n_sig=1):
+                  tell_lines=None, n_sig=1, alpha=None):
     ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
-    forward = mcmc_utils.model_func(initial_inputs, wavelengths, k_max=k_max, alpha=alpha)
+    forward = model_func(initial_inputs, wavelengths)
 
     a = 2 / (np.max(wavelengths) - np.min(wavelengths))
     b = 1 - a * np.max(wavelengths)
@@ -536,7 +613,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord,
                                                       linelist, pix_chunk=pix_chunk,
                                                       dev_perc=dev_perc, tell_lines=telluric_lines,
-                                                      n_sig=n_sig)
+                                                      n_sig=n_sig, alpha=alpha)
 
     # if verbose:
     #     t4 = time.time()
@@ -561,9 +638,6 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     pos = np.array(pos)
     pos = np.transpose(pos)
 
-    # Initialise MCMC class:
-    mcmc_class = mcmc_utils.Model(x, y, yerr, velocities, k_max, alpha)
-
     if verbose:
         t5 = time.time()
         # print('MCMC set up takes: %s'%(t5-t4))
@@ -587,7 +661,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         if sys.platform != "win32":
             ctx = mp.get_context("fork")
             with ctx.Pool(processes = cores) as pool:
-                sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
+                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
                 sampler.run_mcmc(pos, nsteps, progress=True, store=True)
 
             # with Pool() as pool: # Original code
@@ -601,7 +675,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
 
     else:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability)
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability)
         sampler.run_mcmc(pos, nsteps, progress=True)
 
     print('MCMC run takes: %s'%(time.time()-t5))
@@ -643,7 +717,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         inds = np.random.randint(len(flat_samples), size=100)
         for ind in inds:
             sample = flat_samples[ind]
-            mdl = mcmc_utils.model_func(sample, x, k_max=k_max, alpha=alpha)
+            mdl = model_func(sample, x)
             mdl1 = 0
             for i in np.arange(k_max, len(sample)-1):
                 mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
@@ -697,7 +771,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         plt.savefig('figures/cont_%s'%(run_name))
     
         mcmc_inputs = np.concatenate((profile, poly_cos))
-        mcmc_mdl = mcmc_utils.model_func(mcmc_inputs, x, k_max=k_max, alpha=alpha)
+        mcmc_mdl = model_func(mcmc_inputs, x)
 
         residuals_2 = (y+1) - (mcmc_mdl+1)
 
@@ -741,7 +815,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     conts = []
     for ind in inds:
         sample = flat_samples[ind]
-        mdl = mcmc_utils.model_func(sample, wavelengths, k_max=k_max, alpha=alpha)
+        mdl = model_func(sample, wavelengths)
         #mdl = model_func(sample, x)
         #mdl = mdl[idx]
         mdl1_temp = 0
