@@ -201,38 +201,6 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
-def model_func(inputs, x):
-    ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-    z = inputs[:k_max]
-
-    mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
-
-    #converting model from optical depth to flux
-    mdl = np.exp(mdl)
-
-    ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-    a = 2/(np.max(x)-np.min(x))
-    b = 1 - a*np.max(x)
-
-    mdl1 = 0
-    for i in range(k_max, len(inputs) - 1):
-        mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - k_max))
-
-    # coefs = np.asarray(inputs[k_max:-1], dtype=float) # Potential improvement - Ben
-    # X = (a * x) + b
-    # if coefs.size:
-    #     powers = np.arange(coefs.size)
-    #     # X[:, None] ** powers -> shape (len(x), coefs.size); dot with coefs -> (len(x),)
-    #     mdl1 = np.dot(X[:, None] ** powers[None, :], coefs)
-    # else:
-    #     mdl1 = 0.0
-
-    mdl1 = mdl1 * inputs[-1]
-    
-    mdl = mdl * mdl1
-   
-    return mdl
-
 def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord, linelist,
                   velocities=np.arange(-25, 25, 0.82), pix_chunk=20, dev_perc=25, 
                   tell_lines=[3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55,
@@ -240,7 +208,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
                               7593.70, 8226.96], n_sig=1):
     ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
-    forward = model_func(initial_inputs, wavelengths)
+    forward = mcmc_utils.model_func(initial_inputs, wavelengths, k_max=k_max, alpha=alpha)
 
     a = 2 / (np.max(wavelengths) - np.min(wavelengths))
     b = 1 - a * np.max(wavelengths)
@@ -593,8 +561,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     pos = np.array(pos)
     pos = np.transpose(pos)
 
-    # Inistialise MCMC class:
-    mcmc_class = mcmc_utils.Model(model_func, x, y, yerr, velocities, k_max)
+    # Initialise MCMC class:
+    mcmc_class = mcmc_utils.Model(x, y, yerr, velocities, k_max, alpha)
 
     if verbose:
         t5 = time.time()
@@ -675,7 +643,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         inds = np.random.randint(len(flat_samples), size=100)
         for ind in inds:
             sample = flat_samples[ind]
-            mdl = model_func(sample, x)
+            mdl = mcmc_utils.model_func(sample, x, k_max=k_max, alpha=alpha)
             mdl1 = 0
             for i in np.arange(k_max, len(sample)-1):
                 mdl1 = mdl1+sample[i]*((a*x)+b)**(i-k_max)
@@ -729,7 +697,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         plt.savefig('figures/cont_%s'%(run_name))
     
         mcmc_inputs = np.concatenate((profile, poly_cos))
-        mcmc_mdl = model_func(mcmc_inputs, x)
+        mcmc_mdl = mcmc_utils.model_func(mcmc_inputs, x, k_max=k_max, alpha=alpha)
 
         residuals_2 = (y+1) - (mcmc_mdl+1)
 
@@ -773,7 +741,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     conts = []
     for ind in inds:
         sample = flat_samples[ind]
-        mdl = model_func(sample, wavelengths)
+        mdl = mcmc_utils.model_func(sample, wavelengths, k_max=k_max, alpha=alpha)
         #mdl = model_func(sample, x)
         #mdl = mdl[idx]
         mdl1_temp = 0

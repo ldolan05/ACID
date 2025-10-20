@@ -1,19 +1,49 @@
 import numpy as np
-from .ACID import model_func
 
+def model_func(inputs, x, k_max, alpha):
+    ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
+    z = inputs[:k_max]
+
+    mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
+
+    #converting model from optical depth to flux
+    mdl = np.exp(mdl)
+
+    ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
+    a = 2/(np.max(x)-np.min(x))
+    b = 1 - a*np.max(x)
+
+    mdl1 = 0
+    for i in range(k_max, len(inputs) - 1):
+        mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - k_max))
+
+    # coefs = np.asarray(inputs[k_max:-1], dtype=float) # Potential improvement - Ben
+    # X = (a * x) + b
+    # if coefs.size:
+    #     powers = np.arange(coefs.size)
+    #     # X[:, None] ** powers -> shape (len(x), coefs.size); dot with coefs -> (len(x),)
+    #     mdl1 = np.dot(X[:, None] ** powers[None, :], coefs)
+    # else:
+    #     mdl1 = 0.0
+
+    mdl1 = mdl1 * inputs[-1]
+    
+    mdl = mdl * mdl1
+   
+    return mdl
 
 class Model:
-    def __init__(self, model_func, x, y, yerr, velocities, k_max):
-        self.model_func = model_func
+    def __init__(self, x, y, yerr, velocities, k_max, alpha):
         self.x = x
         self.y = y
         self.yerr = yerr
         self.velocities = velocities
         self.k_max = k_max
+        self.alpha = alpha
 
     def log_likelihood(self, theta, x, y, yerr):
         ## maximum likelihood estimation for the mcmc model.
-        model = model_func(theta, x)
+        model = model_func(theta, x, k_max=self.k_max, alpha=self.alpha)
 
         lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
 
