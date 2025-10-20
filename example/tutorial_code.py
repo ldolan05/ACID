@@ -5,7 +5,6 @@ import multiprocessing as mp
 import numpy as np
 import matplotlib.pyplot as plt
 try:
-    raise Exception("Force except block")
     import ACID_code_v2 as acid
 except:
     os.chdir(os.path.dirname(__file__))
