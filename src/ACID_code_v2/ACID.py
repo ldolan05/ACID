@@ -1,50 +1,19 @@
-import sys, emcee, warnings, os, glob, time, importlib
+import sys, emcee, warnings, os, time, importlib
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize
 from astropy.io import fits
 from scipy.interpolate import interp1d
-from scipy.signal import find_peaks
 import multiprocessing as mp
 from functools import partial
 from multiprocessing import Pool
-from math import log10, floor
 from . import utils
 from . import LSD
+from . import mcmc_utils
 
 warnings.filterwarnings("ignore")
 importlib.reload(LSD)
 importlib.reload(utils)
 
-def round_sig(x1, sig):
-    return round(x1, sig-int(floor(log10(abs(x1))))-1)
-
-def gauss(x1, rv, sd, height, cont):
-    y1 = height*np.exp(-(x1-rv)**2/(2*sd**2)) + cont
-    return y1
-
-# month = 'August2007'
-# directory = '/Users/lucydolan/Starbase/HD189733 old/HD189733/'
-
-# run_name = input('Input nickname for this version of code (for saving figures): ')
-run_name = 'test'
-
-def findfiles(directory, file_type):
-
-    filelist1 = glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type))    #finding corrected spectra
-    filelist = glob.glob('%s/*/*%s**A*.fits'%(directory, file_type))               #finding all A band spectra
-
-    filelist_final = []
-
-    for file in filelist:                                                        #filtering out corrected spectra
-        count = 0
-        for file1 in filelist1:
-            if file1 == file:
-                count = 1
-        if count == 0:
-            filelist_final.append(file)
-
-    return filelist_final
 
 def continuumfit(fluxes, wavelengths, errors, poly_ord):
         
@@ -73,10 +42,9 @@ def continuumfit(fluxes, wavelengths, errors, poly_ord):
 
         return np.concatenate((np.flip(coeffs), [cont_factor])), flux_obs, new_errors, fit
 
-def read_in_frames(order, filelist, file_type):
+def read_in_frames(order, filelist, file_type, directory=None):
     
     # read in first frame
-    directory = '/Users/lucydolan/Starbase/HD189733 old/HD189733/' # Ben - Not sure why this needed to be manually added
     fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
         file_type, 'order', order, filelist[0], directory, 'unmasked', run_name, 'y')
     
@@ -164,7 +132,7 @@ def calc_deltav(wavelengths):
         float: Velocity pixel size in km/s
     """ 
     resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    return resol1/(wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2))*2.99792458e5
+    return resol1 / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms
 
 def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
@@ -233,15 +201,8 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
 
-def od2flux(x):
-    return np.exp(x)-1
-
-def flux2od(x):
-    return np.log(x+1)
-
-no_line = 100
-## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
 def model_func(inputs, x):
+    ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
     z = inputs[:k_max]
 
     mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
@@ -272,64 +233,12 @@ def model_func(inputs, x):
    
     return mdl
 
-def convolve(profile, alpha):
-    spectrum = np.dot(alpha, profile)
-    return spectrum
-
-## maximum likelihood estimation for the mcmc model.
-def log_likelihood(theta, x, y, yerr):
-    model = model_func(theta, x)
-
-    lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
-
-    return lnlike
-
-## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
-def log_prior(theta):
-    check = 0
-    z = theta[:k_max]
-
-    for i in range(len(theta)):
-        if i < k_max: ## must lie in z
-            if -10 <= theta[i] <= 0.5:
-                pass
-            else:
-                check = 1
-
-    if check == 0:
-
-        # excluding the continuum points in the profile (in flux)
-        z_cont = []
-        v_cont = []
-        for i in range(0, 5):
-                z_cont.append(np.exp(z[len(z)-i-1])-1)
-                v_cont.append(velocities[len(velocities)-i-1])
-                z_cont.append(np.exp(z[i])-1)
-                v_cont.append(velocities[i])
-
-        z_cont = np.array(z_cont)
-        v_cont = np.array(v_cont)
-
-        p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
-
-        return p_pent
-
-    return -np.inf
-
-## calculates log probability - used for mcmc
-def log_probability(theta):
-    lp = log_prior(theta)
-    if not np.isfinite(lp):
-        return -np.inf
-    final = lp + log_likelihood(theta, x, y, yerr)
-    return final
-
-## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord, linelist,
                   velocities=np.arange(-25, 25, 0.82), pix_chunk=20, dev_perc=25, 
-                  tell_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55,
-                                4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81,
-                                7593.70, 8226.96], n_sig=1, verbose=False):
+                  tell_lines=[3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55,
+                              4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81,
+                              7593.70, 8226.96], n_sig=1):
+    ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
     forward = model_func(initial_inputs, wavelengths)
 
@@ -503,7 +412,7 @@ def combineprofiles(spectra, errors):
     return  spectrum, spec_errors
 
 def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns,
-         vgrid, all_frames='default', poly_or=3, pix_chunk=20, dev_perc=25,
+         vgrid, all_frames='default', poly_or=3, pix_chunk=20, dev_perc=25, name="test",
          n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
          nsteps=8000):
     """Accurate Continuum fItting and Deconvolution
@@ -586,7 +495,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     linelist = line
     global poly_ord
     poly_ord = poly_or
-
+    global run_name
+    run_name = name
     global frames
     global frame_wavelengths
     global frame_errors
@@ -658,7 +568,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord,
                                                       linelist, pix_chunk=pix_chunk,
                                                       dev_perc=dev_perc, tell_lines=telluric_lines,
-                                                      n_sig=n_sig, verbose=verbose)
+                                                      n_sig=n_sig)
 
     # if verbose:
     #     t4 = time.time()
@@ -676,12 +586,15 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         if i < ndim - poly_ord - 2:
             pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
         else:
-            sigma = abs(round_sig(model_inputs[i], 1)) / 10
+            sigma = abs(utils.round_sig(model_inputs[i], 1)) / 10
             pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
         pos.append(pos2)
 
     pos = np.array(pos)
     pos = np.transpose(pos)
+
+    # Inistialise MCMC class:
+    mcmc_class = mcmc_utils.Model(model_func, x, y, yerr, velocities, k_max)
 
     if verbose:
         t5 = time.time()
@@ -706,21 +619,21 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         if sys.platform != "win32":
             ctx = mp.get_context("fork")
             with ctx.Pool(processes = cores) as pool:
-                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
+                sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
                 sampler.run_mcmc(pos, nsteps, progress=True, store=True)
 
             # with Pool() as pool: # Original code
-            #         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
+            #         sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
             #         sampler.run_mcmc(pos, nsteps, progress=True)
         
         else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
             with Pool() as pool:
-                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
+                sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
                 sampler.run_mcmc(pos, nsteps, progress=verbose)
 
 
     else:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability)
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability)
         sampler.run_mcmc(pos, nsteps, progress=True)
 
     print('MCMC run takes: %s'%(time.time()-t5))
@@ -786,7 +699,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         ax0.fill_between(velocities, profile-profile_err, profile+profile_err, alpha = 0.3, color = 'r')
         ax0.set_xlabel('velocities')
         ax0.set_ylabel('optical depth')
-        secax = ax0.secondary_yaxis('right', functions = (od2flux, flux2od))
+        secax = ax0.secondary_yaxis('right', functions = (utils.od2flux, utils.flux2od))
         secax.set_ylabel('flux')
         ax0.legend()
         plt.savefig('figures/profile_%s'%(run_name))
