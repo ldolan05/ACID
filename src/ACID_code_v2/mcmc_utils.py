@@ -1,5 +1,5 @@
 import numpy as np
-from ACID_code_v2.ACID import model_func
+from .ACID import model_func
 
 
 class Model:
