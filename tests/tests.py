@@ -1,11 +1,17 @@
 #%%
 from astropy.io import fits
 import os, glob, importlib
-os.chdir(os.path.dirname(__file__))
-os.chdir("..") # ensures we are in the main directory
-import ACID_code_v2 as acid
 import numpy as np
 import matplotlib.pyplot as plt
+os.chdir(os.path.dirname(__file__))
+os.chdir("..") # ensures we are in the main directory
+try:
+    import ACID_code_v2 as acid
+except:
+    os.chdir("src")
+    import ACID_code_v2 as acid
+    os.chdir("..")
+    print("pip module failed to import, imported from local instead")
 importlib.reload(acid)
 
 def test_run_e2ds():

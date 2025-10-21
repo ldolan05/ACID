@@ -1,8 +1,14 @@
 from astropy.io import fits
-import ACID_code_v2.ACID as acid
 import numpy as np
 import matplotlib.pyplot as plt
-import glob
+import glob, os
+try:
+    import ACID_code_v2 as acid
+except:
+    os.chdir("../src")
+    import ACID_code_v2 as acid
+    os.chdir("..")
+    print("pip module failed to import, imported from local instead")
 
 def quickstart():
     spec_file = fits.open('../example/sample_spec_1.fits')

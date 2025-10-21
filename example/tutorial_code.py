@@ -11,6 +11,7 @@ except:
     os.chdir("../src") # ensures we are in the main directory
     import ACID_code_v2 as acid
     os.chdir("../example") # change back to example directory
+    print("pip module failed to import, imported from local instead")
 importlib.reload(acid)
 
 spec_file = fits.open('sample_spec_1.fits')
