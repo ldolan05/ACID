@@ -1,25 +1,28 @@
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
-import glob, os
+import glob, os, importlib, sys
 os.chdir(os.path.dirname(__file__))
+os.chdir("..")  # ensures we are in the main directory
 try:
     import ACID_code_v2 as acid
 except:
-    os.chdir("../src")
-    import ACID_code_v2 as acid
-    os.chdir(os.path.dirname(__file__))
+    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+    sys.path.append(PROJECT_ROOT)
+    from src import ACID_code_v2 as acid
     print("pip module failed to import, imported from local instead")
+importlib.reload(acid)
 
 def quickstart():
-    spec_file = fits.open('../example/sample_spec_1.fits')
+    spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
@@ -42,7 +45,7 @@ def quickstart():
 def multiple_frames():
 
     # finds sample files in 'example directory'. Each file is a different frame.
-    files = glob.glob('../example/sample_spec_*.fits')
+    files = glob.glob('example/sample_spec_*.fits')
 
     # create lists for wavelengths, spectra, errors and sn for all frames
     wavelengths = []
@@ -58,7 +61,7 @@ def multiple_frames():
         errors.append(spec_file[2].data)         # Spectral Flux Errors
         sns.append(float(spec_file[3].data))     # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelengths[0])
@@ -81,14 +84,14 @@ def multiple_frames():
     plt.close('all')
 
 def mulitple_orders():
-    spec_file = fits.open('../example/sample_spec_1.fits')
+    spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelength)  

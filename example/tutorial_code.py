@@ -1,27 +1,29 @@
 #%%
 from astropy.io import fits
-import importlib, os
+import importlib, os, sys
 import multiprocessing as mp
 import numpy as np
 import matplotlib.pyplot as plt
+os.chdir(os.path.dirname(__file__))
+os.chdir("..")  # ensures we are in the main directory
 try:
     import ACID_code_v2 as acid
 except:
-    os.chdir(os.path.dirname(__file__))
-    os.chdir("../src") # ensures we are in the main directory
-    import ACID_code_v2 as acid
-    os.chdir("../example") # change back to example directory
+    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+    sys.path.append(PROJECT_ROOT)
+    from src import ACID_code_v2 as acid
     print("pip module failed to import, imported from local instead")
 importlib.reload(acid)
 
-spec_file = fits.open('sample_spec_1.fits')
+spec_file = fits.open('example/sample_spec_1.fits')
 
 wavelength = spec_file[0].data   # Wavelengths in Angstroms
 spectrum = spec_file[1].data     # Spectral Flux
 error = spec_file[2].data        # Spectral Flux Errors
 sn = spec_file[3].data           # SN of Spectrum
 
-linelist = 'example_linelist.txt' # Insert path to line list
+linelist = 'example/example_linelist.txt' # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
 deltav = 0.82   # velocity pixel size must not be smaller than the spectral pixel size

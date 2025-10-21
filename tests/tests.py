@@ -1,16 +1,17 @@
 #%%
 from astropy.io import fits
-import os, glob, importlib
+import os, glob, importlib, sys
 import numpy as np
 import matplotlib.pyplot as plt
 os.chdir(os.path.dirname(__file__))
-os.chdir("..") # ensures we are in the main directory
+os.chdir("..")  # ensures we are in the main directory
 try:
     import ACID_code_v2 as acid
 except:
-    os.chdir("src")
-    import ACID_code_v2 as acid
-    os.chdir("..")
+    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+    sys.path.append(PROJECT_ROOT)
+    from src import ACID_code_v2 as acid
     print("pip module failed to import, imported from local instead")
 importlib.reload(acid)
 
