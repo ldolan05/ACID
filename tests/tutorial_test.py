@@ -2,12 +2,13 @@ from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
 import glob, os
+os.chdir(os.path.dirname(__file__))
 try:
     import ACID_code_v2 as acid
 except:
     os.chdir("../src")
     import ACID_code_v2 as acid
-    os.chdir("..")
+    os.chdir(os.path.dirname(__file__))
     print("pip module failed to import, imported from local instead")
 
 def quickstart():
