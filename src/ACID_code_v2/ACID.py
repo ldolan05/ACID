@@ -667,8 +667,9 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
             # with Pool() as pool: # Original code
             #         sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
             #         sampler.run_mcmc(pos, nsteps, progress=True)
-        
+
         else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
+            raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
             with Pool() as pool:
                 sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
                 sampler.run_mcmc(pos, nsteps, progress=verbose)
