@@ -149,70 +149,76 @@ class ACID:
 
     def combine_spec(self, frame_wavelengths=None, frame_flux=None, frame_errors=None, frame_sns=None):
 
-        interp_spec = np.zeros(spectra_f.shape)
-        # combine all spectra to one spectrum
-        for n in range(len(wavelengths_f)):
+        # Inputs are now self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
+        # they were: wavelengths_f, spectra_f, errors_f, sns_f):
 
-            global reference_wave
-            idx_ref = (sns_f == np.max(sns_f))
-            reference_wave = wavelengths_f[idx_ref][0]
+        if len(frame_wavelengths)==1:
+            self.combined_wavelengths = frame_wavelengths[0]
+            self.combined_spectrum = frame_flux[0]
+            self.combined_errors = frame_errors[0]
+            self.combined_sn = frame_sns[0]
 
-            idx = np.where(wavelengths_f[n] != 0)[0]
+        else:
+            self.combined_spectrum = np.copy(self.frame_flux)
 
-            f2 = interp1d(wavelengths_f[n][idx], spectra_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-            f2_err = interp1d(wavelengths_f[n][idx], errors_f[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-            spectra_f[n] = f2(reference_wave)
-            errors_f[n] = f2_err(reference_wave)
+            # combine all spectra to one spectrum
+            for n in range(len(self.combined_spectrum)):
 
-            # print(spectra_f[n])
-            # print(errors_f[n])
+                self.combined_wavelength = self.combined_spectrum[np.argmax(self.frame_sns)]
 
-            ## mask out out extrapolated areas
-            idx_ex = np.logical_and(reference_wave<=np.max(wavelengths_f[n][idx]), reference_wave>=np.min(wavelengths_f[n][idx]))
-            idx_ex = tuple([idx_ex==False])
+                idx = np.where(self.combined_spectrum[n] != 0)[0]
 
-            spectra_f[n][idx_ex] = 1.
-            errors_f[n][idx_ex] = 1000000000000
+                f2 = interp1d(self.combined_spectrum[n][idx], self.combined_spectrum[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                f2_err = interp1d(self.combined_spectrum[n][idx], self.frame_errors[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                self.combined_spectrum[n] = f2(self.combined_wavelength)
+                self.frame_errors[n] = f2_err(self.combined_wavelength)
 
-            ## mask out nans and zeros (these do not contribute to the main spectrum)
-            where_are_NaNs = np.isnan(spectra_f[n])
-            errors_f[n][where_are_NaNs] = 1000000000000
-            where_are_zeros = np.where(spectra_f[n] == 0)[0]
-            errors_f[n][where_are_zeros] = 1000000000000
+                ## mask out out extrapolated areas
+                idx_ex = np.logical_and(self.combined_wavelength<=np.max(self.combined_spectrum[n][idx]), self.combined_wavelength>=np.min(self.combined_spectrum[n][idx]))
+                idx_ex = tuple([idx_ex==False])
 
-            where_are_NaNs = np.isnan(errors_f[n])
-            errors_f[n][where_are_NaNs] = 1000000000000
-            where_are_zeros = np.where(errors_f[n] == 0)[0]
-            errors_f[n][where_are_zeros] = 1000000000000
+                self.combined_spectrum[n][idx_ex] = 1.
+                self.frame_errors[n][idx_ex] = 1000000000000
 
-        width = len(reference_wave)
-        spectrum_f = np.zeros((width,))
-        spec_errors_f = np.zeros((width,))
+                ## mask out nans and zeros (these do not contribute to the main spectrum)
+                where_are_NaNs = np.isnan(self.combined_spectrum[n])
+                self.frame_errors[n][where_are_NaNs] = 1000000000000
+                where_are_zeros = np.where(self.combined_spectrum[n] == 0)[0]
+                self.frame_errors[n][where_are_zeros] = 1000000000000
 
-        for n in range(0,width):
-            temp_spec_f = spectra_f[:, n]
-            temp_err_f = errors_f[:, n]
+                where_are_NaNs = np.isnan(self.frame_errors[n])
+                self.frame_errors[n][where_are_NaNs] = 1000000000000
+                where_are_zeros = np.where(self.frame_errors[n] == 0)[0]
+                self.frame_errors[n][where_are_zeros] = 1000000000000
 
-            weights_f = (1/temp_err_f**2)
+            width = len(reference_wave)
+            spectrum_f = np.zeros((width,))
+            self.combined_errors = np.zeros((width,))
 
-            idx = tuple([temp_err_f>=1000000000000])
-            # print(weights_f[idx])
-            weights_f[idx] = 0.
+            for n in range(0,width):
+                temp_spec_f = self.combined_spectrum[:, n]
+                temp_err_f = self.frame_errors[:, n]
 
-            if sum(weights_f) > 0:
-                weights_f = weights_f / np.sum(weights_f)
+                weights_f = (1/temp_err_f**2)
 
-                spectrum_f[n] = sum(weights_f * temp_spec_f)
-                sn_f = sum(weights_f * sns_f) / sum(weights_f)
+                idx = tuple([temp_err_f>=1000000000000])
+                weights_f[idx] = 0.
 
-                spec_errors_f[n] = 1 / (sum(weights_f ** 2))
-            
-            else: 
-                spectrum_f[n] = np.mean(temp_spec_f)
-                spec_errors_f[n] = 1000000000000
+                if sum(weights_f) > 0:
+                    weights_f = weights_f / np.sum(weights_f)
 
-        
-        return reference_wave, spectrum_f, spec_errors_f, sn_f
+                    spectrum_f[n] = sum(weights_f * temp_spec_f)
+                    self.combined_sn = sum(weights_f * self.frame_sns) / sum(weights_f)
+
+                    self.combined_errors[n] = 1 / (sum(weights_f ** 2))
+                
+                else: 
+                    spectrum_f[n] = np.mean(temp_spec_f)
+                    self.combined_errors[n] = 1000000000000
+
+        if frame_wavelengths is not None:
+            # ie if called as a function rather than from ACID function
+            return self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
 
     def model_func(self, inputs, x):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
@@ -377,7 +383,7 @@ class ACID:
         return data_err, model_input_resids, residual_masks
 
     def get_profiles(self, all_frames, order, poly_cos, continuum_error, counter):
-        flux = frames[counter]
+        flux = self.frame_flux[counter]
         error = frame_errors[counter]
         wavelengths = frame_wavelengths[counter]
         sn = sns[counter]
