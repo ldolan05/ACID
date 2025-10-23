@@ -17,6 +17,10 @@ importlib.reload(utils)
 class ACID:
 
     def __init__(self):
+        self.all_frames = "default"
+        self.order_range = [1]
+        self.velocities = None
+        self.linelist_path = None
         pass
 
     def continuumfit(self, fluxes, wavelengths, errors, poly_ord):
@@ -264,9 +268,9 @@ class ACID:
             v_cont = []
             for i in range(0, 5):
                     z_cont.append(np.exp(z[len(z)-i-1])-1)
-                    v_cont.append(velocities[len(velocities)-i-1])
+                    v_cont.append(self.velocities[len(self.velocities)-i-1])
                     z_cont.append(np.exp(z[i])-1)
-                    v_cont.append(velocities[i])
+                    v_cont.append(self.velocities[i])
 
             z_cont = np.array(z_cont)
             v_cont = np.array(v_cont)
@@ -285,9 +289,9 @@ class ACID:
         final = lp + self.log_likelihood(theta, x, y, yerr)
         return final
 
-    def residual_mask(self, wavelengths, data_spec_in, data_err, initial_inputs, poly_ord, linelist,
-                    velocities=np.arange(-25, 25, 0.82), pix_chunk=20, dev_perc=25, 
-                    tell_lines=None, n_sig=1, alpha=None):
+    def residual_mask(self, wavelengths, data_spec_in, data_err, initial_inputs,
+                      poly_ord, pix_chunk=20, dev_perc=25, tell_lines=None,
+                      n_sig=1, alpha=None):
         ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
         forward = self.model_func(initial_inputs, wavelengths)
@@ -358,7 +362,7 @@ class ACID:
 
         poly_inputs, bin, bye, fit = self.continuumfit(data_spec_in, (wavelengths * a) + b, data_err, poly_ord)
         velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-            wavelengths, bin, bye, linelist, 'False', poly_ord, 100, 30, run_name, velocities)
+            wavelengths, bin, bye, self.linelist_path, 'False', poly_ord, 100, 30, run_name, self.velocities)
         
         model_input_resids = np.concatenate((profile, poly_inputs))
 
@@ -410,7 +414,7 @@ class ACID:
         
         else:
             velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(
-                wavelengths, flux, error, linelist, 'False', poly_ord, sn, 10, 'test', velocities)
+                wavelengths, flux, error, self.linelist_path, 'False', poly_ord, sn, 10, 'test', self.velocities)
 
             p = np.exp(profile1)-1
 
@@ -463,8 +467,8 @@ class ACID:
 
         return  spectrum, spec_errors
 
-    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns,
-            vgrid, all_frames='default', poly_or=3, pix_chunk=20, dev_perc=25, name="test",
+    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, linelist_path, frame_sns,
+            velocities, all_frames='default', poly_or=3, pix_chunk=20, dev_perc=25, name="test",
             n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
             nsteps=8000):
         """Accurate Continuum fItting and Deconvolution
@@ -480,13 +484,13 @@ class ACID:
             Spectral frames (in flux).
         input_spectral_errors : list or array
             Errors for each frame (in flux).
-        line : str
+        linelist_path : str
             Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
             be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
         frame_sns : list or array
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list. 
-        vgrid : array
-            Velocity grid for LSD profiles (in km/s).
+        velocities : array
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create
         all_frames : str or array, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
             regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, 1, 2, no. of velocity pixels)., by default 'default'
@@ -541,10 +545,8 @@ class ACID:
         elif not (isinstance(telluric_lines, list) or isinstance(telluric_lines, int)):
             raise TypeError("telluric_lines must be a list or integer")
 
-        global velocities
-        velocities = vgrid.copy()
-        global linelist
-        linelist = line
+        self.velocities = velocities
+        self.linelist_path = linelist_path
         global poly_ord
         poly_ord = poly_or
         global run_name
@@ -560,7 +562,11 @@ class ACID:
 
         if type(all_frames) != np.ndarray:
             if all_frames == 'default':
-                all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
+                # By default order_range is [1], so len(self.order_range) = 1, which is same as original
+                # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
+                all_frames = np.zeros((len(frames), len(self.order_range), 2, len(self.velocities)))
+        else:
+            raise TypeError("all_frames must be a numpy array")
 
         fw = frame_wavelengths.copy()
         f = frames.copy()
@@ -589,9 +595,9 @@ class ACID:
 
         #### getting the initial profile
         global alpha
-        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-            wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name,
-            velocities, verbose=verbose)
+        self.velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
+            wavelengths, fluxes1, flux_error_order1, self.linelist_path, 'False', poly_ord, sn, 30, run_name,
+            self.velocities, verbose=verbose)
 
         # if verbose:
         #     t3 = time.time()
@@ -617,8 +623,7 @@ class ACID:
         
         if verbose:
             print('Residual masking...')
-        yerr, model_inputs_resi, mask_idx = self.residual_mask(x, y, yerr, model_inputs, poly_ord,
-                                                        linelist, pix_chunk=pix_chunk,
+        yerr, model_inputs_resi, mask_idx = self.residual_mask(x, y, yerr, model_inputs, poly_ord, pix_chunk=pix_chunk,
                                                         dev_perc=dev_perc, tell_lines=telluric_lines,
                                                         n_sig=n_sig, alpha=alpha)
 
@@ -750,7 +755,7 @@ class ACID:
 
         return all_frames
 
-    def run_ACID_HARPS(self, filelist, line, vgrid, order_range=None, save_path = './',
+    def run_ACID_HARPS(self, filelist, linelist_path, order_range=None, save_path = './',
                 file_type = 'e2ds', name="test", **kwargs):
         """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
@@ -766,14 +771,14 @@ class ACID:
         filelist : list of strings
             List of files. Files must come from the same observation night as continuum is fit for a combined
             spectrum of all frames. A profile and associated errors will be produced for each file specified.
-        line : str
+        linelist_path : str
             Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
             be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
-        vgrid : array
-            Velocity grid for LSD profiles (in km/s).
+        velocities : array
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create
         order_range : array, optional
             Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths 
-            will be considered, by default None, the function generates np.arange(10,70) in the body.
+            will be considered, by default None.
         save_path : str, optional
             Path to the directory where output files will be saved, by default './'
         file_type : str, optional
@@ -791,13 +796,8 @@ class ACID:
             Errors on profiles (in normalised flux)
         """
 
-        global velocities
-        velocities = vgrid.copy()
-        global all_frames
-        all_frames = np.zeros((len(filelist), len(order_range), 2, len(velocities)))
-        global linelist
-        linelist = line
-
+        self.linelist_path = linelist_path
+        self.order_range = order_range
         global frames
         global frame_wavelengths
         global frame_errors
@@ -806,15 +806,17 @@ class ACID:
         run_name = name
 
         if order_range is None:
-            order_range = np.arange(10, 70)
-        
-        for order in order_range:
-        
-            print('Running for order %s/%s...'%(order-min(order_range)+1, max(order_range)-min(order_range)+1))
+            # Be default, class is initialised with order_range = [1] for HARPS, this part forces
+            # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
+            self.order_range = np.arange(10, 70)
+
+        for order in self.order_range:
+
+            print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
 
             frame_wavelengths, frames, frame_errors, sns, telluric_spec = self.read_in_frames(order, filelist, file_type)
 
-            all_frames = self.ACID(frame_wavelengths, frames, frame_errors, linelist, sns, velocities, all_frames, order=order-min(order_range), **kwargs)
+            self.all_frames = self.ACID(frame_wavelengths, frames, frame_errors, sns, order=order-min(self.order_range), **kwargs)
 
         # adding into fits files for each frame
         BJDs = []
@@ -826,23 +828,23 @@ class ACID:
             hdu = fits.HDUList()
             hdr = fits.Header()
             
-            for order in order_range:
+            for order in self.order_range:
                 hdr['ORDER'] = order
                 hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
-                if order == order_range[0]:
+                if order == self.order_range[0]:
                     BJDs.append(fits_file[0].header['ESO DRS BJD'])
-                hdr['CRVAL1']=np.min(velocities)
-                hdr['CDELT1']=velocities[1]-velocities[0]
+                hdr['CRVAL1'] = np.min(self.velocities)
+                hdr['CDELT1'] = self.velocities[1] - self.velocities[0]
 
-                profile = all_frames[frame_no, order-min(order_range), 0]
-                profile_err = all_frames[frame_no, order-min(order_range), 1]
+                profile = self.all_frames[frame_no, order-min(self.order_range), 0]
+                profile_err = self.all_frames[frame_no, order-min(self.order_range), 1]
 
                 hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
                 if save_path != 'no save':
                     month = 'August2007'
                     hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
 
-            result1, result2 = self.combineprofiles(all_frames[frame_no, :, 0], all_frames[frame_no, :, 1])
+            result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
             profiles.append(result1)
             errors.append(result2)
 
