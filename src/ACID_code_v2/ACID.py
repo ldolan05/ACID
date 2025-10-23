@@ -21,6 +21,11 @@ class ACID:
         self.order_range = [1]
         self.velocities = None
         self.linelist_path = None
+        self.frames = None
+        self.frame_wavelengths = None
+        self.frame_flux = None
+        self.frame_errors = None
+        self.frame_sns = None
         pass
 
     def continuumfit(self, fluxes, wavelengths, errors, poly_ord):
@@ -142,7 +147,7 @@ class ACID:
         resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
         return resol1 / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms
 
-    def combine_spec(self, wavelengths_f, spectra_f, errors_f, sns_f):
+    def combine_spec(self, frame_wavelengths=None, frame_flux=None, frame_errors=None, frame_sns=None):
 
         interp_spec = np.zeros(spectra_f.shape)
         # combine all spectra to one spectrum
@@ -541,53 +546,51 @@ class ACID:
         # Define tell_lines if not input, check type if it is
         if telluric_lines is None:
             telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                            5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+                              5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
         elif not (isinstance(telluric_lines, list) or isinstance(telluric_lines, int)):
             raise TypeError("telluric_lines must be a list or integer")
+
+        self.frame_wavelengths = np.array(input_wavelengths)
+        self.frame_flux = np.array(input_spectra)
+        self.frame_errors = np.array(input_spectral_errors)
+        self.frame_sns = np.array(frame_sns)
 
         self.velocities = velocities
         self.linelist_path = linelist_path
         global poly_ord
-        poly_ord = poly_or
+        poly_ord = poly_ord
         global run_name
         run_name = name
-        global frames
-        global frame_wavelengths
-        global frame_errors
-        global sns
-        frame_wavelengths = np.array(input_wavelengths)
-        frames = np.array(input_spectra)
-        frame_errors = np.array(input_spectral_errors)
-        sns = np.array(frame_sns)
 
         if type(all_frames) != np.ndarray:
             if all_frames == 'default':
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
                 # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
-                all_frames = np.zeros((len(frames), len(self.order_range), 2, len(self.velocities)))
+                all_frames = np.zeros((len(self.frames), len(self.order_range), 2, len(self.velocities)))
         else:
             raise TypeError("all_frames must be a numpy array")
 
-        fw = frame_wavelengths.copy()
-        f = frames.copy()
-        fe = frame_errors.copy()
-        s = sns.copy()
+        # fw = self.frame_wavelengths.copy()
+        # f = self.frames.copy()
+        # fe = self.frame_errors.copy()
+        # s = sns.copy()
 
         if verbose:
             t0 = time.time()
             print('Initialising...')
 
-        ## combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
-        if len(fw)>1:
-            wavelengths, fluxes, flux_error_order, sn = self.combine_spec(fw, f, fe, s)
-        else:
-            wavelengths, fluxes, flux_error_order, sn = fw[0], f[0], fe[0], s[0]
+        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spec
+        # This function generates:
+        # self.combined_wavelengths, self.combined_fluxes, self.combined_flux_error, self.combined_sn
+        # using as inputs:
+        # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
+        self.combine_spec()
 
         ### getting the initial polynomial coefficents
-        a = 2 / (np.max(wavelengths)-np.min(wavelengths))
-        b = 1 - a * np.max(wavelengths)
-        poly_inputs, fluxes1, flux_error_order1, fit = self.continuumfit(
-            fluxes, (wavelengths*a)+b, flux_error_order, poly_ord)
+        a = 2 / (np.max(self.combined_wavelengths)-np.min(self.combined_wavelengths))
+        b = 1 - a * np.max(self.combined_wavelengths)
+        poly_inputs, fluxes_order1, flux_error_order1, fit = self.continuumfit(
+            self.combined_fluxes, (self.combined_wavelengths*a)+b, self.combined_flux_error, poly_ord)
 
         # if verbose:
         #     t2 = time.time()
@@ -798,7 +801,6 @@ class ACID:
 
         self.linelist_path = linelist_path
         self.order_range = order_range
-        global frames
         global frame_wavelengths
         global frame_errors
         global sns
@@ -814,15 +816,15 @@ class ACID:
 
             print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
 
-            frame_wavelengths, frames, frame_errors, sns, telluric_spec = self.read_in_frames(order, filelist, file_type)
+            frame_wavelengths, self.frames, frame_errors, sns, telluric_spec = self.read_in_frames(order, filelist, file_type)
 
-            self.all_frames = self.ACID(frame_wavelengths, frames, frame_errors, sns, order=order-min(self.order_range), **kwargs)
+            self.all_frames = self.ACID(frame_wavelengths, self.frames, frame_errors, sns, order=order-min(self.order_range), **kwargs)
 
         # adding into fits files for each frame
         BJDs = []
         profiles = []
         errors = []
-        for frame_no in range(0, len(frames)):
+        for frame_no in range(0, len(self.frames)):
             file = filelist[frame_no]
             fits_file = fits.open(file)
             hdu = fits.HDUList()
