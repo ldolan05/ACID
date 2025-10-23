@@ -28,6 +28,11 @@ class ACID:
         self.frame_sns = None
         pass
 
+    def _get_normalisation_coeffs(self, wl):
+        a = 2 / (np.max(wl)-np.min(wl))
+        b = 1 - a * np.max(wl)
+        return a, b
+
     def continuumfit(self, fluxes, wavelengths, errors, poly_ord):
             
             cont_factor = fluxes[0]
@@ -307,8 +312,7 @@ class ACID:
 
         forward = self.model_func(initial_inputs, wavelengths)
 
-        a = 2 / (np.max(wavelengths) - np.min(wavelengths))
-        b = 1 - a * np.max(wavelengths)
+        a, b = self._get_normalisation_coeffs(wavelengths)
 
         mdl1 = 0
         for i in range(k_max, len(initial_inputs) - 1):
@@ -358,10 +362,12 @@ class ACID:
 
         m = np.median(residuals)
         sigma = np.std(residuals)
-        a = 1
 
-        upper_clip = m + a * sigma
-        lower_clip = m - a * sigma
+        # TODO! : check what the hell is gong on here with a_old
+        a_old = 1
+
+        upper_clip = m + a_old * sigma
+        lower_clip = m - a_old * sigma
 
         rcopy = residuals.copy()
 
@@ -371,7 +377,7 @@ class ACID:
         data_err[idx1] = 10000000000000000000
         data_err[idx2] = 10000000000000000000
 
-        poly_inputs, bin, bye, fit = self.continuumfit(data_spec_in, (wavelengths * a) + b, data_err, poly_ord)
+        poly_inputs, bin, bye, fit = self.continuumfit(data_spec_in, (wavelengths*a_old)+b, data_err, poly_ord)
         velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
             wavelengths, bin, bye, self.linelist_path, 'False', poly_ord, 100, 30, run_name, self.velocities)
         
@@ -387,9 +393,8 @@ class ACID:
         error = frame_errors[counter]
         wavelengths = frame_wavelengths[counter]
         sn = sns[counter]
-    
-        a = 2/(np.max(wavelengths)-np.min(wavelengths))
-        b = 1 - a*np.max(wavelengths)
+
+        a, b = self._get_normalisation_coeffs(wavelengths)
 
         mdl1 =0
         for i in np.arange(0, len(poly_cos)-1):
@@ -593,8 +598,7 @@ class ACID:
         self.combine_spec()
 
         ### getting the initial polynomial coefficents
-        a = 2 / (np.max(self.combined_wavelengths)-np.min(self.combined_wavelengths))
-        b = 1 - a * np.max(self.combined_wavelengths)
+        a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
         poly_inputs, fluxes_order1, flux_error_order1, fit = self.continuumfit(
             self.combined_fluxes, (self.combined_wavelengths*a)+b, self.combined_flux_error, poly_ord)
 
@@ -605,7 +609,7 @@ class ACID:
         #### getting the initial profile
         global alpha
         self.velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-            wavelengths, fluxes1, flux_error_order1, self.linelist_path, 'False', poly_ord, sn, 30, run_name,
+            self.combined_wavelengths, fluxes_order1, flux_error_order1, self.linelist_path, 'False', poly_ord, sn, 30, run_name,
             self.velocities, verbose=verbose)
 
         # if verbose:
@@ -624,8 +628,7 @@ class ACID:
         yerr = flux_error_order
 
         ## Setting these normalisation factors as global variables - used in the figures below
-        a = 2 / (np.max(x) - np.min(x))
-        b = 1 - a * np.max(x)
+        a, b = self._get_normalisation_coeffs(x)
 
         # Masking based off residuals
         global mask_idx
