@@ -44,8 +44,16 @@ class ACID:
         self.initial_state = None
         self.nsteps = None
         self.cores = None
-        self.mask_idx = None
         self.all_frames = None
+        self.flat_samples = None
+        self.dev_perc = None
+        self.pix_chunk = None
+        self.n_sigma = None
+        self.profile = None
+        self.poly_cos = None
+        self.profile_err = None
+        self.poly_cos_err = None
+        self.continuum_error = None
         pass
 
     def _get_normalisation_coeffs(self, wl):
@@ -201,12 +209,17 @@ class ACID:
         """
         # Inputs are now self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
         # they were: wavelengths_f, spectra_f, errors_f, sns_f):
+        if frame_wavelengths:
+            self.frame_wavelengths = frame_wavelengths
+            self.frame_flux = frame_flux
+            self.frame_errors = frame_errors
+            self.frame_sns = frame_sns
 
-        if len(frame_wavelengths)==1:
-            self.combined_wavelengths = frame_wavelengths[0]
-            self.combined_spectrum = frame_flux[0]
-            self.combined_errors = frame_errors[0]
-            self.combined_sn = frame_sns[0]
+        if len(self.frame_wavelengths)==1:
+            self.combined_wavelengths = self.frame_wavelengths[0]
+            self.combined_spectrum = self.frame_flux[0]
+            self.combined_errors = self.frame_errors[0]
+            self.combined_sn = self.frame_sns[0]
 
         else:
             self.combined_spectrum = np.copy(self.frame_flux)
@@ -438,7 +451,7 @@ class ACID:
 
         return
 
-    def get_profiles(self, all_frames, order, poly_cos, continuum_error, counter):
+    def get_profiles(self, all_frames, order, counter):
         flux = self.frame_flux[counter]
         error = frame_errors[counter]
         wavelengths = frame_wavelengths[counter]
@@ -447,9 +460,9 @@ class ACID:
         a, b = self._get_normalisation_coeffs(wavelengths)
 
         mdl1 =0
-        for i in np.arange(0, len(poly_cos)-1):
-            mdl1 = mdl1+poly_cos[i]*((a*wavelengths)+b)**(i)
-        mdl1 = mdl1*poly_cos[-1]
+        for i in np.arange(0, len(self.poly_cos)-1):
+            mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
+        mdl1 = mdl1*self.poly_cos[-1]
 
         #masking based off residuals interpolated onto new wavelength grid
         if len(frame_wavelengths)>1:
@@ -457,7 +470,7 @@ class ACID:
         else:
             reference_wave = frame_wavelengths[0]
         mask_pos = np.ones(reference_wave.shape)
-        mask_pos[self.mask_idx]=10000000000000000000
+        mask_pos[self.residual_masks]=10000000000000000000
         f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
         interp_mask_pos = f2(wavelengths)
         interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
@@ -465,7 +478,7 @@ class ACID:
         error[interp_mask_idx]=10000000000000000000
 
         # corrrecting continuum
-        error = (error/flux) + (continuum_error/mdl1)
+        error = (error/flux) + (self.continuum_error/mdl1)
         flux = flux/mdl1
         error  = flux*error
 
@@ -536,7 +549,7 @@ class ACID:
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, linelist_path, frame_sns,
             velocities, all_frames='default', poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
             n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
-            nsteps=8000):
+            nsteps=8000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -587,11 +600,12 @@ class ACID:
             Number of cores to use if parallel=True. If None (default) all available cores will be used, by default None
         nsteps : int, optional
             nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 8000
-
+        return_frames : bool, optional
+            If True, returns the all_frames array with the resulting profiles, by default True
         Returns
         -------
-        array
-            Resulting profiles and errors for spectra.
+        all_frames : array
+            Resulting profiles and errors for spectra, if specified with return_frames=True.
 
         Raises
         ------
@@ -687,11 +701,9 @@ class ACID:
         a, b = self._get_normalisation_coeffs(self.x)
 
         # Masking based off residuals
-        self.mask_idx = None
-
         if verbose:
             print('Residual masking...')
-        # yerr, model_inputs_resi, mask_idx = self.residual_mask(
+        # yerr, model_inputs_resi, self.residual_masks = self.residual_mask(
             # x, y, yerr, model_inputs, self.poly_ord, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines=self.tell_lines, n_sig=n_sig, alpha=self.alpha)
         # Inputs:
         # self.x, self.y, self.yerr, self.model_inputs, self.poly
@@ -771,39 +783,37 @@ class ACID:
         ## discarding all vales except the last 1000 steps.
         dis_no = int(np.floor(self.nsteps-1000))
 
-        global flat_samples
         ## combining all walkers together
-        flat_samples = sampler.get_chain(discard=dis_no, flat=True)
+        self.flat_samples = sampler.get_chain(discard=dis_no, flat=True)
 
         ## getting the final profile and continuum values - median of last 1000 steps
-        profile = []
-        global poly_cos
-        poly_cos = []
-        profile_err = []
-        poly_cos_err = []
+        self.profile = []
+        self.poly_cos = []
+        self.profile_err = []
+        self.poly_cos_err = []
 
         for i in range(self.ndim):
-            mcmc = np.median(flat_samples[:, i])
-            error = np.std(flat_samples[:, i])
-            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+            mcmc = np.median(self.flat_samples[:, i])
+            error = np.std(self.flat_samples[:, i])
+            mcmc = np.percentile(self.flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
             if i<self.k_max:
-                profile.append(mcmc[1])
-                profile_err.append(np.max(error))
+                self.profile.append(mcmc[1])
+                self.profile_err.append(np.max(error))
             else:
-                poly_cos.append(mcmc[1])
-                poly_cos_err.append(np.max(error))
+                self.poly_cos.append(mcmc[1])
+                self.poly_cos_err.append(np.max(error))
 
-        profile = np.array(profile)
-        profile_err = np.array(profile_err)
+        self.profile = np.array(self.profile)
+        self.profile_err = np.array(self.profile_err)
 
         print('Getting the final profiles...')
 
         # finding error for the continuuum fit
-        inds = np.random.randint(len(flat_samples), size=50)
+        inds = np.random.randint(len(self.flat_samples), size=50)
         conts = []
         for ind in inds:
-            sample = flat_samples[ind]
+            sample = self.flat_samples[ind]
             mdl = self.model_func(sample, self.combined_wavelengths)
             #mdl = model_func(sample, x)
             #mdl = mdl[idx]
@@ -813,9 +823,9 @@ class ACID:
             mdl1_temp = mdl1_temp*sample[-1]
             conts.append(mdl1_temp)
 
-        continuum_error = np.std(np.array(conts), axis = 0)
+        self.self.continuum_error = np.std(np.array(conts), axis = 0)
 
-        task_part = partial(self.get_profiles, all_frames, order, poly_cos, continuum_error)
+        # task_part = partial(self.get_profiles, all_frames, order, self.poly_cos, self.continuum_error)
         if len(self.frame_flux)>1:
             # ctx = mp.get_context("fork") # Changed from spawn to fork to avoid multiple reruns of page
             # with ctx.Pool(processes = mp.cpu_count()) as pool:
@@ -824,11 +834,12 @@ class ACID:
             # for i in range(len(frames)):
             #     all_frames[i]=results[i][i]
             for counter in range(len(self.frame_flux)):
-                self.all_frames = self.get_profiles(self.all_frames, order, poly_cos, continuum_error, counter)  
+                self.all_frames = self.get_profiles(self.all_frames, order, self.poly_cos, self.self.continuum_error, counter)  
         else:
-            self.all_frames = self.get_profiles(self.all_frames, order, poly_cos, continuum_error, 0)
+            self.all_frames = self.get_profiles(self.all_frames, order, self.poly_cos, self.self.continuum_error, 0)
 
-        return self.all_frames
+        if return_frames:
+            return self.all_frames
 
     def run_ACID_HARPS(self, filelist, linelist_path, order_range=None, save_path = './',
                 file_type = 'e2ds', name="test", **kwargs):
@@ -882,6 +893,7 @@ class ACID:
         if order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
             # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
+            # I think this is way too high though
             self.order_range = np.arange(10, 70)
 
         for order in self.order_range:
