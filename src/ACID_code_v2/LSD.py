@@ -12,6 +12,7 @@ ckms = float(const.c/1e3)  # speed of light in km/s
 class LSD:
 
     def __init__(self, ACID):
+
         self.wavelengths = ACID.wavelengths
         self.flux_obs = ACID.flux_obs
         self.rms = ACID.rms
@@ -24,7 +25,25 @@ class LSD:
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
 
-    def LSD(self):
+    def run_LSD(self, **kwargs):
+
+        # Nothing the args use to be:
+        # wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name
+        # and kwargs:
+        # verbose=False
+        # These can be overridden by passing in different values,
+        # but by default use the ones from the class init
+        args = [
+            "wavelengths", "flux_obs", "rms", "linelist", "adjust_continuum",
+            "poly_ord", "sn", "order", "run_name", "velocities", "verbose"
+        ]
+
+        # Override stored values if given in kwargs
+        for key, value in kwargs.items():
+            if key in args or hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                raise TypeError(f"Unexpected argument '{key}' in run_LSD()")
 
         t0 = time.time()
 
