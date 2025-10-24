@@ -18,10 +18,10 @@ importlib.reload(acid)
 
 spec_file = fits.open('example/sample_spec_1.fits')
 
-wavelength = spec_file[0].data   # Wavelengths in Angstroms
-spectrum = spec_file[1].data     # Spectral Flux
-error = spec_file[2].data        # Spectral Flux Errors
-sn = spec_file[3].data           # SN of Spectrum
+wavelength = spec_file[0].data[::5]   # Wavelengths in Angstroms
+spectrum = spec_file[1].data[::5]     # Spectral Flux
+error = spec_file[2].data[::5]        # Spectral Flux Errors
+sn = spec_file[3].data[::5]           # SN of Spectrum
 
 linelist = 'example/example_linelist.txt' # Insert path to line list
 

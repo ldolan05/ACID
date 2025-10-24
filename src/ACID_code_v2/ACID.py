@@ -26,6 +26,10 @@ class ACID:
         self.frame_flux = None
         self.frame_errors = None
         self.frame_sns = None
+        self.combined_wavelengths = None
+        self.combined_fluxes = None
+        self.combined_flux_error = None
+        self.combined_sn = None
         self.poly_inputs = None
         self.poly_ord = None
         self.run_name = None
@@ -439,7 +443,7 @@ class ACID:
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.run_name, self.velocities)
         LSD_masking = LSD.LSD()
-        LSD_masking.LSD(self.x, _bin, bye, self.linelist_path, 'False',
+        LSD_masking.run_LSD(self.x, _bin, bye, self.linelist_path, 'False',
                         self.poly_ord, 100, 30, self.run_name, self.velocities)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
@@ -621,7 +625,7 @@ class ACID:
         # Define telluric_lines if not input, check type if it is
         if telluric_lines:
             self.telluric_lines = telluric_lines
-        if not isinstance(telluric_lines, list):
+        if not isinstance(self.telluric_lines, list):
             raise TypeError("telluric_lines must be a list (could be empty or single-valued)")
 
         self.frame_wavelengths = np.array(input_wavelengths)
@@ -635,6 +639,7 @@ class ACID:
         self.run_name = name
         self.verbose = verbose
         self.nsteps = nsteps
+        self.order = order
 
         self.pix_chunk = pix_chunk
         self.dev_perc = dev_perc
@@ -644,7 +649,7 @@ class ACID:
             if all_frames == 'default':
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
                 # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
-                self.all_frames = np.zeros((len(self.frames), len(self.order_range), 2, len(self.velocities)))
+                self.all_frames = np.zeros((len(self.frame_flux), len(self.order_range), 2, len(self.velocities)))
         else:
             raise TypeError("all_frames must be a numpy array")
 
@@ -661,13 +666,13 @@ class ACID:
         # This function uses as inputs:
         # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
         # To generates:
-        # self.combined_wavelengths, self.combined_fluxes, self.combined_flux_error, self.combined_sn
+        # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
         self.combine_spec(_output=False)
 
         ### getting the initial polynomial coefficents
         a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
-            self.combined_fluxes, (self.combined_wavelengths*a)+b, self.combined_flux_error, self.poly_ord)
+            self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
 
         # if verbose:
         #     t2 = time.time()
@@ -677,8 +682,9 @@ class ACID:
         # self.velocities, profile, profile_errors, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1, self.linelist_path,
         #     'False', self.poly_ord, self.combined_sn, 30, self.run_name, self.velocities, verbose=verbose)
+        self.adjust_continuum = False
         LSD_initial_profile = LSD.LSD(self)
-        LSD_initial_profile.run_LSD()
+        LSD_initial_profile.run_LSD(order=30)
         self.velocities = LSD_initial_profile.velocities
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
@@ -694,8 +700,8 @@ class ACID:
 
         ## Setting x, y, yerr for emcee
         self.x = self.combined_wavelengths
-        self.y = self.combined_fluxes
-        self.yerr = self.combined_flux_error
+        self.y = self.combined_spectrum
+        self.yerr = self.combined_errors
 
         ## Setting these normalisation factors as global variables - used in the figures below
         a, b = self._get_normalisation_coeffs(self.x)
@@ -760,6 +766,7 @@ class ACID:
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores) as pool:
+                # with pmp.Pool(processes=self.cores) as pool:
                     sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability, pool=pool)
                     sampler.run_mcmc(self.initial_state, self.nsteps, progress=True, store=True)
 
@@ -834,15 +841,15 @@ class ACID:
             # for i in range(len(frames)):
             #     all_frames[i]=results[i][i]
             for counter in range(len(self.frame_flux)):
-                self.all_frames = self.get_profiles(self.all_frames, order, self.poly_cos, self.self.continuum_error, counter)  
+                self.all_frames = self.get_profiles(self.all_frames, self.order, self.poly_cos, self.self.continuum_error, counter)  
         else:
-            self.all_frames = self.get_profiles(self.all_frames, order, self.poly_cos, self.self.continuum_error, 0)
+            self.all_frames = self.get_profiles(self.all_frames, self.order, self.poly_cos, self.self.continuum_error, 0)
 
         if return_frames:
             return self.all_frames
 
     def run_ACID_HARPS(self, filelist, linelist_path, order_range=None, save_path = './',
-                file_type = 'e2ds', name="test", **kwargs):
+                       file_type = 'e2ds', name="test", **kwargs):
         """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -1000,7 +1007,7 @@ def ACID(*args, **kwargs):
     Any
         Returns the outputs of the ACID function.
     """
-    return _ACID()._run_ACID(*args, **kwargs)
+    return _ACID().run_ACID(*args, **kwargs)
 
 def ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
@@ -1020,4 +1027,4 @@ def ACID_HARPS(*args, **kwargs):
     Any
         Returns the outputs of the ACID_HARPS function.
     """
-    return _ACID()._run_ACID_HARPS(*args, **kwargs)
+    return _ACID().run_ACID_HARPS(*args, **kwargs)

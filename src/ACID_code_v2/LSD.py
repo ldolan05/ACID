@@ -7,50 +7,66 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
+import inspect
 ckms = float(const.c/1e3)  # speed of light in km/s
 
 class LSD:
 
-    def __init__(self, ACID):
+    def __init__(self, ACID=None):
 
-        self.wavelengths = ACID.wavelengths
-        self.flux_obs = ACID.flux_obs
-        self.rms = ACID.rms
-        self.linelist = ACID.linelist
+        if not ACID:
+            return
+        self.wavelengths = ACID.combined_wavelengths
+        self.flux_obs = ACID.fluxes_order1
+        self.rms = ACID.flux_error_order1
+        self.linelist = ACID.linelist_path
         self.adjust_continuum = ACID.adjust_continuum
         self.poly_ord = ACID.poly_ord
-        self.sn = ACID.sn
+        self.sn = ACID.combined_sn
         self.order = ACID.order
         self.run_name = ACID.run_name
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
 
-    def run_LSD(self, **kwargs):
-
+    def run_LSD(self, *args, **kwargs):
         # Nothing the args use to be:
         # wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name
         # and kwargs:
         # verbose=False
         # These can be overridden by passing in different values,
         # but by default use the ones from the class init
-        args = [
+        arg_names = [
             "wavelengths", "flux_obs", "rms", "linelist", "adjust_continuum",
             "poly_ord", "sn", "order", "run_name", "velocities", "verbose"
         ]
 
-        # Override stored values if given in kwargs
-        for key, value in kwargs.items():
-            if key in args or hasattr(self, key):
-                setattr(self, key, value)
-            else:
-                raise TypeError(f"Unexpected argument '{key}' in run_LSD()")
+        params = [
+            inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            for name in arg_names
+        ]
+        sig = inspect.Signature(params)
+
+        try:
+            bound = sig.bind_partial(*args, **kwargs)
+        except TypeError as e:
+            # More informative error if user duplicates an argument
+            raise TypeError(str(e) + " — you may be passing both a positional and keyword argument for the same name.")
+
+        # Apply valid arguments
+        for name, value in bound.arguments.items():
+            setattr(self, name, value)
+
+        # Check for unexpected kwargs (not in arg_names)
+        unexpected = set(kwargs) - set(arg_names)
+        if unexpected:
+            raise TypeError(f"Unexpected argument(s): {', '.join(unexpected)}")
 
         t0 = time.time()
 
         #idx = tuple([flux_obs>0])
         # Converting to optical depth space
-        rms = rms / flux_obs
-        flux_obs = np.log(flux_obs)
+        self.rms = self.rms / self.flux_obs
+        self.flux_obs = np.log(self.flux_obs)
 
         deltav = self.velocities[1] - self.velocities[0]
 
@@ -79,7 +95,7 @@ class LSD:
         self.depths_expected = -np.log(1-self.depths_expected)
 
         blankwaves = self.wavelengths
-        R_matrix = flux_obs
+        R_matrix = self.flux_obs
 
         # Find differences and velocities
         diff = blankwaves[:, np.newaxis] - self.wavelengths_expected
@@ -116,8 +132,8 @@ class LSD:
 
                 self.alpha += (dep[:, None] * delta).sum(axis=1)
 
-        id_matrix = np.identity(len(flux_obs))
-        S_matrix = (1/rms) * id_matrix
+        id_matrix = np.identity(len(self.flux_obs))
+        S_matrix = (1/self.rms) * id_matrix
 
         S_squared = np.dot(S_matrix, S_matrix)
         alpha_transpose = (np.transpose(self.alpha))
