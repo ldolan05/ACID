@@ -2,26 +2,24 @@ import emcee
 import numpy as np
 import multiprocessing as mp
 
-# Global storage for large arrays
-GLOBAL_DATA = {}
-
 def _init_worker(global_data):
     """Called once per worker."""
-    global GLOBAL_DATA
-    GLOBAL_DATA = global_data
+    global x, y, yerr, alpha, k_max, velocities
+    x = global_data["x"]
+    y = global_data["y"]
+    yerr = global_data["yerr"]
+    alpha = global_data["alpha"]
+    k_max = global_data["k_max"]
+    velocities = global_data["velocities"]
 
-def _log_probability(theta):
-    """Worker-safe version of log-prob using global data."""
-    global GLOBAL_DATA
-    data = GLOBAL_DATA["data"]
-    # Example likelihood
-    return -0.5 * np.sum((data - theta[0]) ** 2)
-
-def model_func(self, inputs, x):
+def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        z = inputs[:self.k_max]
+        alpha = kwargs.get("alpha", alpha)
+        k_max = kwargs.get("k_max", k_max)
+        
+        z = inputs[:k_max]
 
-        mdl = np.dot(self.alpha, z) ##alpha has been declared a global variable after LSD is run.
+        mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
 
         #converting model from optical depth to flux
         mdl = np.exp(mdl)
@@ -31,8 +29,8 @@ def model_func(self, inputs, x):
         b = 1 - a*np.max(x)
 
         mdl1 = 0
-        for i in range(self.k_max, len(inputs) - 1):
-            mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - self.k_max))
+        for i in range(k_max, len(inputs) - 1):
+            mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - k_max))
 
         # coefs = np.asarray(inputs[k_max:-1], dtype=float) # Potential improvement - Ben
         # X = (a * x) + b
@@ -49,21 +47,21 @@ def model_func(self, inputs, x):
     
         return mdl
 
-def log_likelihood(self, theta, x, y, yerr):
+def _log_likelihood(theta, x, y, yerr):
     ## maximum likelihood estimation for the mcmc model.
-    model = self.model_func(theta, x)
+    model = model_func(theta, x)
 
     lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
 
     return lnlike
 
-def log_prior(self, theta):
+def _log_prior(theta):
     ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
     check = 0
-    z = theta[:self.k_max]
+    z = theta[:k_max]
 
     for i in range(len(theta)):
-        if i < self.k_max: ## must lie in z
+        if i < k_max: ## must lie in z
             if -10 <= theta[i] <= 0.5:
                 pass
             else:
@@ -76,9 +74,9 @@ def log_prior(self, theta):
         v_cont = []
         for i in range(0, 5):
                 z_cont.append(np.exp(z[len(z)-i-1])-1)
-                v_cont.append(self.velocities[len(self.velocities)-i-1])
+                v_cont.append(velocities[len(velocities)-i-1])
                 z_cont.append(np.exp(z[i])-1)
-                v_cont.append(self.velocities[i])
+                v_cont.append(velocities[i])
 
         z_cont = np.array(z_cont)
         v_cont = np.array(v_cont)
@@ -89,22 +87,11 @@ def log_prior(self, theta):
 
     return -np.inf
 
-def log_probability(self, theta):
+def _log_probability(theta):
     # TODO!: Turn to classes and potentially if possible move to separate file
     ## calculates log probability - used for mcmc
-    lp = self.log_prior(theta)
+    lp = _log_prior(theta)
     if not np.isfinite(lp):
         return -np.inf
-    final = lp + self.log_likelihood(theta, self.x, self.y, self.yerr)
+    final = lp + _log_likelihood(theta, x, y, yerr)
     return final
-
-def run_parallel_example(data, nwalkers=16, ndim=2, nsteps=500, cores=4):
-    ctx = mp.get_context("fork")
-
-    global_data = {"data": data}
-
-    with ctx.Pool(processes=cores, initializer=_init_worker, initargs=(global_data,)) as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability, pool=pool)
-        initial_state = np.random.randn(nwalkers, ndim)
-        sampler.run_mcmc(initial_state, nsteps, progress=True)
-        return sampler

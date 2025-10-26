@@ -8,6 +8,7 @@ from functools import partial
 from multiprocessing import Pool
 from . import utils
 from . import LSD
+from . import mcmc_utils
 
 warnings.filterwarnings("ignore")
 importlib.reload(LSD)
@@ -764,10 +765,12 @@ class ACID:
             # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
+                global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
+                               "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores) as pool:
+                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
                 # with pmp.Pool(processes=self.cores) as pool:
-                    sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability, pool=pool)
+                    sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
                     sampler.run_mcmc(self.initial_state, self.nsteps, progress=True, store=True)
 
                 # with Pool() as pool: # Original code
