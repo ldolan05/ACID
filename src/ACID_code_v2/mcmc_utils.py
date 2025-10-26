@@ -14,9 +14,9 @@ def _init_worker(global_data):
 
 def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", alpha)
-        k_max = kwargs.get("k_max", k_max)
-        
+        alpha = kwargs.get("alpha", globals().get("alpha"))
+        k_max = kwargs.get("k_max", globals().get("k_max"))
+
         z = inputs[:k_max]
 
         mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
