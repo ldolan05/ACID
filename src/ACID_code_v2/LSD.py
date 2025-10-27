@@ -14,6 +14,7 @@ class LSD:
 
     def __init__(self, ACID=None):
 
+        self.verbose = True
         if not ACID:
             return
         self.wavelengths = ACID.combined_wavelengths
@@ -60,8 +61,6 @@ class LSD:
         unexpected = set(kwargs) - set(arg_names)
         if unexpected:
             raise TypeError(f"Unexpected argument(s): {', '.join(unexpected)}")
-
-        t0 = time.time()
 
         #idx = tuple([flux_obs>0])
         # Converting to optical depth space

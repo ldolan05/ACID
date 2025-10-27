@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
-from functools import partial
 from multiprocessing import Pool
 from . import utils
 from . import LSD
@@ -111,7 +110,7 @@ class ACID:
 
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
-            frames[i], frame_wavelengths[i], errors[i], sns[i], mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(file_type, 'order', order, file, directory, 'unmasked', run_name, 'y')
+            frames[i], frame_wavelengths[i], errors[i], sns[i], mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(file_type, 'order', order, file, directory, 'unmasked', self.run_name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns
         
@@ -123,16 +122,16 @@ class ACID:
         ### finding highest S/N frame, saves this as reference frame
 
         idx = (sns==np.max(sns))
-        global reference_wave
+        # global reference_wave
         reference_wave = frame_wavelengths[idx][0]
         reference_frame = frames[idx][0]
         reference_frame[reference_frame == 0] = 0.001
         reference_error = errors[idx][0]
         reference_error[reference_frame == 0] = 1000000000000000000
 
-        global frames_unadjusted
+        # global frames_unadjusted
         frames_unadjusted = frames
-        global frame_errors_unadjusted
+        # global frame_errors_unadjusted
         frame_errors_unadjusted = errors
 
         ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
@@ -259,7 +258,7 @@ class ACID:
                 where_are_zeros = np.where(self.frame_errors[n] == 0)[0]
                 self.frame_errors[n][where_are_zeros] = 1000000000000
 
-            width = len(reference_wave)
+            width = len(self.reference_wave)
             spectrum_f = np.zeros((width,))
             self.combined_errors = np.zeros((width,))
 
@@ -375,11 +374,11 @@ class ACID:
 
         return
 
-    def get_profiles(self, all_frames, order, counter):
+    def _get_profiles(self, all_frames, counter):
         flux = self.frame_flux[counter]
-        error = frame_errors[counter]
-        wavelengths = frame_wavelengths[counter]
-        sn = sns[counter]
+        error = self.frame_errors[counter]
+        wavelengths = self.frame_wavelengths[counter]
+        sn = self.frame_sns[counter]
 
         a, b = self._get_normalisation_coeffs(wavelengths)
 
@@ -388,11 +387,11 @@ class ACID:
             mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
         mdl1 = mdl1*self.poly_cos[-1]
 
-        #masking based off residuals interpolated onto new wavelength grid
-        if len(frame_wavelengths)>1:
-            reference_wave = frame_wavelengths[sns==max(sns)][0]
+        # Masking based off residuals interpolated onto new wavelength grid
+        if len(self.frame_wavelengths)>1:
+            reference_wave = self.frame_wavelengths[self.frame_sns==max(self.frame_sns)][0]
         else:
-            reference_wave = frame_wavelengths[0]
+            reference_wave = self.frame_wavelengths[0]
         mask_pos = np.ones(reference_wave.shape)
         mask_pos[self.residual_masks]=10000000000000000000
         f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
@@ -416,16 +415,21 @@ class ACID:
             print('continuing... frame %s'%counter)
         
         else:
-            velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(
-                wavelengths, flux, error, self.linelist_path, 'False', self.poly_ord, sn, 10, 'test', self.velocities)
+            LSD_profiles = LSD.LSD(self)
+            LSD_profiles.run_LSD(wavelengths, flux, error, self.linelist_path, 'False',
+                                 self.poly_ord, sn, 10, self.run_name, self.velocities)
+            profile_OD = LSD_profiles.profile
+            profile_errors = LSD_profiles.profile_errors
+            # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
+            #     wavelengths, flux, error, self.linelist_path, 'False', self.poly_ord, sn, 10, 'test', self.velocities)
 
-            p = np.exp(profile1)-1
-
-            profile_f = np.exp(profile1)
+            # Need to check whats going on here with the -1
+            p = np.exp(profile_OD)-1
+            profile_f = np.exp(profile_OD)
             profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
             profile_f = profile_f-1
 
-            all_frames[counter, order]=[profile_f, profile_errors_f]
+            all_frames[counter, self.order]=[profile_f, profile_errors_f]
             
             return all_frames
 
@@ -750,20 +754,14 @@ class ACID:
             mdl1_temp = mdl1_temp*sample[-1]
             conts.append(mdl1_temp)
 
-        self.self.continuum_error = np.std(np.array(conts), axis = 0)
+        self.continuum_error = np.std(np.array(conts), axis = 0)
 
-        # task_part = partial(self.get_profiles, all_frames, order, self.poly_cos, self.continuum_error)
+        # TODO! : frame_flux is always >1 for frames
         if len(self.frame_flux)>1:
-            # ctx = mp.get_context("fork") # Changed from spawn to fork to avoid multiple reruns of page
-            # with ctx.Pool(processes = mp.cpu_count()) as pool:
-            #     results=[pool.map(task_part, np.arange(len(frames)))]
-            # results = np.array(results[0])
-            # for i in range(len(frames)):
-            #     all_frames[i]=results[i][i]
             for counter in range(len(self.frame_flux)):
-                self.all_frames = self.get_profiles(self.all_frames, self.order, self.poly_cos, self.self.continuum_error, counter)  
+                self.all_frames = self._get_profiles(self.all_frames, self.counter)  
         else:
-            self.all_frames = self.get_profiles(self.all_frames, self.order, self.poly_cos, self.self.continuum_error, 0)
+            self.all_frames = self._get_profiles(self.all_frames, 0)
 
         if return_frames:
             return self.all_frames
@@ -811,10 +809,10 @@ class ACID:
 
         self.linelist_path = linelist_path
         self.order_range = order_range
-        global frame_wavelengths
-        global frame_errors
-        global sns
-        global run_name
+        # global frame_wavelengths
+        # global frame_errors
+        # global sns
+        # global run_name
         run_name = name
 
         if order_range is None:
