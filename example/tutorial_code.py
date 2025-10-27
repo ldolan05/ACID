@@ -30,7 +30,7 @@ deltav = 0.82   # velocity pixel size must not be smaller than the spectral pixe
 velocities = np.arange(-25, 25, deltav)
 
 # run ACID function
-result = acid.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities,
+result = acid.ACID([wavelength], [spectrum], [error], [sn], linelist, velocities,
                    parallel=True, cores=None, nsteps=4000, verbose=True)
 
 # extract profile and errors

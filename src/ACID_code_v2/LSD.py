@@ -550,4 +550,4 @@ class LSD:
         #fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
         #idx = tuple([fluxes>0])
 
-        return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn, np.median(wavelengths), np.zeros(wavelengths.shape) ## for just LSD
+        return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn ## for just LSD

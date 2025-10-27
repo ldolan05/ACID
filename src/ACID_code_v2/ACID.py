@@ -17,7 +17,7 @@ importlib.reload(utils)
 class ACID:
 
     def __init__(self, tell_lines=None):
-        self.all_frames = "default"
+        self.all_frames = None
         self.order_range = [1]
         self.velocities = None
         self.linelist_path = None
@@ -93,10 +93,11 @@ class ACID:
             return poly_coeffs, flux_obs, new_errors
 
     def read_in_frames(self, order, filelist, file_type, directory=None):
-        # TODO: Check this works with classes, no global variable conflicts
         # read in first frame
-        fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
+        fluxes, wavelengths, flux_error_order, sn = LSD.LSD().blaze_correct(
             file_type, 'order', order, filelist[0], directory, 'unmasked', self.run_name, 'y')
+        # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
+        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.run_name, 'y')
 
         frames = np.zeros((len(filelist), len(wavelengths)))
         errors = np.zeros((len(filelist), len(wavelengths)))
@@ -110,7 +111,8 @@ class ACID:
 
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
-            frames[i], frame_wavelengths[i], errors[i], sns[i], mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(file_type, 'order', order, file, directory, 'unmasked', self.run_name, 'y')
+            frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD.LSD().blaze_correct(
+                file_type, 'order', order, file, directory, 'unmasked', self.run_name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns
         
@@ -168,7 +170,7 @@ class ACID:
             frames[n][idx] = 0.00001
             errors[n][idx] = 1000000000
 
-        return frame_wavelengths, frames, errors, sns, telluric_spec
+        return frame_wavelengths, frames, errors, sns
 
     def calc_deltav(self, wavelengths):
         """Calculates velocity pixel size
@@ -180,9 +182,9 @@ class ACID:
             
         Returns:
             float: Velocity pixel size in km/s
-        """ 
-        resol1 = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-        return resol1 / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms
+        """
+        resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+        return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms
 
     def combine_spec(self, frame_wavelengths=None, frame_flux=None, frame_errors=None, frame_sns=None, _output=True):
         """Combines multiple spectral frames into one spectrum
@@ -474,8 +476,8 @@ class ACID:
 
         return  spectrum, spec_errors
 
-    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, linelist_path, frame_sns,
-            velocities, all_frames='default', poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
+    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns, linelist_path,
+            velocities, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
             n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
             nsteps=8000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
@@ -491,16 +493,16 @@ class ACID:
             Spectral frames (in flux).
         input_spectral_errors : list or array
             Errors for each frame (in flux).
+        frame_sns : list or array
+            Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
         linelist_path : str
             Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
-            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
-        frame_sns : list or array
-            Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list. 
+            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra.  
         velocities : array
             Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create
         all_frames : str or array, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
-            regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, 1, 2, no. of velocity pixels)., by default 'default'
+            regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, 1, 2, no. of velocity pixels)., by default None
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
         pix_chunk : int, optional
@@ -569,13 +571,15 @@ class ACID:
         self.dev_perc = dev_perc
         self.n_sig = n_sig
 
-        if type(all_frames) != np.ndarray:
-            if all_frames == 'default':
+        if all_frames is None:
+            if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
                 # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
                 self.all_frames = np.zeros((len(self.frame_flux), len(self.order_range), 2, len(self.velocities)))
         else:
-            raise TypeError("all_frames must be a numpy array")
+            self.all_frames = all_frames
+        if not isinstance(self.all_frames, np.ndarray):
+            raise TypeError("'all_frames' must be a numpy array")
 
         # fw = self.frame_wavelengths.copy()
         # f = self.frames.copy()
@@ -692,20 +696,14 @@ class ACID:
                                "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
-                # with pmp.Pool(processes=self.cores) as pool:
                     sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
                     sampler.run_mcmc(self.initial_state, self.nsteps, progress=True, store=True)
-
-                # with Pool() as pool: # Original code
-                #         sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
-                #         sampler.run_mcmc(pos, nsteps, progress=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
                 with Pool() as pool:
                     sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
                     sampler.run_mcmc(pos, nsteps, progress=verbose)
-
 
         else:
             sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
@@ -766,7 +764,7 @@ class ACID:
         if return_frames:
             return self.all_frames
 
-    def run_ACID_HARPS(self, filelist, linelist_path, order_range=None, save_path = './',
+    def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
                        file_type = 'e2ds', name="test", **kwargs):
         """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
@@ -809,11 +807,12 @@ class ACID:
 
         self.linelist_path = linelist_path
         self.order_range = order_range
+        self.velocities = velocities
         # global frame_wavelengths
         # global frame_errors
         # global sns
         # global run_name
-        run_name = name
+        self.run_name = name
 
         if order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
@@ -825,9 +824,10 @@ class ACID:
 
             print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
 
-            frame_wavelengths, self.frames, frame_errors, sns, telluric_spec = self.read_in_frames(order, filelist, file_type)
+            frame_wavelengths, frames, frame_errors, sns = self.read_in_frames(order, filelist, file_type)
 
-            self.all_frames = self.ACID(frame_wavelengths, self.frames, frame_errors, sns, order=order-min(self.order_range), **kwargs)
+            self.run_ACID(frame_wavelengths, frames, frame_errors, sns, self.linelist_path, self.velocities,
+                          order=order-min(self.order_range), return_frames=False, **kwargs)
 
         # adding into fits files for each frame
         BJDs = []
@@ -853,7 +853,7 @@ class ACID:
                 hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
                 if save_path != 'no save':
                     month = 'August2007'
-                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, run_name), output_verify = 'fix', overwrite = 'True')
+                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.run_name), output_verify = 'fix', overwrite = 'True')
 
             result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
             profiles.append(result1)
@@ -904,7 +904,7 @@ class ACID:
             Returns the outputs of the ACID_HARPS function.
         """
         return ACID(*args, **kwargs).run_ACID_HARPS()
-    
+
 _ACID = ACID
 
 def ACID(*args, **kwargs):

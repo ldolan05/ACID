@@ -29,7 +29,7 @@ def quickstart():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
+    result = acid.ACID([wavelength], [spectrum], [error], [sn], linelist, velocities)
 
     # extract profile and errors
     profile = result[0, 0, 0]
