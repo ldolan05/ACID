@@ -1,7 +1,6 @@
 #%%
 from astropy.io import fits
 import importlib, os, sys
-import multiprocessing as mp
 import numpy as np
 import matplotlib.pyplot as plt
 os.chdir(os.path.dirname(__file__))

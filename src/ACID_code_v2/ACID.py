@@ -233,17 +233,17 @@ class ACID:
             # combine all spectra to one spectrum
             for n in range(len(self.combined_spectrum)):
 
-                self.combined_wavelength = self.combined_spectrum[np.argmax(self.frame_sns)]
+                self.combined_wavelengths = self.frame_wavelengths[np.argmax(self.frame_sns)]
 
-                idx = np.where(self.combined_spectrum[n] != 0)[0]
+                idx = np.where(self.frame_wavelengths[n] != 0)[0]
 
-                f2 = interp1d(self.combined_spectrum[n][idx], self.combined_spectrum[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                f2_err = interp1d(self.combined_spectrum[n][idx], self.frame_errors[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                self.combined_spectrum[n] = f2(self.combined_wavelength)
-                self.frame_errors[n] = f2_err(self.combined_wavelength)
+                f2 = interp1d(self.frame_wavelengths[n][idx], self.combined_spectrum[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                f2_err = interp1d(self.frame_wavelengths[n][idx], self.frame_errors[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                self.combined_spectrum[n] = f2(self.combined_wavelengths)
+                self.frame_errors[n] = f2_err(self.combined_wavelengths)
 
                 ## mask out out extrapolated areas
-                idx_ex = np.logical_and(self.combined_wavelength<=np.max(self.combined_spectrum[n][idx]), self.combined_wavelength>=np.min(self.combined_spectrum[n][idx]))
+                idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.combined_spectrum[n][idx]), self.combined_wavelengths>=np.min(self.combined_spectrum[n][idx]))
                 idx_ex = tuple([idx_ex==False])
 
                 self.combined_spectrum[n][idx_ex] = 1.
@@ -260,7 +260,7 @@ class ACID:
                 where_are_zeros = np.where(self.frame_errors[n] == 0)[0]
                 self.frame_errors[n][where_are_zeros] = 1000000000000
 
-            width = len(self.reference_wave)
+            width = len(self.combined_wavelengths)
             spectrum_f = np.zeros((width,))
             self.combined_errors = np.zeros((width,))
 
@@ -279,11 +279,13 @@ class ACID:
                     spectrum_f[n] = sum(weights_f * temp_spec_f)
                     self.combined_sn = sum(weights_f * self.frame_sns) / sum(weights_f)
 
-                    self.combined_errors[n] = 1 / (sum(weights_f ** 2))
+                    self.combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
                 
                 else: 
                     spectrum_f[n] = np.mean(temp_spec_f)
                     self.combined_errors[n] = 1000000000000
+
+            self.combined_spectrum = spectrum_f
 
         if _output is True:
             # ie if called as a function rather than from ACID function
