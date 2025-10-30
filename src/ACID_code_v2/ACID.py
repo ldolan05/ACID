@@ -243,7 +243,8 @@ class ACID:
                 self.frame_errors[n] = f2_err(self.combined_wavelengths)
 
                 ## mask out out extrapolated areas
-                idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.combined_spectrum[n][idx]), self.combined_wavelengths>=np.min(self.combined_spectrum[n][idx]))
+                idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.frame_wavelengths[n][idx]),
+                                        self.combined_wavelengths>=np.min(self.frame_wavelengths[n][idx]))
                 idx_ex = tuple([idx_ex==False])
 
                 self.combined_spectrum[n][idx_ex] = 1.
@@ -759,7 +760,7 @@ class ACID:
         # TODO! : frame_flux is always >1 for frames
         if len(self.frame_flux)>1:
             for counter in range(len(self.frame_flux)):
-                self.all_frames = self._get_profiles(self.all_frames, self.counter)  
+                self.all_frames = self._get_profiles(self.all_frames, counter)  
         else:
             self.all_frames = self._get_profiles(self.all_frames, 0)
 
@@ -816,7 +817,7 @@ class ACID:
         # global run_name
         self.run_name = name
 
-        if order_range is None:
+        if self.order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
             # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
             # I think this is way too high though
@@ -835,7 +836,7 @@ class ACID:
         BJDs = []
         profiles = []
         errors = []
-        for frame_no in range(0, len(self.frames)):
+        for frame_no in range(0, len(frames)):
             file = filelist[frame_no]
             fits_file = fits.open(file)
             hdu = fits.HDUList()
@@ -948,3 +949,21 @@ def ACID_HARPS(*args, **kwargs):
         Returns the outputs of the ACID_HARPS function.
     """
     return _ACID().run_ACID_HARPS(*args, **kwargs)
+
+def calc_deltav(*args):
+    """Legacy calc_deltav function
+
+    This function runs the legacy calc_deltav code. This is provided for backwards compatibility with previous versions of ACID.
+    It is recommended to use the ACID class and its methods for new code.
+
+    Parameters
+    ----------
+    *args
+        Positional arguments to be passed to the calc_deltav function.
+
+    Returns
+    -------
+    Any
+        Returns the outputs of the calc_deltav function.
+    """
+    return _ACID().calc_deltav(*args)
