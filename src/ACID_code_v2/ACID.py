@@ -908,9 +908,7 @@ class ACID:
         """
         return ACID(*args, **kwargs).run_ACID_HARPS()
 
-_ACID = ACID
-
-def ACID(*args, **kwargs):
+def run_ACID(*args, **kwargs):
     """Legacy ACID function
 
     This function runs the legacy ACID code. This is provided for backwards compatibility with previous versions of ACID.
@@ -928,9 +926,9 @@ def ACID(*args, **kwargs):
     Any
         Returns the outputs of the ACID function.
     """
-    return _ACID().run_ACID(*args, **kwargs)
+    return ACID().run_ACID(*args, **kwargs)
 
-def ACID_HARPS(*args, **kwargs):
+def run_ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
 
     This function runs the legacy ACID_HARPS code. This is provided for backwards compatibility with previous versions of ACID.
@@ -948,7 +946,7 @@ def ACID_HARPS(*args, **kwargs):
     Any
         Returns the outputs of the ACID_HARPS function.
     """
-    return _ACID().run_ACID_HARPS(*args, **kwargs)
+    return ACID().run_ACID_HARPS(*args, **kwargs)
 
 def calc_deltav(*args):
     """Legacy calc_deltav function
@@ -966,4 +964,4 @@ def calc_deltav(*args):
     Any
         Returns the outputs of the calc_deltav function.
     """
-    return _ACID().calc_deltav(*args)
+    return ACID().calc_deltav(*args)

@@ -30,7 +30,7 @@ def quickstart():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.ACID([wavelength], [spectrum], [error], [sn], linelist, velocities)
+    result = acid.run_ACID([wavelength], [spectrum], [error], [sn], linelist, velocities, nsteps=2000)
 
     # extract profile and errors
     profile = result[0, 0, 0]
@@ -41,7 +41,7 @@ def quickstart():
     plt.errorbar(velocities, profile, profile_error)
     plt.xlabel('Velocities (km/s)')
     plt.ylabel('Flux')
-    plt.close('all')
+    plt.show()
 
 def multiple_frames():
 
@@ -69,7 +69,7 @@ def multiple_frames():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities)
+    result = acid.run_ACID(wavelengths, spectra, errors, sns, linelist, velocities, nsteps=2000)
 
     # plot results
     plt.figure()
@@ -82,9 +82,9 @@ def multiple_frames():
     plt.xlabel('Velocities (km/s)')
     plt.ylabel('Flux')
     plt.legend()
-    plt.close('all')
+    plt.show()
 
-def mulitple_orders():
+def multiple_orders():
     spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
@@ -113,7 +113,8 @@ def mulitple_orders():
         idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
 
         # run ACID function on specific chunk
-        result = acid.ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist, [sn], velocities, all_frames=result, order=i)
+        result = acid.run_ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], [sn], linelist,
+                           velocities, all_frames=result, order=i, nsteps=2000)
 
         min_wave += wave_chunk
         max_wave += wave_chunk
@@ -138,8 +139,8 @@ def mulitple_orders():
     plt.xlabel('Velocities (km/s)')
     plt.ylabel('Flux')
     plt.legend()
-    plt.close('all')
+    plt.show()
 
 quickstart()
 multiple_frames()
-mulitple_orders()
+multiple_orders()

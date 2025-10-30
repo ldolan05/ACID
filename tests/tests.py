@@ -24,7 +24,7 @@ def test_run_e2ds():
     velocities = np.arange(-25, 25, 0.82)
 
     # run ACID on e2ds files
-    ACID_results_e2ds = acid.ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
+    ACID_results_e2ds = acid.run_ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
                                         order_range=np.arange(41, 43), nsteps=2000)
     return ACID_results_e2ds
 
@@ -37,7 +37,7 @@ def test_run_s1d():
     velocities = np.arange(-25, 25, 0.82)
 
     # run ACID on s1d files
-    ACID_results_s1d = acid.ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
+    ACID_results_s1d = acid.run_ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
                                        order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000)
     return ACID_results_s1d
 
