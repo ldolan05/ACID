@@ -482,7 +482,7 @@ class ACID:
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns, linelist_path,
             velocities, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
             n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
-            nsteps=8000, return_frames=True):
+            nsteps=5000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -532,7 +532,7 @@ class ACID:
         cores : int, optional
             Number of cores to use if parallel=True. If None (default) all available cores will be used, by default None
         nsteps : int, optional
-            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 8000
+            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 5000
         return_frames : bool, optional
             If True, returns the all_frames array with the resulting profiles, by default True
         Returns
@@ -681,11 +681,26 @@ class ACID:
         if self.verbose:
             print('Fitting the continuum using emcee...')
 
-        if parallel:
+        # Determine if running in SLURM environment
+        try:
+            if "bash" not in os.environ.get("SLURM_JOB_NAME").lower():
+                self.slurm = True
+            else:
+                self.slurm = False
+        except:
+            self.slurm = False
 
-            # Choose a sensible number of workers
-            if cores is None:
-                self.cores = os.cpu_count()  # Use all available cores
+        # Choose the number of cores
+        self.cores = cores
+        if self.cores is None:
+            if self.slurm:
+                self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
+            else:
+                self.cores = os.cpu_count()
+        else:
+            self.cores = cores
+
+        if parallel:
 
             if verbose:
                 print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
@@ -699,18 +714,18 @@ class ACID:
                                "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
-                    sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
-                    sampler.run_mcmc(self.initial_state, self.nsteps, progress=True, store=True)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler.run_mcmc(self.initial_state, self.nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
                 with Pool() as pool:
-                    sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
-                    sampler.run_mcmc(pos, nsteps, progress=verbose)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler.run_mcmc(pos, nsteps, progress=self.verbose)
 
         else:
-            sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
-            sampler.run_mcmc(self.initial_state, self.nsteps, progress=True)
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
+            self.sampler.run_mcmc(self.initial_state, self.nsteps, progress=self.verbose)
 
         print('MCMC run takes: %s'%(time.time()-t5))
 
@@ -718,7 +733,7 @@ class ACID:
         dis_no = int(np.floor(self.nsteps-1000))
 
         ## combining all walkers together
-        self.flat_samples = sampler.get_chain(discard=dis_no, flat=True)
+        self.flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
         ## getting the final profile and continuum values - median of last 1000 steps
         self.profile = []
@@ -856,7 +871,7 @@ class ACID:
                 hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
                 if save_path != 'no save':
                     month = 'August2007'
-                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.run_name), output_verify = 'fix', overwrite = 'True')
+                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.run_name), output_verify='fix', overwrite='True')
 
             result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
             profiles.append(result1)
