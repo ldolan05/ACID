@@ -3,6 +3,9 @@
 *.gif
 __pycache__/
 .DS_Store
+test.py
+tests
+
 
 # Distribution / packaging
 .Python
