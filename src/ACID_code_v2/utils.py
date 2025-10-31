@@ -4,22 +4,24 @@ import glob
 
 def ensure_list(x, allow_none=False):
     # Ensure inputs are lists, np.arrays are converted to lists
-    if isinstance(x, list):
-        return x
     if x is None:
         if allow_none:
             return None
         else:
             raise TypeError("Input must be a list or numpy array, not None")
-    if isinstance(x, (str, bytes, bytearray)):
-        return [x]
+    if not isinstance(x, (list, np.ndarray)):
+        raise TypeError("Input must be a list or numpy array, not a string")
+    if isinstance(x, list):
+        if len(x) == 0:
+            raise TypeError("Input list is empty or has only one element")
+        return x
     if isinstance(x, np.ndarray):
         if x.ndim == 0:
-            return [x.tolist()]
+            raise TypeError("Input must be a list or numpy array with at least one dimension")
+        elif x.ndim == 1:
+            return [x]
         else:
-            return x.tolist()
-    else:
-        raise TypeError("Input must be a list or numpy array")
+            return x
 
 def round_sig(x1, sig):
     return round(x1, sig-int(floor(log10(abs(x1))))-1)
