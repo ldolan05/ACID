@@ -584,11 +584,6 @@ class ACID:
         if not isinstance(self.all_frames, np.ndarray):
             raise TypeError("'all_frames' must be a numpy array")
 
-        # fw = self.frame_wavelengths.copy()
-        # f = self.frames.copy()
-        # fe = self.frame_errors.copy()
-        # s = sns.copy()
-
         if verbose:
             t0 = time.time()
             print('Initialising...')
@@ -596,7 +591,7 @@ class ACID:
         # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra
         # This function uses as inputs:
         # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
-        # To generates:
+        # To generate:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
         self.combine_spec(_output=False)
 
@@ -605,14 +600,7 @@ class ACID:
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
             self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
 
-        # if verbose:
-        #     t2 = time.time()
-        #     print('Set up before LSD %s'%(t2-t0))
-
         #### getting the initial profile
-        # self.velocities, profile, profile_errors, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-        #     self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1, self.linelist_path,
-        #     'False', self.poly_ord, self.combined_sn, 30, self.run_name, self.velocities, verbose=verbose)
         self.adjust_continuum = False
         LSD_initial_profile = LSD.LSD(self)
         LSD_initial_profile.run_LSD(order=30)
@@ -620,10 +608,6 @@ class ACID:
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
-
-        # if verbose:
-        #     t3 = time.time()
-        #     print('LSD run takes: %s'%(t3-t2))
 
         ## Setting the number of points in vgrid (k_max)
         self.k_max = len(self.initial_profile)
@@ -650,10 +634,6 @@ class ACID:
         # self.alpha, self.yerr
         self.residual_mask()
 
-        # if verbose:
-        #     t4 = time.time()
-        #     print('residual masking takes: %s' %(t4-t3))
-
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
@@ -675,7 +655,6 @@ class ACID:
 
         if verbose:
             t5 = time.time()
-            # print('MCMC set up takes: %s'%(t5-t4))
             print('Initialised in %ss'%round((t5-t0), 2))
 
         if self.verbose:
