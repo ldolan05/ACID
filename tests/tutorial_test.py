@@ -2,7 +2,7 @@
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
-import glob, os, importlib, sys
+import glob, os, importlib, sys, pickle
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
 try:
@@ -30,7 +30,7 @@ def quickstart():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.run_ACID([wavelength], [spectrum], [error], [sn], linelist, velocities, nsteps=2000)
+    result = acid.run_ACID([wavelength], [spectrum], [error], [sn], linelist, velocities, nsteps=4000)
 
     # extract profile and errors
     profile = result[0, 0, 0]
@@ -45,7 +45,7 @@ def quickstart():
     return result
 
 res_quickstart = quickstart()
-pickle.dump({'quickstart': res_quickstart}, open('quickstart_result.pkl', 'wb'))
+pickle.dump({'quickstart': res_quickstart}, open('quickstart_result_classes.pkl', 'wb'))
 
 def multiple_frames():
 
@@ -73,7 +73,7 @@ def multiple_frames():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.run_ACID(wavelengths, spectra, errors, sns, linelist, velocities, nsteps=2000)
+    result = acid.run_ACID(wavelengths, spectra, errors, sns, linelist, velocities, nsteps=4000)
 
     # plot results
     plt.figure()
@@ -90,7 +90,7 @@ def multiple_frames():
     return result
 
 res_multiple_frames = multiple_frames()
-pickle.dump({'multiple_frames': res_multiple_frames}, open('multiple_frames_result.pkl', 'wb'))
+pickle.dump({'multiple_frames': res_multiple_frames}, open('multiple_frames_result_classes.pkl', 'wb'))
 
 def multiple_orders():
     spec_file = fits.open('example/sample_spec_1.fits')
@@ -122,7 +122,7 @@ def multiple_orders():
 
         # run ACID function on specific chunk
         result = acid.run_ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], [sn], linelist,
-                           velocities, all_frames=result, order=i, nsteps=2000)
+                           velocities, all_frames=result, order=i, nsteps=4000)
 
         min_wave += wave_chunk
         max_wave += wave_chunk
@@ -151,4 +151,4 @@ def multiple_orders():
     return result
 
 res_multiple_orders = multiple_orders()
-pickle.dump({'multiple_orders': res_multiple_orders}, open('multiple_orders_result.pkl', 'wb'))
+pickle.dump({'multiple_orders': res_multiple_orders}, open('multiple_orders_result_classes.pkl', 'wb'))
