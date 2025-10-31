@@ -1,18 +1,18 @@
 from astropy.io import fits
-import ACID_code.ACID as acid
+from ACID_code import ACID as acid
 import numpy as np
 import matplotlib.pyplot as plt
-import glob
+import glob, pickle
 
 def quickstart():
-    spec_file = fits.open('../example/sample_spec_1.fits')
+    spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
@@ -31,11 +31,15 @@ def quickstart():
     plt.xlabel('Velocities (km/s)')
     plt.ylabel('Flux')
     plt.close('all')
+    return result
+
+res_quickstart = quickstart()
+pickle.dump({'quickstart': res_quickstart}, open('quickstart_result.pkl', 'wb'))
 
 def multiple_frames():
 
     # finds sample files in 'example directory'. Each file is a different frame.
-    files = glob.glob('../example/sample_spec_*.fits')
+    files = glob.glob('example/sample_spec_*.fits')
 
     # create lists for wavelengths, spectra, errors and sn for all frames
     wavelengths = []
@@ -51,7 +55,7 @@ def multiple_frames():
         errors.append(spec_file[2].data)         # Spectral Flux Errors
         sns.append(float(spec_file[3].data))     # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelengths[0])
@@ -72,16 +76,20 @@ def multiple_frames():
     plt.ylabel('Flux')
     plt.legend()
     plt.close('all')
+    return result
 
-def mulitple_orders():
-    spec_file = fits.open('../example/sample_spec_1.fits')
+res_multiple_frames = multiple_frames()
+pickle.dump({'multiple_frames': res_multiple_frames}, open('multiple_frames_result.pkl', 'wb'))
+
+def multiple_orders():
+    spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = '../example/example_linelist.txt' # Insert path to line list
+    linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
     deltav = acid.calc_deltav(wavelength)  
@@ -128,7 +136,7 @@ def mulitple_orders():
     plt.ylabel('Flux')
     plt.legend()
     plt.close('all')
+    return result
 
-quickstart()
-multiple_frames()
-mulitple_orders()
+res_multiple_orders = multiple_orders()
+pickle.dump({'multiple_orders': res_multiple_orders}, open('multiple_orders_result.pkl', 'wb'))

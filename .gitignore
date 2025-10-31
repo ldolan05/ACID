@@ -4,7 +4,7 @@
 __pycache__/
 .DS_Store
 test.py
-tests
+tests/
 
 
 # Distribution / packaging

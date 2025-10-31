@@ -266,7 +266,7 @@ def convolve(profile, alpha):
     return spectrum
 
 ## maximum likelihood estimation for the mcmc model.
-def log_likelihood(theta, x, y, yerr):
+def log_likelihood(theta):
     model = model_func(theta, x)
 
     lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
@@ -306,11 +306,11 @@ def log_prior(theta):
     return -np.inf
 
 ## calculates log probability - used for mcmc
-def log_probability(theta, x, y, yerr):
+def log_probability(theta):
     lp = log_prior(theta)
     if not np.isfinite(lp):
         return -np.inf
-    final = lp + log_likelihood(theta, x, y, yerr)
+    final = lp + log_likelihood(theta)
     return final
 
 ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
@@ -561,6 +561,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     model_inputs = np.concatenate((profile, poly_inputs))
 
     ## setting x, y, yerr for emcee
+    global x, y, yerr
     x = wavelengths
     y = fluxes
     yerr = flux_error_order
@@ -597,7 +598,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     pos = np.transpose(pos)
 
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
-    steps_no = 8000
+    steps_no = 4000
 
     t1 = time.time()
     # print('MCMC set up takes: %s'%(t1-t4))
@@ -607,9 +608,13 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)
 
-    with Pool() as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-        sampler.run_mcmc(pos, steps_no, progress=True)
+    # ctx = mp.get_context("fork")
+    # with ctx.Pool() as pool:
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability,
+    # args=(x, y, yerr),
+    # pool=pool
+    )
+    sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
@@ -759,7 +764,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     task_part = partial(get_profiles, all_frames, order, poly_cos, continuum_error)
     if len(frames)>1:
-        with mp.Pool(mp.cpu_count()) as pool:
+        with mp.Pool() as pool:
             results=[pool.map(task_part, np.arange(len(frames)))]
         results = np.array(results[0])
         for i in range(len(frames)): 
