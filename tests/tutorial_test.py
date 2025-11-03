@@ -1,7 +1,8 @@
+#%%
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
-import glob, os, importlib, sys
+import glob, os, importlib, sys, pickle
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
 try:
@@ -29,7 +30,7 @@ def quickstart():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
+    result = acid.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities, nsteps=4000)
 
     # extract profile and errors
     profile = result[0, 0, 0]
@@ -68,7 +69,7 @@ def multiple_frames():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities)
+    result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities, nsteps=4000)
 
     # plot results
     plt.figure()
@@ -82,8 +83,9 @@ def multiple_frames():
     plt.ylabel('Flux')
     plt.legend()
     plt.close('all')
+    return result
 
-def mulitple_orders():
+def multiple_orders():
     spec_file = fits.open('example/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
@@ -112,7 +114,7 @@ def mulitple_orders():
         idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
 
         # run ACID function on specific chunk
-        result = acid.ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist, [sn], velocities, all_frames=result, order=i)
+        result = acid.ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist, [sn], velocities, all_frames=result, order=i, nsteps=4000)
 
         min_wave += wave_chunk
         max_wave += wave_chunk
@@ -138,7 +140,11 @@ def mulitple_orders():
     plt.ylabel('Flux')
     plt.legend()
     plt.close('all')
+    return result
 
-quickstart()
-multiple_frames()
-mulitple_orders()
+quickstart_result = quickstart()
+multiple_frames_result = multiple_frames()
+multiple_orders_result = multiple_orders()
+pickle.dump(quickstart_result, open("quickstart_result_v2_pc.pkl", "wb"))
+pickle.dump(multiple_frames_result, open("multiple_frames_result_v2_pc.pkl", "wb"))
+pickle.dump(multiple_orders_result, open("multiple_orders_result_v2_pc.pkl", "wb"))
