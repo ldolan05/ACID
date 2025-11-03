@@ -491,11 +491,12 @@ class ACID:
         Parameters
         ----------
         input_wavelengths : list or array
-            Wavelengths for each frame (in Angstroms).
+            Wavelengths for each frame (in Angstroms). For multiple frames this should be a list of arrays or list of lists.
         input_spectra : list or array
-            Spectral frames (in flux).
+            Spectral frames (in flux). For multiple frames this should be a list of arrays or list of lists.
         input_spectral_errors : list or array
-            Errors for each frame (in flux).
+            Errors for each frame (in flux). For multiple frames this should be a list of arrays or list of lists. This should always
+            be a list, even for a single frame (which would thus be single valued).
         frame_sns : list or array
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
         linelist_path : str
