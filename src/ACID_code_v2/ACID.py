@@ -1,4 +1,4 @@
-import sys, emcee, warnings, os, time, importlib
+import sys, emcee, warnings, os, time, importlib, inspect
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -555,7 +555,7 @@ class ACID:
         if telluric_lines:
             self.telluric_lines = telluric_lines
         if not isinstance(self.telluric_lines, list):
-            raise TypeError("telluric_lines must be a list (could be empty or single-valued)")
+            raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
 
         self.frame_wavelengths = np.array(input_wavelengths)
         self.frame_flux = np.array(input_spectra)
@@ -920,7 +920,15 @@ def run_ACID(*args, **kwargs):
     Any
         Returns the outputs of the ACID function.
     """
-    return ACID().run_ACID(*args, **kwargs)
+    init_params = inspect.signature(ACID.__init__).parameters
+    init_keys = set(init_params.keys()) - {"self"}
+
+    # split kwargs
+    init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
+    run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
+
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID(*args, **run_kwargs)
 
 def run_ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
@@ -940,7 +948,15 @@ def run_ACID_HARPS(*args, **kwargs):
     Any
         Returns the outputs of the ACID_HARPS function.
     """
-    return ACID().run_ACID_HARPS(*args, **kwargs)
+    init_params = inspect.signature(ACID.__init__).parameters
+    init_keys = set(init_params.keys()) - {"self"}
+
+    # split kwargs
+    init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
+    run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
+
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID_HARPS(*args, **run_kwargs)
 
 def calc_deltav(*args):
     """Legacy calc_deltav function

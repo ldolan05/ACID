@@ -1,13 +1,12 @@
 import numpy as np
 from scipy import linalg
 from astropy.io import  fits
-import glob, time, warnings, sys, psutil, os
+import glob, time, warnings, sys, psutil, os, inspect
 import scipy.constants as const
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
-import inspect
 ckms = float(const.c/1e3)  # speed of light in km/s
 
 class LSD:
@@ -28,6 +27,7 @@ class LSD:
         self.run_name = ACID.run_name
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
+        self.ACID = ACID
 
     def run_LSD(self, *args, **kwargs):
         # Nothing the args use to be:
