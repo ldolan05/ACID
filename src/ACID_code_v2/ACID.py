@@ -547,9 +547,10 @@ class ACID:
         """
         ### Setup
 
-        # Ensure inputs are lists, np.arrays are converted to lists
-        input_wavelengths, input_spectra, input_spectral_errors, frame_sns = [
-            utils.ensure_list(v) for v in (input_wavelengths, input_spectra, input_spectral_errors, frame_sns)]
+        # Ensure inputs are lists, np.arrays are converted to lists, sn treated separately
+        input_wavelengths, input_spectra, input_spectral_errors = [
+            utils.ensure_list(v) for v in (input_wavelengths, input_spectra, input_spectral_errors)]
+        frame_sns = utils.ensure_list(frame_sns, sn=True)
 
         # Define telluric_lines if not input, check type if it is
         if telluric_lines:

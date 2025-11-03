@@ -2,7 +2,7 @@ import numpy as np
 from math import log10, floor
 import glob
 
-def ensure_list(x, allow_none=False):
+def ensure_list(x, allow_none=False, sn=False):
     # Ensure inputs are lists, np.arrays are converted to lists
     if x is None:
         if allow_none:
@@ -13,14 +13,18 @@ def ensure_list(x, allow_none=False):
         raise TypeError("Input must be a list or numpy array, not a string")
     if isinstance(x, list):
         if len(x) == 0:
-            raise TypeError("Input list is empty or has only one element")
+            raise TypeError("Input list is empty")
         return x
     if isinstance(x, np.ndarray):
         if x.ndim == 0:
             raise TypeError("Input must be a list or numpy array with at least one dimension")
         elif x.ndim == 1:
+            if sn:
+                return x
             return [x]
         else:
+            if sn:
+                raise TypeError("Input for sn must be a 1D numpy array or list")
             return x
 
 def round_sig(x1, sig):
