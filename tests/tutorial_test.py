@@ -42,6 +42,7 @@ def quickstart():
     plt.xlabel('Velocities (km/s)')
     plt.ylabel('Flux')
     plt.close('all')
+    return result
 
 def multiple_frames():
 
