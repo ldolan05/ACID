@@ -598,7 +598,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     pos = np.transpose(pos)
 
     ## the number of steps is how long it runs for - if it doesn't look like it's settling at a value try increasing the number of steps
-    steps_no = 4000
+    steps_no = 10000
 
     t1 = time.time()
     # print('MCMC set up takes: %s'%(t1-t4))
@@ -608,13 +608,13 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)
 
-    # ctx = mp.get_context("fork")
-    # with ctx.Pool() as pool:
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability,
-    # args=(x, y, yerr),
-    # pool=pool
-    )
-    sampler.run_mcmc(pos, steps_no, progress=True)
+    ctx = mp.get_context("fork")
+    with ctx.Pool(processes=48) as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability,
+        # args=(x, y, yerr),
+        pool=pool
+        )
+        sampler.run_mcmc(pos, steps_no, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(steps_no-1000))
