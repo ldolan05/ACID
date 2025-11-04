@@ -49,7 +49,7 @@ def quickstart():
     return result
 
 res_quickstart = quickstart()
-pickle.dump({'quickstart': res_quickstart}, open(f'tests/test_data/quickstart_v2_{num}.pkl', 'wb'))
+pickle.dump(res_quickstart, open(f'tests/test_data/quickstart_v2_{num}.pkl', 'wb'))
 
 def multiple_frames():
 
@@ -94,7 +94,7 @@ def multiple_frames():
     return result
 
 res_multiple_frames = multiple_frames()
-pickle.dump({'multiple_frames': res_multiple_frames}, open(f'tests/test_data/multiple_frames_v2_{num}.pkl', 'wb'))
+pickle.dump(res_multiple_frames, open(f'tests/test_data/multiple_frames_v2_{num}.pkl', 'wb'))
 
 def multiple_orders():
     spec_file = fits.open('example/sample_spec_1.fits')
@@ -155,4 +155,4 @@ def multiple_orders():
     return result
 
 res_multiple_orders = multiple_orders()
-pickle.dump({'multiple_orders': res_multiple_orders}, open(f'tests/test_data/multiple_orders_v2_{num}.pkl', 'wb'))
+pickle.dump(res_multiple_orders, open(f'tests/test_data/multiple_orders_v2_{num}.pkl', 'wb'))
