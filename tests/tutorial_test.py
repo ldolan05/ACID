@@ -2,7 +2,7 @@
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
-import glob, os, importlib, sys
+import glob, os, importlib, sys, pickle
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -26,43 +26,52 @@ deltav = acid_v1.calc_deltav(wavelength)  # velocity pixel size must not be smal
 velocities = np.arange(-25, 25, deltav)
 
 # run ACID function
-velocities, profile, profile_errors, alpha, x, y, yerr = acid_v1.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
-velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities)
+velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes_order1, flux_error_order1 = acid_v1.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
+velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2, poly_inputs2, fluxes_order2, flux_error_order2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities)
 
-print(velocities==velocities2)
+print(np.all(velocities==velocities2))
+print(np.all(profile==profile2))
+print(np.all(profile_errors==profile_errors2))
+print(np.all(alpha==alpha2))
+print(np.all(x==x2))
+print(np.all(y==y2))
+print(np.all(yerr==yerr2))
+print(np.all(poly_inputs==poly_inputs2))
+print(np.all(fluxes_order1==fluxes_order2))
+print(np.all(flux_error_order1==flux_error_order2))
+pickle.dump([velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes_order1, flux_error_order1], open('tests/test_data/v1.pkl', 'wb'))
+pickle.dump([velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2, poly_inputs2, fluxes_order2, flux_error_order2], open('tests/test_data/v2.pkl', 'wb'))
 
-#%%
+# def quickstart():
+#     spec_file = fits.open('example/sample_spec_1.fits')
 
-def quickstart():
-    spec_file = fits.open('example/sample_spec_1.fits')
+#     wavelength = spec_file[0].data   # Wavelengths in Angstroms
+#     spectrum = spec_file[1].data     # Spectral Flux
+#     error = spec_file[2].data        # Spectral Flux Errors
+#     sn = spec_file[3].data           # SN of Spectrum
 
-    wavelength = spec_file[0].data   # Wavelengths in Angstroms
-    spectrum = spec_file[1].data     # Spectral Flux
-    error = spec_file[2].data        # Spectral Flux Errors
-    sn = spec_file[3].data           # SN of Spectrum
+#     linelist = 'example/example_linelist.txt' # Insert path to line list
 
-    linelist = 'example/example_linelist.txt' # Insert path to line list
+#     # choose a velocity grid for the final profile(s)
+#     deltav = acid_v1.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
+#     velocities = np.arange(-25, 25, deltav)
 
-    # choose a velocity grid for the final profile(s)
-    deltav = acid_v1.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
-    velocities = np.arange(-25, 25, deltav)
+#     # run ACID function
+#     result_v1 = acid_v1.ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
+#     result_v2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
 
-    # run ACID function
-    result_v1 = acid_v1.ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
-    result_v2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
+#     # extract profile and errors
+#     profile = result_v1[0, 0, 0]
+#     profile_error = result_v1[0, 0, 1]
 
-    # extract profile and errors
-    profile = result_v1[0, 0, 0]
-    profile_error = result_v1[0, 0, 1]
+#     # plot results
+#     plt.figure()
+#     plt.errorbar(velocities, profile, profile_error)
+#     plt.xlabel('Velocities (km/s)')
+#     plt.ylabel('Flux')
+#     plt.show()
 
-    # plot results
-    plt.figure()
-    plt.errorbar(velocities, profile, profile_error)
-    plt.xlabel('Velocities (km/s)')
-    plt.ylabel('Flux')
-    plt.show()
-
-quickstart()
+# quickstart()
 
 # def multiple_frames():
 

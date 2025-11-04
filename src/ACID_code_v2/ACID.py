@@ -665,7 +665,7 @@ class ACID:
         self.initial_state = np.array(self.initial_state)
         self.initial_state = np.transpose(self.initial_state)
 
-        return self.velocities, self.initial_profile, self.initial_profile_errors, self.alpha, self.x, self.y, self.yerr
+        return self.velocities, self.initial_profile, self.initial_profile_errors, self.alpha, self.x, self.y, self.yerr, self.poly_inputs, self.fluxes_order1, self.flux_error_order1
 
         if self.verbose:
             t5 = time.time()
