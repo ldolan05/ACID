@@ -5,15 +5,33 @@ import matplotlib.pyplot as plt
 import glob, os, importlib, sys
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
-try:
-    import ACID_code_v2 as acid
-except:
-    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-    sys.path.append(PROJECT_ROOT)
-    from src import ACID_code_v2 as acid
-    print("pip module failed to import, imported from local instead")
-importlib.reload(acid)
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.append(PROJECT_ROOT)
+from src import ACID_code_v2 as acid_v2
+from ACID_code import ACID as acid_v1
+
+
+spec_file = fits.open('example/sample_spec_1.fits')
+
+wavelength = spec_file[0].data   # Wavelengths in Angstroms
+spectrum = spec_file[1].data     # Spectral Flux
+error = spec_file[2].data        # Spectral Flux Errors
+sn = spec_file[3].data           # SN of Spectrum
+
+linelist = 'example/example_linelist.txt' # Insert path to line list
+
+# choose a velocity grid for the final profile(s)
+deltav = acid_v1.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
+velocities = np.arange(-25, 25, deltav)
+
+# run ACID function
+velocities, profile, profile_errors, alpha, x, y, yerr = acid_v1.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
+velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities)
+
+print(velocities==velocities2)
+
+#%%
 
 def quickstart():
     spec_file = fits.open('example/sample_spec_1.fits')
@@ -26,15 +44,16 @@ def quickstart():
     linelist = 'example/example_linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
-    deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
+    deltav = acid_v1.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.run_ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
+    result_v1 = acid_v1.ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
+    result_v2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
 
     # extract profile and errors
-    profile = result[0, 0, 0]
-    profile_error = result[0, 0, 1]
+    profile = result_v1[0, 0, 0]
+    profile_error = result_v1[0, 0, 1]
 
     # plot results
     plt.figure()
@@ -43,104 +62,106 @@ def quickstart():
     plt.ylabel('Flux')
     plt.show()
 
-def multiple_frames():
-
-    # finds sample files in 'example directory'. Each file is a different frame.
-    files = glob.glob('example/sample_spec_*.fits')
-
-    # create lists for wavelengths, spectra, errors and sn for all frames
-    wavelengths = []
-    spectra = []
-    errors = []
-    sns = []
-
-    for file in files:
-        spec_file = fits.open('%s'%file)
-
-        wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
-        spectra.append(spec_file[1].data)        # Spectral Flux
-        errors.append(spec_file[2].data)         # Spectral Flux Errors
-        sns.append(float(spec_file[3].data))     # SN of Spectrum
-
-    linelist = 'example/example_linelist.txt' # Insert path to line list
-
-    # choose a velocity grid for the final profile(s)
-    deltav = acid.calc_deltav(wavelengths[0])
-    velocities = np.arange(-25, 25, deltav)
-
-    # run ACID function
-    result = acid.run_ACID(wavelengths, spectra, errors, sns, linelist, velocities, nsteps=2000)
-
-    # plot results
-    plt.figure()
-
-    for frame in range(len(files)):
-        profile = result[frame, 0, 0]
-        profile_error = result[frame, 0, 1]
-        plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
-
-    plt.xlabel('Velocities (km/s)')
-    plt.ylabel('Flux')
-    plt.legend()
-    plt.show()
-
-def multiple_orders():
-    spec_file = fits.open('example/sample_spec_1.fits')
-
-    wavelength = spec_file[0].data   # Wavelengths in Angstroms
-    spectrum = spec_file[1].data     # Spectral Flux
-    error = spec_file[2].data        # Spectral Flux Errors
-    sn = spec_file[3].data           # SN of Spectrum
-
-    linelist = 'example/example_linelist.txt' # Insert path to line list
-
-    # choose a velocity grid for the final profile(s)
-    deltav = acid.calc_deltav(wavelength)  
-    velocities = np.arange(-25, 25, deltav)
-
-    # choose size of wavelength ranges (or chunks)
-    wave_chunk = 25
-    chunks_no = int(np.floor((max(wavelength)-min(wavelength))/wave_chunk))
-    min_wave = min(wavelength)
-    max_wave = min_wave+wave_chunk
-
-    # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
-    result = np.zeros((1, chunks_no, 2, len(velocities)))
-
-    for i in range(chunks_no):
-
-        # use indexing to select correct chunk of spectrum
-        idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
-
-        # run ACID function on specific chunk
-        result = acid.run_ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], [sn], linelist,
-                           velocities, all_frames=result, order=i, nsteps=2000)
-
-        min_wave += wave_chunk
-        max_wave += wave_chunk
-
-    # reset min and max wavelengths
-    min_wave = min(wavelength)
-    max_wave = min_wave+wave_chunk
-
-    # plot results
-    plt.figure()
-    for i in range(chunks_no):
-
-        # extract profile and errors
-        profile = result[0, i, 0]
-        profile_error = result[0, i, 1]
-
-        plt.errorbar(velocities, profile, profile_error, label='(%s - %sÅ)'%(min_wave, max_wave))
-
-        min_wave += wave_chunk
-        max_wave += wave_chunk
-
-    plt.xlabel('Velocities (km/s)')
-    plt.ylabel('Flux')
-    plt.legend()
-    plt.show()
-
 quickstart()
-multiple_frames()
-multiple_orders()
+
+# def multiple_frames():
+
+#     # finds sample files in 'example directory'. Each file is a different frame.
+#     files = glob.glob('example/sample_spec_*.fits')
+
+#     # create lists for wavelengths, spectra, errors and sn for all frames
+#     wavelengths = []
+#     spectra = []
+#     errors = []
+#     sns = []
+
+#     for file in files:
+#         spec_file = fits.open('%s'%file)
+
+#         wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
+#         spectra.append(spec_file[1].data)        # Spectral Flux
+#         errors.append(spec_file[2].data)         # Spectral Flux Errors
+#         sns.append(float(spec_file[3].data))     # SN of Spectrum
+
+#     linelist = 'example/example_linelist.txt' # Insert path to line list
+
+#     # choose a velocity grid for the final profile(s)
+#     deltav = acid.calc_deltav(wavelengths[0])
+#     velocities = np.arange(-25, 25, deltav)
+
+#     # run ACID function
+#     result = acid.run_ACID(wavelengths, spectra, errors, sns, linelist, velocities, nsteps=2000)
+
+#     # plot results
+#     plt.figure()
+
+#     for frame in range(len(files)):
+#         profile = result[frame, 0, 0]
+#         profile_error = result[frame, 0, 1]
+#         plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
+
+#     plt.xlabel('Velocities (km/s)')
+#     plt.ylabel('Flux')
+#     plt.legend()
+#     plt.show()
+
+# def multiple_orders():
+#     spec_file = fits.open('example/sample_spec_1.fits')
+
+#     wavelength = spec_file[0].data   # Wavelengths in Angstroms
+#     spectrum = spec_file[1].data     # Spectral Flux
+#     error = spec_file[2].data        # Spectral Flux Errors
+#     sn = spec_file[3].data           # SN of Spectrum
+
+#     linelist = 'example/example_linelist.txt' # Insert path to line list
+
+#     # choose a velocity grid for the final profile(s)
+#     deltav = acid.calc_deltav(wavelength)  
+#     velocities = np.arange(-25, 25, deltav)
+
+#     # choose size of wavelength ranges (or chunks)
+#     wave_chunk = 25
+#     chunks_no = int(np.floor((max(wavelength)-min(wavelength))/wave_chunk))
+#     min_wave = min(wavelength)
+#     max_wave = min_wave+wave_chunk
+
+#     # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
+#     result = np.zeros((1, chunks_no, 2, len(velocities)))
+
+#     for i in range(chunks_no):
+
+#         # use indexing to select correct chunk of spectrum
+#         idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
+
+#         # run ACID function on specific chunk
+#         result = acid.run_ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], [sn], linelist,
+#                            velocities, all_frames=result, order=i, nsteps=2000)
+
+#         min_wave += wave_chunk
+#         max_wave += wave_chunk
+
+#     # reset min and max wavelengths
+#     min_wave = min(wavelength)
+#     max_wave = min_wave+wave_chunk
+
+#     # plot results
+#     plt.figure()
+#     for i in range(chunks_no):
+
+#         # extract profile and errors
+#         profile = result[0, i, 0]
+#         profile_error = result[0, i, 1]
+
+#         plt.errorbar(velocities, profile, profile_error, label='(%s - %sÅ)'%(min_wave, max_wave))
+
+#         min_wave += wave_chunk
+#         max_wave += wave_chunk
+
+#     plt.xlabel('Velocities (km/s)')
+#     plt.ylabel('Flux')
+#     plt.legend()
+#     plt.show()
+
+
+# multiple_frames()
+# multiple_orders()

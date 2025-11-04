@@ -603,6 +603,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # print('MCMC set up takes: %s'%(t1-t4))
     # print('Initialised in %ss'%round((t1-t0), 2))
 
+    return velocities, profile, profile_errors, alpha, x, y, yerr
+
     print('Fitting the Continuum...')
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)

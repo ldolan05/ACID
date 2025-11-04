@@ -665,6 +665,8 @@ class ACID:
         self.initial_state = np.array(self.initial_state)
         self.initial_state = np.transpose(self.initial_state)
 
+        return self.velocities, self.initial_profile, self.initial_profile_errors, self.alpha, self.x, self.y, self.yerr
+
         if self.verbose:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
