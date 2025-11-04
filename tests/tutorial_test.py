@@ -2,7 +2,7 @@
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
-import glob, os, importlib, sys, pickle
+import glob, os, importlib, sys, pickle, argparse
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
 try:
@@ -14,6 +14,10 @@ except:
     from src import ACID_code_v2 as acid
     print("pip module failed to import, imported from local instead")
 importlib.reload(acid)
+parser = argparse.ArgumentParser()
+parser.add_argument('num')
+args = parser.parse_args()
+num = args.num
 
 def quickstart():
     spec_file = fits.open('example/sample_spec_1.fits')
@@ -45,7 +49,7 @@ def quickstart():
     return result
 
 res_quickstart = quickstart()
-pickle.dump({'quickstart': res_quickstart}, open('tests/test_data/quickstart_result_classes_6.pkl', 'wb'))
+pickle.dump({'quickstart': res_quickstart}, open(f'tests/test_data/quickstart_v2_{num}.pkl', 'wb'))
 
 def multiple_frames():
 
@@ -90,7 +94,7 @@ def multiple_frames():
     return result
 
 res_multiple_frames = multiple_frames()
-pickle.dump({'multiple_frames': res_multiple_frames}, open('tests/test_data/multiple_frames_result_classes_6.pkl', 'wb'))
+pickle.dump({'multiple_frames': res_multiple_frames}, open(f'tests/test_data/multiple_frames_v2_{num}.pkl', 'wb'))
 
 def multiple_orders():
     spec_file = fits.open('example/sample_spec_1.fits')
@@ -151,4 +155,4 @@ def multiple_orders():
     return result
 
 res_multiple_orders = multiple_orders()
-pickle.dump({'multiple_orders': res_multiple_orders}, open('tests/test_data/multiple_orders_result_classes_6.pkl', 'wb'))
+pickle.dump({'multiple_orders': res_multiple_orders}, open(f'tests/test_data/multiple_orders_v2_{num}.pkl', 'wb'))
