@@ -13,6 +13,7 @@ class LSD:
 
     def __init__(self, ACID=None):
 
+        self.adjust_continuum = None
         self.verbose = True
         if not ACID:
             return
@@ -20,11 +21,10 @@ class LSD:
         self.flux_obs = ACID.fluxes_order1
         self.rms = ACID.flux_error_order1
         self.linelist = ACID.linelist_path
-        self.adjust_continuum = ACID.adjust_continuum
         self.poly_ord = ACID.poly_ord
         self.sn = ACID.combined_sn
         self.order = ACID.order
-        self.run_name = ACID.run_name
+        self.run_name = ACID.name
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
         self.ACID = ACID
