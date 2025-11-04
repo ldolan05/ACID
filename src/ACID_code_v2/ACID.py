@@ -1,4 +1,4 @@
-import sys, emcee, warnings, os, time, importlib
+import sys, emcee, warnings, os, time, importlib, inspect
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -18,7 +18,6 @@ class ACID:
 
     def __init__(self, tell_lines=None):
         self.all_frames = None
-        self.order_range = [1]
         self.velocities = None
         self.linelist_path = None
         self.frames = None
@@ -32,12 +31,7 @@ class ACID:
         self.combined_sn = None
         self.poly_inputs = None
         self.poly_ord = None
-        self.run_name = None
-        if tell_lines is not None:
-            self.telluric_lines = tell_lines
-        else:
-            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+        self.name = None
         self.alpha = None
         self.initial_profile = None
         self.initial_profile_errors = None
@@ -58,6 +52,19 @@ class ACID:
         self.profile_err = None
         self.poly_cos_err = None
         self.continuum_error = None
+
+        # Define default order range, can be overwritten in run_ACID_HARPS
+        self.order_range = [1]
+
+        # Define default telluric lines if not provided
+        if tell_lines is not None:
+            self.telluric_lines = tell_lines
+        else:
+            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
+                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+
+        # Determine if running in SLURM environment
+        self.slurm = "SLURM_JOB_ID" in os.environ
         pass
 
     def _get_normalisation_coeffs(self, wl):
@@ -95,9 +102,9 @@ class ACID:
     def read_in_frames(self, order, filelist, file_type, directory=None):
         # read in first frame
         fluxes, wavelengths, flux_error_order, sn = LSD.LSD().blaze_correct(
-            file_type, 'order', order, filelist[0], directory, 'unmasked', self.run_name, 'y')
+            file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
-        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.run_name, 'y')
+        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
 
         frames = np.zeros((len(filelist), len(wavelengths)))
         errors = np.zeros((len(filelist), len(wavelengths)))
@@ -112,7 +119,7 @@ class ACID:
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
             frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD.LSD().blaze_correct(
-                file_type, 'order', order, file, directory, 'unmasked', self.run_name, 'y')
+                file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns
         
@@ -365,10 +372,10 @@ class ACID:
 
         poly_inputs, _bin, bye = self.continuumfit(self.y, (self.x*a_old)+b, self.yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.run_name, self.velocities)
+        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
         LSD_masking = LSD.LSD()
         LSD_masking.run_LSD(self.x, _bin, bye, self.linelist_path, 'False',
-                        self.poly_ord, 100, 30, self.run_name, self.velocities)
+                        self.poly_ord, 100, 30, self.name, self.velocities)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
 
@@ -422,7 +429,7 @@ class ACID:
         else:
             LSD_profiles = LSD.LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, self.linelist_path, 'False',
-                                 self.poly_ord, sn, 10, self.run_name, self.velocities)
+                                 self.poly_ord, sn, 10, self.name, self.velocities)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
             # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
@@ -482,7 +489,7 @@ class ACID:
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns, linelist_path,
             velocities, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
             n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
-            nsteps=8000, return_frames=True):
+            nsteps=5000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -491,11 +498,12 @@ class ACID:
         Parameters
         ----------
         input_wavelengths : list or array
-            Wavelengths for each frame (in Angstroms).
+            Wavelengths for each frame (in Angstroms). For multiple frames this should be a list of arrays or list of lists.
         input_spectra : list or array
-            Spectral frames (in flux).
+            Spectral frames (in flux). For multiple frames this should be a list of arrays or list of lists.
         input_spectral_errors : list or array
-            Errors for each frame (in flux).
+            Errors for each frame (in flux). For multiple frames this should be a list of arrays or list of lists. This should always
+            be a list, even for a single frame (which would thus be single valued).
         frame_sns : list or array
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
         linelist_path : str
@@ -532,7 +540,7 @@ class ACID:
         cores : int, optional
             Number of cores to use if parallel=True. If None (default) all available cores will be used, by default None
         nsteps : int, optional
-            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 8000
+            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 5000
         return_frames : bool, optional
             If True, returns the all_frames array with the resulting profiles, by default True
         Returns
@@ -547,29 +555,29 @@ class ACID:
         """
         ### Setup
 
-        # Ensure inputs are lists, np.arrays are converted to lists
-        input_wavelengths, input_spectra, input_spectral_errors, frame_sns = [
-            utils.ensure_list(v) for v in (input_wavelengths, input_spectra, input_spectral_errors, frame_sns)]
+        # Ensure inputs are lists, np.arrays are converted to lists, sn treated separately
+        input_wavelengths, input_spectra, input_spectral_errors = [
+            utils.ensure_list(v) for v in (input_wavelengths, input_spectra, input_spectral_errors)]
+        frame_sns = utils.ensure_list(frame_sns, sn=True)
 
         # Define telluric_lines if not input, check type if it is
         if telluric_lines:
             self.telluric_lines = telluric_lines
         if not isinstance(self.telluric_lines, list):
-            raise TypeError("telluric_lines must be a list (could be empty or single-valued)")
+            raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
 
+        # Assign inputs to class variables
         self.frame_wavelengths = np.array(input_wavelengths)
         self.frame_flux = np.array(input_spectra)
         self.frame_errors = np.array(input_spectral_errors)
         self.frame_sns = np.array(frame_sns)
-
         self.velocities = velocities
         self.linelist_path = linelist_path
         self.poly_ord = poly_ord
-        self.run_name = name
+        self.name = name
         self.verbose = verbose
         self.nsteps = nsteps
         self.order = order
-
         self.pix_chunk = pix_chunk
         self.dev_perc = dev_perc
         self.n_sig = n_sig
@@ -584,46 +592,34 @@ class ACID:
         if not isinstance(self.all_frames, np.ndarray):
             raise TypeError("'all_frames' must be a numpy array")
 
-        # fw = self.frame_wavelengths.copy()
-        # f = self.frames.copy()
-        # fe = self.frame_errors.copy()
-        # s = sns.copy()
-
         if verbose:
             t0 = time.time()
             print('Initialising...')
 
-        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra
-        # This function uses as inputs:
+        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra.
+        # If only one frame, just uses that frame (handled in the function).
+        # This function requires assigned values:
         # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
-        # To generates:
+        # To generate:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
         self.combine_spec(_output=False)
 
         ### getting the initial polynomial coefficents
         a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
+        
+        # Compute an initial continuum fit
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
             self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
 
-        # if verbose:
-        #     t2 = time.time()
-        #     print('Set up before LSD %s'%(t2-t0))
-
-        #### getting the initial profile
-        # self.velocities, profile, profile_errors, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-        #     self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1, self.linelist_path,
-        #     'False', self.poly_ord, self.combined_sn, 30, self.run_name, self.velocities, verbose=verbose)
-        self.adjust_continuum = False
+        ### getting the initial profile
         LSD_initial_profile = LSD.LSD(self)
         LSD_initial_profile.run_LSD(order=30)
+
+        # Use alpha matrix and initial profile class variables from initial LSD run
         self.velocities = LSD_initial_profile.velocities
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
-
-        # if verbose:
-        #     t3 = time.time()
-        #     print('LSD run takes: %s'%(t3-t2))
 
         ## Setting the number of points in vgrid (k_max)
         self.k_max = len(self.initial_profile)
@@ -650,10 +646,6 @@ class ACID:
         # self.alpha, self.yerr
         self.residual_mask()
 
-        # if verbose:
-        #     t4 = time.time()
-        #     print('residual masking takes: %s' %(t4-t3))
-
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
@@ -673,20 +665,20 @@ class ACID:
         self.initial_state = np.array(self.initial_state)
         self.initial_state = np.transpose(self.initial_state)
 
-        if verbose:
-            t5 = time.time()
-            # print('MCMC set up takes: %s'%(t5-t4))
-            print('Initialised in %ss'%round((t5-t0), 2))
-
         if self.verbose:
+            t5 = time.time()
+            print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
+        # Choose the number of cores
+        self.cores = cores
+        if self.cores is None:
+            if self.slurm:
+                self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
+            else:
+                self.cores = os.cpu_count()
+
         if parallel:
-
-            # Choose a sensible number of workers
-            if cores is None:
-                self.cores = os.cpu_count()  # Use all available cores
-
             if verbose:
                 print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
 
@@ -699,18 +691,18 @@ class ACID:
                                "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
-                    sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
-                    sampler.run_mcmc(self.initial_state, self.nsteps, progress=True, store=True)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler.run_mcmc(self.initial_state, self.nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
                 with Pool() as pool:
-                    sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_class.log_probability, pool=pool)
-                    sampler.run_mcmc(pos, nsteps, progress=verbose)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler.run_mcmc(pos, nsteps, progress=self.verbose)
 
         else:
-            sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
-            sampler.run_mcmc(self.initial_state, self.nsteps, progress=True)
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
+            self.sampler.run_mcmc(self.initial_state, self.nsteps, progress=self.verbose)
 
         print('MCMC run takes: %s'%(time.time()-t5))
 
@@ -718,7 +710,7 @@ class ACID:
         dis_no = int(np.floor(self.nsteps-1000))
 
         ## combining all walkers together
-        self.flat_samples = sampler.get_chain(discard=dis_no, flat=True)
+        self.flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
         ## getting the final profile and continuum values - median of last 1000 steps
         self.profile = []
@@ -815,7 +807,7 @@ class ACID:
         # global frame_errors
         # global sns
         # global run_name
-        self.run_name = name
+        self.name = name
 
         if self.order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
@@ -856,7 +848,7 @@ class ACID:
                 hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
                 if save_path != 'no save':
                     month = 'August2007'
-                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.run_name), output_verify = 'fix', overwrite = 'True')
+                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.name), output_verify='fix', overwrite='True')
 
             result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
             profiles.append(result1)
@@ -926,7 +918,15 @@ def run_ACID(*args, **kwargs):
     Any
         Returns the outputs of the ACID function.
     """
-    return ACID().run_ACID(*args, **kwargs)
+    init_params = inspect.signature(ACID.__init__).parameters
+    init_keys = set(init_params.keys()) - {"self"}
+
+    # split kwargs
+    init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
+    run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
+
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID(*args, **run_kwargs)
 
 def run_ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
@@ -946,7 +946,15 @@ def run_ACID_HARPS(*args, **kwargs):
     Any
         Returns the outputs of the ACID_HARPS function.
     """
-    return ACID().run_ACID_HARPS(*args, **kwargs)
+    init_params = inspect.signature(ACID.__init__).parameters
+    init_keys = set(init_params.keys()) - {"self"}
+
+    # split kwargs
+    init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
+    run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
+
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID_HARPS(*args, **run_kwargs)
 
 def calc_deltav(*args):
     """Legacy calc_deltav function

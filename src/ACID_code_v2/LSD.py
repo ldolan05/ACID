@@ -1,13 +1,12 @@
 import numpy as np
 from scipy import linalg
 from astropy.io import  fits
-import glob, time, warnings, sys, psutil, os
+import glob, time, warnings, sys, psutil, os, inspect
 import scipy.constants as const
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
-import inspect
 ckms = float(const.c/1e3)  # speed of light in km/s
 
 class LSD:
@@ -28,6 +27,7 @@ class LSD:
         self.run_name = ACID.run_name
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
+        self.ACID = ACID
 
     def run_LSD(self, *args, **kwargs):
         # Nothing the args use to be:
@@ -105,16 +105,22 @@ class LSD:
         # Note this used to be "if len(wavelengths)<6000", which I believe is way too high
         # for 16GB RAM. With testing, I found that if the matrix was half the available memory,
         # it would always be fast, otherwise seperate into blocks as the else statment below.
-        m_size = len(self.wavelengths_expected) * len(self.velocities) * len(self.wavelengths) * 8 * 1e-9 # Matrix size in GB
-        m_available = psutil.virtual_memory().available * 1e-9
-        if m_size < m_available / 2:
+        mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
+        m_available = psutil.virtual_memory().available * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
+        if mat_size < m_available:
 
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
             self.alpha = (self.depths_expected[:, None] * delta).sum(axis=1)  # (nb, n_vel)
 
         else:
-            block = 512 # after initial testing, this value is a good compromise between memory use and speed
+            n_blank = len(blankwaves)
+            n_vel   = len(self.velocities)
+            mem_size = psutil.virtual_memory().available // 2
+            bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
+            max_block = max(1, mem_size // bytes_per_row)
+            block = min(max_block, len(self.wavelengths_expected))
+            # block = 512 # after initial testing, this value is a good compromise between memory use and speed
             self.alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
             if self.verbose:
                 iterable = tqdm(range(0, len(self.wavelengths_expected), block), desc='Calculating alpha matrix')
