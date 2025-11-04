@@ -607,9 +607,9 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     print('Fitting the Continuum...')
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)
-
+    cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
     ctx = mp.get_context("fork")
-    with ctx.Pool(processes=48) as pool:
+    with ctx.Pool(processes=cores) as pool:
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability,
         # args=(x, y, yerr),
         pool=pool
@@ -764,7 +764,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
 
     task_part = partial(get_profiles, all_frames, order, poly_cos, continuum_error)
     if len(frames)>1:
-        with mp.Pool() as pool:
+        with mp.Pool(processes=cores) as pool:
             results=[pool.map(task_part, np.arange(len(frames)))]
         results = np.array(results[0])
         for i in range(len(frames)): 
