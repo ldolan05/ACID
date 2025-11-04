@@ -18,7 +18,6 @@ class ACID:
 
     def __init__(self, tell_lines=None):
         self.all_frames = None
-        self.order_range = [1]
         self.velocities = None
         self.linelist_path = None
         self.frames = None
@@ -32,12 +31,7 @@ class ACID:
         self.combined_sn = None
         self.poly_inputs = None
         self.poly_ord = None
-        self.run_name = None
-        if tell_lines is not None:
-            self.telluric_lines = tell_lines
-        else:
-            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+        self.name = None
         self.alpha = None
         self.initial_profile = None
         self.initial_profile_errors = None
@@ -58,6 +52,19 @@ class ACID:
         self.profile_err = None
         self.poly_cos_err = None
         self.continuum_error = None
+
+        # Define default order range, can be overwritten in run_ACID_HARPS
+        self.order_range = [1]
+
+        # Define default telluric lines if not provided
+        if tell_lines is not None:
+            self.telluric_lines = tell_lines
+        else:
+            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
+                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+
+        # Determine if running in SLURM environment
+        self.slurm = "SLURM_JOB_ID" in os.environ
         pass
 
     def _get_normalisation_coeffs(self, wl):
@@ -95,9 +102,9 @@ class ACID:
     def read_in_frames(self, order, filelist, file_type, directory=None):
         # read in first frame
         fluxes, wavelengths, flux_error_order, sn = LSD.LSD().blaze_correct(
-            file_type, 'order', order, filelist[0], directory, 'unmasked', self.run_name, 'y')
+            file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
-        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.run_name, 'y')
+        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
 
         frames = np.zeros((len(filelist), len(wavelengths)))
         errors = np.zeros((len(filelist), len(wavelengths)))
@@ -112,7 +119,7 @@ class ACID:
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
             frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD.LSD().blaze_correct(
-                file_type, 'order', order, file, directory, 'unmasked', self.run_name, 'y')
+                file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns
         
@@ -365,10 +372,10 @@ class ACID:
 
         poly_inputs, _bin, bye = self.continuumfit(self.y, (self.x*a_old)+b, self.yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.run_name, self.velocities)
+        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
         LSD_masking = LSD.LSD()
         LSD_masking.run_LSD(self.x, _bin, bye, self.linelist_path, 'False',
-                        self.poly_ord, 100, 30, self.run_name, self.velocities)
+                        self.poly_ord, 100, 30, self.name, self.velocities)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
 
@@ -422,7 +429,7 @@ class ACID:
         else:
             LSD_profiles = LSD.LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, self.linelist_path, 'False',
-                                 self.poly_ord, sn, 10, self.run_name, self.velocities)
+                                 self.poly_ord, sn, 10, self.name, self.velocities)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
             # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
@@ -559,19 +566,18 @@ class ACID:
         if not isinstance(self.telluric_lines, list):
             raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
 
+        # Assign inputs to class variables
         self.frame_wavelengths = np.array(input_wavelengths)
         self.frame_flux = np.array(input_spectra)
         self.frame_errors = np.array(input_spectral_errors)
         self.frame_sns = np.array(frame_sns)
-
         self.velocities = velocities
         self.linelist_path = linelist_path
         self.poly_ord = poly_ord
-        self.run_name = name
+        self.name = name
         self.verbose = verbose
         self.nsteps = nsteps
         self.order = order
-
         self.pix_chunk = pix_chunk
         self.dev_perc = dev_perc
         self.n_sig = n_sig
@@ -590,8 +596,9 @@ class ACID:
             t0 = time.time()
             print('Initialising...')
 
-        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra
-        # This function uses as inputs:
+        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra.
+        # If only one frame, just uses that frame (handled in the function).
+        # This function requires assigned values:
         # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
         # To generate:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
@@ -599,13 +606,16 @@ class ACID:
 
         ### getting the initial polynomial coefficents
         a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
+        
+        # Compute an initial continuum fit
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
             self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
 
-        #### getting the initial profile
-        self.adjust_continuum = False
+        ### getting the initial profile
         LSD_initial_profile = LSD.LSD(self)
         LSD_initial_profile.run_LSD(order=30)
+
+        # Use alpha matrix and initial profile class variables from initial LSD run
         self.velocities = LSD_initial_profile.velocities
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
@@ -655,21 +665,10 @@ class ACID:
         self.initial_state = np.array(self.initial_state)
         self.initial_state = np.transpose(self.initial_state)
 
-        if verbose:
+        if self.verbose:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
-
-        if self.verbose:
             print('Fitting the continuum using emcee...')
-
-        # Determine if running in SLURM environment
-        try:
-            if "bash" not in os.environ.get("SLURM_JOB_NAME").lower():
-                self.slurm = True
-            else:
-                self.slurm = False
-        except:
-            self.slurm = False
 
         # Choose the number of cores
         self.cores = cores
@@ -678,11 +677,8 @@ class ACID:
                 self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.cores = os.cpu_count()
-        else:
-            self.cores = cores
 
         if parallel:
-
             if verbose:
                 print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
 
@@ -811,7 +807,7 @@ class ACID:
         # global frame_errors
         # global sns
         # global run_name
-        self.run_name = name
+        self.name = name
 
         if self.order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
@@ -852,7 +848,7 @@ class ACID:
                 hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
                 if save_path != 'no save':
                     month = 'August2007'
-                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.run_name), output_verify='fix', overwrite='True')
+                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.name), output_verify='fix', overwrite='True')
 
             result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
             profiles.append(result1)
