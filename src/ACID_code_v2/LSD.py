@@ -14,17 +14,17 @@ class LSD:
     def __init__(self, ACID=None):
 
         self.verbose = True
+        self.adjust_continuum = None
         if not ACID:
             return
         self.wavelengths = ACID.combined_wavelengths
         self.flux_obs = ACID.fluxes_order1
         self.rms = ACID.flux_error_order1
         self.linelist = ACID.linelist_path
-        self.adjust_continuum = ACID.adjust_continuum
         self.poly_ord = ACID.poly_ord
         self.sn = ACID.combined_sn
         self.order = ACID.order
-        self.run_name = ACID.run_name
+        self.run_name = ACID.run
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
         self.ACID = ACID
@@ -39,7 +39,7 @@ class LSD:
         arg_names = [
             "wavelengths", "flux_obs", "rms", "linelist", "adjust_continuum",
             "poly_ord", "sn", "order", "run_name", "velocities", "verbose"
-        ]
+        ] # legacy arg names
 
         params = [
             inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD)
