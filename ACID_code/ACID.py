@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from astropy.io import fits
 import ACID_code.LSD_func_faster as LSD
-import glob
+import glob, os
 from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
 import multiprocessing as mp
