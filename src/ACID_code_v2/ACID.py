@@ -582,6 +582,9 @@ class ACID:
         self.dev_perc = dev_perc
         self.n_sig = n_sig
 
+        if not isinstance(self.linelist_path, str):
+            raise TypeError("'linelist_path' must be a string")
+
         if all_frames is None:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
