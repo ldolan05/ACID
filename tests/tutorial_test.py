@@ -25,22 +25,43 @@ linelist = 'example/example_linelist.txt' # Insert path to line list
 deltav = acid_v1.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
 velocities = np.arange(-25, 25, deltav)
 
-# run ACID function
-velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes_order1, flux_error_order1 = acid_v1.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
-velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2, poly_inputs2, fluxes_order2, flux_error_order2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities)
+v1_data = pickle.load(open('tests/test_data/v1.pkl', 'rb'))
+v2_data = pickle.load(open('tests/test_data/v2.pkl', 'rb'))
 
-print(np.all(velocities==velocities2))
-print(np.all(profile==profile2))
-print(np.all(profile_errors==profile_errors2))
-print(np.all(alpha==alpha2))
-print(np.all(x==x2))
-print(np.all(y==y2))
-print(np.all(yerr==yerr2))
-print(np.all(poly_inputs==poly_inputs2))
-print(np.all(fluxes_order1==fluxes_order2))
-print(np.all(flux_error_order1==flux_error_order2))
-pickle.dump([velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes_order1, flux_error_order1], open('tests/test_data/v1.pkl', 'wb'))
-pickle.dump([velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2, poly_inputs2, fluxes_order2, flux_error_order2], open('tests/test_data/v2.pkl', 'wb'))
+# print(v1_data[3])
+# print(v2_data[3])
+# print(np.allclose(v1_data[3], v2_data[3]))
+# print(v1_data[3] - v2_data[3])
+# print(v2_data[3].shape)
+mat_v1 = v1_data[3]
+mat_v2 = v2_data[3]
+diff_matrix = np.abs(mat_v1 - mat_v2)
+positive_mask = diff_matrix > 0
+positive_indices = np.nonzero(positive_mask)[1]
+positive_differences = diff_matrix[positive_mask]
+x = positive_indices
+plt.plot(x, positive_differences, '.', label='Alpha matrix Differences')
+plt.yscale('log')
+plt.legend(loc="lower left")
+plt.show()
+
+print(np.max(x))
+# run ACID function
+# velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes_order1, flux_error_order1 = acid_v1.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
+# velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2, poly_inputs2, fluxes_order2, flux_error_order2 = acid_v2.run_ACID(wavelength, spectrum, error, sn, linelist, velocities)
+
+# print(np.all(velocities==velocities2))
+# print(np.all(profile==profile2))
+# print(np.all(profile_errors==profile_errors2))
+# print(np.all(alpha==alpha2))
+# print(np.all(x==x2))
+# print(np.all(y==y2))
+# print(np.all(yerr==yerr2))
+# print(np.all(poly_inputs==poly_inputs2))
+# print(np.all(fluxes_order1==fluxes_order2))
+# print(np.all(flux_error_order1==flux_error_order2))
+# pickle.dump([velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes_order1, flux_error_order1], open('tests/test_data/v1.pkl', 'wb'))
+# pickle.dump([velocities2, profile2, profile_errors2, alpha2, x2, y2, yerr2, poly_inputs2, fluxes_order2, flux_error_order2], open('tests/test_data/v2.pkl', 'wb'))
 
 # def quickstart():
 #     spec_file = fits.open('example/sample_spec_1.fits')
