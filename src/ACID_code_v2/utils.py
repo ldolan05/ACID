@@ -14,7 +14,6 @@ def validate_args(x, i, allow_none=False, sn=False):
     if isinstance(x, list):
         if len(x) == 0:
             raise TypeError(f"Input list in position {i} is empty")
-        return x
     x = np.array(x)
     if x.ndim > 2:
         raise TypeError(f"Input in position {i} must be a list or numpy array with at most two dimensions")
@@ -23,7 +22,7 @@ def validate_args(x, i, allow_none=False, sn=False):
     elif x.ndim == 1:
         if sn:
             return x
-        return [x]
+        return np.array([x])
     elif x.ndim == 2:
         if sn:
             raise TypeError(f"Input for sn in position {i} must be a 1D numpy array or list")

@@ -12,4 +12,5 @@ dependencies:
   - tqdm
   - emcee
   - sphinx_rtd_theme
+  - specutils
 prefix: /Users/benjamincadell/miniforge3/envs/acid

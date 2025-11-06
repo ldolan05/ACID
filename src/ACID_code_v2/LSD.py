@@ -28,6 +28,8 @@ class LSD:
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
         self.ACID = ACID
+        self.linelist_wl = ACID.linelist_wl
+        self.linelist_depths = ACID.linelist_depths
 
     def run_LSD(self, *args, **kwargs):
         # Nothing the args use to be:
@@ -71,9 +73,13 @@ class LSD:
 
         #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
         # Ben - Reading the linelist
-        linelist_expected = np.genfromtxt('%s'%self.linelist, skip_header=4, delimiter=',', usecols=(1,9))
-        wavelengths_expected_all = np.array(linelist_expected[:,0])
-        self.depths_expected_all = np.array(linelist_expected[:,1])
+        if self.linelist:
+            linelist_expected = np.genfromtxt('%s'%self.linelist, skip_header=4, delimiter=',', usecols=(1,9))
+            wavelengths_expected_all = np.array(linelist_expected[:,0])
+            depths_expected_all = np.array(linelist_expected[:,1])
+        else:
+            wavelengths_expected_all = np.array(self.linelist_wl)
+            depths_expected_all = np.array(self.linelist_depths)
 
         # Selecting lines within the wavelength range of the observed spectrum
         wavelength_min = np.min(self.wavelengths)
@@ -81,7 +87,7 @@ class LSD:
         idx = np.logical_and(wavelengths_expected_all >= wavelength_min,
                             wavelengths_expected_all <= wavelength_max)
         self.wavelengths_expected = wavelengths_expected_all[idx]
-        self.depths_expected = self.depths_expected_all[idx]
+        self.depths_expected = depths_expected_all[idx]
 
         # Selecting lines deeper than 1/(3*sn)
         line_min = 1 / (3 * self.sn)

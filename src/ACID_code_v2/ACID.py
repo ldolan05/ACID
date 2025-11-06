@@ -5,6 +5,8 @@ from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from multiprocessing import Pool
+from specutils import Spectrum
+from specutils.analysis import snr
 from . import utils
 from . import LSD
 from . import mcmc_utils
@@ -483,9 +485,9 @@ class ACID:
 
         return  spectrum, spec_errors
 
-    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns, linelist_path,
-            velocities, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
-            n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
+    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None,
+            velocities=None, linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20,
+            dev_perc=25, name="test", n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
             nsteps=5000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
 
@@ -552,12 +554,34 @@ class ACID:
         """
         ### Setup
 
-        # Ensure inputs are lists, np.arrays are converted to lists, sn treated separately
+        # Ensure inputs are correct and converted to np.arrays sn treated separately
         input_wavelengths, input_spectra, input_spectral_errors = [
             utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
-        frame_sns = utils.validate_args(frame_sns, 3, sn=True)
-        # TODO Add snr.shape and frame_wavenlength.shape checks to ensure they are NOT equal, also,
-        # add a way to make SNR an optional input and SNR is estimated from the spectra if not provided.
+        frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
+
+        if frame_sns:
+            if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
+                raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
+
+        if frame_sns is None: # Needs testing
+            frame_sns = []
+            for wavelength, spectra, errors in zip(input_wavelengths.tolist(), input_spectra.tolist(), input_spectral_errors.tolist()):
+                spectrum_model = Spectrum(spectral_axis = wavelength, 
+                                          flux          = spectra,
+                                          uncertainty   = errors)
+                estimated_sn = snr(spectrum_model)
+                frame_sns.append(estimated_sn.value)
+
+        if (linelist_wl is None and linelist_depths is None) or linelist_path is None:
+            raise ValueError("One of 'linelist_wl', 'linelist_depths' or 'linelist_path' must be provided.")
+        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
+            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+
+        if velocities is None:
+            velocities = np.arange(-25, 25, self.calc_deltav(input_wavelengths.tolist()[0]))
+
+        # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
+        # check that all the telluric lines are positive otherwise see how they were handled.
 
         # Define telluric_lines if not input, check type if it is
         if telluric_lines:
@@ -566,10 +590,10 @@ class ACID:
             raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
 
         # Assign inputs to class variables
-        self.frame_wavelengths = np.array(input_wavelengths)
-        self.frame_flux = np.array(input_spectra)
-        self.frame_errors = np.array(input_spectral_errors)
-        self.frame_sns = np.array(frame_sns)
+        self.frame_wavelengths = input_wavelengths
+        self.frame_flux = input_spectra
+        self.frame_errors = input_spectral_errors
+        self.frame_sns = frame_sns
         self.velocities = velocities
         self.linelist_path = linelist_path
         self.poly_ord = poly_ord
@@ -580,6 +604,8 @@ class ACID:
         self.pix_chunk = pix_chunk
         self.dev_perc = dev_perc
         self.n_sig = n_sig
+        self.linelist_depths = linelist_depths
+        self.linelist_wl = linelist_wl
 
         if not isinstance(self.linelist_path, str):
             raise TypeError("'linelist_path' must be a string")
