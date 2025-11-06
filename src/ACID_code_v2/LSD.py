@@ -24,7 +24,7 @@ class LSD:
         self.poly_ord = ACID.poly_ord
         self.sn = ACID.combined_sn
         self.order = ACID.order
-        self.run_name = ACID.run
+        self.run_name = ACID.name
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
         self.ACID = ACID

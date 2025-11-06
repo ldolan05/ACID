@@ -36,11 +36,8 @@ class ACID:
         self.initial_profile = None
         self.initial_profile_errors = None
         self.k_max = None
-        self.model_inputs = None
-        self.ndim = None
-        self.nwalkers = None
-        self.initial_state = None
         self.nsteps = None
+        self.model_inputs = None
         self.cores = None
         self.all_frames = None
         self.flat_samples = None
@@ -557,8 +554,10 @@ class ACID:
 
         # Ensure inputs are lists, np.arrays are converted to lists, sn treated separately
         input_wavelengths, input_spectra, input_spectral_errors = [
-            utils.ensure_list(v) for v in (input_wavelengths, input_spectra, input_spectral_errors)]
-        frame_sns = utils.ensure_list(frame_sns, sn=True)
+            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
+        frame_sns = utils.validate_args(frame_sns, 3, sn=True)
+        # TODO Add snr.shape and frame_wavenlength.shape checks to ensure they are NOT equal, also,
+        # add a way to make SNR an optional input and SNR is estimated from the spectra if not provided.
 
         # Define telluric_lines if not input, check type if it is
         if telluric_lines:
@@ -609,7 +608,7 @@ class ACID:
 
         ### getting the initial polynomial coefficents
         a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
-        
+
         # Compute an initial continuum fit
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
             self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
@@ -650,23 +649,22 @@ class ACID:
         self.residual_mask()
 
         ## Setting number of walkers and their start values(pos)
-        self.ndim = len(self.model_inputs)
-        self.nwalkers = self.ndim * 3
+        ndim = len(self.model_inputs)
+        nwalkers = ndim * 3
         rng = np.random.default_rng()
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
-        self.initial_state = []
-        for i in range(0, self.ndim):
-            if i < self.ndim - self.poly_ord - 2:
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+        initial_state = []
+        for i in range(0, ndim):
+            if i < ndim - self.poly_ord - 2:
+                pos = rng.normal(self.model_inputs[i], sigma, (nwalkers, ))
             else:
                 sigma = abs(utils.round_sig(self.model_inputs[i], 1)) / 10
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
-            self.initial_state.append(pos)
+                pos = rng.normal(self.model_inputs[i], sigma, (nwalkers, ))
+            initial_state.append(pos)
 
-        self.initial_state = np.array(self.initial_state)
-        self.initial_state = np.transpose(self.initial_state)
+        initial_state = np.transpose(np.array(initial_state))
 
         if self.verbose:
             t5 = time.time()
@@ -682,6 +680,7 @@ class ACID:
                 self.cores = os.cpu_count()
 
         if parallel:
+            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
             if verbose:
                 print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
 
@@ -694,18 +693,18 @@ class ACID:
                                "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
-                    self.sampler.run_mcmc(self.initial_state, self.nsteps, progress=self.verbose, store=True)
+                    self.sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
                 with Pool() as pool:
-                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
-                    self.sampler.run_mcmc(pos, nsteps, progress=self.verbose)
+                    self.sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler.run_mcmc(pos, self.nsteps, progress=self.verbose)
 
         else:
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
-            self.sampler.run_mcmc(self.initial_state, self.nsteps, progress=self.verbose)
+            self.sampler = emcee.EnsembleSampler(nwalkers, ndim, self.log_probability)
+            self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose)
 
         print('MCMC run takes: %s'%(time.time()-t5))
 
@@ -721,7 +720,7 @@ class ACID:
         self.profile_err = []
         self.poly_cos_err = []
 
-        for i in range(self.ndim):
+        for i in range(ndim):
             mcmc = np.median(self.flat_samples[:, i])
             error = np.std(self.flat_samples[:, i])
             mcmc = np.percentile(self.flat_samples[:, i], [16, 50, 84])

@@ -2,30 +2,34 @@ import numpy as np
 from math import log10, floor
 import glob
 
-def ensure_list(x, allow_none=False, sn=False):
+def validate_args(x, i, allow_none=False, sn=False):
     # Ensure inputs are lists, np.arrays are converted to lists
     if x is None:
         if allow_none:
             return None
         else:
-            raise TypeError("Input must be a list or numpy array, not None")
+            raise TypeError(f"Input in position {i} must be a list or numpy array, not None")
     if not isinstance(x, (list, np.ndarray)):
-        raise TypeError("Input must be a list or numpy array, not a string")
+        raise TypeError(f"Input in position {i} must be a list or numpy array")
     if isinstance(x, list):
         if len(x) == 0:
-            raise TypeError("Input list is empty")
+            raise TypeError(f"Input list in position {i} is empty")
         return x
-    if isinstance(x, np.ndarray):
-        if x.ndim == 0:
-            raise TypeError("Input must be a list or numpy array with at least one dimension")
-        elif x.ndim == 1:
-            if sn:
-                return x
-            return [x]
-        else:
-            if sn:
-                raise TypeError("Input for sn must be a 1D numpy array or list")
+    x = np.array(x)
+    if x.ndim > 2:
+        raise TypeError(f"Input in position {i} must be a list or numpy array with at most two dimensions")
+    elif x.ndim == 0:
+        raise TypeError(f"Input in position {i} must be a list or numpy array with at least one dimension")
+    elif x.ndim == 1:
+        if sn:
             return x
+        return [x]
+    elif x.ndim == 2:
+        if sn:
+            raise TypeError(f"Input for sn in position {i} must be a 1D numpy array or list")
+        return x # 2D array, return as is, code later does np.array(x) so no change
+    else: # should not reach here, somehow ndim is negative
+        raise ValueError(f"Input in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
 def round_sig(x1, sig):
     return round(x1, sig-int(floor(log10(abs(x1))))-1)
