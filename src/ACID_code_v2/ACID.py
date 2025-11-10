@@ -20,58 +20,7 @@ class ACID:
     """_summary_
     """
 
-    def __init__(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None,
-                 velocities=None, linelist_wl=None, linelist_depths=None, tell_lines=None):
-        
-        # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
-        # best guess the user's intentions. See the utils.validate_args function for more details.
-        input_wavelengths, input_spectra, input_spectral_errors = [
-            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
-        frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
-
-        # If frame_sns is not provided, estimate using specutils
-        if frame_sns is not None:
-            if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
-                raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
-        else: # needs testing
-            frame_sns = self.guess_SNR()
-
-        # Validate linelist inputs
-        if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
-            raise ValueError("One of 'linelist_wl', 'linelist_depths' or 'linelist_path' must be provided.")
-        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
-            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
-        if linelist_path is not None and not isinstance(linelist_path, str):
-            raise TypeError("'linelist_path' must be a string")
-        if linelist_wl is not None:
-            if not isinstance(linelist_wl, (list, np.ndarray)):
-                raise TypeError("'linelist_wl' must be a list or numpy array")
-            linelist_wl = np.array(linelist_wl)
-            if linelist_wl.ndim != 1:
-                raise ValueError("'linelist_wl' must be a one-dimensional array or list")
-        if linelist_depths is not None:
-            if not isinstance(linelist_depths, (list, np.ndarray)):
-                raise TypeError("'linelist_depths' must be a list or numpy array")
-            linelist_depths = np.array(linelist_depths)
-            if linelist_depths.ndim != 1:
-                raise ValueError("'linelist_depths' must be a one-dimensional array or list")
-
-        # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
-        if velocities is None:
-            velocities = np.arange(-25, 25, self.deltav(input_wavelengths.tolist()[0]))
-
-        # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
-        # check that all the telluric lines are positive otherwise see how they were handled.
-
-        # Assign inputs to class variables
-        self.frame_wavelengths = input_wavelengths
-        self.frame_flux = input_spectra
-        self.frame_errors = input_spectral_errors
-        self.frame_sns = frame_sns
-        self.velocities = velocities
-        self.linelist_path = linelist_path
-        self.linelist_depths = linelist_depths
-        self.linelist_wl = linelist_wl
+    def __init__(self):
 
         # Define default order range, can be overwritten in run_ACID_HARPS
         self.order_range = [1]
@@ -460,7 +409,6 @@ class ACID:
                         spectra[n] = 0.
         spectra = spectra.reshape(shape_og)
         errors = np.array(errors)
-
         
         spectra_to_combine = []
         weights=[]
@@ -486,7 +434,7 @@ class ACID:
         spectrum = list(np.reshape(spectrum, (width,)))
         spec_errors = list(np.reshape(spec_errors, (width,)))
 
-        return  spectrum, spec_errors
+        return spectrum, spec_errors
 
     def guess_SNR(self):
         """Estimates S/N for each frame using specutils using inputs of initialised class variables
@@ -505,9 +453,9 @@ class ACID:
             frame_sns.append(estimated_sn.value)
         return frame_sns
 
-    def run_ACID(self, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
-                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
-                 nsteps=5000, return_frames=True):
+    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None, velocities=None,
+                 linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
+                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -573,6 +521,43 @@ class ACID:
         """
         ### Setup, validation and input conversion
 
+        # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
+        # best guess the user's intentions. See the utils.validate_args function for more details.
+        input_wavelengths, input_spectra, input_spectral_errors = [
+            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
+        frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
+
+        # If frame_sns is not provided, estimate using specutils
+        if frame_sns is not None:
+            if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
+                raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
+        else: # needs testing
+            frame_sns = self.guess_SNR()
+
+        # Validate linelist inputs
+        if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
+            raise ValueError("One of 'linelist_wl', 'linelist_depths' or 'linelist_path' must be provided.")
+        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
+            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+        if linelist_path is not None and not isinstance(linelist_path, str):
+            raise TypeError("'linelist_path' must be a string")
+        if linelist_wl is not None:
+            if not isinstance(linelist_wl, (list, np.ndarray)):
+                raise TypeError("'linelist_wl' must be a list or numpy array")
+            linelist_wl = np.array(linelist_wl)
+            if linelist_wl.ndim != 1:
+                raise ValueError("'linelist_wl' must be a one-dimensional array or list")
+        if linelist_depths is not None:
+            if not isinstance(linelist_depths, (list, np.ndarray)):
+                raise TypeError("'linelist_depths' must be a list or numpy array")
+            linelist_depths = np.array(linelist_depths)
+            if linelist_depths.ndim != 1:
+                raise ValueError("'linelist_depths' must be a one-dimensional array or list")
+
+        # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
+        if velocities is None:
+            velocities = np.arange(-25, 25, self.deltav(input_wavelengths.tolist()[0]))
+
         # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
         # check that all the telluric lines are positive otherwise see how they were handled.
 
@@ -586,6 +571,14 @@ class ACID:
             raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
 
         # Assign inputs to class variables
+        self.frame_wavelengths = input_wavelengths
+        self.frame_flux = input_spectra
+        self.frame_errors = input_spectral_errors
+        self.frame_sns = frame_sns
+        self.velocities = velocities
+        self.linelist_path = linelist_path
+        self.linelist_depths = linelist_depths
+        self.linelist_wl = linelist_wl
         self.poly_ord = poly_ord
         self.name = name
         self.verbose = verbose
@@ -870,49 +863,6 @@ class ACID:
 
         return BJDs, profiles, errors
 
-    @staticmethod
-    def _run_legacy_ACID(*args, **kwargs):
-        """Runs the legacy ACID code
-
-        This static function runs the legacy ACID code within the ACID class.
-        This is provided for backwards compatibility with previous versions of ACID.
-        It is recommended to use the ACID class and its methods for new code.
-
-        Parameters
-        ----------
-        *kwargs
-            Positional arguments to be passed to the ACID function.
-        **kwargs
-            Keyword arguments to be passed to the ACID function.
-
-        Returns
-        -------
-        Any
-            Returns the outputs of the ACID function.
-        """
-        return ACID(*args, **kwargs).run_ACID()
-    
-    @staticmethod
-    def _run_legacy_ACID_HARPS(*args, **kwargs):
-        """Runs the legacy ACID_HARPS code
-
-        This static function runs the legacy ACID_HARPS code within the ACID class.
-        This is provided for backwards compatibility with previous versions of ACID.
-        It is recommended to use the ACID class and its methods for new code.
-
-        Parameters
-        ----------
-        *kwargs
-            Positional arguments to be passed to the ACID_HARPS function.
-        **kwargs
-            Keyword arguments to be passed to the ACID_HARPS function.
-
-        Returns
-        -------
-        Any
-            Returns the outputs of the ACID_HARPS function.
-        """
-        return ACID(*args, **kwargs).run_ACID_HARPS()
 
 def run_ACID(*args, **kwargs):
     """Legacy ACID function
@@ -939,8 +889,8 @@ def run_ACID(*args, **kwargs):
     init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
     run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
 
-    acid = ACID(*args, **init_kwargs)
-    return acid.run_ACID(**run_kwargs)
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID(*args, **run_kwargs)
 
 def run_ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
@@ -967,8 +917,8 @@ def run_ACID_HARPS(*args, **kwargs):
     init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
     run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
 
-    acid = ACID(*args, **init_kwargs)
-    return acid.run_ACID_HARPS(**run_kwargs)
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID_HARPS(*args, **run_kwargs)
 
 def calc_deltav(wavelengths):
         """Calculates velocity pixel size
