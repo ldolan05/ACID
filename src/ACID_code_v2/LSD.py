@@ -111,8 +111,14 @@ class LSD:
         # Note this used to be "if len(wavelengths)<6000", which I believe is way too high
         # for 16GB RAM. With testing, I found that if the matrix was half the available memory,
         # it would always be fast, otherwise seperate into blocks as the else statment below.
+        if self.ACID.slurm:
+            available_memory = os.environ.get('SLURM_MEM_PER_NODE')
+            print(available_memory)
+            sys.exit() # Remove this when tested
+        else:
+            available_memory = psutil.virtual_memory().available
         mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
-        m_available = psutil.virtual_memory().available * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
+        m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
         if mat_size < m_available:
 
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
@@ -122,7 +128,7 @@ class LSD:
         else:
             n_blank = len(blankwaves)
             n_vel   = len(self.velocities)
-            mem_size = psutil.virtual_memory().available // 2
+            mem_size = available_memory // 2
             bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
             max_block = max(1, mem_size // bytes_per_row)
             block = min(max_block, len(self.wavelengths_expected))
