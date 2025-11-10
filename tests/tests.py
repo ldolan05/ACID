@@ -25,7 +25,7 @@ def test_run_e2ds():
 
     # run ACID on e2ds files
     ACID_results_e2ds = acid.run_ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
-                                        order_range=np.arange(41, 43), nsteps=2000)
+                                            order_range=np.arange(41, 43), nsteps=2000)
     return ACID_results_e2ds
 
 def test_run_s1d():

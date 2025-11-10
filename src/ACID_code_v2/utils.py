@@ -3,7 +3,28 @@ from math import log10, floor
 import glob
 
 def validate_args(x, i, allow_none=False, sn=False):
-    # Ensure inputs are lists, np.arrays are converted to lists
+    """_summary_
+
+    Parameters
+    ----------
+    x : array_like
+        array or list to be validated
+    i : int
+        position of the input argument
+    allow_none : bool, optional
+        Whether None is allowed as a valid input, by default False
+    sn : bool, optional
+        Whether the input is a signal-to-noise ratio array, by default False
+    Returns
+    -------
+    array
+        The validated and converted numpy array.
+
+    Raises
+    ------
+    TypeError
+        If any of the conditions on inputs are not met.
+    """
     if x is None:
         if allow_none:
             return None
@@ -25,7 +46,10 @@ def validate_args(x, i, allow_none=False, sn=False):
         return np.array([x])
     elif x.ndim == 2:
         if sn:
-            raise TypeError(f"Input for sn in position {i} must be a 1D numpy array or list")
+            if x.shape[0] != 1: # ie if 1, an extra [] was added to input to make 2D.
+                raise TypeError(f"Input for sn in position {i} must be a 1D numpy array or list (the input was 2D)")
+            else:
+                return x[0]
         return x # 2D array, return as is, code later does np.array(x) so no change
     else: # should not reach here, somehow ndim is negative
         raise ValueError(f"Input in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")

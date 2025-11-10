@@ -15,12 +15,14 @@ except:
     print("pip module failed to import, imported from local instead")
 importlib.reload(acid)
 
+skips = 5
+
 def quickstart():
     spec_file = fits.open('example/sample_spec_1.fits')
 
-    wavelength = spec_file[0].data   # Wavelengths in Angstroms
-    spectrum = spec_file[1].data     # Spectral Flux
-    error = spec_file[2].data        # Spectral Flux Errors
+    wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
+    spectrum = spec_file[1].data[::skips]     # Spectral Flux
+    error = spec_file[2].data[::skips]        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
     linelist = 'example/example_linelist.txt' # Insert path to line list
@@ -57,9 +59,9 @@ def multiple_frames():
     for file in files:
         spec_file = fits.open('%s'%file)
 
-        wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
-        spectra.append(spec_file[1].data)        # Spectral Flux
-        errors.append(spec_file[2].data)         # Spectral Flux Errors
+        wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
+        spectra.append(spec_file[1].data[::skips])        # Spectral Flux
+        errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
         sns.append(float(spec_file[3].data))     # SN of Spectrum
 
     linelist = 'example/example_linelist.txt' # Insert path to line list
@@ -87,9 +89,9 @@ def multiple_frames():
 def multiple_orders():
     spec_file = fits.open('example/sample_spec_1.fits')
 
-    wavelength = spec_file[0].data   # Wavelengths in Angstroms
-    spectrum = spec_file[1].data     # Spectral Flux
-    error = spec_file[2].data        # Spectral Flux Errors
+    wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
+    spectrum = spec_file[1].data[::skips]     # Spectral Flux
+    error = spec_file[2].data[::skips]        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
     linelist = 'example/example_linelist.txt' # Insert path to line list

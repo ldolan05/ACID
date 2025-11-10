@@ -17,12 +17,14 @@ importlib.reload(utils)
 
 
 class ACID:
+    """_summary_
+    """
 
     def __init__(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None,
                  velocities=None, linelist_wl=None, linelist_depths=None, tell_lines=None):
         
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
-        # best guess the user's intentions
+        # best guess the user's intentions. See the utils.validate_args function for more details.
         input_wavelengths, input_spectra, input_spectral_errors = [
             utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
         frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
@@ -56,7 +58,7 @@ class ACID:
 
         # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
         if velocities is None:
-            velocities = np.arange(-25, 25, self.calc_deltav(input_wavelengths.tolist()[0]))
+            velocities = np.arange(-25, 25, self.deltav(input_wavelengths.tolist()[0]))
 
         # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
         # check that all the telluric lines are positive otherwise see how they were handled.
@@ -74,9 +76,12 @@ class ACID:
         # Define default order range, can be overwritten in run_ACID_HARPS
         self.order_range = [1]
 
+        # Set an initial all_frames to None, which is smartly handled in run_ACID (by input or defaults) and ACID_HARPS
+        self.all_frames = None
+
         # Determine if running in SLURM environment
         self.slurm = "SLURM_JOB_ID" in os.environ
-        pass
+        return
 
     def _get_normalisation_coeffs(self, wl):
         a = 2 / (np.max(wl)-np.min(wl))
@@ -189,20 +194,6 @@ class ACID:
             errors[n][idx] = 1000000000
 
         return frame_wavelengths, frames, errors, sns
-
-    def calc_deltav(self, wavelengths):
-        """Calculates velocity pixel size
-
-        Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
-
-        Args:
-            wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
-            
-        Returns:
-            float: Velocity pixel size in km/s
-        """
-        resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-        return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms
 
     def combine_spec(self, frame_wavelengths=None, frame_flux=None, frame_errors=None, frame_sns=None, _output=True):
         """Combines multiple spectral frames into one spectrum
@@ -573,7 +564,7 @@ class ACID:
         Returns
         -------
         all_frames : array
-            Resulting profiles and errors for spectra, if specified with return_frames=True.
+            Resulting profiles and errors for spectra, if specified with return_frames=True. The ouput is stored with class variable ACID.all_frames
 
         Raises
         ------
@@ -772,6 +763,7 @@ class ACID:
         self.continuum_error = np.std(np.array(conts), axis = 0)
 
         # TODO! : frame_flux is always >1 for frames
+        # and: make get_profiles the LSD function actually correct for using classes
         if len(self.frame_flux)>1:
             for counter in range(len(self.frame_flux)):
                 self.all_frames = self._get_profiles(self.all_frames, counter)  
@@ -930,10 +922,10 @@ def run_ACID(*args, **kwargs):
 
     Parameters
     ----------
-    *kwargs
-        Positional arguments to be passed to the ACID function.
+    *args
+        Positional arguments to be passed to the ACID initialisation.
     **kwargs
-        Keyword arguments to be passed to the ACID function.
+        Keyword arguments to be passed to the ACID initialisation and function.
 
     Returns
     -------
@@ -947,8 +939,8 @@ def run_ACID(*args, **kwargs):
     init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
     run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
 
-    acid = ACID(**init_kwargs)
-    return acid.run_ACID(*args, **run_kwargs)
+    acid = ACID(*args, **init_kwargs)
+    return acid.run_ACID(**run_kwargs)
 
 def run_ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
@@ -958,10 +950,10 @@ def run_ACID_HARPS(*args, **kwargs):
 
     Parameters
     ----------
-    *kwargs
-        Positional arguments to be passed to the ACID_HARPS function.
+    *args
+        Positional arguments to be passed to the ACID initialisation.
     **kwargs
-        Keyword arguments to be passed to the ACID_HARPS function.
+        Keyword arguments to be passed to the ACID initialisation and ACID_HARPS function.
 
     Returns
     -------
@@ -975,23 +967,19 @@ def run_ACID_HARPS(*args, **kwargs):
     init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
     run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
 
-    acid = ACID(**init_kwargs)
-    return acid.run_ACID_HARPS(*args, **run_kwargs)
+    acid = ACID(*args, **init_kwargs)
+    return acid.run_ACID_HARPS(**run_kwargs)
 
-def calc_deltav(*args):
-    """Legacy calc_deltav function
+def calc_deltav(wavelengths):
+        """Calculates velocity pixel size
 
-    This function runs the legacy calc_deltav code. This is provided for backwards compatibility with previous versions of ACID.
-    It is recommended to use the ACID class and its methods for new code.
+        Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
 
-    Parameters
-    ----------
-    *args
-        Positional arguments to be passed to the calc_deltav function.
-
-    Returns
-    -------
-    Any
-        Returns the outputs of the calc_deltav function.
-    """
-    return ACID().calc_deltav(*args)
+        Args:
+            wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
+            
+        Returns:
+            float: Velocity pixel size in km/s
+        """
+        resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+        return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms

@@ -15,6 +15,7 @@ class LSD:
 
         self.verbose = True
         self.adjust_continuum = None
+        self.slurm = "SLURM_JOB_ID" in os.environ
         if not ACID:
             return
         self.wavelengths = ACID.combined_wavelengths
@@ -27,7 +28,6 @@ class LSD:
         self.run_name = ACID.name
         self.velocities = ACID.velocities
         self.verbose = ACID.verbose
-        self.ACID = ACID
         self.linelist_wl = ACID.linelist_wl
         self.linelist_depths = ACID.linelist_depths
 
@@ -111,7 +111,7 @@ class LSD:
         # Note this used to be "if len(wavelengths)<6000", which I believe is way too high
         # for 16GB RAM. With testing, I found that if the matrix was half the available memory,
         # it would always be fast, otherwise seperate into blocks as the else statment below.
-        if self.ACID.slurm:
+        if self.slurm:
             available_memory = os.environ.get('SLURM_MEM_PER_NODE')
             print(available_memory)
             sys.exit() # Remove this when tested
