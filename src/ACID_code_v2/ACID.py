@@ -18,49 +18,61 @@ importlib.reload(utils)
 
 class ACID:
 
-    def __init__(self, tell_lines=None):
-        self.all_frames = None
-        self.velocities = None
-        self.linelist_path = None
-        self.frames = None
-        self.frame_wavelengths = None
-        self.frame_flux = None
-        self.frame_errors = None
-        self.frame_sns = None
-        self.combined_wavelengths = None
-        self.combined_fluxes = None
-        self.combined_flux_error = None
-        self.combined_sn = None
-        self.poly_inputs = None
-        self.poly_ord = None
-        self.name = None
-        self.alpha = None
-        self.initial_profile = None
-        self.initial_profile_errors = None
-        self.k_max = None
-        self.nsteps = None
-        self.model_inputs = None
-        self.cores = None
-        self.all_frames = None
-        self.flat_samples = None
-        self.dev_perc = None
-        self.pix_chunk = None
-        self.n_sigma = None
-        self.profile = None
-        self.poly_cos = None
-        self.profile_err = None
-        self.poly_cos_err = None
-        self.continuum_error = None
+    def __init__(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None,
+                 velocities=None, linelist_wl=None, linelist_depths=None, tell_lines=None):
+        
+        # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
+        # best guess the user's intentions
+        input_wavelengths, input_spectra, input_spectral_errors = [
+            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
+        frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
+
+        # If frame_sns is not provided, estimate using specutils
+        if frame_sns is not None:
+            if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
+                raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
+        else: # needs testing
+            frame_sns = self.guess_SNR()
+
+        # Validate linelist inputs
+        if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
+            raise ValueError("One of 'linelist_wl', 'linelist_depths' or 'linelist_path' must be provided.")
+        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
+            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+        if linelist_path is not None and not isinstance(linelist_path, str):
+            raise TypeError("'linelist_path' must be a string")
+        if linelist_wl is not None:
+            if not isinstance(linelist_wl, (list, np.ndarray)):
+                raise TypeError("'linelist_wl' must be a list or numpy array")
+            linelist_wl = np.array(linelist_wl)
+            if linelist_wl.ndim != 1:
+                raise ValueError("'linelist_wl' must be a one-dimensional array or list")
+        if linelist_depths is not None:
+            if not isinstance(linelist_depths, (list, np.ndarray)):
+                raise TypeError("'linelist_depths' must be a list or numpy array")
+            linelist_depths = np.array(linelist_depths)
+            if linelist_depths.ndim != 1:
+                raise ValueError("'linelist_depths' must be a one-dimensional array or list")
+
+        # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
+        if velocities is None:
+            velocities = np.arange(-25, 25, self.calc_deltav(input_wavelengths.tolist()[0]))
+
+        # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
+        # check that all the telluric lines are positive otherwise see how they were handled.
+
+        # Assign inputs to class variables
+        self.frame_wavelengths = input_wavelengths
+        self.frame_flux = input_spectra
+        self.frame_errors = input_spectral_errors
+        self.frame_sns = frame_sns
+        self.velocities = velocities
+        self.linelist_path = linelist_path
+        self.linelist_depths = linelist_depths
+        self.linelist_wl = linelist_wl
 
         # Define default order range, can be overwritten in run_ACID_HARPS
         self.order_range = [1]
-
-        # Define default telluric lines if not provided
-        if tell_lines is not None:
-            self.telluric_lines = tell_lines
-        else:
-            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
 
         # Determine if running in SLURM environment
         self.slurm = "SLURM_JOB_ID" in os.environ
@@ -485,10 +497,26 @@ class ACID:
 
         return  spectrum, spec_errors
 
-    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None,
-            velocities=None, linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20,
-            dev_perc=25, name="test", n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
-            nsteps=5000, return_frames=True):
+    def guess_SNR(self):
+        """Estimates S/N for each frame using specutils using inputs of initialised class variables
+
+        Returns
+        -------
+        list
+            List of estimated signal-to-noise ratios for each frame.
+        """
+        frame_sns = []
+        for wavelength, spectra, errors in zip(self.frame_wavelengths.tolist(), self.frame_flux.tolist(), self.frame_errors.tolist()):
+            spectrum_model = Spectrum(spectral_axis = wavelength,
+                                      flux          = spectra,
+                                      uncertainty   = errors)
+            estimated_sn = snr(spectrum_model)
+            frame_sns.append(estimated_sn.value)
+        return frame_sns
+
+    def run_ACID(self, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
+                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None,
+                 nsteps=5000, return_frames=True):
         """Accurate Continuum fItting and Deconvolution
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -552,50 +580,21 @@ class ACID:
         TypeError
             If the input types are not as expected.
         """
-        ### Setup
-
-        # Ensure inputs are correct and converted to np.arrays sn treated separately
-        input_wavelengths, input_spectra, input_spectral_errors = [
-            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
-        frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
-
-        if frame_sns:
-            if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
-                raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
-
-        if frame_sns is None: # Needs testing
-            frame_sns = []
-            for wavelength, spectra, errors in zip(input_wavelengths.tolist(), input_spectra.tolist(), input_spectral_errors.tolist()):
-                spectrum_model = Spectrum(spectral_axis = wavelength, 
-                                          flux          = spectra,
-                                          uncertainty   = errors)
-                estimated_sn = snr(spectrum_model)
-                frame_sns.append(estimated_sn.value)
-
-        if (linelist_wl is None and linelist_depths is None) or linelist_path is None:
-            raise ValueError("One of 'linelist_wl', 'linelist_depths' or 'linelist_path' must be provided.")
-        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
-            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
-
-        if velocities is None:
-            velocities = np.arange(-25, 25, self.calc_deltav(input_wavelengths.tolist()[0]))
+        ### Setup, validation and input conversion
 
         # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
         # check that all the telluric lines are positive otherwise see how they were handled.
 
-        # Define telluric_lines if not input, check type if it is
+        # Define telluric_lines with defaults if not input, check type if it is
         if telluric_lines:
             self.telluric_lines = telluric_lines
+        else:
+            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
+                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
         if not isinstance(self.telluric_lines, list):
             raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
 
         # Assign inputs to class variables
-        self.frame_wavelengths = input_wavelengths
-        self.frame_flux = input_spectra
-        self.frame_errors = input_spectral_errors
-        self.frame_sns = frame_sns
-        self.velocities = velocities
-        self.linelist_path = linelist_path
         self.poly_ord = poly_ord
         self.name = name
         self.verbose = verbose
@@ -604,11 +603,6 @@ class ACID:
         self.pix_chunk = pix_chunk
         self.dev_perc = dev_perc
         self.n_sig = n_sig
-        self.linelist_depths = linelist_depths
-        self.linelist_wl = linelist_wl
-
-        if not isinstance(self.linelist_path, str):
-            raise TypeError("'linelist_path' must be a string")
 
         if all_frames is None:
             if self.all_frames is None:
