@@ -530,8 +530,8 @@ class ACID:
             If True, returns the all_frames array with the resulting profiles, by default True
         Returns
         -------
-        all_frames : array
-            Resulting profiles and errors for spectra, if specified with return_frames=True. The ouput is stored with class variable ACID.all_frames
+        Result
+            Result object containing the LSD profiles and associated data. See Result class for methods and attributes.
 
         Raises
         ------
@@ -545,6 +545,10 @@ class ACID:
         input_wavelengths, input_spectra, input_spectral_errors = [
             utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
         frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
+
+        # Check all inputs have the same shape
+        if not input_wavelengths.shape == input_spectra.shape == input_spectral_errors.shape:
+            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
         # If frame_sns is not provided, estimate using specutils
         if frame_sns is not None:
@@ -781,8 +785,7 @@ class ACID:
         else:
             self.all_frames = self._get_profiles(self.all_frames, 0)
 
-        if return_frames:
-            return self.all_frames
+        return Result(self)
 
     def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
                        file_type = 'e2ds', name="test", **kwargs):
