@@ -550,6 +550,10 @@ class ACID:
         if not input_wavelengths.shape == input_spectra.shape == input_spectral_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
+        # For now disallow negative spectrum results, will deal with this later
+        if np.any(input_spectra <= 0):
+            raise ValueError("Input spectra contain negative or zero flux values, which are not currently supported.")
+
         # If frame_sns is not provided, estimate using specutils
         if frame_sns is not None:
             if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
@@ -618,6 +622,8 @@ class ACID:
                 self.all_frames = np.zeros((len(self.frame_flux), len(self.order_range), 2, len(self.velocities)))
         else:
             self.all_frames = all_frames
+        if isinstance(self.all_frames, Result):
+            self.all_frames = self.all_frames.all_frames
         if not isinstance(self.all_frames, np.ndarray):
             raise TypeError("'all_frames' must be a numpy array")
 

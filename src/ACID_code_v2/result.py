@@ -28,7 +28,8 @@ class Result:
             return self.all_frames[item]
 
     def __iter__(self):
-
+        """Allows iteration over the BJDs, profiles, and errors if ACID_HARPS was used.
+        """
         if self.ACID_HARPS:
             return iter((self.BJDs, self.profiles, self.errors))
         # ACID is not subscriptable normally, only when ACID_HARPS was called 
