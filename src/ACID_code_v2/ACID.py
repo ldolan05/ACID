@@ -476,7 +476,7 @@ class ACID:
 
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None, velocities=None,
                  linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
-                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_frames=True):
+                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_result=True):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
@@ -665,6 +665,7 @@ class ACID:
         # Masking based off residuals
         if verbose:
             print('Residual masking...')
+
         # yerr, model_inputs_resi, self.residual_masks = self.residual_mask(
             # x, y, yerr, model_inputs, self.poly_ord, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines=self.tell_lines, n_sig=n_sig, alpha=self.alpha)
         # Inputs:
@@ -706,6 +707,9 @@ class ACID:
             else:
                 self.cores = os.cpu_count()
 
+        # Set a random seed
+        np.random.seed(42)
+
         if parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
             if verbose:
@@ -720,7 +724,8 @@ class ACID:
                                "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_utils._log_probability, pool=pool,
+                                                         moves=emcee.moves.DEMove())
                     self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
@@ -785,7 +790,10 @@ class ACID:
         else:
             self.all_frames = self._get_profiles(self.all_frames, 0)
 
-        return Result(self)
+        if return_result:
+            return Result(self)
+        else:
+            return
 
     def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
                        file_type = 'e2ds', name="test", **kwargs):
@@ -849,8 +857,9 @@ class ACID:
 
             frame_wavelengths, frames, frame_errors, sns = self.read_in_frames(order, filelist, file_type)
 
+            # Updates recursively the all_frames array with the profiles for each order
             self.run_ACID(frame_wavelengths, frames, frame_errors, sns, self.linelist_path, self.velocities,
-                          order=order-min(self.order_range), return_frames=False, **kwargs)
+                          order=order-min(self.order_range), return_result=False, **kwargs)
 
         # adding into fits files for each frame
         BJDs = []
@@ -882,7 +891,11 @@ class ACID:
             profiles.append(result1)
             errors.append(result2)
 
-        return BJDs, profiles, errors
+        self.BJDs = BJDs
+        self.profiles = profiles
+        self.errors = errors
+        # Return Result class with ACID_HARPS=True flag to allow legacy subscripting and iteration if needed.
+        return Result(self, ACID_HARPS=True)
 
 
 def run_ACID(*args, **kwargs):

@@ -4,15 +4,35 @@ import corner, sys, os, pickle
 
 class Result:
 
-    def __init__(self, ACID=None, savefile=None):
+    def __init__(self, ACID=None, ACID_HARPS=False):
 
-        self.ACID = ACID # Ideally this gets deleted later to save memory, for now can use to debug
+        self.ACID_HARPS = ACID_HARPS
+
         self.nsteps = ACID.nsteps
         self.all_frames = ACID.all_frames
         self.velocities = ACID.velocities
         self.sampler = ACID.sampler
         self.model_inputs = ACID.model_inputs
         self.verbose = ACID.verbose
+        self.BJDs = getattr(ACID, 'BJDs', None)
+        self.profiles = getattr(ACID, 'profiles', None)
+        self.errors = getattr(ACID, 'errors', None)
+
+    def __getitem__(self, item):
+        """Allows indexing into the all_frames array directly from the Result object.
+        """
+
+        if self.ACID_HARPS:
+            return self.BJDs[item], self.profiles[item], self.errors[item]
+        else:
+            return self.all_frames[item]
+
+    def __iter__(self):
+
+        if self.ACID_HARPS:
+            return iter((self.BJDs, self.profiles, self.errors))
+        # ACID is not subscriptable normally, only when ACID_HARPS was called 
+        raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
     def plot_walkers(self):
         """Plots the MCMC walkers for the LSD profile and continuum polynomial coefficients.
@@ -31,14 +51,17 @@ class Result:
     def plot_corner(self, **kwargs):
         """Plots the corner plot for the LSD profile and continuum polynomial coefficients.
         """
-
-        samples = self.sampler.get_chain(discard=int(np.floor(self.nsteps-1000)), flat=True, thin=15)
-        tau = self.sampler.get_autocorr_time()
-        print(tau)
+        tau = self.sampler.get_autocorr_time(quiet=True)
+        burnin = int(2 * np.max(tau))
+        thin = int(np.min(tau)/2)
+        samples = self.sampler.get_chain(discard=burnin, flat=True, thin=thin)[:, :5]
+        # print(samples.shape)
+        # sys.exit()
+        print(np.max(tau))
         print(samples.shape)
-        sys.exit()
-        fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 12}, **kwargs)
-        plt.suptitle('MCMC Corner Plot', y=1.02)
+        # sys.exit()
+        fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
+        plt.suptitle('MCMC Corner Plot')
         plt.show()
 
     def plot_profile(self):
