@@ -10,6 +10,7 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.append(PROJECT_ROOT)
 from src import ACID_code_v2 as acid
+from src.ACID_code_v2 import utils
 importlib.reload(acid)
 
 spec_file = fits.open('tests/test_data/sky_subtracted_s1d_A_26.fits')
@@ -60,7 +61,7 @@ sn = np.asarray(sn, dtype='float')
 
 
 # cut out anything below 5000 angstroms because it's too noisy anyway
-mask = (wavelength > 5000) & (wavelength < 5300)
+mask = (wavelength > 5000) & (wavelength < 5250)
 
 # Apply the mask to all relevant arrays
 wavelength = wavelength[mask]
@@ -105,18 +106,21 @@ print(f"✅ Fake 10-column line list saved to: {output_file}").
 linelist = output_file                            # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
-deltav = 0.82     # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
-velocities = np.arange(-100, 100, deltav)
+
+velocities = np.arange(-100, 100, 0.82) # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
 
 # run ACID function
 # sn_scalar = np.nanmedian(sn[np.isfinite(sn) & (sn > 0)])
-wavelength = wavelength[::10]
-spectrum = spectrum[::10]
-error = error[::10]
-sn = sn[::10]
-print(sn.shape)
-print(wavelength.shape)
-result = acid.run_ACID(wavelength, spectrum, error, sn, linelist, velocities)
+wavelength = wavelength[::15]
+spectrum = spectrum[::15]
+error = error[::15]
+
+wavelength, scaled_spec, scaled_error = utils.scale_spectra(wavelength, spectrum, error)
+sn = acid.ACID().guess_SNR(wavelengths=wavelength, spectra=scaled_spec, errors=scaled_error)
+velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))
+# plt.errorbar(wavelength, scaled_spec, scaled_error)
+# sys.exit()
+result = acid.run_ACID(wavelength, scaled_spec, scaled_error, sn, linelist, velocities, nsteps=2000)
 
 # extract profile and errors
 profile = result[0, 0, 0]

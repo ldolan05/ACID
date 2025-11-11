@@ -54,6 +54,19 @@ def validate_args(x, i, allow_none=False, sn=False):
     else: # should not reach here, somehow ndim is negative
         raise ValueError(f"Input in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
+def scale_spectra(wavelength, spectrum, error):
+    fmin = np.min(spectrum)
+    fmax = np.max(spectrum)
+    scaled_spec = (spectrum - fmin) / (fmax - fmin)
+    scaled_error = error / (fmax - fmin)
+    scaled_error = scaled_error[scaled_spec > 0]
+    wavelength = wavelength[scaled_spec > 0]
+    scaled_spec = scaled_spec[scaled_spec > 0]
+    scaled_error = scaled_error[scaled_spec < 1]
+    wavelength = wavelength[scaled_spec < 1]
+    scaled_spec = scaled_spec[scaled_spec < 1]
+    return wavelength, scaled_spec, scaled_error
+
 def round_sig(x1, sig):
     return round(x1, sig-int(floor(log10(abs(x1))))-1)
 

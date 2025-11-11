@@ -1,7 +1,10 @@
-import sys, emcee, warnings, os, time, importlib, inspect
+import sys, emcee, warnings, os, time, importlib, inspect, corner
+from matplotlib import units
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
+import astropy.units as u
+from astropy.nddata import StdDevUncertainty
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from multiprocessing import Pool
@@ -10,6 +13,7 @@ from specutils.analysis import snr
 from . import utils
 from . import LSD
 from . import mcmc_utils
+from .result import Result
 
 warnings.filterwarnings("ignore")
 importlib.reload(LSD)
@@ -17,8 +21,7 @@ importlib.reload(utils)
 
 
 class ACID:
-    """_summary_
-    """
+    """Accurate Continuum fItting and Deconvolution (ACID) class"""
 
     def __init__(self):
 
@@ -200,15 +203,16 @@ class ACID:
                 self.combined_spectrum[n] = f2(self.combined_wavelengths)
                 self.frame_errors[n] = f2_err(self.combined_wavelengths)
 
-                ## mask out out extrapolated areas
+                # Mask out out extrapolated areas
                 idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.frame_wavelengths[n][idx]),
                                         self.combined_wavelengths>=np.min(self.frame_wavelengths[n][idx]))
                 idx_ex = tuple([idx_ex==False])
 
+                # TODO: Why [0] on where_are_zeros, why are we making errors large and flux 1, rather than masking out?
                 self.combined_spectrum[n][idx_ex] = 1.
                 self.frame_errors[n][idx_ex] = 1000000000000
 
-                ## mask out nans and zeros (these do not contribute to the main spectrum)
+                # Mask out nans and zeros (these do not contribute to the main spectrum)
                 where_are_NaNs = np.isnan(self.combined_spectrum[n])
                 self.frame_errors[n][where_are_NaNs] = 1000000000000
                 where_are_zeros = np.where(self.combined_spectrum[n] == 0)[0]
@@ -436,7 +440,7 @@ class ACID:
 
         return spectrum, spec_errors
 
-    def guess_SNR(self):
+    def guess_SNR(self, wavelengths=None, spectra=None, errors=None):
         """Estimates S/N for each frame using specutils using inputs of initialised class variables
 
         Returns
@@ -444,22 +448,37 @@ class ACID:
         list
             List of estimated signal-to-noise ratios for each frame.
         """
+        # If wavelengths, spectra and errors are provided, use those. Otherwise, use class attributes.
+        if wavelengths is not None and spectra is not None and errors is not None:
+            frame_wavelengths = wavelengths
+            frame_flux = spectra
+            frame_errors = errors
+        else:
+            try:
+                frame_wavelengths = self.frame_wavelengths
+                frame_flux = self.frame_flux
+                frame_errors = self.frame_errors
+            except AttributeError:
+                raise AttributeError("No frame wavelengths, fluxes or errors found. " \
+                "These must all be input if using guess_SNR function before running ACID.")
+
+        frame_wavelengths, frame_flux, frame_errors = [
+            utils.validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
+
         frame_sns = []
-        for wavelength, spectra, errors in zip(self.frame_wavelengths.tolist(), self.frame_flux.tolist(), self.frame_errors.tolist()):
-            spectrum_model = Spectrum(spectral_axis = wavelength,
-                                      flux          = spectra,
-                                      uncertainty   = errors)
+        for wavelengths, spectra, errors in zip(frame_wavelengths.tolist(), frame_flux.tolist(), frame_errors.tolist()):
+            spectrum_model = Spectrum(spectral_axis = u.Quantity(wavelengths, u.AA),
+                                      flux          = u.Quantity(spectra, u.Jy),
+                                      uncertainty   = StdDevUncertainty(u.Quantity(errors, u.Jy)))
             estimated_sn = snr(spectrum_model)
-            frame_sns.append(estimated_sn.value)
+            frame_sns.append(float(estimated_sn.value))
         return frame_sns
 
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None, velocities=None,
                  linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
                  n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_frames=True):
-        """Accurate Continuum fItting and Deconvolution
-
-        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
-        Spectra must cover a similiar wavelength range.
+        """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
+        returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
         Parameters
         ----------
@@ -556,7 +575,7 @@ class ACID:
 
         # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
         if velocities is None:
-            velocities = np.arange(-25, 25, self.deltav(input_wavelengths.tolist()[0]))
+            velocities = np.arange(-25, 25, calc_deltav(input_wavelengths.tolist()[0]))
 
         # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
         # check that all the telluric lines are positive otherwise see how they were handled.
@@ -610,14 +629,14 @@ class ACID:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
         self.combine_spec(_output=False)
 
-        ### getting the initial polynomial coefficents
+        # Get the initial polynomial coefficents
         a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
 
         # Compute an initial continuum fit
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
             self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
 
-        ### getting the initial profile
+        # Get the initial profile
         LSD_initial_profile = LSD.LSD(self)
         LSD_initial_profile.run_LSD(order=30)
 
@@ -627,11 +646,11 @@ class ACID:
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
 
-        ## Setting the number of points in vgrid (k_max)
+        # Set the number of points in vgrid (k_max)
         self.k_max = len(self.initial_profile)
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
 
-        ## Setting x, y, yerr for emcee
+        # Set x, y, yerr for emcee
         self.x = self.combined_wavelengths
         self.y = self.combined_spectrum
         self.yerr = self.combined_errors
@@ -755,8 +774,7 @@ class ACID:
 
         self.continuum_error = np.std(np.array(conts), axis = 0)
 
-        # TODO! : frame_flux is always >1 for frames
-        # and: make get_profiles the LSD function actually correct for using classes
+        # TODO: make get_profiles the LSD function actually correct for using classes
         if len(self.frame_flux)>1:
             for counter in range(len(self.frame_flux)):
                 self.all_frames = self._get_profiles(self.all_frames, counter)  
@@ -768,7 +786,7 @@ class ACID:
 
     def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
                        file_type = 'e2ds', name="test", **kwargs):
-        """Accurate Continuum fItting and Deconvolution for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
+        """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each file given. Files must all be kept in the same folder as well

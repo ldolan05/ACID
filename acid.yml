@@ -13,4 +13,5 @@ dependencies:
   - emcee
   - sphinx_rtd_theme
   - specutils
+  - corner
 prefix: /Users/benjamincadell/miniforge3/envs/acid
