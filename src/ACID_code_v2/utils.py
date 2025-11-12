@@ -98,6 +98,11 @@ def calc_deltav(wavelengths):
     resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
     return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * ckms
 
+def get_normalisation_coeffs(wl):
+        a = 2 / (np.max(wl)-np.min(wl))
+        b = 1 - a * np.max(wl)
+        return a, b
+
 def findfiles(directory, file_type):
 
     filelist_corrected = glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type)) #finding corrected spectra

@@ -36,11 +36,6 @@ class ACID:
         self.slurm = "SLURM_JOB_ID" in os.environ
         return
 
-    def _get_normalisation_coeffs(self, wl):
-        a = 2 / (np.max(wl)-np.min(wl))
-        b = 1 - a * np.max(wl)
-        return a, b
-
     def continuumfit(self, fluxes, wavelengths, errors, poly_ord):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -280,7 +275,7 @@ class ACID:
 
         forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha, k_max=self.k_max)
 
-        a, b = self._get_normalisation_coeffs(self.x)
+        a, b = utils.get_normalisation_coeffs(self.x)
 
         mdl1 = 0
         for i in range(self.k_max, len(self.model_inputs) - 1):
@@ -365,7 +360,7 @@ class ACID:
         wavelengths = self.frame_wavelengths[counter]
         sn = self.frame_sns[counter]
 
-        a, b = self._get_normalisation_coeffs(wavelengths)
+        a, b = utils.get_normalisation_coeffs(wavelengths)
 
         mdl1 =0
         for i in np.arange(0, len(self.poly_cos)-1):
@@ -665,7 +660,7 @@ class ACID:
         self.combine_spec(_output=False)
 
         # Get the initial polynomial coefficents
-        a, b = self._get_normalisation_coeffs(self.combined_wavelengths)
+        a, b = utils.get_normalisation_coeffs(self.combined_wavelengths)
 
         # Compute an initial continuum fit
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
@@ -691,7 +686,7 @@ class ACID:
         self.yerr = self.combined_errors
 
         ## Setting these normalisation factors as global variables - used in the figures below
-        a, b = self._get_normalisation_coeffs(self.x)
+        a, b = utils.get_normalisation_coeffs(self.x)
 
         # Masking based off residuals
         if verbose:
@@ -816,7 +811,7 @@ class ACID:
         # Finding error for the continuum fit
         inds = np.random.randint(len(flat_samples), size=50)
         conts = []
-        a, b = self._get_normalisation_coeffs(self.x)
+        a, b = utils.get_normalisation_coeffs(self.x)
         for ind in inds:
             sample = flat_samples[ind]
             mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha, k_max=self.k_max)
