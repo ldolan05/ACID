@@ -42,31 +42,48 @@ class ACID:
         return a, b
 
     def continuumfit(self, fluxes, wavelengths, errors, poly_ord):
-            
-            cont_factor = fluxes[0]
-            if cont_factor == 0: 
-                cont_factor = np.mean(fluxes)
-            idx = wavelengths.argsort()
-            wavelength = wavelengths[idx]
-            fluxe = fluxes[idx] / cont_factor
-            clipped_flux = []
-            clipped_waves = []
-            binsize = 100
-            for i in range(0, len(wavelength), binsize):
-                waves = wavelength[i:i+binsize]
-                flux = fluxe[i:i+binsize]
-                indicies = flux.argsort()
-                flux = flux[indicies]
-                waves = waves[indicies]
-                clipped_flux.append(flux[len(flux)-1])
-                clipped_waves.append(waves[len(waves)-1])
-            coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
-            poly = np.poly1d(coeffs)
-            fit = poly(wavelengths) * cont_factor
-            flux_obs = fluxes / fit
-            new_errors = errors / fit
-            poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
-            return poly_coeffs, flux_obs, new_errors
+        """Provides an initial, normalised continuum fit using inputted spectra.
+
+        Parameters
+        ----------
+        fluxes : array_like
+            The flux values of the spectrum.
+        wavelengths : array_like
+            The wavelengths corresponding to the spectrum.
+        errors : array_like
+            The error values associated with the spectrum.
+        poly_ord : int
+            The order of the polynomial to fit to the continuum.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
+        """
+        cont_factor = fluxes[0]
+        if cont_factor == 0: 
+            cont_factor = np.mean(fluxes)
+        idx = wavelengths.argsort()
+        wavelength = wavelengths[idx]
+        fluxe = fluxes[idx] / cont_factor
+        clipped_flux = []
+        clipped_waves = []
+        binsize = 100
+        for i in range(0, len(wavelength), binsize):
+            waves = wavelength[i:i+binsize]
+            flux = fluxe[i:i+binsize]
+            indicies = flux.argsort()
+            flux = flux[indicies]
+            waves = waves[indicies]
+            clipped_flux.append(flux[len(flux)-1])
+            clipped_waves.append(waves[len(waves)-1])
+        coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        poly = np.poly1d(coeffs)
+        fit = poly(wavelengths) * cont_factor
+        flux_obs = fluxes / fit
+        new_errors = errors / fit
+        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+        return poly_coeffs, flux_obs, new_errors
 
     def read_in_frames(self, order, filelist, file_type, directory=None):
         # read in first frame
@@ -588,7 +605,7 @@ class ACID:
 
         # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
         if velocities is None:
-            velocities = np.arange(-25, 25, calc_deltav(input_wavelengths.tolist()[0]))
+            velocities = np.arange(-25, 25, utils.calc_deltav(input_wavelengths.tolist()[0]))
 
         # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
         # check that all the telluric lines are positive otherwise see how they were handled.
@@ -862,10 +879,11 @@ class ACID:
 
         return self.process_results()
 
-    @staticmethod
-    def get_result(instance):
-        """Static method to return Result object from an ACID instance."""
-        return Result(instance)
+    def get_result(self=None):
+        """Return a Result object for this instance or one passed explicitly."""
+        if self is None:
+            raise ValueError("Must be called on an instance or passed an instance explicitly")
+        return Result(self)
 
     def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
                        file_type = 'e2ds', name="test", **kwargs):
