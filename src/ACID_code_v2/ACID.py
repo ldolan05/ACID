@@ -477,7 +477,8 @@ class ACID:
 
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None, velocities=None,
                  linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
-                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_result=True):
+                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_result=True,
+                 production_run=False):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
@@ -618,6 +619,7 @@ class ACID:
         self.pix_chunk = pix_chunk
         self.dev_perc = dev_perc
         self.n_sig = n_sig
+        self.return_result = return_result
 
         if all_frames is None:
             if self.all_frames is None:
@@ -690,21 +692,21 @@ class ACID:
         np.random.seed(42)
 
         ## Setting number of walkers and their start values(pos)
-        ndim = len(self.model_inputs)
-        nwalkers = ndim * 3
+        self.ndim = len(self.model_inputs)
+        self.nwalkers = self.ndim * 3
         rng = np.random.default_rng()
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
         initial_state = []
-        for i in range(0, ndim):
-            if i < ndim - self.poly_ord - 2:
-                pos = rng.normal(self.model_inputs[i], sigma, (nwalkers, ))
+        for i in range(0, self.ndim):
+            if i < self.ndim - self.poly_ord - 2:
+                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             else:
                 x1 = self.model_inputs[i]
                 rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
                 sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.model_inputs[i], sigma, (nwalkers, ))
+                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
         initial_state = np.transpose(np.array(initial_state))
@@ -736,23 +738,31 @@ class ACID:
                                "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_utils._log_probability, pool=pool,
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool,
                                                          moves=emcee.moves.DEMove())
                     self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
                 with Pool() as pool:
-                    self.sampler = emcee.EnsembleSampler(nwalkers, ndim, mcmc_utils._log_probability, pool=pool)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
                     self.sampler.run_mcmc(pos, self.nsteps, progress=self.verbose)
 
         else:
-            self.sampler = emcee.EnsembleSampler(nwalkers, ndim, self.log_probability)
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
             self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose)
 
         print('MCMC run takes: %s'%(time.time()-t5))
 
-        # At this point, MCMC has been run, and results need to be processed. Either this is the first ACID run
+        # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
+        # when using ACID function, but if using class directly, user can choose to call this part separately.
+        
+        if not production_run:
+            return self._process_results()
+        else:
+            return Result(self, production_run=True)
+
+    def _process_results(self):
 
         # Discarding all vales except the last 1000 steps.
         # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
@@ -767,7 +777,7 @@ class ACID:
         self.profile_err = []
         self.poly_cos_err = []
 
-        for i in range(ndim):
+        for i in range(self.ndim):
             mcmc = np.median(self.flat_samples[:, i])
             error = np.std(self.flat_samples[:, i])
             mcmc = np.percentile(self.flat_samples[:, i], [16, 50, 84])
@@ -787,6 +797,7 @@ class ACID:
         # Finding error for the continuum fit
         inds = np.random.randint(len(self.flat_samples), size=50)
         conts = []
+        a, b = self._get_normalisation_coeffs(self.x)
         for ind in inds:
             sample = self.flat_samples[ind]
             mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha, k_max=self.k_max)
@@ -805,7 +816,7 @@ class ACID:
         else:
             self.all_frames = self._get_profiles(self.all_frames, 0)
 
-        if return_result:
+        if self.return_result:
             return Result(self)
         else:
             return

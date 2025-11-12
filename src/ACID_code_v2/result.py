@@ -3,14 +3,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import corner, sys, os, pickle
 
+def _require_all_results(method):
+    def wrapper(self, *args, **kwargs):
+        if self.production_run:
+            name = method.__qualname__
+            raise RuntimeError(f"{name} cannot be called because ACID was run in production mode")
+        return method(self, *args, **kwargs)
+    return wrapper
+
 class Result:
 
-    def __init__(self, ACID=None, ACID_HARPS=False):
+    def __init__(self, ACID=None, ACID_HARPS=False, production_run=False):
 
         self.ACID_HARPS = ACID_HARPS
-
+        self.production_run = production_run
         self.nsteps = ACID.nsteps
-        self.all_frames = ACID.all_frames
         self.velocities = ACID.velocities
         self.sampler = ACID.sampler
         self.model_inputs = ACID.model_inputs
@@ -20,6 +27,8 @@ class Result:
         self.errors = getattr(ACID, 'errors', None)
         self.linelist_wl = ACID.linelist_wl
         self.linelist_depths = ACID.linelist_depths
+        if not production_run:
+            self.all_frames = ACID.all_frames
 
         self.ndim = len(self.model_inputs)
 
@@ -27,6 +36,7 @@ class Result:
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
 
+    @_require_all_results
     def __getitem__(self, item):
         """Allows indexing into the all_frames array directly from the Result object.
         """
@@ -36,6 +46,7 @@ class Result:
         else:
             return self.all_frames[item]
 
+    @_require_all_results
     def __iter__(self):
         """Allows iteration over the BJDs, profiles, and errors if ACID_HARPS was used.
         """
@@ -74,6 +85,7 @@ class Result:
         plt.suptitle('MCMC Corner Plot')
         plt.show()
 
+    @_require_all_results
     def plot_profile(self):
         """Plots the LSD profile result from ACID.
         """
@@ -89,10 +101,11 @@ class Result:
         ax.grid()
         plt.show()
 
+    @_require_all_results
     def plot_forward_model(self):
         """Plots the forward model fit to the observed spectrum.
         """
-        
+        raise NotImplementedError("plot_forward_model is not yet implemented")
         # x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
         # theta_median = np.median(self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin), axis=0)
         # from src.ACID_code_v2.mcmc_utils import model_func
@@ -108,7 +121,6 @@ class Result:
         # ax.legend()
         # ax.grid()
         # plt.show()
-
 
     def save_result(self, filename="result.pkl"):
         """Saves the Result object to a pickle file.
