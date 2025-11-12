@@ -1,5 +1,7 @@
 import numpy as np
 import glob
+import scipy.constants as const
+ckms = float(const.c/1e3)
 
 def validate_args(x, i, allow_none=False, sn=False):
     """Validates the input arguments. This function can be used to ensure inputs to ACID
@@ -81,6 +83,20 @@ def scale_spectra(wavelength, spectrum, error):
     scaled_error[mask_idx] = int(1e12)
 
     return wavelength, scaled_spec, scaled_error
+
+def calc_deltav(wavelengths):
+    """Calculates velocity pixel size
+
+    Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
+
+    Args:
+        wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
+        
+    Returns:
+        float: Velocity pixel size in km/s
+    """
+    resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
+    return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * ckms
 
 def findfiles(directory, file_type):
 

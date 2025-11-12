@@ -1,6 +1,6 @@
-from .ACID import ACID, run_ACID, run_ACID_HARPS, calc_deltav
+from .ACID import ACID, run_ACID, run_ACID_HARPS
 from .result import Result
-from .utils import scale_spectra
+from .utils import scale_spectra, calc_deltav
 __all__ = ['ACID', 'run_ACID', 'run_ACID_HARPS', 'calc_deltav', 'Result', 'scale_spectra']
 
 def reload_all():

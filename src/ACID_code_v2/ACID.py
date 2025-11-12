@@ -1025,17 +1025,3 @@ def run_ACID_HARPS(*args, **kwargs):
 
     acid = ACID(**init_kwargs)
     return acid.run_ACID_HARPS(*args, **run_kwargs)
-
-def calc_deltav(wavelengths):
-        """Calculates velocity pixel size
-
-        Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
-
-        Args:
-            wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
-            
-        Returns:
-            float: Velocity pixel size in km/s
-        """
-        resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-        return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * LSD.ckms
