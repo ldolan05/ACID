@@ -553,7 +553,7 @@ class ACID:
 
         # For now disallow negative spectrum results, will deal with this later
         if np.any(input_spectra <= 0) or np.any(input_spectra > 1):
-            warnings.warn("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
+            print("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
             "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data.")
             input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
                 input_wavelengths, input_spectra, input_spectral_errors)
@@ -752,13 +752,16 @@ class ACID:
 
         print('MCMC run takes: %s'%(time.time()-t5))
 
-        ## discarding all vales except the last 1000 steps.
-        dis_no = int(np.floor(self.nsteps-1000))
+        # At this point, MCMC has been run, and results need to be processed. Either this is the first ACID run
 
-        ## combining all walkers together
+        # Discarding all vales except the last 1000 steps.
+        # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
+        dis_no = self.nsteps-1000
+
+        # Obtain flattened samples
         self.flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
-        ## getting the final profile and continuum values - median of last 1000 steps
+        # Getting the final profile and continuum values - median of last 1000 steps
         self.profile = []
         self.poly_cos = []
         self.profile_err = []
@@ -781,7 +784,7 @@ class ACID:
 
         print('Getting the final profiles...')
 
-        # finding error for the continuuum fit
+        # Finding error for the continuum fit
         inds = np.random.randint(len(self.flat_samples), size=50)
         conts = []
         for ind in inds:

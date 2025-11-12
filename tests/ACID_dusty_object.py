@@ -107,7 +107,7 @@ linelist = output_file                            # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
 
-velocities = np.arange(-100, 100, 0.82) # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
+velocities = np.arange(-50, 50, 0.82) # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
 
 # run ACID function
 # sn_scalar = np.nanmedian(sn[np.isfinite(sn) & (sn > 0)])
@@ -115,20 +115,24 @@ wavelength = wavelength[::15]
 spectrum = spectrum[::15]
 error = error[::15]
 
-wavelength, scaled_spec, scaled_error = utils.scale_spectra(wavelength, spectrum, error)
-sn = acid.ACID().guess_SNR(wavelengths=wavelength, spectra=scaled_spec, errors=scaled_error)
-velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))
+# wavelength, scaled_spec, scaled_error = utils.scale_spectra(wavelength, spectrum, error)
+sn = acid.ACID().guess_SNR(wavelengths=wavelength, spectra=spectrum, errors=error)
+# velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))
 # plt.errorbar(wavelength, scaled_spec, scaled_error)
-# sys.exit()
-result = acid.run_ACID(wavelength, scaled_spec, scaled_error, sn, linelist, velocities, nsteps=2000)
+# wavelength, spectrum, error = utils.scale_spectra(wavelength, spectrum, error)
+# plt.show()
+cl = acid.ACID()
+# result = cl.run_ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
+result = acid.Result.load_result('tests/test_data/dusty_result.pkl')
+result.plot_profile()
 
-# extract profile and errors
-profile = result[0, 0, 0]
-profile_error = result[0, 0, 1]
+# # extract profile and errors
+# profile = result[0, 0, 0]
+# profile_error = result[0, 0, 1]
 
-# plot results
-plt.figure()
-plt.errorbar(velocities, profile, profile_error)
-plt.xlabel('Velocities (km/s)')
-plt.ylabel('Flux')
-plt.show()
+# # plot results
+# plt.figure()
+# plt.errorbar(velocities, profile, profile_error)
+# plt.xlabel('Velocities (km/s)')
+# plt.ylabel('Flux')
+# plt.show()
