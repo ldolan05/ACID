@@ -682,6 +682,9 @@ class ACID:
         # self.alpha, self.yerr
         self.residual_mask()
 
+        # Set a random seed
+        np.random.seed(42)
+
         ## Setting number of walkers and their start values(pos)
         ndim = len(self.model_inputs)
         nwalkers = ndim * 3
@@ -712,9 +715,6 @@ class ACID:
                 self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.cores = os.cpu_count()
-
-        # Set a random seed
-        np.random.seed(42)
 
         if parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
