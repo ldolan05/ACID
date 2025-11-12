@@ -99,9 +99,21 @@ def calc_deltav(wavelengths):
     return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * ckms
 
 def get_normalisation_coeffs(wl):
-        a = 2 / (np.max(wl)-np.min(wl))
-        b = 1 - a * np.max(wl)
-        return a, b
+    """Calculates normalization coefficients for wavelength array
+
+    Parameters
+    ----------
+    wl : array_like
+        Wavelength array for which normalization coefficients are calculated.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the normalization coefficients (a, b).
+    """
+    a = 2 / (np.max(wl)-np.min(wl))
+    b = 1 - a * np.max(wl)
+    return a, b
 
 def findfiles(directory, file_type):
 
