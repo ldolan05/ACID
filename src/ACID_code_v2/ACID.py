@@ -11,6 +11,7 @@ import multiprocessing as mp
 from multiprocessing import Pool
 from specutils import Spectrum
 from specutils.analysis import snr
+from functools import partial
 from . import utils
 from . import LSD
 from . import mcmc_utils
@@ -725,13 +726,26 @@ class ACID:
 
         initial_state = np.transpose(np.array(initial_state))
 
+        # Setting global data for multiprocessing
+        self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
+                            "k_max": self.k_max, "velocities": self.velocities}
+
         if self.verbose:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
-        # Choose the number of cores
-        self.cores = cores
+        self._run_mcmc(initial_state)
+
+        # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
+        # when using ACID function, but if using class directly, user can choose to call this part separately.
+        if production_run is False:
+            return self.process_results()
+        else:
+            return Result(self, production_run=True)
+
+    def _run_mcmc(self, state):
+
         if self.cores is None:
             if self.slurm:
                 self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
@@ -748,13 +762,13 @@ class ACID:
             # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
-                self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
-                                    "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool,
-                                                         moves=emcee.moves.DEMove())
-                    self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose, store=True)
+                    if state is not None:
+                        self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability,
+                                                             pool=pool, moves=emcee.moves.DEMove())
+                    else:
+                        self.sampler.run_mcmc(state, self.nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
@@ -763,18 +777,10 @@ class ACID:
                     self.sampler.run_mcmc(pos, self.nsteps, progress=self.verbose)
 
         else:
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
-            self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose)
-
-        print('MCMC run takes: %s'%(time.time()-t5))
-
-        # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
-        # when using ACID function, but if using class directly, user can choose to call this part separately.
-        
-        if not production_run:
-            return self.process_results()
-        else:
-            return Result(self, production_run=True)
+            log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
+            if state is not None:
+                self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob)
+            self.sampler.run_mcmc(state, self.nsteps, progress=self.verbose)
 
     def process_results(self):
 
@@ -834,7 +840,7 @@ class ACID:
             return Result(self)
         return
 
-    def continue_sampling(self, nsteps):
+    def continue_sampling(self, nsteps, production_run=False):
         """Continue MCMC sampling for additional steps.
 
         Parameters
@@ -848,31 +854,12 @@ class ACID:
 
         self.nsteps += nsteps # update total nsteps
 
-        if self.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if self.verbose:
-                print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
+        self._run_mcmc(state=None) # continue from current state
 
-            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
-            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
-            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
-            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
-            if sys.platform != "win32":
-                ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
-                    self.sampler.run_mcmc(None, self.nsteps, progress=self.verbose, store=True)
-
-            else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
-                raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
-                with Pool() as pool:
-                    self.sampler.run_mcmc(None, self.nsteps, progress=self.verbose)
-
+        if production_run is False:
+            return self.process_results()
         else:
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
-            self.sampler.run_mcmc(None, self.nsteps, progress=self.verbose)
-
-
-        return self.process_results()
+            return Result(self, production_run=True)
 
     def get_result(self=None):
         """Return a Result object for this instance or one passed explicitly."""
@@ -933,7 +920,6 @@ class ACID:
         if self.order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
             # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
-            # I think this is way too high though
             self.order_range = np.arange(10, 70)
 
         for order in self.order_range:

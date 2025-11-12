@@ -7,7 +7,8 @@ def _require_all_results(method):
     def wrapper(self, *args, **kwargs):
         if self.production_run:
             name = method.__qualname__
-            raise RuntimeError(f"{name} cannot be called because ACID was run in production mode")
+            raise RuntimeError(f"{name} cannot be called because ACID was run in production mode. Use "
+                               "ACID.process_results() to extract all results.")
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -21,7 +22,6 @@ class Result:
         self.production_run = production_run
         self.nsteps = ACID.nsteps
         self.velocities = ACID.velocities
-        self.sampler = ACID.sampler
         self.model_inputs = ACID.model_inputs
         self.verbose = ACID.verbose
         self.BJDs = getattr(ACID, 'BJDs', None)
@@ -31,10 +31,12 @@ class Result:
         self.linelist_depths = ACID.linelist_depths
         if not production_run:
             self.all_frames = ACID.all_frames
+        else:
+            self.all_frames = None
 
         self.ndim = len(self.model_inputs)
 
-        self.tau = self.sampler.get_autocorr_time(quiet=True)
+        self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
 
@@ -57,22 +59,38 @@ class Result:
         # ACID is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
-    def continue_sampling(self, nsteps):
+    def continue_sampling(self, nsteps, production_run=None):
         """Continue MCMC sampling for additional steps.
+
+        Parameters
+        ----------
+        nsteps : int
+            Number of additional MCMC steps to run.
+        production_run : bool, optional
+            Whether to set the run as a production run, by default None, keeping the current setting.
+            The default is False from ACID.
         """
+        if production_run is not None:
+            self.production_run = production_run
 
         self.ACID.continue_sampling(nsteps)
 
         # Update attributes from ACID object
-        self.sampler = self.ACID.sampler
         self.nsteps = self.ACID.nsteps
         if not self.production_run:
             self.all_frames = self.ACID.all_frames
 
         # Recalculate autocorr time, burnin, thin
-        self.tau = self.sampler.get_autocorr_time(quiet=True)
+        self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
+    
+    def process_results(self):
+        """Processes the MCMC results to extract the LSD profiles and errors.
+        """
+        self.ACID.process_results()
+        self.production_run = False
+        self.all_frames = self.ACID.all_frames
 
     def plot_walkers(self):
         """Plots the MCMC walkers for the LSD profile and continuum polynomial coefficients.
@@ -80,7 +98,7 @@ class Result:
 
         naxes = min(10, self.ndim)
         fig, axes = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
-        samples = self.sampler.get_chain(discard=self.burnin, thin=int(self.thin))
+        samples = self.ACID.sampler.get_chain(discard=self.burnin, thin=int(self.thin))
         steps = np.arange(samples.shape[0]) * self.thin + self.burnin
         for i in range(naxes):
             ax = axes[i]
@@ -99,7 +117,7 @@ class Result:
         """
 
         naxes = min(8, self.ndim)
-        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
+        samples = self.ACID.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
         fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         plt.show()
@@ -126,7 +144,7 @@ class Result:
         """
         raise NotImplementedError("plot_forward_model is not yet implemented")
         # x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
-        # theta_median = np.median(self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin), axis=0)
+        # theta_median = np.median(self.ACID.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin), axis=0)
         # from src.ACID_code_v2.mcmc_utils import model_func
         # model = model_func(theta_median, x)
 
