@@ -620,6 +620,8 @@ class ACID:
         self.dev_perc = dev_perc
         self.n_sig = n_sig
         self.return_result = return_result
+        self.parallel = parallel
+        self.production_run = production_run
 
         if all_frames is None:
             if self.all_frames is None:
@@ -724,9 +726,9 @@ class ACID:
             else:
                 self.cores = os.cpu_count()
 
-        if parallel:
+        if self.parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if verbose:
+            if self.verbose:
                 print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
 
             # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
@@ -734,10 +736,10 @@ class ACID:
             # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
-                global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
-                               "k_max": self.k_max, "velocities": self.velocities}
+                self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
+                                    "k_max": self.k_max, "velocities": self.velocities}
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(global_data,)) as pool:
+                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool,
                                                          moves=emcee.moves.DEMove())
                     self.sampler.run_mcmc(initial_state, self.nsteps, progress=self.verbose, store=True)
@@ -758,18 +760,18 @@ class ACID:
         # when using ACID function, but if using class directly, user can choose to call this part separately.
         
         if not production_run:
-            return self._process_results()
+            return self.process_results()
         else:
             return Result(self, production_run=True)
 
-    def _process_results(self):
+    def process_results(self):
 
         # Discarding all vales except the last 1000 steps.
         # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
         dis_no = self.nsteps-1000
 
         # Obtain flattened samples
-        self.flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
+        flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
         self.profile = []
@@ -778,9 +780,9 @@ class ACID:
         self.poly_cos_err = []
 
         for i in range(self.ndim):
-            mcmc = np.median(self.flat_samples[:, i])
-            error = np.std(self.flat_samples[:, i])
-            mcmc = np.percentile(self.flat_samples[:, i], [16, 50, 84])
+            mcmc = np.median(flat_samples[:, i])
+            error = np.std(flat_samples[:, i])
+            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
             if i<self.k_max:
                 self.profile.append(mcmc[1])
@@ -795,11 +797,11 @@ class ACID:
         print('Getting the final profiles...')
 
         # Finding error for the continuum fit
-        inds = np.random.randint(len(self.flat_samples), size=50)
+        inds = np.random.randint(len(flat_samples), size=50)
         conts = []
         a, b = self._get_normalisation_coeffs(self.x)
         for ind in inds:
-            sample = self.flat_samples[ind]
+            sample = flat_samples[ind]
             mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha, k_max=self.k_max)
             mdl1_temp = 0
             for i in np.arange(self.k_max, len(sample)-1):
@@ -818,8 +820,52 @@ class ACID:
 
         if self.return_result:
             return Result(self)
+        return
+
+    def continue_sampling(self, nsteps):
+        """Continue MCMC sampling for additional steps.
+
+        Parameters
+        ----------
+        nsteps : int
+            Number of additional steps to run the MCMC for.
+        """
+        # Check that sampler exists
+        if not hasattr(self, 'sampler'):
+            raise AttributeError("No existing sampler found. Please run 'run_ACID' before continuing.")
+
+        self.nsteps += nsteps # update total nsteps
+
+        if self.parallel:
+            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+            if self.verbose:
+                print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
+
+            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
+            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
+            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
+            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
+            if sys.platform != "win32":
+                ctx = mp.get_context("fork")
+                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
+                    self.sampler.run_mcmc(None, self.nsteps, progress=self.verbose, store=True)
+
+            else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
+                raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
+                with Pool() as pool:
+                    self.sampler.run_mcmc(None, self.nsteps, progress=self.verbose)
+
         else:
-            return
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, self.log_probability)
+            self.sampler.run_mcmc(None, self.nsteps, progress=self.verbose)
+
+
+        return self.process_results()
+
+    @staticmethod
+    def get_result(instance):
+        """Static method to return Result object from an ACID instance."""
+        return Result(instance)
 
     def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
                        file_type = 'e2ds', name="test", **kwargs):

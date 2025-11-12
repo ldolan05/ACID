@@ -15,6 +15,8 @@ class Result:
 
     def __init__(self, ACID=None, ACID_HARPS=False, production_run=False):
 
+        self.ACID = ACID
+
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
         self.nsteps = ACID.nsteps
@@ -54,6 +56,23 @@ class Result:
             return iter((self.BJDs, self.profiles, self.errors))
         # ACID is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
+
+    def continue_sampling(self, nsteps):
+        """Continue MCMC sampling for additional steps.
+        """
+
+        self.ACID.continue_sampling(nsteps)
+
+        # Update attributes from ACID object
+        self.sampler = self.ACID.sampler
+        self.nsteps = self.ACID.nsteps
+        if not self.production_run:
+            self.all_frames = self.ACID.all_frames
+
+        # Recalculate autocorr time, burnin, thin
+        self.tau = self.sampler.get_autocorr_time(quiet=True)
+        self.burnin = int(2 * np.max(self.tau))
+        self.thin = int(np.min(self.tau)/5)
 
     def plot_walkers(self):
         """Plots the MCMC walkers for the LSD profile and continuum polynomial coefficients.
