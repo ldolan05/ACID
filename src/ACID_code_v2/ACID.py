@@ -1,6 +1,7 @@
 import sys, emcee, warnings, os, time, importlib, inspect, corner
 from matplotlib import units
 import numpy as np
+from math import log10, floor
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import astropy.units as u
@@ -551,8 +552,11 @@ class ACID:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
         # For now disallow negative spectrum results, will deal with this later
-        if np.any(input_spectra <= 0):
-            raise ValueError("Input spectra contain negative or zero flux values, which are not currently supported.")
+        if np.any(input_spectra <= 0) or np.any(input_spectra > 1):
+            warnings.warn("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
+            "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data.")
+            input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
+                input_wavelengths, input_spectra, input_spectral_errors)
 
         # If frame_sns is not provided, estimate using specutils
         if frame_sns is not None:
@@ -697,7 +701,9 @@ class ACID:
             if i < ndim - self.poly_ord - 2:
                 pos = rng.normal(self.model_inputs[i], sigma, (nwalkers, ))
             else:
-                sigma = abs(utils.round_sig(self.model_inputs[i], 1)) / 10
+                x1 = self.model_inputs[i]
+                rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
+                sigma = abs(rounded_sigma) / 10
                 pos = rng.normal(self.model_inputs[i], sigma, (nwalkers, ))
             initial_state.append(pos)
 

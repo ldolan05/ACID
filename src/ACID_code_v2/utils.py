@@ -1,9 +1,9 @@
 import numpy as np
-from math import log10, floor
 import glob
 
 def validate_args(x, i, allow_none=False, sn=False):
-    """_summary_
+    """Validates the input arguments. This function can be used to ensure inputs to ACID
+    are of the correct type and shape. It is performed automatically in ACID.
 
     Parameters
     ----------
@@ -55,20 +55,32 @@ def validate_args(x, i, allow_none=False, sn=False):
         raise ValueError(f"Input in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
 def scale_spectra(wavelength, spectrum, error):
-    fmin = np.min(spectrum)
-    fmax = np.max(spectrum)
-    scaled_spec = (spectrum - fmin) / (fmax - fmin)
-    scaled_error = error / (fmax - fmin)
-    scaled_error = scaled_error[scaled_spec > 0]
-    wavelength = wavelength[scaled_spec > 0]
-    scaled_spec = scaled_spec[scaled_spec > 0]
-    scaled_error = scaled_error[scaled_spec < 1]
-    wavelength = wavelength[scaled_spec < 1]
-    scaled_spec = scaled_spec[scaled_spec < 1]
-    return wavelength, scaled_spec, scaled_error
+    """Scales the input spectrum and error to be between 0 and 1, masking any non-positive values.
 
-def round_sig(x1, sig):
-    return round(x1, sig-int(floor(log10(abs(x1))))-1)
+    Parameters
+    ----------
+    wavelength : array_like
+        The wavelengths corresponding to the spectrum.
+    spectrum : array_like
+        The flux values of the spectrum.
+    error : array_like
+        The error values associated with the spectrum.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the scaled wavelength, spectrum, and error arrays.
+    """
+
+    fmax = np.max(spectrum)
+    scaled_spec = (spectrum) / (fmax)
+    scaled_error = error / (fmax)
+
+    mask_idx = scaled_spec <= 0
+    scaled_spec[mask_idx] = 1
+    scaled_error[mask_idx] = int(1e12)
+
+    return wavelength, scaled_spec, scaled_error
 
 def findfiles(directory, file_type):
 
