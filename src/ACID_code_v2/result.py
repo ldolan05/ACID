@@ -1,7 +1,9 @@
 from math import tau
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle
+import corner, sys, os, pickle, warnings
+
+warnings.filterwarnings("ignore")
 
 def _require_all_results(method):
     def wrapper(self, *args, **kwargs):
@@ -13,6 +15,7 @@ def _require_all_results(method):
     return wrapper
 
 class Result:
+    """Class to handle the results from the ACID MCMC sampling, and results processing."""
 
     def __init__(self, ACID=None, ACID_HARPS=False, production_run=False):
 

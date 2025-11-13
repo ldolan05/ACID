@@ -635,6 +635,7 @@ class ACID:
         self.return_result = return_result
         self.parallel = parallel
         self.production_run = production_run
+        self.cores = cores
 
         if all_frames is None:
             if self.all_frames is None:
@@ -735,7 +736,7 @@ class ACID:
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
-        self._run_mcmc(initial_state)
+        self._run_mcmc(initial_state, self.nsteps)
 
         # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
         # when using ACID function, but if using class directly, user can choose to call this part separately.
@@ -744,7 +745,13 @@ class ACID:
         else:
             return Result(self, production_run=True)
 
-    def _run_mcmc(self, state):
+    def _run_mcmc(self, state, nsteps):
+
+        if state is None:
+            if not hasattr(self, 'sampler'):
+                raise ValueError("No existing sampler found. Please run 'run_ACID' first or provide a state.")
+            state = self.sampler.get_last_sample()
+            self.old_chain = self.sampler.get_chain(flat=True)
 
         if self.cores is None:
             if self.slurm:
@@ -764,23 +771,20 @@ class ACID:
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
-                    if state is not None:
-                        self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability,
-                                                             pool=pool, moves=emcee.moves.DEMove())
-                    else:
-                        self.sampler.run_mcmc(state, self.nsteps, progress=self.verbose, store=True)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability,
+                                                         pool=pool, moves=emcee.moves.DEMove())
+                    self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
             else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
                 with Pool() as pool:
                     self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
-                    self.sampler.run_mcmc(pos, self.nsteps, progress=self.verbose)
+                    self.sampler.run_mcmc(state, nsteps, progress=self.verbose)
 
         else:
             log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
-            if state is not None:
-                self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob)
-            self.sampler.run_mcmc(state, self.nsteps, progress=self.verbose)
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob)
+            self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
     def process_results(self):
 
@@ -852,9 +856,9 @@ class ACID:
         if not hasattr(self, 'sampler'):
             raise AttributeError("No existing sampler found. Please run 'run_ACID' before continuing.")
 
-        self.nsteps += nsteps # update total nsteps
-
-        self._run_mcmc(state=None) # continue from current state
+        self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
+        self.nsteps += nsteps
+        new_chain = self.sampler.get_chain(flat=True)
 
         if production_run is False:
             return self.process_results()
