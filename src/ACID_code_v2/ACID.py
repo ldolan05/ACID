@@ -747,11 +747,11 @@ class ACID:
 
     def _run_mcmc(self, state, nsteps):
 
+        backend = None
         if state is None:
             if not hasattr(self, 'sampler'):
                 raise ValueError("No existing sampler found. Please run 'run_ACID' first or provide a state.")
-            state = self.sampler.get_last_sample()
-            self.old_chain = self.sampler.get_chain(flat=True)
+            backend = self.sampler.backend
 
         if self.cores is None:
             if self.slurm:
@@ -771,19 +771,17 @@ class ACID:
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability,
-                                                         pool=pool, moves=emcee.moves.DEMove())
+                    self.sampler = emcee.EnsembleSampler(
+                        self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
+                        moves=emcee.moves.DEMove())
                     self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
-            else: # Untested. Now tested, this doesn't work, needs serious modifications to make work
+            else: # This doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
-                with Pool() as pool:
-                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool)
-                    self.sampler.run_mcmc(state, nsteps, progress=self.verbose)
 
         else:
             log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob)
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
             self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
     def process_results(self):
@@ -858,7 +856,6 @@ class ACID:
 
         self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
         self.nsteps += nsteps
-        new_chain = self.sampler.get_chain(flat=True)
 
         if production_run is False:
             return self.process_results()
