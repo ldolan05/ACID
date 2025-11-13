@@ -14,7 +14,7 @@ from specutils.analysis import snr
 from functools import partial
 from . import utils
 from . import LSD
-from . import mcmc_utils
+from .mcmc_utils import MCMCUtils
 from .result import Result
 
 warnings.filterwarnings("ignore")
@@ -274,7 +274,7 @@ class ACID:
         if k_max:
             self.k_max = k_max
 
-        forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha, k_max=self.k_max)
+        forward = MCMCUtils().model_func(self.model_inputs, self.x, alpha=self.alpha, k_max=self.k_max)
 
         a, b = utils.get_normalisation_coeffs(self.x)
 
@@ -770,8 +770,11 @@ class ACID:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, mcmc_utils._log_probability,
+                with ctx.Pool(processes=self.cores,
+                            #   initializer=mcmc_utils._init_worker, initargs=(self.global_data,)
+                              ) as pool:
+                    MCMC = MCMCUtils(self.global_data)
+                    self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, MCMC,
                                                          pool=pool, moves=emcee.moves.DEMove())
                     self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
@@ -782,8 +785,8 @@ class ACID:
                     self.sampler.run_mcmc(state, nsteps, progress=self.verbose)
 
         else:
-            log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob)
+            MCMC = MCMCUtils(self.global_data)
+            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, MCMC)
             self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
     def process_results(self):
@@ -824,7 +827,7 @@ class ACID:
         a, b = utils.get_normalisation_coeffs(self.x)
         for ind in inds:
             sample = flat_samples[ind]
-            mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha, k_max=self.k_max)
+            mdl = MCMCUtils.model_func(sample, self.combined_wavelengths, alpha=self.alpha, k_max=self.k_max)
             mdl1_temp = 0
             for i in np.arange(self.k_max, len(sample)-1):
                 mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-self.k_max)

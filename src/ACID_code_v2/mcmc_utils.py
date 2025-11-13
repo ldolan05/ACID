@@ -2,21 +2,26 @@ import emcee
 import numpy as np
 import multiprocessing as mp
 
-def _init_worker(global_data):
-    """Called once per worker."""
-    global x, y, yerr, alpha, k_max, velocities
-    x = global_data["x"]
-    y = global_data["y"]
-    yerr = global_data["yerr"]
-    alpha = global_data["alpha"]
-    k_max = global_data["k_max"]
-    velocities = global_data["velocities"]
 
-def model_func(inputs, x, **kwargs):
+class MCMCUtils:
+     
+    def __init__(self, global_data=None):
+
+        self.x = getattr(global_data, "x", None)
+        self.y = getattr(global_data, "y", None)
+        self.yerr = getattr(global_data, "yerr", None)
+        self.alpha = getattr(global_data, "alpha", None)
+        self.k_max = getattr(global_data, "k_max", None)
+        self.velocities = getattr(global_data, "velocities", None)
+    
+    def __call__(self, theta):
+        return self._log_probability(theta)
+
+    def model_func(self, inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", globals().get("alpha"))
-        k_max = kwargs.get("k_max", globals().get("k_max"))
-
+        alpha = kwargs.get("alpha", self.alpha)
+        k_max = kwargs.get("k_max", self.k_max)
+    
         z = inputs[:k_max]
 
         mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
@@ -47,51 +52,51 @@ def model_func(inputs, x, **kwargs):
     
         return mdl
 
-def _log_likelihood(theta, x, y, yerr):
-    ## maximum likelihood estimation for the mcmc model.
-    model = model_func(theta, x)
+    def _log_likelihood(self, theta, x, y, yerr):
+        ## maximum likelihood estimation for the mcmc model.
+        model = self.model_func(theta, x)
 
-    lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
+        lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
 
-    return lnlike
+        return lnlike
 
-def _log_prior(theta):
-    ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
-    check = 0
-    z = theta[:k_max]
+    def _log_prior(self, theta):
+        ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
+        check = 0
+        z = theta[:self.k_max]
 
-    for i in range(len(theta)):
-        if i < k_max: ## must lie in z
-            if -10 <= theta[i] <= 0.5:
-                pass
-            else:
-                check = 1
+        for i in range(len(theta)):
+            if i < self.k_max: ## must lie in z
+                if -10 <= theta[i] <= 0.5:
+                    pass
+                else:
+                    check = 1
 
-    if check == 0:
+        if check == 0:
 
-        # excluding the continuum points in the profile (in flux)
-        z_cont = []
-        v_cont = []
-        for i in range(0, 5):
-                z_cont.append(np.exp(z[len(z)-i-1])-1)
-                v_cont.append(velocities[len(velocities)-i-1])
-                z_cont.append(np.exp(z[i])-1)
-                v_cont.append(velocities[i])
+            # excluding the continuum points in the profile (in flux)
+            z_cont = []
+            v_cont = []
+            for i in range(0, 5):
+                    z_cont.append(np.exp(z[len(z)-i-1])-1)
+                    v_cont.append(self.velocities[len(self.velocities)-i-1])
+                    z_cont.append(np.exp(z[i])-1)
+                    v_cont.append(self.velocities[i])
 
-        z_cont = np.array(z_cont)
-        v_cont = np.array(v_cont)
+            z_cont = np.array(z_cont)
+            v_cont = np.array(v_cont)
 
-        p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
+            p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
 
-        return p_pent
+            return p_pent
 
-    return -np.inf
-
-def _log_probability(theta):
-    # TODO!: Turn to classes and potentially if possible move to separate file
-    ## calculates log probability - used for mcmc
-    lp = _log_prior(theta)
-    if not np.isfinite(lp):
         return -np.inf
-    final = lp + _log_likelihood(theta, x, y, yerr)
-    return final
+
+    def _log_probability(self, theta):
+        # TODO!: Turn to classes and potentially if possible move to separate file
+        ## calculates log probability - used for mcmc
+        lp = self._log_prior(theta)
+        if not np.isfinite(lp):
+            return -np.inf
+        final = lp + self._log_likelihood(theta, self.x, self.y, self.yerr)
+        return final
