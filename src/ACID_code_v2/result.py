@@ -5,6 +5,8 @@ import corner, sys, os, pickle, warnings
 
 warnings.filterwarnings("ignore")
 
+__all__ = ['Result']
+
 def _require_all_results(method):
     def wrapper(self, *args, **kwargs):
         if self.production_run:

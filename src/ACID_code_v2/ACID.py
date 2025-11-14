@@ -555,8 +555,13 @@ class ACID:
         """
         ### Setup, validation and input conversion
 
+        if frame_sns.type == str:
+            raise TypeError("frame_sns must be a list or array of S/N values, not a string. Please note that frame_sns" \
+            "was positionally swapped with linelist_path in ACID v2 compared to v1.")
+
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
-        # best guess the user's intentions. See the utils.validate_args function for more details.
+        # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
+        # inputs to numpy arrays.
         input_wavelengths, input_spectra, input_spectral_errors = [
             utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
         frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
@@ -565,19 +570,29 @@ class ACID:
         if not input_wavelengths.shape == input_spectra.shape == input_spectral_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
-        # For now disallow negative spectrum results, will deal with this later
+        # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
         if np.any(input_spectra <= 0) or np.any(input_spectra > 1):
             print("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
-            "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data.")
+            "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data." \
+            "Please see acid.scale_spectra for more information on how this is done.")
             input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
                 input_wavelengths, input_spectra, input_spectral_errors)
 
-        # If frame_sns is not provided, estimate using specutils
-        if frame_sns is not None:
-            if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
-                raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
-        else: # needs testing
+        # Validated frame_sns input
+        # If frame_sns is not provided, estimate using specutils, this is a very rudimentary guess and get around for not
+        # providing a SNS which should normally come from fits files.
+        if frame_sns is None:
             frame_sns = self.guess_SNR()
+            assert np.asarray(frame_sns).shape == np.asarray(input_spectra).shape, \
+            "frame_sns.shape and input_spectra.shape do not match"
+        if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
+            raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
+
+        # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
+        if velocities is None:
+            velocities = np.arange(-25, 25, utils.calc_deltav(input_wavelengths[0]))
+        if not isinstance(velocities, np.ndarray):
+            raise TypeError("velocities must be a numpy array of velocity grid points (in km/s) for the LSD profiles.")
 
         # Validate linelist inputs
         if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
@@ -585,7 +600,7 @@ class ACID:
         if linelist_path is None and (linelist_wl is None or linelist_depths is None):
             raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
         if linelist_path is not None and not isinstance(linelist_path, str):
-            raise TypeError("'linelist_path' must be a string")
+            raise TypeError("'linelist_path' must be a string pointing to the linelist file.")
         if linelist_wl is not None:
             if not isinstance(linelist_wl, (list, np.ndarray)):
                 raise TypeError("'linelist_wl' must be a list or numpy array")
@@ -599,23 +614,35 @@ class ACID:
             if linelist_depths.ndim != 1:
                 raise ValueError("'linelist_depths' must be a one-dimensional array or list")
 
-        # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
-        if velocities is None:
-            velocities = np.arange(-25, 25, utils.calc_deltav(input_wavelengths.tolist()[0]))
-
-        # Also ensure that inputed fluxes are all positive (otherwise mask those out and warn), during this
-        # check that all the telluric lines are positive otherwise see how they were handled.
+        # Validate simple input types
+        simple_inputs = {
+            'poly_ord': (poly_ord, int),
+            'pix_chunk': (pix_chunk, int),
+            'dev_perc': (dev_perc, int),
+            'n_sig': (n_sig, int),
+            'order': (order, int),
+            'nsteps': (nsteps, int),
+            'verbose': (verbose, bool),
+            'return_result': (return_result, bool),
+            'parallel': (parallel, bool),
+            'production_run': (production_run, bool),
+        }
+        for key_name, (value, expected_type) in simple_inputs.items():
+            if not isinstance(value, expected_type):
+                raise TypeError(f"'{key_name}' must be of type: {expected_type.__name__}.")
 
         # Define telluric_lines with defaults if not input, check type if it is
-        if telluric_lines:
-            self.telluric_lines = telluric_lines
-        else:
-            self.telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                                   5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
-        if not isinstance(self.telluric_lines, list):
-            raise TypeError("telluric_lines must be a list of telluric lines to mask (could be empty or single-valued)")
+        if telluric_lines is None:
+            telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
+                              5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+        if not isinstance(telluric_lines, (list, np.ndarray)):
+            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
+            "mask in angstroms (could be empty or single-valued)")
+        telluric_lines = np.array(telluric_lines)
+        if telluric_lines.ndim != 1 or telluric_lines.size == 0:
+            raise ValueError("telluric_lines must be a one-dimensional array or list")
 
-        # Assign inputs to class variables
+        # Assign all inputs to class variables (except all frames, handled below)
         self.frame_wavelengths = input_wavelengths
         self.frame_flux = input_spectra
         self.frame_errors = input_spectral_errors
@@ -636,6 +663,7 @@ class ACID:
         self.parallel = parallel
         self.production_run = production_run
         self.cores = cores
+        self.tell_lines = telluric_lines
 
         if all_frames is None:
             if self.all_frames is None:
@@ -648,8 +676,12 @@ class ACID:
             self.all_frames = self.all_frames.all_frames
         if not isinstance(self.all_frames, np.ndarray):
             raise TypeError("'all_frames' must be a numpy array")
+        if not self.all_frames.ndim == 4:
+            raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
 
-        if verbose:
+        ### Begin ACID process
+
+        if self.verbose:
             t0 = time.time()
             print('Initialising...')
 
