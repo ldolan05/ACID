@@ -12,7 +12,7 @@ Quickstart
 
 ACID returns LSD profiles based on input spectra. First, lets walk through an example for a single spectrum. 
 
-ACID requires and input spectrum and stellar line list. An example spectrum and line list are contained in the 'example' directory of the source code.
+ACID requires an input spectrum and stellar line list. An example spectrum and line list are contained in the 'example' directory of the source code.
 In the 'example' directory we can set up our inputs are follows:
 
 .. code-block:: python
