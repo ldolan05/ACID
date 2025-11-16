@@ -11,8 +11,10 @@ def _require_all_results(method):
     def wrapper(self, *args, **kwargs):
         if self.production_run:
             name = method.__qualname__
-            raise RuntimeError(f"{name} cannot be called because ACID was run in production mode. Use "
-                               "ACID.process_results() to extract all results.")
+            if self.verbose:
+                print(f"Note: The Result object was in production_run mode. Running {name} requires all results to be processed, \
+                      so process_results() has been called automatically.")
+            self.process_results()
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -93,7 +95,7 @@ class Result:
     def process_results(self):
         """Processes the MCMC results to extract the LSD profiles and errors.
         """
-        self.ACID.process_results()
+        self.ACID.process_results(return_result=False)
         self.production_run = False
         self.all_frames = self.ACID.all_frames
 

@@ -490,30 +490,44 @@ class ACID:
 
     def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None, velocities=None,
                  linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
-                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=5000, return_result=True,
+                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=10000, return_result=True,
                  production_run=False):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
         Parameters
         ----------
-        input_wavelengths : list or array
-            Wavelengths for each frame (in Angstroms). For multiple frames this should be a list of arrays or list of lists.
-        input_spectra : list or array
-            Spectral frames (in flux). For multiple frames this should be a list of arrays or list of lists.
-        input_spectral_errors : list or array
-            Errors for each frame (in flux). For multiple frames this should be a list of arrays or list of lists. This should always
-            be a list, even for a single frame (which would thus be single valued).
-        frame_sns : list or array
+        input_wavelengths : array
+            An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
+            input_wavelengths[i] corresponds to the wavelengths for the ith frame.
+        input_spectra : array
+            An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
+            input_spectra[i] corresponds to the spectral fluxes for the ith frame.
+        input_spectral_errors : array
+            Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
+            input_spectral_errors[i] corresponds to the spectral errors for the ith frame.
+        frame_sns : int or array, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
-        linelist_path : str
+            Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
+            frame_sns[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
+            spectra., by default None
+        linelist_path : str, optional
             Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
-            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra.  
-        velocities : array
-            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create
+            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. If None, you can directly provide linelist_wl
+            and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided., by default None
+        velocities : array, optional
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
+            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
+        linelist_wl : array, optional
+            Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
+            Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
+        linelist_depths : array, optional
+            Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
+            Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
         all_frames : str or array, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
-            regions or order (in the case of echelle spectra). General shape needs to be (no. of frames, 1, 2, no. of velocity pixels)., by default None
+            regions or order (in the case of echelle spectra). General shape needs to be
+            (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape, by default None
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
         pix_chunk : int, optional
@@ -538,11 +552,15 @@ class ACID:
         parallel : bool, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, by default True
         cores : int, optional
-            Number of cores to use if parallel=True. If None (default) all available cores will be used, by default None
+            Number of cores to use if parallel=True. If None, all available cores will be used, by default None
         nsteps : int, optional
-            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 5000
-        return_frames : bool, optional
-            If True, returns the all_frames array with the resulting profiles, by default True
+            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 10000
+        return_result : bool, optional
+            If True, returns the Result object with the resulting profiles. Otherwise, you will need to handle the output manually
+            from acid.all_frames and acid.sampler, by default True
+        production_run : bool, optional
+            If True, skips the final process_results step and returns a Result object directly. This allows for faster chain analysis and want
+            to increase the number of steps with result.continue_sampling(steps). If true, some methods in Result will be desabled, by default False
         Returns
         -------
         Result
@@ -613,6 +631,12 @@ class ACID:
             linelist_depths = np.array(linelist_depths)
             if linelist_depths.ndim != 1:
                 raise ValueError("'linelist_depths' must be a one-dimensional array or list")
+            if linelist_wl.shape != linelist_depths.shape:
+                raise ValueError("'linelist_wl' and 'linelist_depths' must have the same length and shape")
+        # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
+        # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
+        if linelist_path is None:
+            linelist_path = {"wavelength": linelist_wl, "depth": linelist_depths}
 
         # Validate simple input types
         simple_inputs = {
@@ -649,8 +673,6 @@ class ACID:
         self.frame_sns = frame_sns
         self.velocities = velocities
         self.linelist_path = linelist_path
-        self.linelist_depths = linelist_depths
-        self.linelist_wl = linelist_wl
         self.poly_ord = poly_ord
         self.name = name
         self.verbose = verbose
@@ -816,7 +838,7 @@ class ACID:
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
             self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
 
-    def process_results(self):
+    def process_results(self, return_result=True):
 
         # Discarding all vales except the last 1000 steps.
         # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
@@ -870,7 +892,7 @@ class ACID:
         else:
             self.all_frames = self._get_profiles(self.all_frames, 0)
 
-        if self.return_result:
+        if self.return_result and return_result:
             return Result(self)
         return
 
