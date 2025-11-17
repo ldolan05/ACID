@@ -19,11 +19,22 @@ def _require_all_results(method):
         return method(self, *args, **kwargs)
     return wrapper
 
+@beartype
 class Result:
     """Class to handle the results from the ACID MCMC sampling, and results processing."""
 
-    def __init__(self, ACID=None, ACID_HARPS=False, production_run=False):
+    def __init__(self, ACID, ACID_HARPS:bool=False, production_run:bool=False):
+        """Initiate Result class
 
+        Parameters
+        ----------
+        ACID : object
+            An ACID object after MCMC sampling has been performed.
+        ACID_HARPS : bool, optional
+            Whether the ACID_HARPS function was used, by default False
+        production_run : bool, optional
+            Whether ACID was run in production mode, by default False
+        """
         self.ACID = ACID
 
         self.ACID_HARPS = ACID_HARPS
@@ -67,7 +78,7 @@ class Result:
         # ACID is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
-    def continue_sampling(self, nsteps, production_run=None):
+    def continue_sampling(self, nsteps:int, production_run:bool|None=None):
         """Continue MCMC sampling for additional steps.
 
         Parameters
@@ -136,7 +147,6 @@ class Result:
         plt.show()
 
     @_require_all_results
-    @beartype
     def plot_profile(
         self,
         grid            :bool      = True,
@@ -214,7 +224,7 @@ class Result:
         # ax.grid()
         # plt.show()
 
-    def save_result(self, filename="result.pkl"):
+    def save_result(self, filename:str="result.pkl"):
         """Saves the Result object to a pickle file.
 
         Parameters
@@ -229,13 +239,13 @@ class Result:
             print(f"Result object saved to {filename}")
 
     @classmethod
-    def load_result(cls, filename):
+    def load_result(cls, filename:str="result.pkl"):
         """Loads a Result object from a pickle file.
 
         Parameters
         ----------
-        filename : str
-            Name of the file to load the Result object from.
+        filename : str, optional
+            Name of the file to load the Result object from, by default "result.pkl"
         """
 
         with open(filename, "rb") as f:
