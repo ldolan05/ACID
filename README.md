@@ -2,9 +2,13 @@ A.C.I.D v2 (Accurate Continuum fItting and Deconvolution)
 ==============================================================
 
 ACID_v2 (https://github.com/Benjamin-Cadell/ACID_v2) is a fork of ACID (https://github.com/ldolan05/ACID) from the work of Lucy Dolan for her PhD. ACID_v2 improves on ACID by:
+
     - Updating packages and code to work with newer and stable versions of python.
+
     - Improving memory management so that ACID can be run on MacOS without crashes (ie extending compatibility to all POSIX systems)
+
     - Adding additional kwargs to ACID to tailor output, including verbosity settings, MCMC number of steps, multiprocessing switch, and more.
+    
     - Utilising classes for both ACID and the result of ACID, allowing for analysis methods that can be found in the doccumentation.
 
 The mathematical functions and method remain the same as ACID and are outlined in Dolan et al. 2024 (https://academic.oup.com/mnras/article/529/3/2071/7624678).
