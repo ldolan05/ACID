@@ -12,6 +12,7 @@ from multiprocessing import Pool
 from specutils import Spectrum
 from specutils.analysis import snr
 from functools import partial
+from beartype import beartype
 from . import utils
 from . import LSD
 from . import mcmc_utils
@@ -21,7 +22,7 @@ warnings.filterwarnings("ignore")
 importlib.reload(LSD)
 importlib.reload(utils)
 
-
+@beartype
 class ACID:
     """Accurate Continuum fItting and Deconvolution (ACID) class"""
 
@@ -37,16 +38,22 @@ class ACID:
         self.slurm = "SLURM_JOB_ID" in os.environ
         return
 
-    def continuumfit(self, fluxes, wavelengths, errors, poly_ord):
+    def continuumfit(
+            self,
+            fluxes:np.ndarray,
+            wavelengths:np.ndarray,
+            errors:np.ndarray,
+            poly_ord:int
+            ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
         Parameters
         ----------
-        fluxes : array_like
+        fluxes : np.ndarray
             The flux values of the spectrum.
-        wavelengths : array_like
+        wavelengths : np.ndarray
             The wavelengths corresponding to the spectrum.
-        errors : array_like
+        errors : np.ndarray
             The error values associated with the spectrum.
         poly_ord : int
             The order of the polynomial to fit to the continuum.
@@ -161,7 +168,14 @@ class ACID:
 
         return frame_wavelengths, frames, errors, sns
 
-    def combine_spec(self, frame_wavelengths=None, frame_flux=None, frame_errors=None, frame_sns=None, _output=True):
+    def combine_spec(
+            self,
+            frame_wavelengths: np.ndarray | None = None,
+            frame_flux:        np.ndarray | None = None,
+            frame_errors:      np.ndarray | None = None,
+            frame_sns:         np.ndarray | None = None,
+            output:            bool              = True
+            ):
         """Combines multiple spectral frames into one spectrum
 
         Parameters
@@ -174,7 +188,7 @@ class ACID:
             Errors for the spectral frames, by default None
         frame_sns : array, optional
             Signal-to-noise ratio for the spectral frames, by default None
-        _output : bool, optional
+        output : bool, optional
             Whether to output the combined spectrum, by default True
 
         Returns
@@ -264,7 +278,7 @@ class ACID:
 
             self.combined_spectrum = spectrum_f
 
-        if _output is True:
+        if output is True:
             # ie if called as a function rather than from ACID function
             return self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
 
@@ -454,7 +468,12 @@ class ACID:
 
         return spectrum, spec_errors
 
-    def guess_SNR(self, wavelengths=None, spectra=None, errors=None):
+    def guess_SNR(
+            self,
+            wavelengths : np.ndarray = None,
+            spectra     : np.ndarray = None,
+            errors      : np.ndarray = None
+            ):
         """Estimates S/N for each frame using specutils using inputs of initialised class variables
 
         Returns
@@ -488,10 +507,31 @@ class ACID:
             frame_sns.append(float(estimated_sn.value))
         return frame_sns
 
-    def run_ACID(self, input_wavelengths, input_spectra, input_spectral_errors, frame_sns=None, linelist_path=None, velocities=None,
-                 linelist_wl=None, linelist_depths=None, all_frames=None, poly_ord=3, pix_chunk=20, dev_perc=25, name="test",
-                 n_sig=1, telluric_lines=None, order=0, verbose=True, parallel=True, cores=None, nsteps=10000, return_result=True,
-                 production_run=False):
+    def run_ACID(
+            self,
+            input_wavelengths,
+            input_spectra,
+            input_spectral_errors,
+            frame_sns                      = None,
+            linelist_path  :str            = None,
+            velocities                     = None,
+            linelist_wl                    = None,
+            linelist_depths                = None,
+            all_frames                     = None,
+            poly_ord       :int            = 3,
+            pix_chunk      :int            = 20,
+            dev_perc       :int            = 25,
+            name           :str            = "test",
+            n_sig          :int            = 1,
+            telluric_lines                 = None,
+            order          :int            = 0,
+            verbose        :bool           = True,
+            parallel       :bool           = True,
+            cores          :int|None       = None,
+            nsteps         :int            = 10000,
+            return_result  :bool           = True,
+            production_run :bool           = False
+            ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
@@ -638,23 +678,6 @@ class ACID:
         if linelist_path is None:
             linelist_path = {"wavelength": linelist_wl, "depth": linelist_depths}
 
-        # Validate simple input types
-        simple_inputs = {
-            'poly_ord': (poly_ord, int),
-            'pix_chunk': (pix_chunk, int),
-            'dev_perc': (dev_perc, int),
-            'n_sig': (n_sig, int),
-            'order': (order, int),
-            'nsteps': (nsteps, int),
-            'verbose': (verbose, bool),
-            'return_result': (return_result, bool),
-            'parallel': (parallel, bool),
-            'production_run': (production_run, bool),
-        }
-        for key_name, (value, expected_type) in simple_inputs.items():
-            if not isinstance(value, expected_type):
-                raise TypeError(f"'{key_name}' must be of type: {expected_type.__name__}.")
-
         # Define telluric_lines with defaults if not input, check type if it is
         if telluric_lines is None:
             telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
@@ -713,7 +736,7 @@ class ACID:
         # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
         # To generate:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
-        self.combine_spec(_output=False)
+        self.combine_spec(output=False)
 
         # Get the initial polynomial coefficents
         a, b = utils.get_normalisation_coeffs(self.combined_wavelengths)
