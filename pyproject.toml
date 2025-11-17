@@ -27,7 +27,8 @@ dependencies = [
     "tqdm",
     "psutil",
     "specutils",
-    "corner"
+    "corner",
+    "beartype"
 ]
 dynamic = ["version"]
 

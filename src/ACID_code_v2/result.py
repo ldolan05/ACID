@@ -2,6 +2,7 @@ from math import tau
 import numpy as np
 import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings
+from beartype import beartype
 
 warnings.filterwarnings("ignore")
 
@@ -100,7 +101,7 @@ class Result:
         self.all_frames = self.ACID.all_frames
 
     def plot_walkers(self):
-        """Plots the MCMC walkers for the LSD profile and continuum polynomial coefficients.
+        """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum polynomial coefficients.
         """
 
         naxes = min(10, self.ndim)
@@ -120,7 +121,12 @@ class Result:
         plt.show()
 
     def plot_corner(self, **kwargs):
-        """Plots the corner plot for the LSD profile and continuum polynomial coefficients.
+        """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
+        
+        Parameters
+        ----------
+        **kwargs:
+            Additional keyword arguments to pass to corner.corner().
         """
 
         naxes = min(8, self.ndim)
@@ -130,19 +136,61 @@ class Result:
         plt.show()
 
     @_require_all_results
-    def plot_profile(self):
+    @beartype
+    def plot_profile(
+        self,
+        grid            :bool      = True,
+        labels          :dict|None = None,
+        subplot_kwargs  :dict|None = None,
+        errorbar_kwargs :dict|None = None
+        ):
         """Plots the LSD profile result from ACID.
-        """
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        Parameters
+        ----------
+        grid : bool, optional
+            Show or hide grid, by default True
+        labels : dict, optional
+            Keys: 'xlabel', 'ylabel', and 'title'. Allows label overrides., by default None
+        subplot_kwargs : dict, optional
+            Keyword arguments to be passed to plt.subplots(), by default None
+        errorbar_kwargs : dict, optional
+            Keyword arguments to be passed to ax.errorbar(), by default None
+        """
+        # Set default errorbar kwargs
+        errorbar_kwargs = dict(errorbar_kwargs or {})
+        errorbar_defaults = {
+            "fmt"      : ".",
+            "ecolor"   : "red",
+            "linewidth": 1,
+            "label"    : "LSD Profile with Errors"
+        }
+        for key, value in errorbar_defaults.items():
+            errorbar_kwargs.setdefault(key, value)
+
+        # Set default subplot kwargs
+        subplot_kwargs = dict(subplot_kwargs or {})
+        subplot_kwargs.setdefault("figsize", (10, 6))
+
+        # Set default labels
+        default_labels = {
+            "title" : "LSD Profile",
+            "xlabel": "Velocity (km/s)",
+            "ylabel": "Normalised Flux"
+        }
+        labels = dict(labels or {})
+        for key, value in default_labels.items():
+            labels.setdefault(key, value)
+
+        fig, ax = plt.subplots(**subplot_kwargs)
         x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
-        ax.errorbar(x, y, yerr=yerr, ecolor="red", linewidth=1, label='LSD Profile with Errors')
-        ax.set_title('LSD Profile')
-        ax.set_xlabel('Velocity (km/s)')
-        ax.set_ylabel('Normalised Flux')
+        ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
+        ax.set_title(labels["title"])
+        ax.set_xlabel(labels["xlabel"])
+        ax.set_ylabel(labels["ylabel"])
         ax.axhline(0, color='black', linestyle='--', linewidth=1)
         ax.legend()
-        ax.grid()
+        ax.grid(grid)
         plt.show()
 
     @_require_all_results

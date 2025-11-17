@@ -8,3 +8,4 @@ tqdm
 psutil
 specutils
 corner
+beartype
