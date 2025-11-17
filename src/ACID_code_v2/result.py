@@ -78,7 +78,7 @@ class Result:
         # ACID is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
-    def continue_sampling(self, nsteps:int, production_run:bool|None=None):
+    def continue_sampling(self, nsteps:int|npint, production_run:bool|None=None):
         """Continue MCMC sampling for additional steps.
 
         Parameters
