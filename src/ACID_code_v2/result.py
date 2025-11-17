@@ -111,18 +111,27 @@ class Result:
         self.production_run = False
         self.all_frames = self.ACID.all_frames
 
-    def plot_walkers(self):
+    def plot_walkers(self, burnin:int|None=None, thin:int|None=None):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum polynomial coefficients.
+
+        Parameters
+        ----------
+        burnin : int | None, optional
+            Optionally define the number of burnin steps, by default None
+        thin : int | None, optional
+            Optionally define the number of thinning steps, by default None
         """
+        burnin = burnin if burnin is not None else self.burnin
+        thin = thin if thin is not None else self.thin
 
         naxes = min(10, self.ndim)
         fig, axes = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
-        samples = self.ACID.sampler.get_chain(discard=self.burnin, thin=int(self.thin))
-        steps = np.arange(samples.shape[0]) * self.thin + self.burnin
+        samples = self.ACID.sampler.get_chain(discard=burnin, thin=int(thin))
+        steps = np.arange(samples.shape[0]) * thin + burnin
         for i in range(naxes):
             ax = axes[i]
             ax.plot(steps, samples[:, :, i], "k", alpha=0.3)
-            ax.axvspan(0, self.burnin, color="red", alpha=0.1, label="burn-in")
+            ax.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
 
         axes[-1].legend()
         axes[-1].set_xlabel("Step number")
