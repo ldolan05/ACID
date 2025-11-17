@@ -13,7 +13,7 @@ except:
     sys.path.append(PROJECT_ROOT)
     from src import ACID_code_v2 as acid
     print("pip module failed to import, imported from local instead")
-importlib.reload(acid)
+acid._reload_all()
 
 def test_run_e2ds():
 

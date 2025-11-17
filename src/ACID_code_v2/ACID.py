@@ -13,6 +13,7 @@ from specutils import Spectrum
 from specutils.analysis import snr
 from functools import partial
 from beartype import beartype
+from numpy import integer as npint
 from . import utils
 from . import LSD
 from . import mcmc_utils
@@ -43,7 +44,7 @@ class ACID:
             fluxes:np.ndarray,
             wavelengths:np.ndarray,
             errors:np.ndarray,
-            poly_ord:int
+            poly_ord:int|npint
             ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -518,17 +519,17 @@ class ACID:
             linelist_wl                    = None,
             linelist_depths                = None,
             all_frames                     = None,
-            poly_ord       :int            = 3,
-            pix_chunk      :int            = 20,
-            dev_perc       :int            = 25,
+            poly_ord       :int|npint      = 3,
+            pix_chunk      :int|npint      = 20,
+            dev_perc       :int|npint      = 25,
             name           :str            = "test",
-            n_sig          :int            = 1,
+            n_sig          :int|npint      = 1,
             telluric_lines                 = None,
-            order          :int            = 0,
+            order          :int|npint      = 0,
             verbose        :bool           = True,
             parallel       :bool           = True,
-            cores          :int|None       = None,
-            nsteps         :int            = 10000,
+            cores          :int|npint|None = None,
+            nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
             production_run :bool           = False
             ):
@@ -613,10 +614,6 @@ class ACID:
         """
         ### Setup, validation and input conversion
 
-        if frame_sns.type == str:
-            raise TypeError("frame_sns must be a list or array of S/N values, not a string. Please note that frame_sns" \
-            "was positionally swapped with linelist_path in ACID v2 compared to v1.")
-
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
         # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
         # inputs to numpy arrays.
@@ -631,8 +628,8 @@ class ACID:
         # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
         if np.any(input_spectra <= 0) or np.any(input_spectra > 1):
             print("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
-            "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data." \
-            "Please see acid.scale_spectra for more information on how this is done.")
+            "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data. " \
+            "You can check acid.scale_spectra for more information on how this is done.")
             input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
                 input_wavelengths, input_spectra, input_spectral_errors)
 
@@ -708,7 +705,7 @@ class ACID:
         self.parallel = parallel
         self.production_run = production_run
         self.cores = cores
-        self.tell_lines = telluric_lines
+        self.telluric_lines = telluric_lines
 
         if all_frames is None:
             if self.all_frames is None:

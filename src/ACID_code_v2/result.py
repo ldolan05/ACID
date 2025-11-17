@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings
 from beartype import beartype
+from numpy import integer as npint
 
 warnings.filterwarnings("ignore")
 
@@ -46,8 +47,7 @@ class Result:
         self.BJDs = getattr(ACID, 'BJDs', None)
         self.profiles = getattr(ACID, 'profiles', None)
         self.errors = getattr(ACID, 'errors', None)
-        self.linelist_wl = ACID.linelist_wl
-        self.linelist_depths = ACID.linelist_depths
+
         if not production_run:
             self.all_frames = ACID.all_frames
         else:
@@ -111,7 +111,7 @@ class Result:
         self.production_run = False
         self.all_frames = self.ACID.all_frames
 
-    def plot_walkers(self, burnin:int|None=None, thin:int|None=None):
+    def plot_walkers(self, burnin:int|npint|None=None, thin:int|npint|None=None):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum polynomial coefficients.
 
         Parameters
