@@ -46,12 +46,15 @@ We can then run ACID and plot the final results:
    velocities = np.arange(-25, 25, deltav)  
 
    # run ACID function
-   result = acid.ACID([wavelength], [spectrum], [error], linelist, [sn], velocities)
+   result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities)
    
+   # Plot results using the plot_profiles method
+   result.plot_profiles()
+
+   # Or plot profiles as with legacy ACID:
    # extract profile and errors
    profile = result[0, 0, 0]
    profile_error = result[0, 0, 1]
-
    # plot results
    plt.figure()
    plt.errorbar(velocities, profile, profile_error)

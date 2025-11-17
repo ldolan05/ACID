@@ -6,13 +6,13 @@ Installation
 Installing the package
 =======================
 
-ACID_v2 has been tested in Python 3.11, and is currently incompatible with 3.12. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
+ACID_v2 has been tested in Python 3.13, and is currently incompatible with 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
 
 In this example we create an environment named 'acid' and activate it using:
 
 .. code-block:: bash
 
-    conda create -n acid python=3.11
+    conda create -n acid python=3.13
     conda activate acid
 
 Once the environment has been activated ACID can be installed using pip_:
