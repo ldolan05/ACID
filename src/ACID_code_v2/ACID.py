@@ -712,6 +712,7 @@ class ACID:
         self.production_run = production_run
         self.cores = cores
 
+        print(all_frames)
         if all_frames is None:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
@@ -1012,17 +1013,24 @@ class ACID:
 
             print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
 
-            frame_wavelengths, frames, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
+            frame_wavelengths, frame_flux, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
 
             # Updates recursively the all_frames array with the profiles for each order
-            self.run_ACID(frame_wavelengths, frames, frame_errors, sns, self.linelist_path,
-                          order=order-min(self.order_range), return_result=False, **kwargs)
+            self.run_ACID(
+                frame_wavelengths,
+                frame_flux,
+                frame_errors,
+                sns,
+                order         = order-min(self.order_range),
+                return_result = False,
+                **kwargs
+            )
 
         # adding into fits files for each frame
         BJDs = []
         profiles = []
         errors = []
-        for frame_no in range(0, len(frames)):
+        for frame_no in range(0, len(frame_flux)):
             file = filelist[frame_no]
             fits_file = fits.open(file)
             hdu = fits.HDUList()
