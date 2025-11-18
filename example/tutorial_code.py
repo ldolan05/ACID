@@ -6,7 +6,8 @@ import glob, os, importlib, sys
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
 try:
-    import ACID_code_v2 as acid
+    raise Exception("Force local import")
+    # import ACID_code_v2 as acid
 except:
     SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
     PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -73,17 +74,12 @@ ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
 result = ACID.run_ACID(wavelengths, spectra, errors, sns, nsteps=2000)
 
 # plot results
-plt.figure()
+result.plot_profiles()
 
-for frame in range(len(files)):
-    profile = result[frame, 0, 0]
-    profile_error = result[frame, 0, 1]
-    plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
-
-plt.xlabel('Velocities (km/s)')
-plt.ylabel('Flux')
-plt.legend()
-plt.show()
+# Remember you can obtain the entire result array via:
+all_frames = result[:] # Which converts it to a numpy array of shape (frames, orders, 2, pixels)
+# or you can do
+all_frames = result.all_frames
 
 #%% Multiple Orders Example
 
@@ -125,29 +121,14 @@ for i in range(chunks_no):
     min_wave += wave_chunk
     max_wave += wave_chunk
 
-# reset min and max wavelengths
-min_wave = min(wavelength)
-max_wave = min_wave+wave_chunk
-
 # plot results
-plt.figure()
-for i in range(chunks_no):
-
-    # extract profile and errors
-    profile = result[0, i, 0]
-    profile_error = result[0, i, 1]
-
-    plt.errorbar(velocities, profile, profile_error, label='(%s - %sÅ)'%(min_wave, max_wave))
-
-    min_wave += wave_chunk
-    max_wave += wave_chunk
-
-plt.xlabel('Velocities (km/s)')
-plt.ylabel('Flux')
-plt.legend()
-plt.show()
+result.plot_profiles()
+# Reember you can save and load results via:
+# result.save_result("example/multi_order_result.pkl")
+# result = acid.Result.load_result("example/multi_order_result.pkl")
 
 #%% HARPS data example
+
 e2ds_files = glob.glob('tests/data/*e2ds_A*.fits') # Returns list of HARPS files
 linelist_path = 'example/example_linelist.txt'
 save_path = 'no save'
@@ -159,6 +140,13 @@ velocities = np.arange(-25, 25, deltav)
 
 # run ACID function
 ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
-BJDs, profiles, errors = ACID.run_ACID_HARPS(filelist=e2ds_files, file_type='e2ds',
-                                             save_path=save_path, nsteps=2000,
-                                             order_range=order_range)
+
+# Due to legacy behaviour, the function returns BJDs, profiles and errors separately when indexed,
+# not all_frames as in other examples. All frames can still be accessed via result.all_frames
+
+result = ACID.run_ACID_HARPS(filelist=e2ds_files, file_type='e2ds', save_path=save_path, nsteps=2000,
+                             order_range=order_range)
+
+# BJDs, profiles, profile_errors = result
+all_frames = result.all_frames
+result.plot_profiles()

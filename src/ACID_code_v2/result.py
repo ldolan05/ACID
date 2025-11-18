@@ -211,7 +211,7 @@ class Result:
 
         # Set default labels
         default_labels = {
-            "title" : "LSD Profile",
+            "title" : "ACID Profile",
             "xlabel": "Velocity (km/s)",
             "ylabel": "Normalised Flux"
         }
@@ -226,12 +226,17 @@ class Result:
         fig, ax = plt.subplots(**subplot_kwargs)
         if nframes > 1:
             if norders > 1:
-                print("Warning: Multiple frames and orders detected. Only plotting the first order from each frame.")
-                frames = frames[:, 0, :, :]  # Take first order only
+                print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
+                frames = frames[:1, :, :, :]  # Take first frame only
+        print(frames.shape)
         for f, frame in enumerate(frames):
             for o, order in enumerate(frame):
+                print(order.shape)
                 x, y, yerr = self.velocities, order[0], order[1]
-                ax.errorbar(x, y, yerr=yerr, label=f"Frame {f+1}, Order {self.order_range[o]}", **errorbar_kwargs)
+                # TODO: Make Order a function of self.order_range, which needs to be configured in ACID
+                # so that order_range is done automatically if multiple orders are manually put (and not 
+                # just using ACID_HARPS)
+                ax.errorbar(x, y, yerr=yerr, label=f"Frame {f+1}, Order {o+1}", **errorbar_kwargs)
 
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
@@ -273,6 +278,10 @@ class Result:
         filename : str, optional
             Name of the file to save the Result object to, by default "result.pkl"
         """
+        
+        if self.ACID_HARPS:
+            print("Cannot save Result object when ACID_HARPS=True. Skipping save.")
+            return
 
         with open(filename, "wb") as f:
             pickle.dump(self, f)
@@ -294,4 +303,6 @@ class Result:
         else:
             obj = result_object
         obj.__class__ = cls
+        if obj.verbose>0:
+            print("Result object loaded")
         return obj
