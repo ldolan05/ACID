@@ -712,7 +712,6 @@ class ACID:
         self.production_run = production_run
         self.cores = cores
 
-        print(all_frames)
         if all_frames is None:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original

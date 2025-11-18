@@ -1,7 +1,7 @@
 from math import tau
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings
+import corner, sys, os, pickle, warnings, contextlib
 from beartype import beartype
 from numpy import integer as npint
 
@@ -55,7 +55,17 @@ class Result:
 
         self.ndim = len(self.model_inputs)
 
-        self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
+        # Calculate autocorr time, burnin, thin
+        # Suppress output from get_autocorr_time call
+        with open(os.devnull, "w") as devnull, \
+            contextlib.redirect_stdout(devnull), \
+            contextlib.redirect_stderr(devnull):
+            self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
+        
+        if self.nsteps < 50 * np.max(self.tau):
+            print("The number of MCMC steps is less than 50 times the maximum autocorrelation time. " \
+                  "The sampler may not have converged. Consider running more steps or checking the walker plots.")
+
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
 
@@ -100,7 +110,11 @@ class Result:
             self.all_frames = self.ACID.all_frames
 
         # Recalculate autocorr time, burnin, thin
-        self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
+        # Suppress output from get_autocorr_time call
+        with open(os.devnull, "w") as devnull, \
+            contextlib.redirect_stdout(devnull), \
+            contextlib.redirect_stderr(devnull):
+            self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
     
@@ -156,7 +170,7 @@ class Result:
         plt.show()
 
     @_require_all_results
-    def plot_profile(
+    def plot_profiles(
         self,
         grid            :bool      = True,
         labels          :dict|None = None,
@@ -179,7 +193,7 @@ class Result:
         # Set default errorbar kwargs
         errorbar_kwargs = dict(errorbar_kwargs or {})
         errorbar_defaults = {
-            "fmt"      : ".",
+            "fmt"      : ".-",
             "ecolor"   : "red",
             "linewidth": 1,
             "label"    : "LSD Profile with Errors"
