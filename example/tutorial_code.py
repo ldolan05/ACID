@@ -146,3 +146,19 @@ plt.xlabel('Velocities (km/s)')
 plt.ylabel('Flux')
 plt.legend()
 plt.show()
+
+#%% HARPS data example
+e2ds_files = glob.glob('tests/data/*e2ds_A*.fits') # Returns list of HARPS files
+linelist_path = 'example/example_linelist.txt'
+save_path = 'no save'
+order_range = np.arange(41, 43) # Specify which orders to run ACID on (here we do 41 and 42 as an example)
+
+# choose a velocity grid for the final profile(s)
+deltav = 0.82     # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
+velocities = np.arange(-25, 25, deltav)
+
+# run ACID function
+ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+BJDs, profiles, errors = ACID.run_ACID_HARPS(filelist=e2ds_files, file_type='e2ds',
+                                             save_path=save_path, nsteps=2000,
+                                             order_range=order_range)
