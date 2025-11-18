@@ -24,16 +24,15 @@ spectrum = spec_file[1].data[::skips]     # Spectral Flux
 error = spec_file[2].data[::skips]        # Spectral Flux Errors
 sn = spec_file[3].data                    # SN of Spectrum
 
-linelist = 'example/example_linelist.txt' # Insert path to line list
+linelist_path = 'example/example_linelist.txt' # Insert path to line list
 
 # Choose a velocity grid for the final profile(s), you can use the calc_deltav
 # function to get a velocity pixel size if desired, otherwise, set your own deltav value
 # the velocity pixel size must not be smaller than the spectral pixel size
-deltav = acid.calc_deltav(wavelength)
-velocities = np.arange(-25, 25, deltav)
+velocities = np.arange(-25, 25, 0.82)
 
 # Initiate ACID
-ACID = acid.ACID(velocities=velocities, linelist_path=linelist)
+ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
 # Run ACID
 result = ACID.run_ACID(wavelength, spectrum, error, sn, nsteps=2000)
 
@@ -64,14 +63,13 @@ for file in files:
     errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
     sns.append(float(spec_file[3].data))     # SN of Spectrum
 
-linelist = 'example/example_linelist.txt' # Insert path to line list
+linelist_path = 'example/example_linelist.txt' # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
-deltav = acid.calc_deltav(wavelengths[0])
-velocities = np.arange(-25, 25, deltav)
+velocities = np.arange(-25, 25, 0.82)
 
 # run ACID function
-ACID = acid.ACID(velocities=velocities, linelist_path=linelist)
+ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
 result = ACID.run_ACID(wavelengths, spectra, errors, sns, nsteps=2000)
 
 # plot results
@@ -94,13 +92,12 @@ spec_file = fits.open('example/sample_spec_1.fits')
 wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
 spectrum = spec_file[1].data[::skips]     # Spectral Flux
 error = spec_file[2].data[::skips]        # Spectral Flux Errors
-sn = spec_file[3].data           # SN of Spectrum
+sn = spec_file[3].data                    # SN of Spectrum
 
-linelist = 'example/example_linelist.txt' # Insert path to line list
+linelist_path = 'example/example_linelist.txt' # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
-deltav = acid.calc_deltav(wavelength)  
-velocities = np.arange(-25, 25, deltav)
+velocities = np.arange(-25, 25, 0.82)
 
 # choose size of wavelength ranges (or chunks)
 wave_chunk = 25
@@ -111,14 +108,19 @@ max_wave = min_wave+wave_chunk
 # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
 result = np.zeros((1, chunks_no, 2, len(velocities)))
 
+# Initiate ACID
+ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+
 for i in range(chunks_no):
 
     # use indexing to select correct chunk of spectrum
     idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
 
-    # run ACID function on specific chunk
-    result = acid.run_ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], [sn], linelist,
-                        velocities, all_frames=result, order=i, nsteps=2000)
+    # You can recursively call run_ACID to fill in each order
+    # In the future, this loop will be handled internally by ACID and this
+    # example will be updated accordingly.
+    result = ACID.run_ACID(wavelength[idx], spectrum[idx], error[idx], sn,
+                           all_frames=result, order=i, nsteps=2000)
 
     min_wave += wave_chunk
     max_wave += wave_chunk
