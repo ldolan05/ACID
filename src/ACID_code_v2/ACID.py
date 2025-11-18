@@ -27,7 +27,78 @@ importlib.reload(utils)
 class ACID:
     """Accurate Continuum fItting and Deconvolution (ACID) class"""
 
-    def __init__(self):
+    def __init__(self,
+            velocities     :np.ndarray|None      = None,
+            linelist_path  :str|None             = None,
+            linelist_wl    :np.ndarray|list|None = None,
+            linelist_depths:np.ndarray|list|None = None,
+            telluric_lines :np.ndarray|list|None = None,
+            name           :str                  = 'ACID',
+            ):
+        """Initialises ACID class with inputted parameters.
+
+        Parameters
+        ----------
+        linelist_path : str | None, optional
+            Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
+            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. If None, you can directly provide linelist_wl
+            and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided., by default None
+        velocities : np.ndarray | None, optional
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
+            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
+        linelist_wl : np.ndarray | list | None, optional
+            Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
+            Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
+        linelist_depths : np.ndarray | list | None, optional
+            Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
+            Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
+        telluric_lines : np.ndarray | list | None, optional
+            List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
+            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
+        name : str, optional
+            Name to call any saved files, by default 'ACID'
+        """
+
+        # Sets self.velocities, self.linelist_path, self.telluric_lines, self.name, given the inputs
+        # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
+        if velocities is not None:
+            if velocities.ndim != 1:
+                raise ValueError("'velocities' must be a one-dimensional array or list")
+
+        # Validate linelist inputs
+        if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
+            raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist_path' must be provided.")
+        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
+            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+        if linelist_wl is not None:
+            # In this case both linelist_wl and linelist_depths were provided as checked in the two above statements
+            linelist_wl     = np.array(linelist_wl)
+            linelist_depths = np.array(linelist_depths)
+            if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
+                raise ValueError("'linelist_wl' and 'linelist_depths' must be a one-dimensional array or list")
+            if linelist_wl.shape != linelist_depths.shape:
+                raise ValueError("'linelist_wl' and 'linelist_depths' must have the same length and shape")
+        # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
+        # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
+        if linelist_path is None:
+            linelist_path = {"wavelength": linelist_wl, "depth": linelist_depths}
+
+        # Define telluric_lines with defaults if not input, check type if it is
+        if telluric_lines is None:
+            telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
+                              5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+        if not isinstance(telluric_lines, (list, np.ndarray)):
+            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
+            "mask in angstroms (could be empty or single-valued)")
+        telluric_lines = np.array(telluric_lines)
+        if telluric_lines.ndim != 1 or telluric_lines.size == 0:
+            raise ValueError("telluric_lines must be a one-dimensional array or list")
+        
+        # Set the above class attributes
+        self.velocities      = velocities
+        self.linelist_path   = linelist_path
+        self.telluric_lines  = telluric_lines
+        self.name            = name
 
         # Define default order range, can be overwritten in run_ACID_HARPS
         self.order_range = [1]
@@ -41,10 +112,10 @@ class ACID:
 
     def continuumfit(
             self,
-            fluxes:np.ndarray,
-            wavelengths:np.ndarray,
-            errors:np.ndarray,
-            poly_ord:int|npint
+            fluxes     : np.ndarray,
+            wavelengths: np.ndarray,
+            errors     : np.ndarray,
+            poly_ord   : int|npint
             ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -508,30 +579,24 @@ class ACID:
             frame_sns.append(float(estimated_sn.value))
         return frame_sns
 
-    def run_ACID(
-            self,
+    def run_ACID(self,
             input_wavelengths,
             input_spectra,
             input_spectral_errors,
             frame_sns                      = None,
-            linelist_path  :str            = None,
-            velocities                     = None,
-            linelist_wl                    = None,
-            linelist_depths                = None,
             all_frames                     = None,
             poly_ord       :int|npint      = 3,
             pix_chunk      :int|npint      = 20,
             dev_perc       :int|npint      = 25,
-            name           :str            = "test",
             n_sig          :int|npint      = 1,
-            telluric_lines                 = None,
             order          :int|npint      = 0,
             verbose        :bool           = True,
             parallel       :bool           = True,
             cores          :int|npint|None = None,
             nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
-            production_run :bool           = False
+            production_run :bool           = False,
+            **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
@@ -552,19 +617,6 @@ class ACID:
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
             frame_sns[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
             spectra., by default None
-        linelist_path : str, optional
-            Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
-            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. If None, you can directly provide linelist_wl
-            and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided., by default None
-        velocities : array, optional
-            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
-            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
-        linelist_wl : array, optional
-            Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
-            Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
-        linelist_depths : array, optional
-            Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
-            Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
         all_frames : str or array, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
             regions or order (in the case of echelle spectra). General shape needs to be
@@ -582,9 +634,6 @@ class ACID:
             residuals between an inital model and the data. The regions that are clipped from the residuals will
             be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 1
-        telluric_lines : list, optional
-            List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
-            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
         order : int, optional
             Only applicable if an all_frames output array has been provided as this is the order position in that
             array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in all_frames[:, 5]., by default 0
@@ -602,6 +651,9 @@ class ACID:
         production_run : bool, optional
             If True, skips the final process_results step and returns a Result object directly. This allows for faster chain analysis and want
             to increase the number of steps with result.continue_sampling(steps). If true, some methods in Result will be desabled, by default False
+        **kwargs : dict, optional
+            Additional keyword arguments. Allows for all the arguments that are initalised in the ACID class to be
+            overwritten for this run of ACID. See __init__ method for more details.
         Returns
         -------
         Result
@@ -643,58 +695,12 @@ class ACID:
         if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
 
-        # Define velocities if not input, this should usually be put in though, as the -25 to 25 is arbitrary
-        if velocities is None:
-            velocities = np.arange(-25, 25, utils.calc_deltav(input_wavelengths[0]))
-        if not isinstance(velocities, np.ndarray):
-            raise TypeError("velocities must be a numpy array of velocity grid points (in km/s) for the LSD profiles.")
-
-        # Validate linelist inputs
-        if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
-            raise ValueError("One of 'linelist_wl', 'linelist_depths' or 'linelist_path' must be provided.")
-        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
-            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
-        if linelist_path is not None and not isinstance(linelist_path, str):
-            raise TypeError("'linelist_path' must be a string pointing to the linelist file.")
-        if linelist_wl is not None:
-            if not isinstance(linelist_wl, (list, np.ndarray)):
-                raise TypeError("'linelist_wl' must be a list or numpy array")
-            linelist_wl = np.array(linelist_wl)
-            if linelist_wl.ndim != 1:
-                raise ValueError("'linelist_wl' must be a one-dimensional array or list")
-        if linelist_depths is not None:
-            if not isinstance(linelist_depths, (list, np.ndarray)):
-                raise TypeError("'linelist_depths' must be a list or numpy array")
-            linelist_depths = np.array(linelist_depths)
-            if linelist_depths.ndim != 1:
-                raise ValueError("'linelist_depths' must be a one-dimensional array or list")
-            if linelist_wl.shape != linelist_depths.shape:
-                raise ValueError("'linelist_wl' and 'linelist_depths' must have the same length and shape")
-        # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
-        # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
-        if linelist_path is None:
-            linelist_path = {"wavelength": linelist_wl, "depth": linelist_depths}
-
-        # Define telluric_lines with defaults if not input, check type if it is
-        if telluric_lines is None:
-            telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                              5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
-        if not isinstance(telluric_lines, (list, np.ndarray)):
-            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
-            "mask in angstroms (could be empty or single-valued)")
-        telluric_lines = np.array(telluric_lines)
-        if telluric_lines.ndim != 1 or telluric_lines.size == 0:
-            raise ValueError("telluric_lines must be a one-dimensional array or list")
-
         # Assign all inputs to class variables (except all frames, handled below)
         self.frame_wavelengths = input_wavelengths
         self.frame_flux = input_spectra
         self.frame_errors = input_spectral_errors
         self.frame_sns = frame_sns
-        self.velocities = velocities
-        self.linelist_path = linelist_path
         self.poly_ord = poly_ord
-        self.name = name
         self.verbose = verbose
         self.nsteps = nsteps
         self.order = order
@@ -705,7 +711,6 @@ class ACID:
         self.parallel = parallel
         self.production_run = production_run
         self.cores = cores
-        self.telluric_lines = telluric_lines
 
         if all_frames is None:
             if self.all_frames is None:
@@ -755,6 +760,7 @@ class ACID:
         # Set the number of points in vgrid (k_max)
         self.k_max = len(self.initial_profile)
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
+        # TODO: print(self.k_max == len(self.velocities))
 
         # Set x, y, yerr for emcee
         self.x = self.combined_wavelengths
@@ -874,7 +880,6 @@ class ACID:
         self.poly_cos_err = []
 
         for i in range(self.ndim):
-            mcmc = np.median(flat_samples[:, i])
             error = np.std(flat_samples[:, i])
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
@@ -916,7 +921,7 @@ class ACID:
             return Result(self)
         return
 
-    def continue_sampling(self, nsteps, production_run=False):
+    def continue_sampling(self, nsteps:int|npint, production_run:bool=False):
         """Continue MCMC sampling for additional steps.
 
         Parameters
@@ -942,8 +947,8 @@ class ACID:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
 
-    def run_ACID_HARPS(self, filelist, linelist_path, velocities, order_range=None, save_path = './',
-                       file_type = 'e2ds', name="test", **kwargs):
+    def run_ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
+                       file_type:str='e2ds', **kwargs):
         """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -958,11 +963,6 @@ class ACID:
         filelist : list of strings
             List of files. Files must come from the same observation night as continuum is fit for a combined
             spectrum of all frames. A profile and associated errors will be produced for each file specified.
-        linelist_path : str
-            Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
-            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. 
-        velocities : array
-            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create
         order_range : array, optional
             Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths 
             will be considered, by default None.
@@ -975,36 +975,47 @@ class ACID:
 
         Returns
         -------
-        list
-            Barycentric Julian Date for files
-        list
-            Profiles (in normalised flux)
-        list
-            Errors on profiles (in normalised flux)
+        Object
+            Result object containing the LSD profiles and associated data. ACID_HARPS=True flag is set to allow
+            legacy subscripting and iteration if needed. The legacy subscript and iteration methods will access the
+            following attributes:
+            list
+                Barycentric Julian Date for files
+            list
+                Profiles (in normalised flux)
+            list
+                Errors on profiles (in normalised flux)
+            It can be accessed for example by:
+            >>> result = acid.run_ACID_HARPS(...)
+            >>> BJDs = result.BJDs
+            >>> profiles = result.profiles
+            >>> errors = result.errors
+            or
+            >>> BJDs, profiles, errors = result
         """
 
-        self.linelist_path = linelist_path
-        self.order_range = order_range
-        self.velocities = velocities
-        # global frame_wavelengths
-        # global frame_errors
-        # global sns
-        # global run_name
-        self.name = name
+        file_type = file_type.lower()
+        if file_type not in ['e2ds', 's1d']:
+            raise ValueError("file_type must be either 'e2ds' or 's1d'")
 
-        if self.order_range is None:
+        # Handle order_range input
+        if order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
             # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
             self.order_range = np.arange(10, 70)
+
+        self.order_range = np.array(order_range) # Makes sure order range is an array regardless of input type
+        self.file_type = file_type
+        self.filelist = filelist
 
         for order in self.order_range:
 
             print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
 
-            frame_wavelengths, frames, frame_errors, sns = self.read_in_frames(order, filelist, file_type)
+            frame_wavelengths, frames, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
 
             # Updates recursively the all_frames array with the profiles for each order
-            self.run_ACID(frame_wavelengths, frames, frame_errors, sns, self.linelist_path, self.velocities,
+            self.run_ACID(frame_wavelengths, frames, frame_errors, sns, self.linelist_path,
                           order=order-min(self.order_range), return_result=False, **kwargs)
 
         # adding into fits files for each frame
@@ -1048,54 +1059,145 @@ def run_ACID(*args, **kwargs):
     """Legacy ACID function
 
     This function runs the legacy ACID code. This is provided for backwards compatibility with previous versions of ACID.
-    It is recommended to use the ACID class and its methods for new code.
+    It is recommended to use the ACID class and its methods for new code. The args and kwargs passing follows the original
+    v1 version of ACID, which can be found in https://github.com/ldolan05/ACID
 
     Parameters
     ----------
     *args
-        Positional arguments to be passed to the ACID initialisation.
+        Positional arguments to be passed to the ACID function.
     **kwargs
         Keyword arguments to be passed to the ACID initialisation and function.
 
     Returns
     -------
     Any
-        Returns the outputs of the ACID function.
+        Returns the outputs of the ACID function (now a Result object).
     """
+    # Use old argument names and map to new ones
+    LEGACY_ACID_ARGS = [
+        "input_wavelengths",
+        "input_spectra",
+        "input_spectral_errors",
+        "line",
+        "frame_sns",
+        "vgrid",
+        "all_frames",
+        "poly_or",
+        "pix_chunk",
+        "dev_perc",
+        "n_sig",
+        "telluric_lines",
+        "order",
+    ]
+    RENAMED_LEGACY_ARGS = {
+        "vgrid": "velocities",
+        "line": "linelist_path",
+        "poly_or": "poly_ord",
+    }
+    legacy_kwargs = {}
+
+    # Check for too many positional arguments
+    if len(args) > len(LEGACY_ACID_ARGS):
+        raise TypeError(f"Too many positional arguments: {len(args)}")
+
+    # Map positional arguments to their legacy names
+    for i, val in enumerate(args):
+        legacy_kwargs[LEGACY_ACID_ARGS[i]] = val
+    
+    # Map legacy argument names to new ones
+    translated_legacy = {}
+    for key, val in legacy_kwargs.items():
+        new_key = RENAMED_LEGACY_ARGS.get(key, key)
+        translated_legacy[new_key] = val
+    translated_kwargs = {}
+    for key, val in kwargs.items():
+        new_key = RENAMED_LEGACY_ARGS.get(key, key)
+        translated_kwargs[new_key] = val
+
+    # Combine both translated dictionaries
+    combined = {**translated_legacy, **translated_kwargs}
+
+    # Determine which arguments are for __init__ and which are for run_ACID_HARPS
     init_params = inspect.signature(ACID.__init__).parameters
     init_keys = set(init_params.keys()) - {"self"}
 
-    # split kwargs
-    init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
-    run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
+    # Split kwargs accordingly
+    init_kwargs = {key: val for key, val in combined.items() if key in init_keys}
+    run_kwargs = {key: val for key, val in combined.items() if key not in init_keys}
 
     acid = ACID(**init_kwargs)
-    return acid.run_ACID(*args, **run_kwargs)
+    return acid.run_ACID(**run_kwargs)
 
 def run_ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
 
     This function runs the legacy ACID_HARPS code. This is provided for backwards compatibility with previous versions of ACID.
-    It is recommended to use the ACID class and its methods for new code.
+    It is recommended to use the ACID class and its methods for new code. The args and kwargs passing follows the original
+    v1 version of ACID_HARPS, which can be found in https://github.com/ldolan05/ACID
 
     Parameters
     ----------
     *args
-        Positional arguments to be passed to the ACID initialisation.
+        Positional arguments to be passed to the run_ACID_HARPS function.
     **kwargs
-        Keyword arguments to be passed to the ACID initialisation and ACID_HARPS function.
+        Keyword arguments to be passed to the ACID initialisation and run_ACID_HARPS function.
 
     Returns
     -------
     Any
-        Returns the outputs of the ACID_HARPS function.
+        Returns the outputs of the run_ACID_HARPS function (now a Result object).
     """
+
+    # Use old argument names and map to new ones
+    LEGACY_HARPS_ARGS = [
+        "filelist",
+        "line",
+        "vgrid",
+        "poly_or",
+        "order_range",
+        "save_path",
+        "file_type",
+        "pix_chunk",
+        "dev_perc",
+        "n_sig",
+        "telluric_lines",
+    ]
+    RENAMED_LEGACY_ARGS = {
+        "vgrid": "velocities",
+        "line": "linelist_path",
+        "poly_or": "poly_ord",
+    }
+    legacy_kwargs = {}
+
+    # Check for too many positional arguments
+    if len(args) > len(LEGACY_HARPS_ARGS):
+        raise TypeError(f"Too many positional arguments: {len(args)}")
+
+    # Map positional arguments to their legacy names
+    for i, val in enumerate(args):
+        legacy_kwargs[LEGACY_HARPS_ARGS[i]] = val
+    
+    # Map legacy argument names to new ones
+    translated_legacy = {}
+    for key, val in legacy_kwargs.items():
+        new_key = RENAMED_LEGACY_ARGS.get(key, key)
+        translated_legacy[new_key] = val
+    translated_kwargs = {}
+    for key, val in kwargs.items():
+        new_key = RENAMED_LEGACY_ARGS.get(key, key)
+        translated_kwargs[new_key] = val
+
+    # Combine both translated dictionaries
+    combined = {**translated_legacy, **translated_kwargs}
+
+    # Determine which arguments are for __init__ and which are for run_ACID_HARPS
     init_params = inspect.signature(ACID.__init__).parameters
     init_keys = set(init_params.keys()) - {"self"}
 
-    # split kwargs
-    init_kwargs = {k: v for k, v in kwargs.items() if k in init_keys}
-    run_kwargs = {k: v for k, v in kwargs.items() if k not in init_keys}
+    # Split kwargs accordingly
+    init_kwargs = {key: val for key, val in combined.items() if key in init_keys}
+    run_kwargs = {key: val for key, val in combined.items() if key not in init_keys}
 
     acid = ACID(**init_kwargs)
-    return acid.run_ACID_HARPS(*args, **run_kwargs)
+    return acid.run_ACID_HARPS(**run_kwargs)
