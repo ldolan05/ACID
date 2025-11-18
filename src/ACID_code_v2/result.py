@@ -44,6 +44,7 @@ class Result:
         self.velocities = ACID.velocities
         self.model_inputs = ACID.model_inputs
         self.verbose = ACID.verbose
+        self.order_range = ACID.order_range
         self.BJDs = getattr(ACID, 'BJDs', None)
         self.profiles = getattr(ACID, 'profiles', None)
         self.errors = getattr(ACID, 'errors', None)
@@ -63,8 +64,9 @@ class Result:
             self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
         
         if self.nsteps < 50 * np.max(self.tau):
-            print("The number of MCMC steps is less than 50 times the maximum autocorrelation time. " \
-                  "The sampler may not have converged. Consider running more steps or checking the walker plots.")
+            if self.verbose>1:
+                print("The number of MCMC steps is less than 50 times the maximum autocorrelation time. " \
+                    "The sampler may not have converged. Consider running more steps or checking the walker plots.")
 
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
@@ -174,6 +176,7 @@ class Result:
         self,
         grid            :bool      = True,
         labels          :dict|None = None,
+        return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
         errorbar_kwargs :dict|None = None
         ):
@@ -185,6 +188,8 @@ class Result:
             Show or hide grid, by default True
         labels : dict, optional
             Keys: 'xlabel', 'ylabel', and 'title'. Allows label overrides., by default None
+        return_fig : bool, optional
+            Whether to return the figure and axis objects instead of showing the plot, by default False
         subplot_kwargs : dict, optional
             Keyword arguments to be passed to plt.subplots(), by default None
         errorbar_kwargs : dict, optional
@@ -196,7 +201,6 @@ class Result:
             "fmt"      : ".-",
             "ecolor"   : "red",
             "linewidth": 1,
-            "label"    : "LSD Profile with Errors"
         }
         for key, value in errorbar_defaults.items():
             errorbar_kwargs.setdefault(key, value)
@@ -215,16 +219,30 @@ class Result:
         for key, value in default_labels.items():
             labels.setdefault(key, value)
 
+        # Set useful variables
+        nframes = len(self.all_frames)
+        norders = len(self.all_frames[0])
+        frames = np.copy(self.all_frames)
         fig, ax = plt.subplots(**subplot_kwargs)
-        x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
-        ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
+        if nframes > 1:
+            if norders > 1:
+                print("Warning: Multiple frames and orders detected. Only plotting the first order from each frame.")
+                frames = frames[:, 0, :, :]  # Take first order only
+        for f, frame in enumerate(frames):
+            for o, order in enumerate(frame):
+                x, y, yerr = self.velocities, order[0], order[1]
+                ax.errorbar(x, y, yerr=yerr, label=f"Frame {f+1}, Order {self.order_range[o]}", **errorbar_kwargs)
+
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
         ax.set_ylabel(labels["ylabel"])
         ax.axhline(0, color='black', linestyle='--', linewidth=1)
         ax.legend()
         ax.grid(grid)
-        plt.show()
+        if return_fig:
+            return fig, ax
+        else:
+            plt.show()
 
     @_require_all_results
     def plot_forward_model(self):
@@ -262,16 +280,18 @@ class Result:
             print(f"Result object saved to {filename}")
 
     @classmethod
-    def load_result(cls, filename:str="result.pkl"):
+    def load_result(cls, result_object:str|object="result.pkl"):
         """Loads a Result object from a pickle file.
 
         Parameters
         ----------
-        filename : str, optional
-            Name of the file to load the Result object from, by default "result.pkl"
+        filename : str | object, optional
+            Name of the file to load the Result object from, or a Result object, by default "result.pkl"
         """
-
-        with open(filename, "rb") as f:
-            obj = pickle.load(f)
+        if isinstance(result_object, str):
+            with open(result_object, "rb") as f:
+                obj = pickle.load(f)
+        else:
+            obj = result_object
         obj.__class__ = cls
         return obj
