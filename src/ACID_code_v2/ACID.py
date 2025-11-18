@@ -730,8 +730,9 @@ class ACID:
         self.production_run = production_run
         self.cores = cores
 
-        if all_frames == "default":
-            all_frames = None # legacy behaviour
+        if isinstance(all_frames, str):
+            if all_frames == "default":
+                all_frames = None # legacy behaviour
         if all_frames is None:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original

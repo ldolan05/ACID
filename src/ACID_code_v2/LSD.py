@@ -120,9 +120,6 @@ class LSD:
         if mat_size < m_available:
 
             # Calculating entire alpha matrix at once
-            if self.verbose>0:
-                print('Calculating alpha matrix using vectorised method...')
-
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
             self.alpha = (self.depths_expected[:, None] * delta).sum(axis=1)  # (nb, n_vel)

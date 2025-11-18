@@ -195,11 +195,11 @@ def classes_test():
     print(result[0,0,0][:5])
     return result
 
-# q_res = quickstart()
-# mf_res = multiple_frames()
-# mo_res = multiple_orders()
-# res_e2ds = test_run_e2ds()
-# res_s1d = test_run_s1d()
+q_res = quickstart()
+mf_res = multiple_frames()
+mo_res = multiple_orders()
+res_e2ds = test_run_e2ds()
+res_s1d = test_run_s1d()
 classes_res = classes_test()
 classes_res.continue_sampling(nsteps=3000)
 classes_res.plot_walkers()
