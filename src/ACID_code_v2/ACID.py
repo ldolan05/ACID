@@ -1103,36 +1103,9 @@ def run_ACID(*args, **kwargs):
         "line": "linelist_path",
         "poly_or": "poly_ord",
     }
-    legacy_kwargs = {}
 
-    # Check for too many positional arguments
-    if len(args) > len(LEGACY_ACID_ARGS):
-        raise TypeError(f"Too many positional arguments: {len(args)}")
-
-    # Map positional arguments to their legacy names
-    for i, val in enumerate(args):
-        legacy_kwargs[LEGACY_ACID_ARGS[i]] = val
-    
-    # Map legacy argument names to new ones
-    translated_legacy = {}
-    for key, val in legacy_kwargs.items():
-        new_key = RENAMED_LEGACY_ARGS.get(key, key)
-        translated_legacy[new_key] = val
-    translated_kwargs = {}
-    for key, val in kwargs.items():
-        new_key = RENAMED_LEGACY_ARGS.get(key, key)
-        translated_kwargs[new_key] = val
-
-    # Combine both translated dictionaries
-    combined = {**translated_legacy, **translated_kwargs}
-
-    # Determine which arguments are for __init__ and which are for run_ACID_HARPS
-    init_params = inspect.signature(ACID.__init__).parameters
-    init_keys = set(init_params.keys()) - {"self"}
-
-    # Split kwargs accordingly
-    init_kwargs = {key: val for key, val in combined.items() if key in init_keys}
-    run_kwargs = {key: val for key, val in combined.items() if key not in init_keys}
+    # Split args and kwargs into init and run kwargs using helper function
+    init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_ACID_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
 
     acid = ACID(**init_kwargs)
     return acid.run_ACID(**run_kwargs)
@@ -1176,24 +1149,35 @@ def run_ACID_HARPS(*args, **kwargs):
         "line": "linelist_path",
         "poly_or": "poly_ord",
     }
+
+    # Split args and kwargs into init and run kwargs using helper function
+    init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_HARPS_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
+
+    acid = ACID(**init_kwargs)
+    return acid.run_ACID_HARPS(**run_kwargs)
+
+def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
+    """Helper function to split legacy args and kwargs into init and run kwargs given
+    legacy argument names and their renamed counterparts.
+    """
     legacy_kwargs = {}
 
     # Check for too many positional arguments
-    if len(args) > len(LEGACY_HARPS_ARGS):
+    if len(args) > len(legacy_args):
         raise TypeError(f"Too many positional arguments: {len(args)}")
 
     # Map positional arguments to their legacy names
     for i, val in enumerate(args):
-        legacy_kwargs[LEGACY_HARPS_ARGS[i]] = val
+        legacy_kwargs[legacy_args[i]] = val
     
     # Map legacy argument names to new ones
     translated_legacy = {}
     for key, val in legacy_kwargs.items():
-        new_key = RENAMED_LEGACY_ARGS.get(key, key)
+        new_key = renamed_args_map.get(key, key)
         translated_legacy[new_key] = val
     translated_kwargs = {}
     for key, val in kwargs.items():
-        new_key = RENAMED_LEGACY_ARGS.get(key, key)
+        new_key = renamed_args_map.get(key, key)
         translated_kwargs[new_key] = val
 
     # Combine both translated dictionaries
@@ -1206,6 +1190,4 @@ def run_ACID_HARPS(*args, **kwargs):
     # Split kwargs accordingly
     init_kwargs = {key: val for key, val in combined.items() if key in init_keys}
     run_kwargs = {key: val for key, val in combined.items() if key not in init_keys}
-
-    acid = ACID(**init_kwargs)
-    return acid.run_ACID_HARPS(**run_kwargs)
+    return init_kwargs, run_kwargs
