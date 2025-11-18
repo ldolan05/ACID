@@ -13,7 +13,7 @@ class LSD:
 
     def __init__(self, ACID=None):
 
-        self.verbose = True
+        self.verbose = 1
         self.adjust_continuum = None
         self.slurm = "SLURM_JOB_ID" in os.environ
         if not ACID:
@@ -33,7 +33,7 @@ class LSD:
         # Nothing the args use to be:
         # wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities
         # and kwargs:
-        # verbose=False
+        # verbose=1
         # These can be overridden by passing in different values,
         # but by default use the ones from the class init
         arg_names = [
@@ -119,11 +119,16 @@ class LSD:
         m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
         if mat_size < m_available:
 
+            # Calculating entire alpha matrix at once
+            if self.verbose>0:
+                print('Calculating alpha matrix using vectorised method...')
+
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
             self.alpha = (self.depths_expected[:, None] * delta).sum(axis=1)  # (nb, n_vel)
 
         else:
+            # Calculate in blocks to save memory
             n_blank = len(blankwaves)
             n_vel   = len(self.velocities)
             mem_size = available_memory // 2
@@ -132,7 +137,7 @@ class LSD:
             block = min(max_block, len(self.wavelengths_expected))
             # block = 512 # after initial testing, this value is a good compromise between memory use and speed
             self.alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
-            if self.verbose:
+            if self.verbose>0:
                 iterable = tqdm(range(0, len(self.wavelengths_expected), block), desc='Calculating alpha matrix')
             else:
                 iterable = range(0, len(self.wavelengths_expected), block)

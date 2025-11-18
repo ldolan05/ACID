@@ -590,7 +590,7 @@ class ACID:
             dev_perc       :int|npint      = 25,
             n_sig          :int|npint      = 1,
             order          :int|npint      = 0,
-            verbose        :bool           = True,
+            verbose        :int|npint|bool = True,
             parallel       :bool           = True,
             cores          :int|npint|None = None,
             nsteps         :int|npint      = 10000,
@@ -603,32 +603,35 @@ class ACID:
 
         Parameters
         ----------
-        input_wavelengths : array
+        input_wavelengths : np.ndarray | list
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
             input_wavelengths[i] corresponds to the wavelengths for the ith frame.
-        input_spectra : array
+        input_spectra : np.ndarray | list
             An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
             input_spectra[i] corresponds to the spectral fluxes for the ith frame.
-        input_spectral_errors : array
+        input_spectral_errors : np.ndarray | list
             Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
             input_spectral_errors[i] corresponds to the spectral errors for the ith frame.
-        frame_sns : int or array, optional
+        frame_sns : int | np.ndarray | list | None, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
             frame_sns[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
-            spectra., by default None
-        all_frames : str or array, optional
+            spectra (this will make the code work, but is unlikely to produce the desired result)., by default None
+        all_frames : str | np.ndarray | None, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
             regions or order (in the case of echelle spectra). General shape needs to be
-            (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape, by default None
+            (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape.
+             The only allowed string is "default" due to legacy behaviour, which now acts the same as None, by default None
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
         pix_chunk : int, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
-            and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels, by default 20
+            and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels,
+            by default 20
         dev_perc : int, optional
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
-            and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels, by default 25
+            and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels,
+            by default 25
         n_sig : int, optional
             Number of sigma to clip in sigma clipping. Ill fitting lines are identified by sigma-clipping the
             residuals between an inital model and the data. The regions that are clipped from the residuals will
@@ -636,24 +639,29 @@ class ACID:
             LSD is applied to obtain the final profiles, by default 1
         order : int, optional
             Only applicable if an all_frames output array has been provided as this is the order position in that
-            array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in all_frames[:, 5]., by default 0
-        verbose : bool, optional
-            If True prints out time taken for each section of the code. Defaults to True., by default True
+            array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in
+            all_frames[:, 5]., by default 0
+        verbose : bool | int, optional
+            An integer between 0 and 2. If 0, nothing is printed. If 1, prints out time taken for each section of the code,
+            among other useful information. If 2, prints warnings about any potential issues with the input data or
+            autocorrelation warnings. If True, defaults to 1. If False, defaults to 0., by default 1
         parallel : bool, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, by default True
         cores : int, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
         nsteps : int, optional
-            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge, by default 10000
+            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge,
+            by default 10000
         return_result : bool, optional
-            If True, returns the Result object with the resulting profiles. Otherwise, you will need to handle the output manually
-            from acid.all_frames and acid.sampler, by default True
+            If True, returns the Result object with the resulting profiles. Otherwise, you will need to handle
+            the output manually from acid.all_frames and acid.sampler, by default True
         production_run : bool, optional
-            If True, skips the final process_results step and returns a Result object directly. This allows for faster chain analysis and want
-            to increase the number of steps with result.continue_sampling(steps). If true, some methods in Result will be desabled, by default False
+            If True, skips the final process_results step and returns a Result object directly. This allows for
+            faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
+            If true, some methods in Result will be desabled, by default False
         **kwargs : dict, optional
-            Additional keyword arguments. Allows for all the arguments that are initalised in the ACID class to be
-            overwritten for this run of ACID. See __init__ method for more details.
+            Additional keyword arguments. For the moment, these are not used. They are included to allow for
+            future expansion of the function without breaking existing code.
         Returns
         -------
         Result
@@ -680,8 +688,8 @@ class ACID:
         # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
         if np.any(input_spectra <= 0) or np.any(input_spectra > 1):
             print("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
-            "negative values. However, it is recommended to input spectra that are already normalised and positive. Please check your data. " \
-            "You can check acid.scale_spectra for more information on how this is done.")
+            "negative values. However, it is recommended to input spectra that are already normalised and positive. " \
+            "Please check your data. You can check acid.scale_spectra for more information on how this is done.")
             input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
                 input_wavelengths, input_spectra, input_spectral_errors)
 
@@ -693,7 +701,17 @@ class ACID:
             assert np.asarray(frame_sns).shape == np.asarray(input_spectra).shape, \
             "frame_sns.shape and input_spectra.shape do not match"
         if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
-            raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, not an array of S/N values for each pixel.")
+            raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
+            "not an array of S/N values for each pixel.")
+
+        # Make verbosity always an int regardless of input type, and check correct range
+        if verbose is True:
+            verbose = 1
+        elif verbose is False:
+            verbose = 0
+        elif isinstance(verbose, int):
+            if verbose < 0 or verbose > 2:
+                raise ValueError("verbose must be an integer between 0 and 2")
 
         # Assign all inputs to class variables (except all frames, handled below)
         self.frame_wavelengths = input_wavelengths
@@ -712,6 +730,8 @@ class ACID:
         self.production_run = production_run
         self.cores = cores
 
+        if all_frames == "default":
+            all_frames = None # legacy behaviour
         if all_frames is None:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
@@ -728,7 +748,7 @@ class ACID:
 
         ### Begin ACID process
 
-        if self.verbose:
+        if self.verbose>0:
             t0 = time.time()
             print('Initialising...')
 
@@ -771,11 +791,9 @@ class ACID:
         a, b = utils.get_normalisation_coeffs(self.x)
 
         # Masking based off residuals
-        if verbose:
+        if self.verbose>0:
             print('Residual masking...')
 
-        # yerr, model_inputs_resi, self.residual_masks = self.residual_mask(
-            # x, y, yerr, model_inputs, self.poly_ord, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines=self.tell_lines, n_sig=n_sig, alpha=self.alpha)
         # Inputs:
         # self.x, self.y, self.yerr, self.model_inputs, self.poly
         # Sets:
@@ -811,7 +829,7 @@ class ACID:
         self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
                             "k_max": self.k_max, "velocities": self.velocities}
 
-        if self.verbose:
+        if self.verbose>0:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
@@ -827,6 +845,7 @@ class ACID:
 
     def _run_mcmc(self, state, nsteps):
 
+        sampler_verbosity = True if self.verbose>0 else False
         backend = None
         if state is None:
             if not hasattr(self, 'sampler'):
@@ -841,7 +860,7 @@ class ACID:
 
         if self.parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if self.verbose:
+            if self.verbose>0:
                 print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
 
             # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
@@ -854,7 +873,7 @@ class ACID:
                     self.sampler = emcee.EnsembleSampler(
                         self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
                         moves=emcee.moves.DEMove())
-                    self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
+                    self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
             else: # This doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
@@ -862,7 +881,7 @@ class ACID:
         else:
             log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
-            self.sampler.run_mcmc(state, nsteps, progress=self.verbose, store=True)
+            self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
     def process_results(self, return_result=True):
 
