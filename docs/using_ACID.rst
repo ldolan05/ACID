@@ -202,12 +202,14 @@ For 'e2ds' spectra the resolution of the profiles are optimized when the velocit
    import numpy as np
 
    file_type = 'e2ds'
-   filelist = glob.glob('/path/to/files/**%s**.fits')%file_type   # returns list of HARPS fits files
-   linelist = '/path/to/files/example_linelist.txt'                            # Insert path to line list
+   e2ds_files = glob.glob('tests/data/*e2ds_A*.fits') # Returns list of HARPS files
+   linelist_path = 'example/example_linelist.txt'
+   save_path = 'no save'
+   order_range = np.arange(41, 43) # Specify which orders to run ACID on (here we do 41 and 42 as an example)
 
    # choose a velocity grid for the final profile(s)
    deltav = 0.82     # velocity pixel size for HARPS e2ds data from DRS pipeline 3.5
-   velocities = np.arange(-25, 25, deltav)  
+   velocities = np.arange(-25, 25, deltav)
 
 These inputs can be input into the HARPS function of ACID (ACID_HARPS):
 
@@ -216,6 +218,16 @@ These inputs can be input into the HARPS function of ACID (ACID_HARPS):
    import ACID_code_v2 as acid
 
    # run ACID function
-   BJDs, profiles, errors = acid.ACID_HARPS(filelist, linelist, velocities)
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+
+   # Due to legacy behaviour, the function returns BJDs, profiles and errors separately when indexed,
+   # not all_frames as in other examples. All frames can still be accessed via result.all_frames
+
+   result = Acid.ACID_HARPS(filelist=e2ds_files, file_type='e2ds', save_path=save_path, nsteps=2000,
+                            order_range=order_range)
+
+   # BJDs, profiles, profile_errors = result
+   all_frames = result.all_frames
+   result.plot_profiles()
 
 ACID computes and returns the Barycentric Julian Date, average profile and errors for each frame. The average profile is computed using a weighted mean across all orders.
