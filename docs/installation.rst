@@ -26,7 +26,7 @@ Once the environment has been activated ACID can be installed using pip_:
 .. _source:
 
 Cloning the repository
-===========================
+------------------------
 In order to use the example data (for the tutorials) or the test suite ACID will need to be installed from the source (i.e. directly from the GitHub repository).
 This can be done by cloning the source repository. All examples and tests attempt first to import from your pip installation.
 If this fails they will attempt to import from the local source directory instead.
