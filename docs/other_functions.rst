@@ -46,7 +46,7 @@ For the remainder of this page we will assume you have already run ACID and have
 This result is used for the remainder of this page.
 
 Plotting
--------
+---------
 
 The Result class contains a number of plotting methods to visualise the results of ACID. These include:
 

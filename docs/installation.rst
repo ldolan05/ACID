@@ -4,7 +4,7 @@ Installation
 =======================
 
 Installing the package
------------------------
+------------------------
 
 ACID_v2 has been tested in Python 3.13, and is currently incompatible with 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
 
@@ -39,7 +39,7 @@ If this fails they will attempt to import from the local source directory instea
 .. _test:
 
 Testing the installation
------------------------
+-------------------------
 
 Test your installation by running our test file in the test directory using pytest_. This may take a while (~1-2 min) but should run without any errors if the installation has gone smoothly.
 

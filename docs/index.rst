@@ -31,7 +31,7 @@ Please note that ACID v2 now functions as a class, and so the usage is slightly 
 .. _GitHub: https://github.com/Benjamin-Cadell/ACID_v2
 
 User Guide
-----------
+-----------
 
 .. toctree::
    :maxdepth: 2
@@ -43,7 +43,7 @@ User Guide
 
 
 License and Attribution
------------------------
+------------------------
 
 Copyright 2025, Benjamin Cadell.
 

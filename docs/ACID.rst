@@ -1,12 +1,12 @@
 .. _ACID:
 
 ACID API
-========
+=========
 
 .. currentmodule:: ACID_code_v2
 
 Core Classes
-------------
+-------------
 
 .. autosummary::
    :toctree: _api
@@ -17,7 +17,7 @@ Core Classes
 
 
 Utility Functions
------------------
+------------------
 
 .. autosummary::
    :toctree: _api
@@ -28,7 +28,7 @@ Utility Functions
    scale_spectra
 
 Legacy ACID Functions
----------------------
+----------------------
 
 These functions are retained for backwards compatibility with ACID v1.
 
@@ -38,4 +38,3 @@ These functions are retained for backwards compatibility with ACID v1.
 
    ACID
    ACID_HARPS
-

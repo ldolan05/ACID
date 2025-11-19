@@ -22,7 +22,11 @@ root_doc = 'index'
 extensions = ["sphinx.ext.autodoc",
               "sphinx.ext.napoleon",
               "sphinx.ext.doctest",
-              "sphinx.ext.viewcode",]
+              "sphinx.ext.viewcode",
+              "sphinx.ext.autosummary"
+              ]
+
+autosummary_generate = True
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
