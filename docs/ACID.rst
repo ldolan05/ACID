@@ -13,15 +13,15 @@ Core Classes
    :nosignatures:
 
    Acid
-   Acid.ACID()
-   Acid.ACID_HARPS()
+   Acid.ACID
+   Acid.ACID_HARPS
    Result
-   Result.plot_profiles()
-   Result.plot_walkers()
-   Result.plot_corner()
-   Result.continue_sampling()
-   Result.save_result()
-   Result.load_result()
+   Result.plot_profiles
+   Result.plot_walkers
+   Result.plot_corner
+   Result.continue_sampling
+   Result.save_result
+   Result.load_result
 
 
 Utility Functions
