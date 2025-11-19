@@ -10,13 +10,26 @@ warnings.filterwarnings("ignore")
 __all__ = ['Result']
 
 def _require_all_results(method):
+    # Make sure all results are processed before calling method
     def wrapper(self, *args, **kwargs):
         if self.production_run:
             name = method.__qualname__
             if self.verbose>0:
-                print(f"Note: The Result object was in production_run mode. Running {name} requires all results to be processed, \
-                      so process_results() has been called automatically.")
+                print(f"Note: The Result object was in production_run mode. Running {name} " \
+                      "requires all results to be processed, so process_results() has been " \
+                      "called automatically.")
             self.process_results()
+        return method(self, *args, **kwargs)
+    return wrapper
+
+def _require_ACID(method):
+    # Make sure ACID object is available before calling method
+    def wrapper(self, *args, **kwargs):
+        if self.ACID is None:
+            error = f"Cannot call {method.__qualname__}. The ACID object is not available in this " \
+            "Result instance. This can occur if ACID was set to None to allow for pickling in the " \
+            "case that multiple orders or frames were used."
+            raise ValueError(error)
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -37,6 +50,9 @@ class Result:
             Whether ACID was run in production mode, by default False
         """
         self.ACID = ACID
+
+        # This should be a temporary measure until ACID can be pickled properly
+        self.sampler = ACID.sampler
 
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
@@ -65,8 +81,9 @@ class Result:
         
         if self.nsteps < 50 * np.max(self.tau):
             if self.verbose>1:
-                print("The number of MCMC steps is less than 50 times the maximum autocorrelation time. " \
-                    "The sampler may not have converged. Consider running more steps or checking the walker plots.")
+                print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
+                "time. The sampler may not have converged. Consider running more steps or checking " \
+                "the walker plots.")
 
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
@@ -90,6 +107,7 @@ class Result:
         # ACID is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
+    @_require_ACID
     def continue_sampling(self, nsteps:int|npint, production_run:bool|None=None):
         """Continue MCMC sampling for additional steps.
 
@@ -108,6 +126,7 @@ class Result:
 
         # Update attributes from ACID object
         self.nsteps = self.ACID.nsteps
+        self.sampler = self.ACID.sampler
         if not self.production_run:
             self.all_frames = self.ACID.all_frames
 
@@ -120,6 +139,7 @@ class Result:
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
     
+    @_require_ACID
     def process_results(self):
         """Processes the MCMC results to extract the LSD profiles and errors.
         """
@@ -128,7 +148,8 @@ class Result:
         self.all_frames = self.ACID.all_frames
 
     def plot_walkers(self, burnin:int|npint|None=None, thin:int|npint|None=None):
-        """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum polynomial coefficients.
+        """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
+        polynomial coefficients.
 
         Parameters
         ----------
@@ -142,7 +163,7 @@ class Result:
 
         naxes = min(10, self.ndim)
         fig, axes = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
-        samples = self.ACID.sampler.get_chain(discard=burnin, thin=int(thin))
+        samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin + burnin
         for i in range(naxes):
             ax = axes[i]
@@ -166,7 +187,7 @@ class Result:
         """
 
         naxes = min(8, self.ndim)
-        samples = self.ACID.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
+        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
         fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         plt.show()
@@ -255,7 +276,8 @@ class Result:
         """
         raise NotImplementedError("plot_forward_model is not yet implemented")
         # x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
-        # theta_median = np.median(self.ACID.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin), axis=0)
+        # theta_median = np.median(self.ACID.sampler.get_chain(discard=self.burnin, flat=True,
+        # thin=self.thin), axis=0)
         # from src.ACID_code_v2.mcmc_utils import model_func
         # model = model_func(theta_median, x)
 
@@ -279,9 +301,12 @@ class Result:
             Name of the file to save the Result object to, by default "result.pkl"
         """
         
-        if self.ACID_HARPS:
-            print("Cannot save Result object when ACID_HARPS=True. Skipping save.")
-            return
+        nframes = len(self.all_frames) if self.all_frames is not None else 0
+        norders = len(self.all_frames[0]) if self.all_frames is not None else 0
+
+        if nframes > 1 or norders > 1:
+            print("Discarding ACID object to allow for pickling of multiple frames/orders.")
+            self.ACID = None
 
         with open(filename, "wb") as f:
             pickle.dump(self, f)
