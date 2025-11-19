@@ -1,4 +1,4 @@
-from .ACID import ACID, ACID_HARPS, Acid
+from .acid import ACID, ACID_HARPS, Acid
 from .result import Result
 from .utils import scale_spectra, calc_deltav
 __all__ = ['ACID', 'ACID_HARPS', 'Acid', 'calc_deltav', 'Result', 'scale_spectra']
