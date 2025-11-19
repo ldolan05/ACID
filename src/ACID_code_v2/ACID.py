@@ -1,16 +1,9 @@
-import sys, emcee, warnings, os, time, importlib, inspect, corner
-from matplotlib import units
+import sys, emcee, warnings, os, time, importlib, inspect
 import numpy as np
 from math import log10, floor
-import matplotlib.pyplot as plt
 from astropy.io import fits
-import astropy.units as u
-from astropy.nddata import StdDevUncertainty
 from scipy.interpolate import interp1d
 import multiprocessing as mp
-from multiprocessing import Pool
-from specutils import Spectrum
-from specutils.analysis import snr
 from functools import partial
 from beartype import beartype
 from numpy import integer as npint
@@ -540,45 +533,6 @@ class Acid:
 
         return spectrum, spec_errors
 
-    def guess_SNR(
-            self,
-            wavelengths : np.ndarray = None,
-            spectra     : np.ndarray = None,
-            errors      : np.ndarray = None
-            ):
-        """Estimates S/N for each frame using specutils using inputs of initialised class variables
-
-        Returns
-        -------
-        list
-            List of estimated signal-to-noise ratios for each frame.
-        """
-        # If wavelengths, spectra and errors are provided, use those. Otherwise, use class attributes.
-        if wavelengths is not None and spectra is not None and errors is not None:
-            frame_wavelengths = wavelengths
-            frame_flux = spectra
-            frame_errors = errors
-        else:
-            try:
-                frame_wavelengths = self.frame_wavelengths
-                frame_flux = self.frame_flux
-                frame_errors = self.frame_errors
-            except AttributeError:
-                raise AttributeError("No frame wavelengths, fluxes or errors found. " \
-                "These must all be input if using guess_SNR function before running ACID.")
-
-        frame_wavelengths, frame_flux, frame_errors = [
-            utils.validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
-
-        frame_sns = []
-        for wavelengths, spectra, errors in zip(frame_wavelengths.tolist(), frame_flux.tolist(), frame_errors.tolist()):
-            spectrum_model = Spectrum(spectral_axis = u.Quantity(wavelengths, u.AA),
-                                      flux          = u.Quantity(spectra, u.Jy),
-                                      uncertainty   = StdDevUncertainty(u.Quantity(errors, u.Jy)))
-            estimated_sn = snr(spectrum_model)
-            frame_sns.append(float(estimated_sn.value))
-        return frame_sns
-
     def ACID(self,
             input_wavelengths,
             input_spectra,
@@ -697,8 +651,8 @@ class Acid:
         # If frame_sns is not provided, estimate using specutils, this is a very rudimentary guess and get around for not
         # providing a SNS which should normally come from fits files.
         if frame_sns is None:
-            frame_sns = self.guess_SNR()
-            assert np.asarray(frame_sns).shape == np.asarray(input_spectra).shape, \
+            frame_sns = utils.guess_SNR(input_wavelengths, input_spectra, input_spectral_errors)
+            assert frame_sns.shape == input_spectra.shape, \
             "frame_sns.shape and input_spectra.shape do not match"
         if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \

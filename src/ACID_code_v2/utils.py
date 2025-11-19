@@ -1,6 +1,10 @@
 import numpy as np
 import glob
 import scipy.constants as const
+import astropy.units as u
+from astropy.nddata import StdDevUncertainty
+from specutils import Spectrum
+from specutils.analysis import snr
 ckms = float(const.c/1e3)
 
 def validate_args(x, i, allow_none=False, sn=False):
@@ -102,6 +106,40 @@ def calc_deltav(wavelengths):
     """
     resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
     return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * ckms
+
+def guess_SNR(
+        frame_wavelengths : np.ndarray,
+        frame_flux        : np.ndarray,
+        frame_errors      : np.ndarray
+        ) -> np.ndarray:
+    """Estimates S/N for each frame using specutils
+
+    Parameters
+    ----------
+    frame_wavelengths : np.ndarray
+        Array of wavelengths for each frame.
+    frame_flux : np.ndarray
+        Array of flux values for each frame.
+    frame_errors : np.ndarray
+        Array of error values for each frame.
+
+    Returns
+    -------
+    np.ndarray
+        Array of estimated signal-to-noise ratios for each frame.
+    """
+
+    frame_wavelengths, frame_flux, frame_errors = [
+        validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
+
+    frame_sns = []
+    for wavelengths, spectra, errors in zip(frame_wavelengths.tolist(), frame_flux.tolist(), frame_errors.tolist()):
+        spectrum_model = Spectrum(spectral_axis = u.Quantity(wavelengths, u.AA),
+                                    flux          = u.Quantity(spectra, u.Jy),
+                                    uncertainty   = StdDevUncertainty(u.Quantity(errors, u.Jy)))
+        estimated_sn = snr(spectrum_model)
+        frame_sns.append(float(estimated_sn.value))
+    return np.array(frame_sns)
 
 def get_normalisation_coeffs(wl):
     """Calculates normalization coefficients for wavelength array
