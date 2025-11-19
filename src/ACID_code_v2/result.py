@@ -1,7 +1,7 @@
 from math import tau
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings, contextlib
+import corner, sys, os, pickle, warnings, contextlib, functools
 from beartype import beartype
 from numpy import integer as npint
 
@@ -11,6 +11,7 @@ __all__ = ['Result']
 
 def _require_all_results(method):
     # Make sure all results are processed before calling method
+    @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         if self.production_run:
             name = method.__qualname__
@@ -24,6 +25,7 @@ def _require_all_results(method):
 
 def _require_Acid(method):
     # Make sure Acid object is available before calling method
+    @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         if self.Acid is None:
             error = f"Cannot call {method.__qualname__}. The Acid object is not available in this " \
