@@ -7,7 +7,7 @@ This page outlines some of the additional functions available in ACID_v2 outside
 some of which were highlighted in the Quickstart tutorial.
 
 Saving the Result class
-=======================
+-----------------------
 
 The Result class returned by ACID contains a method to save the entire Result object to a .pkl file for later use.
 This can be done using the Result.save_result() method.
@@ -46,7 +46,7 @@ For the remainder of this page we will assume you have already run ACID and have
 This result is used for the remainder of this page.
 
 Plotting
-=========
+-------
 
 The Result class contains a number of plotting methods to visualise the results of ACID. These include:
 
@@ -77,7 +77,7 @@ the plotting functions must be called from the Result object returned by ACID,
 as the saved .pkl file cannot (currently) store multiple orders/frames.
 
 Continuing sampling
-=======================
+---------------------
 
 If you wish to continue sampling the MCMC after the initial run of ACID, you can do so using the Result.continue_sampling() method.
 This method takes the same keyword arguments as the nsteps argument in ACID, allowing you to specify how many additional steps to run.

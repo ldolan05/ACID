@@ -13,7 +13,7 @@ The legacy ACID and ACID_HARPS functions are still available for backwards compa
 The tutorials below walk through how to use ACID for a variety of applications using the new class structure.
 
 Quickstart
-=============
+---------------------
 
 ACID returns LSD profiles based on input spectra. First, lets walk through an example for a single spectrum. 
 
@@ -63,7 +63,7 @@ We can then run ACID and plot the final results:
    # result.continue_sampling(nsteps=2000) # And plot walkers to see the difference!
 
 Multiple frames
-=============================
+---------------------
 
 Multiple frames of data can be input to directly to ACID. ACID adjusts these frames and performs the continuum fit on a combined spectrum (constructed from all frames).
 For this reason, frames must be from the same observation night where little variation is expected in the spectral continuum.
@@ -118,7 +118,7 @@ Once the inputs have been constructed ACID can be applied and the results plotte
  
 
 Multiple wavelength ranges
-=========================================
+---------------------------
 
 In this example we will only consider one frame, however this example can be combined with the previous example to apply ACID to multiple frames and orders.
 Firstly, we will read in the data (exactly how we did in the quickstart tutorial).
@@ -185,7 +185,7 @@ When looping over wavelength ranges we also need to provide the result array ('a
    # result = acid.Result.load_result("example/multi_order_result.pkl")
 
 HARPS data
-============
+------------
 
 ACID can also be directly applied to HARPS data from DRS pipeline 3.5. To apply ACID in this way all files must be contained in the same directory.
 
