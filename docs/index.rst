@@ -35,10 +35,11 @@ User Guide
 .. toctree::
    :maxdepth: 2
 
-   installation.rst
-   using_ACID.rst
-   other_functions.rst
-   ACID.rst
+   installation
+   Tutorial - Using ACID <using_ACID>
+   Other Functions <other_functions>
+   ACID API <ACID>
+
 
 License and Attribution
 ================================

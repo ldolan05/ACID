@@ -1,7 +1,7 @@
 .. _other_functions:
 
 Other ACID Functions
----------------------
+=====================
 
 This page outlines some of the additional functions available in ACID_v2 outside of the main ACID functions,
 some of which were highlighted in the Quickstart tutorial.
