@@ -45,30 +45,26 @@ We can then run ACID and plot the final results:
    import ACID_code_v2 as acid
 
    # choose a velocity grid for the final profile(s)
-   deltav = acid.calculate_deltav(wavelength)   # velocity pixel size must not be smaller than the spectral pixel size - can use calculate_deltav function if unsure what this would be.
+   deltav = acid.calc_deltav(wavelength)   # velocity pixel size must not be smaller than the spectral pixel size - can use acid.calc_deltav function if unsure what this would be.
    velocities = np.arange(-25, 25, deltav)  
 
-   # run ACID function
-   result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities)
-   
-   # Plot results using the plot_profiles method
-   result.plot_profiles()
+   # Initiate ACID
+   ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+   # Run ACID
+   result = ACID.run_ACID(wavelength, spectrum, error, sn, nsteps=2000)
 
-   # Or plot profiles as with legacy ACID:
-   # extract profile and errors
-   profile = result[0, 0, 0]
-   profile_error = result[0, 0, 1]
-   # plot results
-   plt.figure()
-   plt.errorbar(velocities, profile, profile_error)
-   plt.xlabel('Velocities (km/s)')
-   plt.ylabel('Flux')
-   plt.show()
+   # Plot your final profile
+   result.plot_profiles() # See documentation for more plot kwarg options
+
+   # You can also plot walkers, corner plots, etc. See documentation.
+
+   # If you feel the need to continue sampling, you can do so with:
+   # result.continue_sampling(nsteps=2000) # And plot walkers to see the difference!
 
 Multiple frames
 =============================
 
-Multiple frames of data can be input to directly to ACID. ACID adjust these frames and performs the continuum fit on a combined spectrum (constructed from all frames).
+Multiple frames of data can be input to directly to ACID. ACID adjusts these frames and performs the continuum fit on a combined spectrum (constructed from all frames).
 For this reason, frames must be from the same observation night where little variation is expected in the spectral continuum.
 As in the previous example, we must first read in the data:
 
@@ -109,20 +105,16 @@ Once the inputs have been constructed ACID can be applied and the results plotte
    velocities = np.arange(-25, 25, deltav)  
 
    # run ACID function
-   result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities)
-   
+   ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+   result = ACID.run_ACID(wavelengths, spectra, errors, sns, nsteps=2000)
+
    # plot results
-   plt.figure()
+   result.plot_profiles()
 
-   for frame in range(len(files)):
-      profile = result[frame, 0, 0]
-      profile_error = result[frame, 0, 1]
-      plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
-
-   plt.xlabel('Velocities (km/s)')
-   plt.ylabel('Flux')
-   plt.legend()
-   plt.show()
+   # Remember you can obtain the entire result array via:
+   all_frames = result[:] # Which converts it to a numpy array of shape (frames, orders, 2, pixels)
+   # or you can do
+   all_frames = result.all_frames
  
 
 Multiple wavelength ranges
