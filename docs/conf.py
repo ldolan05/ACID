@@ -27,6 +27,12 @@ extensions = ["sphinx.ext.autodoc",
               ]
 
 autosummary_generate = True
+autodoc_default_options = {
+    'members': True,
+    'inherited-members': True,
+    'undoc-members': True,
+}
+
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
