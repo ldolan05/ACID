@@ -37,6 +37,7 @@ User Guide
 
    installation.rst
    using_ACID.rst
+   other_functions.rst
    ACID.rst
 
 License and Attribution

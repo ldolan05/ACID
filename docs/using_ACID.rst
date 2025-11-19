@@ -1,6 +1,6 @@
 .. _using_acid:
 
-Using ACID
+Tutorial - Using ACID
 -----------
 
 These tutorials requires use of the example data included in the example_ folder. You can find the script in example/tutorial_code.py
