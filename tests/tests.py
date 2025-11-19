@@ -24,8 +24,8 @@ def test_run_e2ds():
     velocities = np.arange(-25, 25, 0.82)
 
     # run ACID on e2ds files
-    ACID_results_e2ds = acid.run_ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
-                                            order_range=np.arange(41, 43), nsteps=2000)
+    ACID_results_e2ds = acid.ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
+                                        order_range=np.arange(41, 43), nsteps=2000)
     return ACID_results_e2ds
 
 def test_run_s1d():
@@ -37,7 +37,7 @@ def test_run_s1d():
     velocities = np.arange(-25, 25, 0.82)
 
     # run ACID on s1d files
-    ACID_results_s1d = acid.run_ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
+    ACID_results_s1d = acid.ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
                                        order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000)
     return ACID_results_s1d
 
@@ -58,7 +58,7 @@ def quickstart():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.run_ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000)
+    result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000)
 
     # extract profile and errors
     profile = result[0, 0, 0]
@@ -98,7 +98,7 @@ def multiple_frames():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    result = acid.run_ACID(wavelengths, spectra, errors, linelist, sns, velocities, nsteps=2000)
+    result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities, nsteps=2000)
 
     # plot results
     plt.figure()
@@ -143,7 +143,7 @@ def multiple_orders():
         idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
 
         # run ACID function on specific chunk
-        result = acid.run_ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist,
+        result = acid.ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist,
                                [sn], velocities, all_frames=result, order=i, nsteps=2000)
 
         min_wave += wave_chunk
@@ -187,8 +187,8 @@ def classes_test():
     velocities = np.arange(-25, 25, deltav)
 
     # run ACID function
-    ACID = acid.ACID(velocities=velocities, linelist_path=linelist)
-    result = ACID.run_ACID(wavelength, spectrum, error, sn, nsteps=2000)
+    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
     result.plot_corner()
     result.plot_profiles()
     result.plot_walkers()
@@ -218,22 +218,22 @@ def result_handling_test():
     velocities = np.arange(-25, 25, 0.82)
 
     # run ACID function
-    ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
-    result = ACID.run_ACID(wavelengths, spectra, errors, sns, nsteps=2000)
+    Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+    result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
     result.save_result(filename="tests/data/classes_test.pkl")
     result = acid.Result.load_result("tests/data/classes_test.pkl")
     result.plot_profiles()
     return result
 
 
-# q_res = quickstart()
-# mf_res = multiple_frames()
-# mo_res = multiple_orders()
-# res_e2ds = test_run_e2ds()
-# res_s1d = test_run_s1d()
-# classes_res = classes_test()
-# classes_res.continue_sampling(nsteps=2000)
-# classes_res.plot_walkers()
+q_res = quickstart()
+mf_res = multiple_frames()
+mo_res = multiple_orders()
+res_e2ds = test_run_e2ds()
+res_s1d = test_run_s1d()
+classes_res = classes_test()
+classes_res.continue_sampling(nsteps=2000)
+classes_res.plot_walkers()
 result_handling_res = result_handling_test()
 
 print("All tests passed!")

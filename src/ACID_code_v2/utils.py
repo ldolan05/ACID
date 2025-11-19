@@ -4,8 +4,8 @@ import scipy.constants as const
 ckms = float(const.c/1e3)
 
 def validate_args(x, i, allow_none=False, sn=False):
-    """Validates the input arguments. This function can be used to ensure inputs to ACID
-    are of the correct type and shape. It is performed automatically in ACID.
+    """Validates the input arguments. This function can be used to ensure inputs to Acid
+    are of the correct type and shape. It is performed automatically in Acid.
 
     Parameters
     ----------
@@ -59,7 +59,7 @@ def validate_args(x, i, allow_none=False, sn=False):
 def scale_spectra(wavelength, spectrum, error):
     """Scales the input spectrum and error to be between 0 and 1, masking any non-positive values by making
     their flux equal to 1 and their error very large (1e12). This is done so that the alpha matrix calculation
-    maintains even spacing between wavelength pixels. The flux must be positive regardless as ACID works in
+    maintains even spacing between wavelength pixels. The flux must be positive regardless as Acid works in
     optical depth.
 
     Parameters
@@ -95,7 +95,7 @@ def calc_deltav(wavelengths):
     Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
 
     Args:
-        wavelengths (array): Wavelengths for ACID input spectrum (in Angstroms).
+        wavelengths (array): Wavelengths for Acid input spectrum (in Angstroms).
         
     Returns:
         float: Velocity pixel size in km/s

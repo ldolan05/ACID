@@ -32,10 +32,10 @@ linelist_path = 'example/example_linelist.txt' # Insert path to line list
 # the velocity pixel size must not be smaller than the spectral pixel size
 velocities = np.arange(-25, 25, 0.82)
 
-# Initiate ACID
-ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+# Initiate Acid
+Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
 # Run ACID
-result = ACID.run_ACID(wavelength, spectrum, error, sn, nsteps=2000)
+result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
 
 # Plot your final profile
 result.plot_profiles() # See documentation for more plot kwarg options
@@ -70,8 +70,8 @@ linelist_path = 'example/example_linelist.txt' # Insert path to line list
 velocities = np.arange(-25, 25, 0.82)
 
 # run ACID function
-ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
-result = ACID.run_ACID(wavelengths, spectra, errors, sns, nsteps=2000)
+Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
 
 # plot results
 result.plot_profiles()
@@ -104,18 +104,18 @@ max_wave = min_wave+wave_chunk
 # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
 result = np.zeros((1, chunks_no, 2, len(velocities)))
 
-# Initiate ACID
-ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+# Initiate Acid
+Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
 
 for i in range(chunks_no):
 
     # use indexing to select correct chunk of spectrum
     idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
 
-    # You can recursively call run_ACID to fill in each order
+    # You can recursively call ACID to fill in each order
     # In the future, this loop will be handled internally by ACID and this
     # example will be updated accordingly.
-    result = ACID.run_ACID(wavelength[idx], spectrum[idx], error[idx], sn,
+    result = Acid.ACID(wavelength[idx], spectrum[idx], error[idx], sn,
                            all_frames=result, order=i, nsteps=2000)
 
     min_wave += wave_chunk
@@ -139,12 +139,12 @@ deltav = 0.82     # velocity pixel size for HARPS e2ds data from DRS pipeline 3.
 velocities = np.arange(-25, 25, deltav)
 
 # run ACID function
-ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
 
 # Due to legacy behaviour, the function returns BJDs, profiles and errors separately when indexed,
 # not all_frames as in other examples. All frames can still be accessed via result.all_frames
 
-result = ACID.run_ACID_HARPS(filelist=e2ds_files, file_type='e2ds', save_path=save_path, nsteps=2000,
+result = Acid.ACID_HARPS(filelist=e2ds_files, file_type='e2ds', save_path=save_path, nsteps=2000,
                              order_range=order_range)
 
 # BJDs, profiles, profile_errors = result

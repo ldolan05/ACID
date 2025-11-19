@@ -116,13 +116,13 @@ spectrum = spectrum[::15]
 error = error[::15]
 
 # wavelength, scaled_spec, scaled_error = utils.scale_spectra(wavelength, spectrum, error)
-sn = acid.ACID().guess_SNR(wavelengths=wavelength, spectra=spectrum, errors=error)
+sn = acid.guess_SNR(wavelengths=wavelength, spectra=spectrum, errors=error)
 # velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))
 # plt.errorbar(wavelength, scaled_spec, scaled_error)
 # wavelength, spectrum, error = utils.scale_spectra(wavelength, spectrum, error)
 # plt.show()
-cl = acid.ACID()
-# result = cl.run_ACID(wavelength, spectrum, error, sn, linelist, velocities, nsteps=2000)
+Acid = acid.Acid(velocities, linelist) # FIX THIS!!!
+# result = Acid.ACID(wavelength, spectrum, error, sn , nsteps=2000)
 result = acid.Result.load_result('tests/test_data/dusty_result.pkl')
 result.plot_profile()
 

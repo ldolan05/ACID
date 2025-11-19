@@ -11,23 +11,23 @@ ckms = float(const.c/1e3)  # speed of light in km/s
 
 class LSD:
 
-    def __init__(self, ACID=None):
+    def __init__(self, Acid=None):
 
         self.verbose = 1
         self.adjust_continuum = None
         self.slurm = "SLURM_JOB_ID" in os.environ
-        if not ACID:
+        if not Acid:
             return
-        self.wavelengths = ACID.combined_wavelengths
-        self.flux_obs = ACID.fluxes_order1
-        self.rms = ACID.flux_error_order1
-        self.linelist = ACID.linelist_path
-        self.poly_ord = ACID.poly_ord
-        self.sn = ACID.combined_sn
-        self.order = ACID.order
-        self.run_name = ACID.name
-        self.velocities = ACID.velocities
-        self.verbose = ACID.verbose
+        self.wavelengths = Acid.combined_wavelengths
+        self.flux_obs = Acid.fluxes_order1
+        self.rms = Acid.flux_error_order1
+        self.linelist = Acid.linelist_path
+        self.poly_ord = Acid.poly_ord
+        self.sn = Acid.combined_sn
+        self.order = Acid.order
+        self.run_name = Acid.name
+        self.velocities = Acid.velocities
+        self.verbose = Acid.verbose
 
     def run_LSD(self, *args, **kwargs):
         # Nothing the args use to be:
@@ -75,7 +75,7 @@ class LSD:
             linelist_expected = np.genfromtxt('%s'%self.linelist, skip_header=4, delimiter=',', usecols=(1,9))
             wavelengths_expected_all = np.array(linelist_expected[:,0])
             depths_expected_all = np.array(linelist_expected[:,1])
-        else: # If user input linelist_wl and depths in ACID
+        else: # If user input linelist_wl and depths in Acid
             wavelengths_expected_all = np.array(self.linelist["wavelength"])
             depths_expected_all = np.array(self.linelist["depth"])
 

@@ -24,7 +24,7 @@ importlib.reload(LSD)
 importlib.reload(utils)
 
 @beartype
-class ACID:
+class Acid:
     """Accurate Continuum fItting and Deconvolution (ACID) class"""
 
     def __init__(self,
@@ -100,10 +100,10 @@ class ACID:
         self.telluric_lines  = telluric_lines
         self.name            = name
 
-        # Define default order range, can be overwritten in run_ACID_HARPS
+        # Define default order range, can be overwritten in ACID_HARPS
         self.order_range = [1]
 
-        # Set an initial all_frames to None, which is smartly handled in run_ACID (by input or defaults) and ACID_HARPS
+        # Set an initial all_frames to None, which is smartly handled in ACID (by input or defaults) and ACID_HARPS
         self.all_frames = None
 
         # Determine if running in SLURM environment
@@ -579,7 +579,7 @@ class ACID:
             frame_sns.append(float(estimated_sn.value))
         return frame_sns
 
-    def run_ACID(self,
+    def ACID(self,
             input_wavelengths,
             input_spectra,
             input_spectral_errors,
@@ -850,7 +850,7 @@ class ACID:
         backend = None
         if state is None:
             if not hasattr(self, 'sampler'):
-                raise ValueError("No existing sampler found. Please run 'run_ACID' first or provide a state.")
+                raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
             backend = self.sampler.backend
 
         if self.cores is None:
@@ -951,7 +951,7 @@ class ACID:
         """
         # Check that sampler exists
         if not hasattr(self, 'sampler'):
-            raise AttributeError("No existing sampler found. Please run 'run_ACID' before continuing.")
+            raise AttributeError("No existing sampler found. Please run 'ACID' before continuing.")
 
         self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
         self.nsteps += nsteps
@@ -967,7 +967,7 @@ class ACID:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
 
-    def run_ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
+    def ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
                        file_type:str='e2ds', **kwargs):
         """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
@@ -1006,7 +1006,7 @@ class ACID:
             list
                 Errors on profiles (in normalised flux)
             It can be accessed for example by:
-            >>> result = acid.run_ACID_HARPS(...)
+            >>> result = Acid.ACID_HARPS(...)
             >>> BJDs = result.BJDs
             >>> profiles = result.profiles
             >>> errors = result.errors
@@ -1035,7 +1035,7 @@ class ACID:
             frame_wavelengths, frame_flux, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
 
             # Updates recursively the all_frames array with the profiles for each order
-            self.run_ACID(
+            self.ACID(
                 frame_wavelengths,
                 frame_flux,
                 frame_errors,
@@ -1082,7 +1082,7 @@ class ACID:
         return Result(self, ACID_HARPS=True)
 
 
-def run_ACID(*args, **kwargs):
+def ACID(*args, **kwargs):
     """Legacy ACID function
 
     This function runs the legacy ACID code. This is provided for backwards compatibility with previous versions of ACID.
@@ -1126,10 +1126,10 @@ def run_ACID(*args, **kwargs):
     # Split args and kwargs into init and run kwargs using helper function
     init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_ACID_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
 
-    acid = ACID(**init_kwargs)
-    return acid.run_ACID(**run_kwargs)
+    acid = Acid(**init_kwargs)
+    return acid.ACID(**run_kwargs)
 
-def run_ACID_HARPS(*args, **kwargs):
+def ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function
 
     This function runs the legacy ACID_HARPS code. This is provided for backwards compatibility with previous versions of ACID.
@@ -1172,8 +1172,8 @@ def run_ACID_HARPS(*args, **kwargs):
     # Split args and kwargs into init and run kwargs using helper function
     init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_HARPS_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
 
-    acid = ACID(**init_kwargs)
-    return acid.run_ACID_HARPS(**run_kwargs)
+    acid = Acid(**init_kwargs)
+    return acid.ACID_HARPS(**run_kwargs)
 
 def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     """Helper function to split legacy args and kwargs into init and run kwargs given
@@ -1203,7 +1203,7 @@ def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     combined = {**translated_legacy, **translated_kwargs}
 
     # Determine which arguments are for __init__ and which are for run_ACID_HARPS
-    init_params = inspect.signature(ACID.__init__).parameters
+    init_params = inspect.signature(Acid.__init__).parameters
     init_keys = set(init_params.keys()) - {"self"}
 
     # Split kwargs accordingly

@@ -1,7 +1,7 @@
-from .ACID import ACID, run_ACID, run_ACID_HARPS
+from .ACID import ACID, ACID_HARPS, Acid
 from .result import Result
 from .utils import scale_spectra, calc_deltav
-__all__ = ['ACID', 'run_ACID', 'run_ACID_HARPS', 'calc_deltav', 'Result', 'scale_spectra']
+__all__ = ['ACID', 'ACID_HARPS', 'Acid', 'calc_deltav', 'Result', 'scale_spectra']
 
 def _reload_all():
     # Reloads all submodules of the ACID_code_v2 package. Only useful for development purposes when using ipython.

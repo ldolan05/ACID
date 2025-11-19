@@ -22,12 +22,12 @@ def _require_all_results(method):
         return method(self, *args, **kwargs)
     return wrapper
 
-def _require_ACID(method):
-    # Make sure ACID object is available before calling method
+def _require_Acid(method):
+    # Make sure Acid object is available before calling method
     def wrapper(self, *args, **kwargs):
-        if self.ACID is None:
-            error = f"Cannot call {method.__qualname__}. The ACID object is not available in this " \
-            "Result instance. This can occur if ACID was set to None to allow for pickling in the " \
+        if self.Acid is None:
+            error = f"Cannot call {method.__qualname__}. The Acid object is not available in this " \
+            "Result instance. This can occur if Acid was set to None to allow for pickling in the " \
             "case that multiple orders or frames were used."
             raise ValueError(error)
         return method(self, *args, **kwargs)
@@ -35,38 +35,38 @@ def _require_ACID(method):
 
 @beartype
 class Result:
-    """Class to handle the results from the ACID MCMC sampling, and results processing."""
+    """Class to handle the results from the Acid MCMC sampling, and results processing."""
 
-    def __init__(self, ACID, ACID_HARPS:bool=False, production_run:bool=False):
+    def __init__(self, Acid, ACID_HARPS:bool=False, production_run:bool=False):
         """Initiate Result class
 
         Parameters
         ----------
-        ACID : object
-            An ACID object after MCMC sampling has been performed.
+        Acid : object
+            An Acid object after MCMC sampling has been performed.
         ACID_HARPS : bool, optional
             Whether the ACID_HARPS function was used, by default False
         production_run : bool, optional
-            Whether ACID was run in production mode, by default False
+            Whether Acid was run in production mode, by default False
         """
-        self.ACID = ACID
+        self.Acid = Acid
 
-        # This should be a temporary measure until ACID can be pickled properly
-        self.sampler = ACID.sampler
+        # This should be a temporary measure until Acid can be pickled properly
+        self.sampler = Acid.sampler
 
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
-        self.nsteps = ACID.nsteps
-        self.velocities = ACID.velocities
-        self.model_inputs = ACID.model_inputs
-        self.verbose = ACID.verbose
-        self.order_range = ACID.order_range
-        self.BJDs = getattr(ACID, 'BJDs', None)
-        self.profiles = getattr(ACID, 'profiles', None)
-        self.errors = getattr(ACID, 'errors', None)
+        self.nsteps = Acid.nsteps
+        self.velocities = Acid.velocities
+        self.model_inputs = Acid.model_inputs
+        self.verbose = Acid.verbose
+        self.order_range = Acid.order_range
+        self.BJDs = getattr(Acid, 'BJDs', None)
+        self.profiles = getattr(Acid, 'profiles', None)
+        self.errors = getattr(Acid, 'errors', None)
 
         if not production_run:
-            self.all_frames = ACID.all_frames
+            self.all_frames = Acid.all_frames
         else:
             self.all_frames = None
 
@@ -77,7 +77,7 @@ class Result:
         with open(os.devnull, "w") as devnull, \
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
-            self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
+            self.tau = self.Acid.sampler.get_autocorr_time(quiet=True)
         
         if self.nsteps < 50 * np.max(self.tau):
             if self.verbose>1:
@@ -104,10 +104,10 @@ class Result:
         """
         if self.ACID_HARPS:
             return iter((self.BJDs, self.profiles, self.errors))
-        # ACID is not subscriptable normally, only when ACID_HARPS was called 
+        # Acid is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
-    @_require_ACID
+    @_require_Acid
     def continue_sampling(self, nsteps:int|npint, production_run:bool|None=None):
         """Continue MCMC sampling for additional steps.
 
@@ -117,35 +117,35 @@ class Result:
             Number of additional MCMC steps to run.
         production_run : bool, optional
             Whether to set the run as a production run, by default None, keeping the current setting.
-            The default is False from ACID.
+            The default is False from Acid.
         """
         if production_run is not None:
             self.production_run = production_run
 
-        self.ACID.continue_sampling(nsteps)
+        self.Acid.continue_sampling(nsteps)
 
-        # Update attributes from ACID object
-        self.nsteps = self.ACID.nsteps
-        self.sampler = self.ACID.sampler
+        # Update attributes from Acid object
+        self.nsteps = self.Acid.nsteps
+        self.sampler = self.Acid.sampler
         if not self.production_run:
-            self.all_frames = self.ACID.all_frames
+            self.all_frames = self.Acid.all_frames
 
         # Recalculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
         with open(os.devnull, "w") as devnull, \
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
-            self.tau = self.ACID.sampler.get_autocorr_time(quiet=True)
+            self.tau = self.Acid.sampler.get_autocorr_time(quiet=True)
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
     
-    @_require_ACID
+    @_require_Acid
     def process_results(self):
         """Processes the MCMC results to extract the LSD profiles and errors.
         """
-        self.ACID.process_results(return_result=False)
+        self.Acid.process_results(return_result=False)
         self.production_run = False
-        self.all_frames = self.ACID.all_frames
+        self.all_frames = self.Acid.all_frames
 
     def plot_walkers(self, burnin:int|npint|None=None, thin:int|npint|None=None):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
@@ -201,7 +201,7 @@ class Result:
         subplot_kwargs  :dict|None = None,
         errorbar_kwargs :dict|None = None
         ):
-        """Plots the LSD profile result from ACID.
+        """Plots the LSD profile result from Acid.
 
         Parameters
         ----------
@@ -232,7 +232,7 @@ class Result:
 
         # Set default labels
         default_labels = {
-            "title" : "ACID Profile",
+            "title" : "Acid Profile",
             "xlabel": "Velocity (km/s)",
             "ylabel": "Normalised Flux"
         }
@@ -249,12 +249,10 @@ class Result:
             if norders > 1:
                 print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
                 frames = frames[:1, :, :, :]  # Take first frame only
-        print(frames.shape)
         for f, frame in enumerate(frames):
             for o, order in enumerate(frame):
-                print(order.shape)
                 x, y, yerr = self.velocities, order[0], order[1]
-                # TODO: Make Order a function of self.order_range, which needs to be configured in ACID
+                # TODO: Make Order a function of self.order_range, which needs to be configured in Acid
                 # so that order_range is done automatically if multiple orders are manually put (and not 
                 # just using ACID_HARPS)
                 ax.errorbar(x, y, yerr=yerr, label=f"Frame {f+1}, Order {o+1}", **errorbar_kwargs)
@@ -276,9 +274,9 @@ class Result:
         """
         raise NotImplementedError("plot_forward_model is not yet implemented")
         # x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
-        # theta_median = np.median(self.ACID.sampler.get_chain(discard=self.burnin, flat=True,
+        # theta_median = np.median(self.Acid.sampler.get_chain(discard=self.burnin, flat=True,
         # thin=self.thin), axis=0)
-        # from src.ACID_code_v2.mcmc_utils import model_func
+        # from src.Acid_code_v2.mcmc_utils import model_func
         # model = model_func(theta_median, x)
 
         # fig, ax = plt.subplots(figsize=(10, 6))
@@ -305,8 +303,8 @@ class Result:
         norders = len(self.all_frames[0]) if self.all_frames is not None else 0
 
         if nframes > 1 or norders > 1:
-            print("Discarding ACID object to allow for pickling of multiple frames/orders.")
-            self.ACID = None
+            print("Discarding Acid object to allow for pickling of multiple frames/orders.")
+            self.Acid = None
 
         with open(filename, "wb") as f:
             pickle.dump(self, f)

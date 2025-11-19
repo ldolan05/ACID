@@ -7,8 +7,10 @@ These tutorials requires use of the example data included in the example_ folder
 
 .. _source: https://github.com/Benjamin-Cadell/ACID_v2/tree/main/example
 
-The architecture of ACID_v2 is different to the original ACID code. ACID now works under the hood as a class, rather than previously as a function.
-The main result of ACID is also now a Result class with its own methods and attributes that allow for simple analysis.
+The architecture of ACID_v2 is different to the original ACID code. ACID now works under the hood as a class (called Acid), rather than previously as a function.
+The main result of Acid class or ACID function is also now a Result class with its own methods and attributes that allow for simple analysis.
+The legacy ACID and ACID_HARPS functions are still available for backwards compatibility, however it is recommended to use the Acid class for new applications.
+The tutorials below walk through how to use ACID for a variety of applications using the new class structure.
 
 Quickstart
 =============
@@ -41,17 +43,16 @@ We can then run ACID and plot the final results:
 .. code-block:: python
 
    import numpy as np
-   import matplotlib.pyplot as plt
    import ACID_code_v2 as acid
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calc_deltav(wavelength)   # velocity pixel size must not be smaller than the spectral pixel size - can use acid.calc_deltav function if unsure what this would be.
    velocities = np.arange(-25, 25, deltav)  
 
-   # Initiate ACID
-   ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
+   # Initiate Acid
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
    # Run ACID
-   result = ACID.run_ACID(wavelength, spectrum, error, sn, nsteps=2000)
+   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
 
    # Plot your final profile
    result.plot_profiles() # See documentation for more plot kwarg options
@@ -98,15 +99,14 @@ Once the inputs have been constructed ACID can be applied and the results plotte
 
    import ACID_code_v2 as acid
    import numpy as np
-   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calc_deltav(wavelength)  
    velocities = np.arange(-25, 25, deltav)  
 
    # run ACID function
-   ACID = acid.ACID(velocities=velocities, linelist_path=linelist_path)
-   result = ACID.run_ACID(wavelengths, spectra, errors, sns, nsteps=2000)
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+   result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
 
    # plot results
    result.plot_profiles()
@@ -122,7 +122,6 @@ Multiple wavelength ranges
 
 In this example we will only consider one frame, however this example can be combined with the previous example to apply ACID to multiple frames and orders.
 Firstly, we will read in the data (exactly how we did in the quickstart tutorial).
-
 
 .. code-block:: python
 
@@ -144,7 +143,6 @@ When looping over wavelength ranges we also need to provide the result array ('a
 
    import ACID_code_v2 as acid
    import numpy as np
-   import matplotlib.pyplot as plt
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calc_deltav(wavelength)  
@@ -158,15 +156,20 @@ When looping over wavelength ranges we also need to provide the result array ('a
    max_wave = min_wave+wave_chunk
    
    # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
-   results = np.zeros((1, chunks_no, 2, len(velocities)))
+   result = np.zeros((1, chunks_no, 2, len(velocities)))
    
+   # Initiate Acid
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
    for i in range(chunks_no):
 
       # use indexing to select correct chunk of spectrum
       idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
 
-      # run ACID function on specific chunk
-      result = acid.ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist, [sn], velocities, all_frames=result, order=i)
+      # You can recursively call ACID to fill in each order
+      # In the future, this loop will be handled internally by ACID and this
+      # example will be updated accordingly.
+      result = Acid.ACID(wavelength[idx], spectrum[idx], error[idx], sn,
+                         all_frames=result, order=i, nsteps=2000)
 
       min_wave += wave_chunk
       max_wave += wave_chunk
@@ -176,22 +179,10 @@ When looping over wavelength ranges we also need to provide the result array ('a
    max_wave = min_wave+wave_chunk
 
    # plot results
-   plt.figure()
-   for i in range(chunks_no): 
-
-      # extract profile and errors
-      profile = result[0, i, 0]
-      profile_error = result[0, i, 1]
-
-      plt.errorbar(velocities, profile, profile_error, label='(%s - %sÅ)'%(min_wave, max_wave))
-
-      min_wave += wave_chunk
-      max_wave += wave_chunk
-
-   plt.xlabel('Velocities (km/s)')
-   plt.ylabel('Flux')
-   plt.legend()
-   plt.show()
+   result.plot_profiles()
+   # Reember you can save and load results via:
+   # result.save_result("example/multi_order_result.pkl")
+   # result = acid.Result.load_result("example/multi_order_result.pkl")
 
 HARPS data
 ============
