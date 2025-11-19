@@ -3,9 +3,12 @@
 Using ACID
 -----------
 
-These tutorials requires use of the example data included in the example_ folder.
+These tutorials requires use of the example data included in the example_ folder. You can find the script in example/tutorial_code.py
 
 .. _source: https://github.com/Benjamin-Cadell/ACID_v2/tree/main/example
+
+The architecture of ACID_v2 is different to the original ACID code. ACID now works under the hood as a class, rather than previously as a function.
+The main result of ACID is also now a Result class with its own methods and attributes that allow for simple analysis.
 
 Quickstart
 =============
