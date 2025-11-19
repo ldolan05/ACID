@@ -103,436 +103,6 @@ class Acid:
         self.slurm = "SLURM_JOB_ID" in os.environ
         return
 
-    def continuumfit(
-            self,
-            fluxes     : np.ndarray,
-            wavelengths: np.ndarray,
-            errors     : np.ndarray,
-            poly_ord   : int|npint
-            ):
-        """Provides an initial, normalised continuum fit using inputted spectra.
-
-        Parameters
-        ----------
-        fluxes : np.ndarray
-            The flux values of the spectrum.
-        wavelengths : np.ndarray
-            The wavelengths corresponding to the spectrum.
-        errors : np.ndarray
-            The error values associated with the spectrum.
-        poly_ord : int
-            The order of the polynomial to fit to the continuum.
-
-        Returns
-        -------
-        tuple
-            A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
-        """
-        cont_factor = fluxes[0]
-        if cont_factor == 0: 
-            cont_factor = np.mean(fluxes)
-        idx = wavelengths.argsort()
-        wavelength = wavelengths[idx]
-        fluxe = fluxes[idx] / cont_factor
-        clipped_flux = []
-        clipped_waves = []
-        binsize = 100
-        for i in range(0, len(wavelength), binsize):
-            waves = wavelength[i:i+binsize]
-            flux = fluxe[i:i+binsize]
-            indicies = flux.argsort()
-            flux = flux[indicies]
-            waves = waves[indicies]
-            clipped_flux.append(flux[len(flux)-1])
-            clipped_waves.append(waves[len(waves)-1])
-        coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
-        poly = np.poly1d(coeffs)
-        fit = poly(wavelengths) * cont_factor
-        flux_obs = fluxes / fit
-        new_errors = errors / fit
-        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
-        return poly_coeffs, flux_obs, new_errors
-
-    def read_in_frames(self, order, filelist, file_type, directory=None):
-        # read in first frame
-        fluxes, wavelengths, flux_error_order, sn = LSD.LSD().blaze_correct(
-            file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
-        # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
-        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
-
-        frames = np.zeros((len(filelist), len(wavelengths)))
-        errors = np.zeros((len(filelist), len(wavelengths)))
-        frame_wavelengths = np.zeros((len(filelist), len(wavelengths)))
-        sns = np.zeros((len(filelist), ))
-
-        frames[0] = fluxes
-        errors[0] = flux_error_order
-        frame_wavelengths[0] = wavelengths
-        sns[0] = sn
-
-        def task_frames(frames, errors, frame_wavelengths, sns, i):
-            file = filelist[i]
-            frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD.LSD().blaze_correct(
-                file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
-            # print(i, frames)
-            return frames, frame_wavelengths, errors, sns
-        
-        ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
-        for i in range(len(filelist[1:])+1):
-            # print(i)
-            frames, frame_wavelengths, errors, sns = task_frames(frames, errors, frame_wavelengths, sns, i)
-            
-        ### finding highest S/N frame, saves this as reference frame
-
-        idx = (sns==np.max(sns))
-        # global reference_wave
-        reference_wave = frame_wavelengths[idx][0]
-        reference_frame = frames[idx][0]
-        reference_frame[reference_frame == 0] = 0.001
-        reference_error = errors[idx][0]
-        reference_error[reference_frame == 0] = 1000000000000000000
-
-        # global frames_unadjusted
-        frames_unadjusted = frames
-        # global frame_errors_unadjusted
-        frame_errors_unadjusted = errors
-
-        ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
-        for n in range(len(frames)):
-            f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-            div_frame = f2(reference_wave)/reference_frame
-
-            idx_ref = (reference_frame<=0)
-            div_frame[idx_ref]=1
-
-            binned = []
-            binned_waves = []
-            binsize = int(round(len(div_frame)/5, 1))
-            for i in range(0, len(div_frame), binsize):
-                if i+binsize<len(reference_wave):
-                    waves = reference_wave[i:i+binsize]
-                    flux = div_frame[i:i+binsize]
-                    waves = waves[abs(flux-np.median(flux))<0.1]
-                    flux = flux[abs(flux-np.median(flux))<0.1]
-                    binned.append(np.median(flux))
-                    binned_waves.append(np.median(waves))
-
-            binned = np.array(binned)
-            binned_waves = np.array(binned_waves)
-        
-            ### fitting polynomial to div_frame
-            try:coeffs = np.polyfit(binned_waves, binned, 4)
-            except:coeffs = np.polyfit(binned_waves, binned, 2)
-            poly = np.poly1d(coeffs)
-            fit = poly(frame_wavelengths[n])
-            frames[n] = frames[n]/fit
-            errors[n] = errors[n]/fit
-            idx = (frames[n] == 0)
-            frames[n][idx] = 0.00001
-            errors[n][idx] = 1000000000
-
-        return frame_wavelengths, frames, errors, sns
-
-    def combine_spec(
-            self,
-            frame_wavelengths: np.ndarray | None = None,
-            frame_flux:        np.ndarray | None = None,
-            frame_errors:      np.ndarray | None = None,
-            frame_sns:         np.ndarray | None = None,
-            output:            bool              = True
-            ):
-        """Combines multiple spectral frames into one spectrum
-
-        Parameters
-        ----------
-        frame_wavelengths : array, optional
-            Wavelengths for the spectral frames, by default None
-        frame_flux : array, optional
-            Fluxes for the spectral frames, by default None
-        frame_errors : array, optional
-            Errors for the spectral frames, by default None
-        frame_sns : array, optional
-            Signal-to-noise ratio for the spectral frames, by default None
-        output : bool, optional
-            Whether to output the combined spectrum, by default True
-
-        Returns
-        -------
-        combined_wavelengths : array
-            Wavelengths for the combined spectrum
-        combined_spectrum : array
-            Fluxes for the combined spectrum
-        combined_errors : array
-            Errors for the combined spectrum
-        combined_sn : float
-            Signal-to-noise ratio for the combined spectrum
-        """
-        # Inputs are now self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
-        # they were: wavelengths_f, spectra_f, errors_f, sns_f):
-        if frame_wavelengths:
-            self.frame_wavelengths = frame_wavelengths
-            self.frame_flux = frame_flux
-            self.frame_errors = frame_errors
-            self.frame_sns = frame_sns
-
-        if len(self.frame_wavelengths)==1:
-            self.combined_wavelengths = self.frame_wavelengths[0]
-            self.combined_spectrum = self.frame_flux[0]
-            self.combined_errors = self.frame_errors[0]
-            self.combined_sn = self.frame_sns[0]
-
-        else:
-            self.combined_spectrum = np.copy(self.frame_flux)
-
-            # combine all spectra to one spectrum
-            for n in range(len(self.combined_spectrum)):
-
-                self.combined_wavelengths = self.frame_wavelengths[np.argmax(self.frame_sns)]
-
-                idx = np.where(self.frame_wavelengths[n] != 0)[0]
-
-                f2 = interp1d(self.frame_wavelengths[n][idx], self.combined_spectrum[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                f2_err = interp1d(self.frame_wavelengths[n][idx], self.frame_errors[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                self.combined_spectrum[n] = f2(self.combined_wavelengths)
-                self.frame_errors[n] = f2_err(self.combined_wavelengths)
-
-                # Mask out out extrapolated areas
-                idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.frame_wavelengths[n][idx]),
-                                        self.combined_wavelengths>=np.min(self.frame_wavelengths[n][idx]))
-                idx_ex = tuple([idx_ex==False])
-
-                # TODO: Why [0] on where_are_zeros, why are we making errors large and flux 1, rather than masking out?
-                self.combined_spectrum[n][idx_ex] = 1.
-                self.frame_errors[n][idx_ex] = 1000000000000
-
-                # Mask out nans and zeros (these do not contribute to the main spectrum)
-                where_are_NaNs = np.isnan(self.combined_spectrum[n])
-                self.frame_errors[n][where_are_NaNs] = 1000000000000
-                where_are_zeros = np.where(self.combined_spectrum[n] == 0)[0]
-                self.frame_errors[n][where_are_zeros] = 1000000000000
-
-                where_are_NaNs = np.isnan(self.frame_errors[n])
-                self.frame_errors[n][where_are_NaNs] = 1000000000000
-                where_are_zeros = np.where(self.frame_errors[n] == 0)[0]
-                self.frame_errors[n][where_are_zeros] = 1000000000000
-
-            width = len(self.combined_wavelengths)
-            spectrum_f = np.zeros((width,))
-            self.combined_errors = np.zeros((width,))
-
-            for n in range(0,width):
-                temp_spec_f = self.combined_spectrum[:, n]
-                temp_err_f = self.frame_errors[:, n]
-
-                weights_f = (1/temp_err_f**2)
-
-                idx = tuple([temp_err_f>=1000000000000])
-                weights_f[idx] = 0.
-
-                if sum(weights_f) > 0:
-                    weights_f = weights_f / np.sum(weights_f)
-
-                    spectrum_f[n] = sum(weights_f * temp_spec_f)
-                    self.combined_sn = sum(weights_f * self.frame_sns) / sum(weights_f)
-
-                    self.combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
-                
-                else: 
-                    spectrum_f[n] = np.mean(temp_spec_f)
-                    self.combined_errors[n] = 1000000000000
-
-            self.combined_spectrum = spectrum_f
-
-        if output is True:
-            # ie if called as a function rather than from ACID function
-            return self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
-
-    def residual_mask(self, k_max=None):
-        ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
-
-        if k_max:
-            self.k_max = k_max
-
-        forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha, k_max=self.k_max)
-
-        a, b = utils.get_normalisation_coeffs(self.x)
-
-        mdl1 = 0
-        for i in range(self.k_max, len(self.model_inputs) - 1):
-            mdl1 = mdl1 + (self.model_inputs[i] * ((self.x * a) + b) ** (i - self.k_max))
-
-        mdl1 = mdl1 * self.model_inputs[-1]
-
-        data_normalised = (self.y - np.min(self.y)) / (np.max(self.y) - np.min(self.y))
-        forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
-        residuals = data_normalised - forward_normalised
-        
-        ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
-        idx = (abs(residuals) > self.dev_perc / 100)
-
-        flag_min = 0
-        flag_max = 0
-        for value in range(len(idx)):
-            if idx[value] == True and flag_min <= value:
-                flag_min = value
-                flag_max = value
-            elif idx[value] == True and flag_max < value:
-                flag_max = value
-            elif idx[value] == False and flag_max - flag_min >= self.pix_chunk:
-                self.yerr[flag_min:flag_max] = 10000000000000000000
-                flag_min = value
-                flag_max = value
-
-        ##############################################
-        #                  TELLURICS                 #   
-        ##############################################
-
-        # self.yerr_compare = self.yerr.copy()
-
-        ## masking tellurics
-        for line in self.telluric_lines:
-            limit = (21/LSD.ckms)*line +3
-            idx = np.logical_and((line-limit) <= self.x, self.x <= (limit+line))
-            self.yerr[idx] = 10000000000000000000
-
-        self.residual_masks = tuple([self.yerr >= 10000000000000000000])
-
-        ###################################
-        ###      sigma clip masking     ###
-        ###################################
-
-        m = np.median(residuals)
-        sigma = np.std(residuals)
-
-        # TODO! : check what the hell is gong on here with a_old
-        a_old = 1
-
-        upper_clip = m + a_old * sigma
-        lower_clip = m - a_old * sigma
-
-        rcopy = residuals.copy()
-
-        idx1 = tuple([rcopy <= lower_clip])
-        idx2 = tuple([rcopy >= upper_clip])
-
-        self.yerr[idx1] = 10000000000000000000
-        self.yerr[idx2] = 10000000000000000000
-
-        poly_inputs, _bin, bye = self.continuumfit(self.y, (self.x*a_old)+b, self.yerr, self.poly_ord)
-        # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
-        LSD_masking = LSD.LSD()
-        LSD_masking.run_LSD(self.x, _bin, bye, self.linelist_path, 'False',
-                        self.poly_ord, 100, 30, self.name, self.velocities)
-        # profile = LSD_masking.profile
-        self.alpha = LSD_masking.alpha
-
-        # model_input_resids = np.concatenate((profile, poly_inputs))
-
-        # ## comment if you would like to keep sigma clipping masking in for final LSD run 
-        # self.residual_masks = tuple([self.yerr>=1000000000000000000])
-
-        return
-
-    def _get_profiles(self, all_frames, counter):
-        flux = self.frame_flux[counter]
-        error = self.frame_errors[counter]
-        wavelengths = self.frame_wavelengths[counter]
-        sn = self.frame_sns[counter]
-
-        a, b = utils.get_normalisation_coeffs(wavelengths)
-
-        mdl1 =0
-        for i in np.arange(0, len(self.poly_cos)-1):
-            mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
-        mdl1 = mdl1*self.poly_cos[-1]
-
-        # Masking based off residuals interpolated onto new wavelength grid
-        if len(self.frame_wavelengths)>1:
-            reference_wave = self.frame_wavelengths[self.frame_sns==max(self.frame_sns)][0]
-        else:
-            reference_wave = self.frame_wavelengths[0]
-        mask_pos = np.ones(reference_wave.shape)
-        mask_pos[self.residual_masks]=10000000000000000000
-        f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
-        interp_mask_pos = f2(wavelengths)
-        interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
-
-        error[interp_mask_idx]=10000000000000000000
-
-        # corrrecting continuum
-        error = (error/flux) + (self.continuum_error/mdl1)
-        flux = flux/mdl1
-        error  = flux*error
-
-        remove = tuple([flux<0])
-        flux[remove]=1.
-        error[remove]=10000000000000000000
-
-        idx = tuple([flux>0])
-        
-        if len(flux[idx])==0:
-            print('continuing... frame %s'%counter)
-        
-        else:
-            LSD_profiles = LSD.LSD(self)
-            LSD_profiles.run_LSD(wavelengths, flux, error, self.linelist_path, 'False',
-                                 self.poly_ord, sn, 10, self.name, self.velocities)
-            profile_OD = LSD_profiles.profile
-            profile_errors = LSD_profiles.profile_errors
-            # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
-            #     wavelengths, flux, error, self.linelist_path, 'False', self.poly_ord, sn, 10, 'test', self.velocities)
-
-            # Need to check whats going on here with the -1
-            p = np.exp(profile_OD)-1
-            profile_f = np.exp(profile_OD)
-            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
-            profile_f = profile_f-1
-
-            all_frames[counter, self.order]=[profile_f, profile_errors_f]
-            
-            return all_frames
-
-    def combineprofiles(self, spectra, errors):
-        spectra = np.array(spectra)
-        idx = np.isnan(spectra)
-        shape_og = spectra.shape
-        if len(spectra[idx])>0:
-            spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
-            for n in range(len(spectra)):
-                if spectra[n] == np.nan:
-                    spectra[n] = (spectra[n+1]+spectra[n-1])/2
-                    if spectra[n] == np.nan:
-                        spectra[n] = 0.
-        spectra = spectra.reshape(shape_og)
-        errors = np.array(errors)
-        
-        spectra_to_combine = []
-        weights=[]
-        for n in range(0, len(spectra)):
-            if np.sum(spectra[n])!=0:
-                spectra_to_combine.append(list(spectra[n]))
-                temp_err = np.array(errors[n, :])
-                weight = (1/temp_err**2)
-                weights.append(np.mean(weight))
-        weights = np.array(weights/sum(weights))
-
-        spectra_to_combine = np.array(spectra_to_combine)
-
-        length, width = np.shape(spectra_to_combine)
-        spectrum = np.zeros((1,width))
-        spec_errors = np.zeros((1,width))
-
-        for n in range(0, width):
-            temp_spec = spectra_to_combine[:, n]
-            spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
-            spec_errors[0,n] = (np.std(temp_spec, ddof=1)**2) * np.sqrt(sum(weights**2))
-
-        spectrum = list(np.reshape(spectrum, (width,)))
-        spec_errors = list(np.reshape(spec_errors, (width,)))
-
-        return spectrum, spec_errors
-
     def ACID(self,
             input_wavelengths,
             input_spectra,
@@ -798,6 +368,550 @@ class Acid:
         else:
             return Result(self, production_run=True)
 
+    def ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
+                       file_type:str='e2ds', **kwargs):
+        """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
+
+        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
+        returning an LSD profile for each file given. Files must all be kept in the same folder as well
+        as their corresponding blaze files. If 's1d' are being used their e2ds equivalents must also be
+        in this folder. Result files containing profiles and associated errors for each order (or
+        corresponding wavelength range in the case of 's1d' files) will be created and saved to a
+        specified folder. It is recommended that this folder is seperate to the input files.
+
+        Parameters
+        ----------
+        filelist : list of strings
+            List of files. Files must come from the same observation night as continuum is fit for a combined
+            spectrum of all frames. A profile and associated errors will be produced for each file specified.
+        order_range : array, optional
+            Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths 
+            will be considered, by default None.
+        save_path : str, optional
+            Path to the directory where output files will be saved, by default './'
+        file_type : str, optional
+            Type of the input files, either "e2ds" or "s1d", by default 'e2ds'
+        **kwargs
+            Additional arguments to be passed to the ACID function. See ACID function for details.
+
+        Returns
+        -------
+        Object
+            Result object containing the LSD profiles and associated data. ACID_HARPS=True flag is set to allow
+            legacy subscripting and iteration if needed. The legacy subscript and iteration methods will access the
+            following attributes:
+            list
+                Barycentric Julian Date for files
+            list
+                Profiles (in normalised flux)
+            list
+                Errors on profiles (in normalised flux)
+            It can be accessed for example by:
+            >>> result = Acid.ACID_HARPS(...)
+            >>> BJDs = result.BJDs
+            >>> profiles = result.profiles
+            >>> errors = result.errors
+            or
+            >>> BJDs, profiles, errors = result
+        """
+
+        file_type = file_type.lower()
+        if file_type not in ['e2ds', 's1d']:
+            raise ValueError("file_type must be either 'e2ds' or 's1d'")
+
+        # Handle order_range input
+        if order_range is None:
+            # Be default, class is initialised with order_range = [1] for HARPS, this part forces
+            # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
+            self.order_range = np.arange(10, 70)
+
+        self.order_range = np.array(order_range) # Makes sure order range is an array regardless of input type
+        self.file_type = file_type
+        self.filelist = filelist
+
+        for order in self.order_range:
+
+            print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
+
+            frame_wavelengths, frame_flux, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
+
+            # Updates recursively the all_frames array with the profiles for each order
+            self.ACID(
+                frame_wavelengths,
+                frame_flux,
+                frame_errors,
+                sns,
+                order         = order-min(self.order_range),
+                return_result = False,
+                **kwargs
+            )
+
+        # adding into fits files for each frame
+        BJDs = []
+        profiles = []
+        errors = []
+        for frame_no in range(0, len(frame_flux)):
+            file = filelist[frame_no]
+            fits_file = fits.open(file)
+            hdu = fits.HDUList()
+            hdr = fits.Header()
+            
+            for order in self.order_range:
+                hdr['ORDER'] = order
+                hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
+                if order == self.order_range[0]:
+                    BJDs.append(fits_file[0].header['ESO DRS BJD'])
+                hdr['CRVAL1'] = np.min(self.velocities)
+                hdr['CDELT1'] = self.velocities[1] - self.velocities[0]
+
+                profile = self.all_frames[frame_no, order-min(self.order_range), 0]
+                profile_err = self.all_frames[frame_no, order-min(self.order_range), 1]
+
+                hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
+                if save_path != 'no save':
+                    month = 'August2007'
+                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.name), output_verify='fix', overwrite='True')
+
+            result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
+            profiles.append(result1)
+            errors.append(result2)
+
+        self.BJDs = BJDs
+        self.profiles = profiles
+        self.errors = errors
+        # Return Result class with ACID_HARPS=True flag to allow legacy subscripting and iteration if needed.
+        return Result(self, ACID_HARPS=True)
+
+    def combine_spec(
+            self,
+            frame_wavelengths: np.ndarray | None = None,
+            frame_flux:        np.ndarray | None = None,
+            frame_errors:      np.ndarray | None = None,
+            frame_sns:         np.ndarray | None = None,
+            output:            bool              = True
+            ):
+        """Combines multiple spectral frames into one spectrum
+
+        Parameters
+        ----------
+        frame_wavelengths : array, optional
+            Wavelengths for the spectral frames, by default None
+        frame_flux : array, optional
+            Fluxes for the spectral frames, by default None
+        frame_errors : array, optional
+            Errors for the spectral frames, by default None
+        frame_sns : array, optional
+            Signal-to-noise ratio for the spectral frames, by default None
+        output : bool, optional
+            Whether to output the combined spectrum, by default True
+
+        Returns
+        -------
+        combined_wavelengths : array
+            Wavelengths for the combined spectrum
+        combined_spectrum : array
+            Fluxes for the combined spectrum
+        combined_errors : array
+            Errors for the combined spectrum
+        combined_sn : float
+            Signal-to-noise ratio for the combined spectrum
+        """
+        # Inputs are now self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
+        # they were: wavelengths_f, spectra_f, errors_f, sns_f):
+        if frame_wavelengths:
+            self.frame_wavelengths = frame_wavelengths
+            self.frame_flux = frame_flux
+            self.frame_errors = frame_errors
+            self.frame_sns = frame_sns
+
+        if len(self.frame_wavelengths)==1:
+            self.combined_wavelengths = self.frame_wavelengths[0]
+            self.combined_spectrum = self.frame_flux[0]
+            self.combined_errors = self.frame_errors[0]
+            self.combined_sn = self.frame_sns[0]
+
+        else:
+            self.combined_spectrum = np.copy(self.frame_flux)
+
+            # combine all spectra to one spectrum
+            for n in range(len(self.combined_spectrum)):
+
+                self.combined_wavelengths = self.frame_wavelengths[np.argmax(self.frame_sns)]
+
+                idx = np.where(self.frame_wavelengths[n] != 0)[0]
+
+                f2 = interp1d(self.frame_wavelengths[n][idx], self.combined_spectrum[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                f2_err = interp1d(self.frame_wavelengths[n][idx], self.frame_errors[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                self.combined_spectrum[n] = f2(self.combined_wavelengths)
+                self.frame_errors[n] = f2_err(self.combined_wavelengths)
+
+                # Mask out out extrapolated areas
+                idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.frame_wavelengths[n][idx]),
+                                        self.combined_wavelengths>=np.min(self.frame_wavelengths[n][idx]))
+                idx_ex = tuple([idx_ex==False])
+
+                # TODO: Why [0] on where_are_zeros, why are we making errors large and flux 1, rather than masking out?
+                self.combined_spectrum[n][idx_ex] = 1.
+                self.frame_errors[n][idx_ex] = 1000000000000
+
+                # Mask out nans and zeros (these do not contribute to the main spectrum)
+                where_are_NaNs = np.isnan(self.combined_spectrum[n])
+                self.frame_errors[n][where_are_NaNs] = 1000000000000
+                where_are_zeros = np.where(self.combined_spectrum[n] == 0)[0]
+                self.frame_errors[n][where_are_zeros] = 1000000000000
+
+                where_are_NaNs = np.isnan(self.frame_errors[n])
+                self.frame_errors[n][where_are_NaNs] = 1000000000000
+                where_are_zeros = np.where(self.frame_errors[n] == 0)[0]
+                self.frame_errors[n][where_are_zeros] = 1000000000000
+
+            width = len(self.combined_wavelengths)
+            spectrum_f = np.zeros((width,))
+            self.combined_errors = np.zeros((width,))
+
+            for n in range(0,width):
+                temp_spec_f = self.combined_spectrum[:, n]
+                temp_err_f = self.frame_errors[:, n]
+
+                weights_f = (1/temp_err_f**2)
+
+                idx = tuple([temp_err_f>=1000000000000])
+                weights_f[idx] = 0.
+
+                if sum(weights_f) > 0:
+                    weights_f = weights_f / np.sum(weights_f)
+
+                    spectrum_f[n] = sum(weights_f * temp_spec_f)
+                    self.combined_sn = sum(weights_f * self.frame_sns) / sum(weights_f)
+
+                    self.combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
+                
+                else: 
+                    spectrum_f[n] = np.mean(temp_spec_f)
+                    self.combined_errors[n] = 1000000000000
+
+            self.combined_spectrum = spectrum_f
+
+        if output is True:
+            # ie if called as a function rather than from ACID function
+            return self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
+
+    def continuumfit(
+            self,
+            fluxes     : np.ndarray,
+            wavelengths: np.ndarray,
+            errors     : np.ndarray,
+            poly_ord   : int|npint
+            ):
+        """Provides an initial, normalised continuum fit using inputted spectra.
+
+        Parameters
+        ----------
+        fluxes : np.ndarray
+            The flux values of the spectrum.
+        wavelengths : np.ndarray
+            The wavelengths corresponding to the spectrum.
+        errors : np.ndarray
+            The error values associated with the spectrum.
+        poly_ord : int
+            The order of the polynomial to fit to the continuum.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
+        """
+        cont_factor = fluxes[0]
+        if cont_factor == 0: 
+            cont_factor = np.mean(fluxes)
+        idx = wavelengths.argsort()
+        wavelength = wavelengths[idx]
+        fluxe = fluxes[idx] / cont_factor
+        clipped_flux = []
+        clipped_waves = []
+        binsize = 100
+        for i in range(0, len(wavelength), binsize):
+            waves = wavelength[i:i+binsize]
+            flux = fluxe[i:i+binsize]
+            indicies = flux.argsort()
+            flux = flux[indicies]
+            waves = waves[indicies]
+            clipped_flux.append(flux[len(flux)-1])
+            clipped_waves.append(waves[len(waves)-1])
+        coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        poly = np.poly1d(coeffs)
+        fit = poly(wavelengths) * cont_factor
+        flux_obs = fluxes / fit
+        new_errors = errors / fit
+        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+        return poly_coeffs, flux_obs, new_errors
+
+    def read_in_frames(self, order, filelist, file_type, directory=None):
+        # read in first frame
+        fluxes, wavelengths, flux_error_order, sn = LSD.LSD().blaze_correct(
+            file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
+        # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
+        #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
+
+        frames = np.zeros((len(filelist), len(wavelengths)))
+        errors = np.zeros((len(filelist), len(wavelengths)))
+        frame_wavelengths = np.zeros((len(filelist), len(wavelengths)))
+        sns = np.zeros((len(filelist), ))
+
+        frames[0] = fluxes
+        errors[0] = flux_error_order
+        frame_wavelengths[0] = wavelengths
+        sns[0] = sn
+
+        def task_frames(frames, errors, frame_wavelengths, sns, i):
+            file = filelist[i]
+            frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD.LSD().blaze_correct(
+                file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
+            # print(i, frames)
+            return frames, frame_wavelengths, errors, sns
+        
+        ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
+        for i in range(len(filelist[1:])+1):
+            # print(i)
+            frames, frame_wavelengths, errors, sns = task_frames(frames, errors, frame_wavelengths, sns, i)
+            
+        ### finding highest S/N frame, saves this as reference frame
+
+        idx = (sns==np.max(sns))
+        # global reference_wave
+        reference_wave = frame_wavelengths[idx][0]
+        reference_frame = frames[idx][0]
+        reference_frame[reference_frame == 0] = 0.001
+        reference_error = errors[idx][0]
+        reference_error[reference_frame == 0] = 1000000000000000000
+
+        # global frames_unadjusted
+        frames_unadjusted = frames
+        # global frame_errors_unadjusted
+        frame_errors_unadjusted = errors
+
+        ### each frame is divided by reference frame and then adjusted so that all spectra lie at the same continuum
+        for n in range(len(frames)):
+            f2 = interp1d(frame_wavelengths[n], frames[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+            div_frame = f2(reference_wave)/reference_frame
+
+            idx_ref = (reference_frame<=0)
+            div_frame[idx_ref]=1
+
+            binned = []
+            binned_waves = []
+            binsize = int(round(len(div_frame)/5, 1))
+            for i in range(0, len(div_frame), binsize):
+                if i+binsize<len(reference_wave):
+                    waves = reference_wave[i:i+binsize]
+                    flux = div_frame[i:i+binsize]
+                    waves = waves[abs(flux-np.median(flux))<0.1]
+                    flux = flux[abs(flux-np.median(flux))<0.1]
+                    binned.append(np.median(flux))
+                    binned_waves.append(np.median(waves))
+
+            binned = np.array(binned)
+            binned_waves = np.array(binned_waves)
+        
+            ### fitting polynomial to div_frame
+            try:coeffs = np.polyfit(binned_waves, binned, 4)
+            except:coeffs = np.polyfit(binned_waves, binned, 2)
+            poly = np.poly1d(coeffs)
+            fit = poly(frame_wavelengths[n])
+            frames[n] = frames[n]/fit
+            errors[n] = errors[n]/fit
+            idx = (frames[n] == 0)
+            frames[n][idx] = 0.00001
+            errors[n][idx] = 1000000000
+
+        return frame_wavelengths, frames, errors, sns
+
+    def residual_mask(self, k_max=None):
+        ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
+
+        if k_max:
+            self.k_max = k_max
+
+        forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha, k_max=self.k_max)
+
+        a, b = utils.get_normalisation_coeffs(self.x)
+
+        mdl1 = 0
+        for i in range(self.k_max, len(self.model_inputs) - 1):
+            mdl1 = mdl1 + (self.model_inputs[i] * ((self.x * a) + b) ** (i - self.k_max))
+
+        mdl1 = mdl1 * self.model_inputs[-1]
+
+        data_normalised = (self.y - np.min(self.y)) / (np.max(self.y) - np.min(self.y))
+        forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
+        residuals = data_normalised - forward_normalised
+        
+        ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
+        idx = (abs(residuals) > self.dev_perc / 100)
+
+        flag_min = 0
+        flag_max = 0
+        for value in range(len(idx)):
+            if idx[value] == True and flag_min <= value:
+                flag_min = value
+                flag_max = value
+            elif idx[value] == True and flag_max < value:
+                flag_max = value
+            elif idx[value] == False and flag_max - flag_min >= self.pix_chunk:
+                self.yerr[flag_min:flag_max] = 10000000000000000000
+                flag_min = value
+                flag_max = value
+
+        ##############################################
+        #                  TELLURICS                 #   
+        ##############################################
+
+        # self.yerr_compare = self.yerr.copy()
+
+        ## masking tellurics
+        for line in self.telluric_lines:
+            limit = (21/LSD.ckms)*line +3
+            idx = np.logical_and((line-limit) <= self.x, self.x <= (limit+line))
+            self.yerr[idx] = 10000000000000000000
+
+        self.residual_masks = tuple([self.yerr >= 10000000000000000000])
+
+        ###################################
+        ###      sigma clip masking     ###
+        ###################################
+
+        m = np.median(residuals)
+        sigma = np.std(residuals)
+
+        # TODO! : check what the hell is gong on here with a_old
+        a_old = 1
+
+        upper_clip = m + a_old * sigma
+        lower_clip = m - a_old * sigma
+
+        rcopy = residuals.copy()
+
+        idx1 = tuple([rcopy <= lower_clip])
+        idx2 = tuple([rcopy >= upper_clip])
+
+        self.yerr[idx1] = 10000000000000000000
+        self.yerr[idx2] = 10000000000000000000
+
+        poly_inputs, _bin, bye = self.continuumfit(self.y, (self.x*a_old)+b, self.yerr, self.poly_ord)
+        # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
+        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
+        LSD_masking = LSD.LSD()
+        LSD_masking.run_LSD(self.x, _bin, bye, self.linelist_path, 'False',
+                        self.poly_ord, 100, 30, self.name, self.velocities)
+        # profile = LSD_masking.profile
+        self.alpha = LSD_masking.alpha
+
+        # model_input_resids = np.concatenate((profile, poly_inputs))
+
+        # ## comment if you would like to keep sigma clipping masking in for final LSD run 
+        # self.residual_masks = tuple([self.yerr>=1000000000000000000])
+
+        return
+
+    def _get_profiles(self, all_frames, counter):
+        flux = self.frame_flux[counter]
+        error = self.frame_errors[counter]
+        wavelengths = self.frame_wavelengths[counter]
+        sn = self.frame_sns[counter]
+
+        a, b = utils.get_normalisation_coeffs(wavelengths)
+
+        mdl1 =0
+        for i in np.arange(0, len(self.poly_cos)-1):
+            mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
+        mdl1 = mdl1*self.poly_cos[-1]
+
+        # Masking based off residuals interpolated onto new wavelength grid
+        if len(self.frame_wavelengths)>1:
+            reference_wave = self.frame_wavelengths[self.frame_sns==max(self.frame_sns)][0]
+        else:
+            reference_wave = self.frame_wavelengths[0]
+        mask_pos = np.ones(reference_wave.shape)
+        mask_pos[self.residual_masks]=10000000000000000000
+        f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
+        interp_mask_pos = f2(wavelengths)
+        interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
+
+        error[interp_mask_idx]=10000000000000000000
+
+        # corrrecting continuum
+        error = (error/flux) + (self.continuum_error/mdl1)
+        flux = flux/mdl1
+        error  = flux*error
+
+        remove = tuple([flux<0])
+        flux[remove]=1.
+        error[remove]=10000000000000000000
+
+        idx = tuple([flux>0])
+        
+        if len(flux[idx])==0:
+            print('continuing... frame %s'%counter)
+        
+        else:
+            LSD_profiles = LSD.LSD(self)
+            LSD_profiles.run_LSD(wavelengths, flux, error, self.linelist_path, 'False',
+                                 self.poly_ord, sn, 10, self.name, self.velocities)
+            profile_OD = LSD_profiles.profile
+            profile_errors = LSD_profiles.profile_errors
+            # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
+            #     wavelengths, flux, error, self.linelist_path, 'False', self.poly_ord, sn, 10, 'test', self.velocities)
+
+            # Need to check whats going on here with the -1
+            p = np.exp(profile_OD)-1
+            profile_f = np.exp(profile_OD)
+            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+            profile_f = profile_f-1
+
+            all_frames[counter, self.order]=[profile_f, profile_errors_f]
+            
+            return all_frames
+
+    def combineprofiles(self, spectra, errors):
+        spectra = np.array(spectra)
+        idx = np.isnan(spectra)
+        shape_og = spectra.shape
+        if len(spectra[idx])>0:
+            spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
+            for n in range(len(spectra)):
+                if spectra[n] == np.nan:
+                    spectra[n] = (spectra[n+1]+spectra[n-1])/2
+                    if spectra[n] == np.nan:
+                        spectra[n] = 0.
+        spectra = spectra.reshape(shape_og)
+        errors = np.array(errors)
+        
+        spectra_to_combine = []
+        weights=[]
+        for n in range(0, len(spectra)):
+            if np.sum(spectra[n])!=0:
+                spectra_to_combine.append(list(spectra[n]))
+                temp_err = np.array(errors[n, :])
+                weight = (1/temp_err**2)
+                weights.append(np.mean(weight))
+        weights = np.array(weights/sum(weights))
+
+        spectra_to_combine = np.array(spectra_to_combine)
+
+        length, width = np.shape(spectra_to_combine)
+        spectrum = np.zeros((1,width))
+        spec_errors = np.zeros((1,width))
+
+        for n in range(0, width):
+            temp_spec = spectra_to_combine[:, n]
+            spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
+            spec_errors[0,n] = (np.std(temp_spec, ddof=1)**2) * np.sqrt(sum(weights**2))
+
+        spectrum = list(np.reshape(spectrum, (width,)))
+        spec_errors = list(np.reshape(spec_errors, (width,)))
+
+        return spectrum, spec_errors
+
     def _run_mcmc(self, state, nsteps):
 
         sampler_verbosity = True if self.verbose>0 else False
@@ -920,120 +1034,6 @@ class Acid:
         if self is None:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
-
-    def ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
-                       file_type:str='e2ds', **kwargs):
-        """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
-
-        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
-        returning an LSD profile for each file given. Files must all be kept in the same folder as well
-        as their corresponding blaze files. If 's1d' are being used their e2ds equivalents must also be
-        in this folder. Result files containing profiles and associated errors for each order (or
-        corresponding wavelength range in the case of 's1d' files) will be created and saved to a
-        specified folder. It is recommended that this folder is seperate to the input files.
-
-        Parameters
-        ----------
-        filelist : list of strings
-            List of files. Files must come from the same observation night as continuum is fit for a combined
-            spectrum of all frames. A profile and associated errors will be produced for each file specified.
-        order_range : array, optional
-            Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths 
-            will be considered, by default None.
-        save_path : str, optional
-            Path to the directory where output files will be saved, by default './'
-        file_type : str, optional
-            Type of the input files, either "e2ds" or "s1d", by default 'e2ds'
-        **kwargs
-            Additional arguments to be passed to the ACID function. See ACID function for details.
-
-        Returns
-        -------
-        Object
-            Result object containing the LSD profiles and associated data. ACID_HARPS=True flag is set to allow
-            legacy subscripting and iteration if needed. The legacy subscript and iteration methods will access the
-            following attributes:
-            list
-                Barycentric Julian Date for files
-            list
-                Profiles (in normalised flux)
-            list
-                Errors on profiles (in normalised flux)
-            It can be accessed for example by:
-            >>> result = Acid.ACID_HARPS(...)
-            >>> BJDs = result.BJDs
-            >>> profiles = result.profiles
-            >>> errors = result.errors
-            or
-            >>> BJDs, profiles, errors = result
-        """
-
-        file_type = file_type.lower()
-        if file_type not in ['e2ds', 's1d']:
-            raise ValueError("file_type must be either 'e2ds' or 's1d'")
-
-        # Handle order_range input
-        if order_range is None:
-            # Be default, class is initialised with order_range = [1] for HARPS, this part forces
-            # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
-            self.order_range = np.arange(10, 70)
-
-        self.order_range = np.array(order_range) # Makes sure order range is an array regardless of input type
-        self.file_type = file_type
-        self.filelist = filelist
-
-        for order in self.order_range:
-
-            print('Running for order %s/%s...'%(order-min(self.order_range)+1, max(self.order_range)-min(self.order_range)+1))
-
-            frame_wavelengths, frame_flux, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
-
-            # Updates recursively the all_frames array with the profiles for each order
-            self.ACID(
-                frame_wavelengths,
-                frame_flux,
-                frame_errors,
-                sns,
-                order         = order-min(self.order_range),
-                return_result = False,
-                **kwargs
-            )
-
-        # adding into fits files for each frame
-        BJDs = []
-        profiles = []
-        errors = []
-        for frame_no in range(0, len(frame_flux)):
-            file = filelist[frame_no]
-            fits_file = fits.open(file)
-            hdu = fits.HDUList()
-            hdr = fits.Header()
-            
-            for order in self.order_range:
-                hdr['ORDER'] = order
-                hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
-                if order == self.order_range[0]:
-                    BJDs.append(fits_file[0].header['ESO DRS BJD'])
-                hdr['CRVAL1'] = np.min(self.velocities)
-                hdr['CDELT1'] = self.velocities[1] - self.velocities[0]
-
-                profile = self.all_frames[frame_no, order-min(self.order_range), 0]
-                profile_err = self.all_frames[frame_no, order-min(self.order_range), 1]
-
-                hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
-                if save_path != 'no save':
-                    month = 'August2007'
-                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.name), output_verify='fix', overwrite='True')
-
-            result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
-            profiles.append(result1)
-            errors.append(result2)
-
-        self.BJDs = BJDs
-        self.profiles = profiles
-        self.errors = errors
-        # Return Result class with ACID_HARPS=True flag to allow legacy subscripting and iteration if needed.
-        return Result(self, ACID_HARPS=True)
 
 
 def ACID(*args, **kwargs):
