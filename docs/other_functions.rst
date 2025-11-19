@@ -35,7 +35,6 @@ For the remainder of this page we will assume you have already run ACID and have
     # Run ACID
     result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
 
-    # This result is used for the remainder of this page
     result.save_result('example_result.pkl')
 
     # The result can be reloaded later using:
@@ -44,12 +43,17 @@ For the remainder of this page we will assume you have already run ACID and have
     # And later for example, to plot the profiles again:
     # loaded_result.plot_profiles() (see plotting section below)
 
+This result is used for the remainder of this page.
+
 Plotting
 =========
 
 The Result class contains a number of plotting methods to visualise the results of ACID. These include:
+
 - plot_profiles(): Plots the final LSD profiles returned by ACID. Can plot multiple profiles if multiple spectra were input.
+
 - plot_walkers(): Plots the MCMC walkers for the continuum fit parameters.
+
 - plot_corner(): Plots a corner plot of the posterior distributions of the continuum fit parameters.
 
 These plotting functions have a number of keyword arguments to tailor the plots to your needs. See the documentation for more information on these.
