@@ -110,9 +110,8 @@ class LSD:
         # for 16GB RAM. With testing, I found that if the matrix was half the available memory,
         # it would always be fast, otherwise seperate into blocks as the else statment below.
         if self.slurm:
-            available_memory = os.environ.get('SLURM_MEM_PER_NODE')
-            print(available_memory)
-            sys.exit() # Remove this when tested
+            available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
+            available_memory *= 1e6  # Convert to bytes as in the else statement below
         else:
             available_memory = psutil.virtual_memory().available
         mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
