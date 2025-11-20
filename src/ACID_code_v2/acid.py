@@ -28,6 +28,7 @@ class Acid:
             linelist_path  :str|None             = None,
             linelist_wl    :np.ndarray|list|None = None,
             linelist_depths:np.ndarray|list|None = None,
+            verbose        :int|npint|bool       = 2,
             telluric_lines :np.ndarray|list|None = None,
             name           :str                  = 'ACID',
             ):
@@ -49,6 +50,10 @@ class Acid:
         linelist_depths : np.ndarray | list | None, optional
             Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
+        verbose : bool | int, optional
+            An integer between 0 and 2. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
+            about any potential issues with the input data or autocorrelation warnings. If True, defaults to 1. If False, defaults to 0.
+            If you want to ignore the warnings but still keep progress information, set verbose to 1, by default 2
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
@@ -91,11 +96,21 @@ class Acid:
         if telluric_lines.ndim != 1 or telluric_lines.size == 0:
             raise ValueError("telluric_lines must be a one-dimensional array or list")
         
+        # Make verbosity always an int regardless of input type, and check correct range
+        if verbose is True:
+            verbose = 2
+        elif verbose is False:
+            verbose = 0
+        elif isinstance(verbose, int):
+            if verbose < 0 or verbose > 2:
+                raise ValueError("verbose must be an integer between 0 and 2 (or True/False)")
+
         # Set the above class attributes
-        self.velocities      = velocities
-        self.linelist_path   = linelist_path
-        self.telluric_lines  = telluric_lines
-        self.name            = name
+        self.velocities     = velocities
+        self.linelist_path  = linelist_path
+        self.telluric_lines = telluric_lines
+        self.name           = name
+        self.verbose        = verbose
 
         # Define default order range, can be overwritten in ACID_HARPS
         self.order_range = [1]
@@ -118,7 +133,6 @@ class Acid:
             dev_perc       :int|npint      = 25,
             n_sig          :int|npint      = 1,
             order          :int|npint      = 0,
-            verbose        :int|npint|bool = True,
             parallel       :bool           = True,
             cores          :int|npint|None = None,
             nsteps         :int|npint      = 10000,
@@ -169,10 +183,6 @@ class Acid:
             Only applicable if an all_frames output array has been provided as this is the order position in that
             array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in
             all_frames[:, 5]., by default 0
-        verbose : bool | int, optional
-            An integer between 0 and 2. If 0, nothing is printed. If 1, prints out time taken for each section of the code,
-            among other useful information. If 2, prints warnings about any potential issues with the input data or
-            autocorrelation warnings. If True, defaults to 1. If False, defaults to 0., by default 1
         parallel : bool, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, by default True
         cores : int, optional
@@ -214,10 +224,11 @@ class Acid:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
         # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
-        if np.any(input_spectra <= 0) or np.any(input_spectra > 1):
-            print("Input spectra contain values <= 0 or > 1. ACID will attempt to rescale inputs between 0 and 1, and mask " \
-            "negative values. However, it is recommended to input spectra that are already normalised and positive. " \
-            "Please check your data. You can check acid.scale_spectra for more information on how this is done.")
+        if np.any(input_spectra <= 0):
+            if self.verbose > 1:
+                print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
+                "negative values. However, it is recommended to input spectra that are already normalised and positive. " \
+                "Please check your data. You can check acid.scale_spectra for more information on how this is done.")
             input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
                 input_wavelengths, input_spectra, input_spectral_errors)
 
@@ -232,22 +243,12 @@ class Acid:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
             "not an array of S/N values for each pixel.")
 
-        # Make verbosity always an int regardless of input type, and check correct range
-        if verbose is True:
-            verbose = 1
-        elif verbose is False:
-            verbose = 0
-        elif isinstance(verbose, int):
-            if verbose < 0 or verbose > 2:
-                raise ValueError("verbose must be an integer between 0 and 2")
-
         # Assign all inputs to class variables (except all frames, handled below)
         self.frame_wavelengths = input_wavelengths
         self.frame_flux = input_spectra
         self.frame_errors = input_spectral_errors
         self.frame_sns = frame_sns
         self.poly_ord = poly_ord
-        self.verbose = verbose
         self.nsteps = nsteps
         self.order = order
         self.pix_chunk = pix_chunk
