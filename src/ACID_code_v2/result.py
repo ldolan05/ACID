@@ -273,7 +273,7 @@ class Result:
 
     @_require_all_results
     def plot_forward_model(self):
-        """Plots the forward model fit to the observed spectrum.
+        """Plots the forward model fit to the observed spectrum. (Not implemented yet)
         """
         raise NotImplementedError("plot_forward_model is not yet implemented")
         # x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
