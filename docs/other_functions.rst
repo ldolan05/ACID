@@ -15,6 +15,7 @@ This can be done using the Result.save_result() method.
 For the remainder of this page we will assume you have already run ACID and have a Result object called 'result'.
 
 .. code-block:: python
+
     import ACID_code_v2 as acid
     from astropy.io import fits
 
