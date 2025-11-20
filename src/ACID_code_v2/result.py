@@ -297,7 +297,7 @@ class Result:
         theta_median = np.median(self.samples, axis=0)
         model = model_func(theta_median, x, alpha=self.Acid.alpha, k_max=self.Acid.k_max)
 
-        fig, ax = plt.subplots(2, 1, figsize=(10, 6))
+        fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
         ax[0].plot(x, self.flux["combined"], color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(x, model, color='blue', linewidth=1, label='Forward Model Fit')
         ax[1].plot(x, self.flux["combined"] - model, color='green', linewidth=1, label='Residuals')
@@ -305,12 +305,12 @@ class Result:
         ax[1].set_xlabel('Wavelength (Angstrom)')
         ax[0].set_ylabel('Normalised Flux')
         ax[1].set_ylabel('Residuals')
-        ax[0].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].legend()
         ax[1].legend()
         ax[0].grid()
         ax[1].grid()
+        plt.subplots_adjust(hspace=0.05)
         plt.show()
 
     def save_result(self, filename:str="result.pkl"):
