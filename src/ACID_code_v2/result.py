@@ -143,7 +143,8 @@ class Result:
     
     @_require_Acid
     def process_results(self):
-        """Processes the MCMC results to extract the LSD profiles and errors.
+        """Processes the MCMC results to extract the LSD profiles and errors. Can be used
+        to convert a production run Result object into one with all results processed.
         """
         self.Acid.process_results(return_result=False)
         self.production_run = False

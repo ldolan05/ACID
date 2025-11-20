@@ -18,7 +18,10 @@ importlib.reload(utils)
 
 @beartype
 class Acid:
-    """Accurate Continuum fItting and Deconvolution (ACID) class"""
+    """Accurate Continuum fItting and Deconvolution (ACID) class. This class contains the ACID method 
+    which fits the continuum of spectra and performs Least Squares Deconvolution (LSD) to obtain
+    LSD profiles for each spectrum. It also contains many internal methods used within the main ACID 
+    function."""
 
     def __init__(self,
             velocities     :np.ndarray|None      = None,
@@ -28,7 +31,8 @@ class Acid:
             telluric_lines :np.ndarray|list|None = None,
             name           :str                  = 'ACID',
             ):
-        """Initialises ACID class with inputted parameters.
+        """Initialises the Acid class with inputted parameters. The parameters set here arre independent
+        of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
 
         Parameters
         ----------
