@@ -21,4 +21,4 @@ All notable future changes to this project are documented here.
 ### Fixed
 - Calculation of the alpha matrix is chunked (with sizing dependent on available memory) to avoid crashes on macOS due to extremely high memory demands.
 
-[1.0.0]: https://github.com/your-user/ACID_v2/releases/tag/v1.0.0
+[1.0.0]: https://github.com/Benjamin-Cadell/ACID_v2/releases/tag/v1.0.0
