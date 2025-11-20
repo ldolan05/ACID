@@ -19,7 +19,7 @@ def model_func(inputs, x, **kwargs):
 
         z = inputs[:k_max]
 
-        mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
+        mdl = np.dot(alpha, z)
 
         #converting model from optical depth to flux
         mdl = np.exp(mdl)

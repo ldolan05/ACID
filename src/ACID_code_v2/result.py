@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools
 from beartype import beartype
 from numpy import integer as npint
+from .mcmc_utils import model_func
 
 warnings.filterwarnings("ignore")
 
@@ -56,6 +57,20 @@ class Result:
         # This should be a temporary measure until Acid can be pickled properly
         self.sampler = Acid.sampler
 
+        # Store different used wavelengths in ACID (later this may go into Acid itself):
+        self.wavelengths = {
+            'combined': Acid.combined_wavelengths,
+            'input'   : Acid.frame_wavelengths,
+        }
+        self.flux = {
+            'combined': Acid.combined_spectrum,
+            'input'   : Acid.frame_flux,
+        }
+        self.flux_error = {
+            'combined': Acid.combined_errors,
+            'input'   : Acid.frame_errors,
+        }
+
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
         self.nsteps = Acid.nsteps
@@ -89,6 +104,8 @@ class Result:
 
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
+        # Samples if burnin and thin dont need inputs
+        self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
     @_require_all_results
     def __getitem__(self, item):
@@ -273,25 +290,28 @@ class Result:
 
     @_require_all_results
     def plot_forward_model(self):
-        """Plots the forward model fit to the observed spectrum. (Not implemented yet)
+        """Plots the forward model fit to the observed spectrum.
         """
-        raise NotImplementedError("plot_forward_model is not yet implemented")
-        # x, y, yerr = self.velocities, self.all_frames[0,0,0], self.all_frames[0,0,1]
-        # theta_median = np.median(self.Acid.sampler.get_chain(discard=self.burnin, flat=True,
-        # thin=self.thin), axis=0)
-        # from src.Acid_code_v2.mcmc_utils import model_func
-        # model = model_func(theta_median, x)
+        x = self.wavelengths["combined"]
 
-        # fig, ax = plt.subplots(figsize=(10, 6))
-        # ax.errorbar(x, y, yerr=yerr, ecolor="red", linewidth=1, label='Observed Spectrum')
-        # ax.plot(x, model, color='blue', linewidth=1, label='Forward Model Fit')
-        # ax.set_title('Forward Model Fit to Observed Spectrum')
-        # ax.set_xlabel('Velocity (km/s)')
-        # ax.set_ylabel('Normalised Flux')
-        # ax.axhline(0, color='black', linestyle='--', linewidth=1)
-        # ax.legend()
-        # ax.grid()
-        # plt.show()
+        theta_median = np.median(self.samples, axis=0)
+        model = model_func(theta_median, x, alpha=self.Acid.alpha, k_max=self.Acid.k_max)
+
+        fig, ax = plt.subplots(2, 1, figsize=(10, 6))
+        ax[0].plot(x, self.flux["combined"], color='black', linewidth=1, label='Observed Spectrum')
+        ax[0].plot(x, model, color='blue', linewidth=1, label='Forward Model Fit')
+        ax[1].plot(x, self.flux["combined"] - model, color='green', linewidth=1, label='Residuals')
+        ax[0].set_title('Forward Model Fit to Observed Spectrum')
+        ax[1].set_xlabel('Wavelength (Angstrom)')
+        ax[0].set_ylabel('Normalised Flux')
+        ax[1].set_ylabel('Residuals')
+        ax[0].axhline(0, color='black', linestyle='--', linewidth=1)
+        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
+        ax[0].legend()
+        ax[1].legend()
+        ax[0].grid()
+        ax[1].grid()
+        plt.show()
 
     def save_result(self, filename:str="result.pkl"):
         """Saves the Result object to a pickle file.
