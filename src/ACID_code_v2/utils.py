@@ -158,6 +158,26 @@ def get_normalisation_coeffs(wl):
     b = 1 - a * np.max(wl)
     return a, b
 
+def set_dict_defaults(input_dict, default_dict):
+    """Sets default values in a dictionary if they are not already present.
+
+    Parameters
+    ----------
+    input_dict : dict | None
+        The dictionary to set defaults in (or none if not provided).
+    default_dict : dict
+        The dictionary containing default key-value pairs.
+    
+    Returns
+    -------
+    dict
+        The updated dictionary with defaults set.
+    """
+    input_dict = dict(input_dict or {})
+    for key, value in default_dict.items():
+        input_dict.setdefault(key, value)
+    return input_dict
+
 def findfiles(directory, file_type):
 
     filelist_corrected = glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type)) #finding corrected spectra

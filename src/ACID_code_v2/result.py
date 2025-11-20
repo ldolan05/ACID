@@ -5,6 +5,7 @@ import corner, sys, os, pickle, warnings, contextlib, functools
 from beartype import beartype
 from numpy import integer as npint
 from .mcmc_utils import model_func
+from . import utils
 
 warnings.filterwarnings("ignore")
 
@@ -227,28 +228,25 @@ class Result:
         ----------
         grid : bool, optional
             Show or hide grid, by default True
-        labels : dict, optional
+        labels : dict | None, optional
             Keys: 'xlabel', 'ylabel', and 'title'. Allows label overrides., by default None
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
-        subplot_kwargs : dict, optional
+        subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(), by default None
-        errorbar_kwargs : dict, optional
+        errorbar_kwargs : dict | None, optional
             Keyword arguments to be passed to ax.errorbar(), by default None
         """
         # Set default errorbar kwargs
-        errorbar_kwargs = dict(errorbar_kwargs or {})
         errorbar_defaults = {
             "fmt"      : ".-",
             "ecolor"   : "red",
             "linewidth": 1,
         }
-        for key, value in errorbar_defaults.items():
-            errorbar_kwargs.setdefault(key, value)
+        errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, errorbar_defaults)
 
         # Set default subplot kwargs
-        subplot_kwargs = dict(subplot_kwargs or {})
-        subplot_kwargs.setdefault("figsize", (10, 6))
+        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 6)})
 
         # Set default labels
         default_labels = {
@@ -256,9 +254,7 @@ class Result:
             "xlabel": "Velocity (km/s)",
             "ylabel": "Normalised Flux"
         }
-        labels = dict(labels or {})
-        for key, value in default_labels.items():
-            labels.setdefault(key, value)
+        labels = utils.set_dict_defaults(labels, default_labels)
 
         # Set useful variables
         nframes = len(self.all_frames)
@@ -289,29 +285,80 @@ class Result:
             plt.show()
 
     @_require_all_results
-    def plot_forward_model(self):
+    def plot_forward_model(
+        self,
+        input_version   :str       = "combined",
+        grid            :bool      = True,
+        labels          :dict|None = None,
+        return_fig      :bool      = False,
+        subplot_kwargs  :dict|None = None,
+        ):
         """Plots the forward model fit to the observed spectrum.
+
+        Parameters
+        ----------
+        input_version : str, optional
+            Which input spectrum to use: 'combined' or 'input', by default "combined"
+        grid : bool, optional
+            Show or hide grid, by default True
+        labels : dict | None, optional
+            Keys: 'xlabel', 'ylabel', 'title', and 'residuals_ylabel'. Allows label overrides, by default None
+        return_fig : bool, optional
+            Whether to return the figure and axis objects instead of showing the plot, by default False
+        subplot_kwargs : dict | None, optional
+            Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
         """
-        x = self.wavelengths["combined"]
 
+        # Validate all inputs and set defaults
+        input_version = input_version.lower()
+        if input_version not in self.wavelengths.keys():
+            raise ValueError(f"input_version must be one of {list(self.wavelengths.keys())}")
+        
+        # Set default labels
+        default_labels = {
+            "title"           : "Forward Model Fit to Observed Spectrum",
+            "xlabel"          : "Wavelength (Angstroms)",
+            "ylabel"          : "Normalised Flux",
+            "residuals_ylabel": "Residuals",
+        }
+        labels = utils.set_dict_defaults(labels, default_labels)
+
+        # Set default subplot kwargs
+        subplot_kwargs = {
+            "figsize": (10, 8),
+            "sharex": True,
+            "gridspec_kw": {'height_ratios': [3, 1]}
+        }
+        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
+
+        # Get input data
+        input_wavelengths = self.wavelengths[input_version]
+        input_flux = self.flux[input_version]
+
+        # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        model = model_func(theta_median, x, alpha=self.Acid.alpha, k_max=self.Acid.k_max)
+        model_flux = model_func(theta_median, input_wavelengths, alpha=self.Acid.alpha, k_max=self.Acid.k_max)
 
-        fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-        ax[0].plot(x, self.flux["combined"], color='black', linewidth=1, label='Observed Spectrum')
-        ax[0].plot(x, model, color='blue', linewidth=1, label='Forward Model Fit')
-        ax[1].plot(x, self.flux["combined"] - model, color='green', linewidth=1, label='Residuals')
-        ax[0].set_title('Forward Model Fit to Observed Spectrum')
-        ax[1].set_xlabel('Wavelength (Angstrom)')
-        ax[0].set_ylabel('Normalised Flux')
-        ax[1].set_ylabel('Residuals')
+        # Plotting
+        fig, ax = plt.subplots(2, 1, **subplot_kwargs)
+        ax[0].plot(input_wavelengths, input_flux, color='black', linewidth=1, label='Observed Spectrum')
+        ax[0].plot(input_wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
+        ax[1].plot(input_wavelengths, input_flux - model_flux, color='C0', linewidth=1, label='Residuals')
+        ax[0].set_title(labels["title"])
+        ax[1].set_xlabel(labels["xlabel"])
+        ax[0].set_ylabel(labels["ylabel"])
+        ax[1].set_ylabel(labels["residuals_ylabel"])
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].legend()
         ax[1].legend()
-        ax[0].grid()
-        ax[1].grid()
+        ax[0].grid(grid)
+        ax[1].grid(grid)
         plt.subplots_adjust(hspace=0.05)
-        plt.show()
+
+        if return_fig:
+            return fig, ax
+        else:
+            plt.show()
 
     def save_result(self, filename:str="result.pkl"):
         """Saves the Result object to a pickle file.
