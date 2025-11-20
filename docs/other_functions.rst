@@ -19,6 +19,8 @@ For the remainder of this page we will assume you have already run ACID and have
     import ACID_code_v2 as acid
     from astropy.io import fits
 
+    skips = 3 # Example of skipping every 3rd pixel to reduce computation time for this tutorial
+
     # Use all the same code as in the Quickstart tutorial to set up inputs and run ACID
     spec_file = fits.open('example/sample_spec_1.fits')
     wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
@@ -26,8 +28,6 @@ For the remainder of this page we will assume you have already run ACID and have
     error = spec_file[2].data[::skips]        # Spectral Flux Errors
     sn = spec_file[3].data                    # SN of Spectrum
     linelist_path = 'example/example_linelist.txt' # Insert path to line list
-
-    skips = 3 # Example of skipping every 3rd pixel to reduce computation time for this tutorial
 
     velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))  # Velocity grid
 
