@@ -7,6 +7,7 @@ import multiprocessing as mp
 from functools import partial
 from beartype import beartype
 from numpy import integer as npint
+import matplotlib.pyplot as plt
 from . import utils
 from . import LSD
 from . import mcmc_utils
@@ -299,10 +300,9 @@ class Acid:
 
         # Get the initial profile
         LSD_initial_profile = LSD.LSD(self)
-        LSD_initial_profile.run_LSD(order=30)
+        LSD_initial_profile.run_LSD(self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1)
 
         # Use alpha matrix and initial profile class variables from initial LSD run
-        self.velocities = LSD_initial_profile.velocities
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
@@ -310,7 +310,6 @@ class Acid:
         # Set the number of points in vgrid (k_max)
         self.k_max = len(self.initial_profile)
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
-        # TODO: print(self.k_max == len(self.velocities))
 
         # Set x, y, yerr for emcee
         self.x = self.combined_wavelengths
@@ -648,7 +647,7 @@ class Acid:
         fit = poly(wavelengths) * cont_factor
         flux_obs = fluxes / fit
         new_errors = errors / fit
-        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))        
         return poly_coeffs, flux_obs, new_errors
 
     def read_in_frames(self, order, filelist, file_type, directory=None):
@@ -805,9 +804,8 @@ class Acid:
         poly_inputs, _bin, bye = self.continuumfit(self.y, (self.x*a_old)+b, self.yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
-        LSD_masking = LSD.LSD()
-        LSD_masking.run_LSD(self.x, _bin, bye, self.linelist_path, 'False',
-                        self.poly_ord, 100, 30, self.name, self.velocities)
+        LSD_masking = LSD.LSD(self)
+        LSD_masking.run_LSD(self.x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
 
@@ -857,11 +855,10 @@ class Acid:
         
         if len(flux[idx])==0:
             print('continuing... frame %s'%counter)
-        
+
         else:
             LSD_profiles = LSD.LSD(self)
-            LSD_profiles.run_LSD(wavelengths, flux, error, self.linelist_path, 'False',
-                                 self.poly_ord, sn, 10, self.name, self.velocities)
+            LSD_profiles.run_LSD(wavelengths, flux, error)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
             # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(

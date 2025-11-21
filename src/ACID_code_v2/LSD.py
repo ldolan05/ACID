@@ -13,56 +13,59 @@ class LSD:
 
     def __init__(self, Acid=None):
 
-        self.verbose = 1
+        self.verbose = 2
         self.adjust_continuum = None
         self.slurm = "SLURM_JOB_ID" in os.environ
+
         if not Acid:
-            return
-        self.wavelengths = Acid.combined_wavelengths
-        self.flux_obs = Acid.fluxes_order1
-        self.rms = Acid.flux_error_order1
-        self.linelist = Acid.linelist_path
-        self.poly_ord = Acid.poly_ord
-        self.sn = Acid.combined_sn
-        self.order = Acid.order
-        self.run_name = Acid.name
-        self.velocities = Acid.velocities
-        self.verbose = Acid.verbose
+            self.Acid = False
 
-    def run_LSD(self, *args, **kwargs):
-        # Nothing the args use to be:
-        # wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities
-        # and kwargs:
-        # verbose=1
-        # These can be overridden by passing in different values,
-        # but by default use the ones from the class init
-        arg_names = [
-            "wavelengths", "flux_obs", "rms", "linelist", "adjust_continuum",
-            "poly_ord", "sn", "order", "run_name", "velocities", "verbose"
-        ] # legacy arg names
+        else:
+            self.Acid = True
+            self.linelist = Acid.linelist_path
+            self.sn = Acid.combined_sn
+            self.order = Acid.order
+            self.run_name = Acid.name
+            self.velocities = Acid.velocities
+            self.verbose = Acid.verbose
 
-        params = [
-            inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-            for name in arg_names
-        ]
-        sig = inspect.Signature(params)
+    def run_LSD(
+        self,
+        wavelengths :np.ndarray,
+        flux_obs    :np.ndarray,
+        rms         :np.ndarray,
+        sn          :float      = None,
+        linelist    :str|dict   = None,
+        velocities  :np.ndarray = None,
+        verbose     :int|None   = None,
+        ):
+        """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
+        """
 
-        try:
-            bound = sig.bind_partial(*args, **kwargs)
-        except TypeError as e:
-            # More informative error if user duplicates an argument
-            raise TypeError(str(e) + " — you may be passing both a positional and keyword argument for the same name.")
+        if not wavelengths.shape == flux_obs.shape == rms.shape:
+            raise ValueError("Input wavelengths, flux_obs, and rms must have the same shape.")
+        if wavelengths.ndim != 1:
+            raise ValueError("Input wavelengths, flux_obs, and rms must be 1D arrays.")
 
-        # Apply valid arguments
-        for name, value in bound.arguments.items():
-            setattr(self, name, value)
+        # Required kwargs (no default)
+        self.wavelengths = wavelengths
+        self.flux_obs    = flux_obs
+        self.rms         = rms
 
-        # Check for unexpected kwargs (not in arg_names)
-        unexpected = set(kwargs) - set(arg_names)
-        if unexpected:
-            raise TypeError(f"Unexpected argument(s): {', '.join(unexpected)}")
+        # Optional kwargs (default set in init)
+        if self.Acid:
+            self.sn         = sn         if sn         is not None else self.sn
+            self.linelist   = linelist   if linelist   is not None else self.linelist
+            self.velocities = velocities if velocities is not None else self.velocities
+            self.verbose    = verbose    if verbose    is not None else self.verbose
+        else:
+            if sn is None or linelist is None or velocities is None:
+                raise ValueError("sn, linelist, and velocities must be provided if no Acid instance is provided in initialisation.")
+            self.sn         = sn
+            self.linelist   = linelist
+            self.velocities = velocities
+            self.verbose    = verbose if verbose is not None else 2
 
-        #idx = tuple([flux_obs>0])
         # Converting to optical depth space
         self.rms = self.rms / self.flux_obs
         self.flux_obs = np.log(self.flux_obs)
@@ -70,12 +73,12 @@ class LSD:
         deltav = self.velocities[1] - self.velocities[0]
 
         #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
-        # Ben - Reading the linelist
+        # Reading the linelist
         if isinstance(self.linelist, str):
             linelist_expected = np.genfromtxt('%s'%self.linelist, skip_header=4, delimiter=',', usecols=(1,9))
             wavelengths_expected_all = np.array(linelist_expected[:,0])
             depths_expected_all = np.array(linelist_expected[:,1])
-        else: # If user input linelist_wl and depths in Acid
+        else: # If user input linelist_wl and linelist_depths in Acid
             wavelengths_expected_all = np.array(self.linelist["wavelength"])
             depths_expected_all = np.array(self.linelist["depth"])
 
@@ -90,6 +93,8 @@ class LSD:
         # Selecting lines deeper than 1/(3*sn)
         line_min = 1 / (3 * self.sn)
         idx = (self.depths_expected >= line_min)
+
+        # print(100*len(idx)/len(self.depths_expected), "% of lines used in LSD")
         self.wavelengths_expected = self.wavelengths_expected[idx]
         self.depths_expected = self.depths_expected[idx]
         self.no_line = len(self.depths_expected)
@@ -105,7 +110,7 @@ class LSD:
         vel = ckms * (diff / self.wavelengths_expected)
 
         # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
-        
+
         # Note this used to be "if len(wavelengths)<6000", which I believe is way too high
         # for 16GB RAM. With testing, I found that if the matrix was half the available memory,
         # it would always be fast, otherwise seperate into blocks as the else statment below.
@@ -114,10 +119,11 @@ class LSD:
             available_memory *= 1e6  # Convert to bytes as in the else statement below
         else:
             available_memory = psutil.virtual_memory().available
+        
         mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
         m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
+        
         if mat_size < m_available:
-
             # Calculating entire alpha matrix at once
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
@@ -131,17 +137,23 @@ class LSD:
             bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
             max_block = max(1, mem_size // bytes_per_row)
             block = min(max_block, len(self.wavelengths_expected))
-            # block = 512 # after initial testing, this value is a good compromise between memory use and speed
+
+            # Set initial alpha matrix to np.zeros
             self.alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
+
+            # Use tqdm progress bar if verbose
             if self.verbose>0:
                 iterable = tqdm(range(0, len(self.wavelengths_expected), block), desc='Calculating alpha matrix')
             else:
                 iterable = range(0, len(self.wavelengths_expected), block)
+
             for start_pos in iterable:
-                end_pos = min(start_pos + block, len(self.wavelengths_expected)) # ensure we don't go out of bounds on last iteration
+                # Ensure we don't go out of bounds on last iteration
+                end_pos = min(start_pos + block, len(self.wavelengths_expected))
                 wl  = self.wavelengths_expected[start_pos:end_pos]
                 dep = self.depths_expected[start_pos:end_pos]
 
+                # Perform calculations for this block
                 vel_blk = ckms * (blankwaves[:, None] - wl) / wl
                 x_blk   = (vel_blk[:, :, None] - self.velocities) / deltav
                 delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
@@ -167,11 +179,11 @@ class LSD:
         Z = linalg.solve_triangular(L, B, lower=True)
         X = linalg.solve_triangular(U, Z, lower=False)
         LHS_final = np.matmul(X, np.transpose(P))
-    
-        self.profile = np.dot(LHS_final, RHS_final)
-        self.profile_errors_squared = np.diagonal(LHS_final)
-        self.profile_errors = np.sqrt(self.profile_errors_squared)
 
+        profile_errors_squared = np.diagonal(LHS_final)
+
+        self.profile = np.dot(LHS_final, RHS_final)
+        self.profile_errors = np.sqrt(profile_errors_squared)
         return
 
     def get_wave(self, data, header):
