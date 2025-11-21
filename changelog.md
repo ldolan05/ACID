@@ -1,6 +1,11 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.0.1] - 2025-11-20
+
+### Added
+- Result.plot_forward_model() to plot the forward model overlayed on the original data with the finished ACID profile. See the API for documentation.
+
 ## [1.0.0] - 2025-11-20
 
 ### Notes
