@@ -1,6 +1,11 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.0.2] - 2025-11-21
+
+### Changed
+- Vastly sped up the MCMC calculation function using a faster numpy method. And slightly improved log_prob calculation. The speedup should be of the order of 1.5x-2x faster.
+
 ## [1.0.1] - 2025-11-20
 
 ### Added
