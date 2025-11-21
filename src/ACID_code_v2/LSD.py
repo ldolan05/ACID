@@ -196,38 +196,6 @@ class LSD:
 
         return wave
 
-    def continuumfit(self, wavelengths1, fluxes1, poly_ord):
-
-            fluxes = fluxes1
-            wavelengths = wavelengths1
-
-            idx = wavelengths.argsort()
-            wavelength = wavelengths[idx]
-            fluxe = fluxes[idx]
-            clipped_flux = []
-            clipped_waves = []
-            binsize = 100
-            for i in range(0, len(wavelength), binsize):
-                waves = wavelength[i:i+binsize]
-                flux = fluxe[i:i+binsize]
-                indicies = flux.argsort()
-                flux = flux[indicies]
-                waves = waves[indicies]
-
-                clipped_flux.append(flux[len(flux)-1])
-                clipped_waves.append(waves[len(waves)-1])
-            coeffs=np.polyfit(clipped_waves, clipped_flux, poly_ord)
-
-            poly = np.poly1d(coeffs)
-            fit = poly(wavelengths1)
-            # plt.figure()
-            # plt.plot(wavelengths1, fluxes1)
-            # plt.plot(wavelengths1, fit)
-        
-            flux_obs = fluxes1/fit
-            
-            return flux_obs
-
     def upper_envelope(self, x, y):
         # from MM-LSD code - give credit if needed
         # used to compute the tapas continuum. find peaks then fit spline to it.
