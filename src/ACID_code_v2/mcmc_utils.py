@@ -9,13 +9,13 @@ def _init_worker(global_data):
     y = global_data["y"]
     yerr = global_data["yerr"]
     alpha = global_data["alpha"]
-    k_max = global_data["k_max"]
     velocities = global_data["velocities"]
+    k_max = alpha.shape[1]
 
 def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
         alpha = kwargs.get("alpha", globals().get("alpha"))
-        k_max = kwargs.get("k_max", globals().get("k_max"))
+        k_max = kwargs.get("k_max", alpha.shape[1])
 
         z = inputs[:k_max]
 

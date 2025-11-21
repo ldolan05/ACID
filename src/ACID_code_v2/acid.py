@@ -307,14 +307,11 @@ class Acid:
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
 
-        # Set the number of points in vgrid (k_max)
-        self.k_max = len(self.initial_profile)
-        self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
-
-        # Set x, y, yerr for emcee
+        # Set x, y, yerr, and model_inputs for emcee
         self.x = self.combined_wavelengths
         self.y = self.combined_spectrum
         self.yerr = self.combined_errors
+        self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
 
         ## Setting these normalisation factors as global variables - used in the figures below
         a, b = utils.get_normalisation_coeffs(self.x)
@@ -355,8 +352,8 @@ class Acid:
         initial_state = np.transpose(np.array(initial_state))
 
         # Setting global data for multiprocessing
-        self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr, "alpha": self.alpha,
-                            "k_max": self.k_max, "velocities": self.velocities}
+        self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
+                            "alpha": self.alpha, "velocities": self.velocities}
 
         if self.verbose>0:
             t5 = time.time()
@@ -742,19 +739,17 @@ class Acid:
 
         return frame_wavelengths, frames, errors, sns
 
-    def residual_mask(self, k_max=None):
+    def residual_mask(self):
         ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
-        if k_max:
-            self.k_max = k_max
-
-        forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha, k_max=self.k_max)
+        forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha)
 
         a, b = utils.get_normalisation_coeffs(self.x)
 
         mdl1 = 0
-        for i in range(self.k_max, len(self.model_inputs) - 1):
-            mdl1 = mdl1 + (self.model_inputs[i] * ((self.x * a) + b) ** (i - self.k_max))
+        len_velocities = len(self.velocities)
+        for i in range(len_velocities, len(self.model_inputs) - 1):
+            mdl1 = mdl1 + (self.model_inputs[i] * ((self.x * a) + b) ** (i - len_velocities))
 
         mdl1 = mdl1 * self.model_inputs[-1]
 
@@ -985,7 +980,7 @@ class Acid:
             error = np.std(flat_samples[:, i])
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
-            if i<self.k_max:
+            if i<len(self.velocities):
                 self.profile.append(mcmc[1])
                 self.profile_err.append(np.max(error))
             else:
@@ -1003,10 +998,10 @@ class Acid:
         a, b = utils.get_normalisation_coeffs(self.x)
         for ind in inds:
             sample = flat_samples[ind]
-            mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha, k_max=self.k_max)
+            mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
             mdl1_temp = 0
-            for i in np.arange(self.k_max, len(sample)-1):
-                mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-self.k_max)
+            for i in np.arange(len(self.velocities), len(sample)-1):
+                mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-len(self.velocities))
             mdl1_temp = mdl1_temp*sample[-1]
             conts.append(mdl1_temp)
 
