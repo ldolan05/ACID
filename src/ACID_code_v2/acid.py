@@ -605,7 +605,8 @@ class Acid:
             fluxes     : np.ndarray,
             wavelengths: np.ndarray,
             errors     : np.ndarray,
-            poly_ord   : int|npint
+            poly_ord   : int|npint|None = 3,
+            plot_result: bool           = False
             ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -618,16 +619,21 @@ class Acid:
         errors : np.ndarray
             The error values associated with the spectrum.
         poly_ord : int
-            The order of the polynomial to fit to the continuum.
+            The order of the polynomial to fit to the continuum. Uses class default of 3 if not provided.
+        plot_result : bool, optional
+            If True, plots the original spectrum and the fitted continuum, by default False
 
         Returns
         -------
         tuple
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
-        cont_factor = fluxes[0]
-        if cont_factor == 0: 
-            cont_factor = np.mean(fluxes)
+        if poly_ord is None:
+            poly_ord = self.poly_ord
+        if poly_ord is None:
+            raise ValueError("poly_ord must be specified either in the function call or as a class attribute.")
+
+        cont_factor = np.percentile(fluxes, 95)
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
         fluxe = fluxes[idx] / cont_factor
@@ -647,7 +653,13 @@ class Acid:
         fit = poly(wavelengths) * cont_factor
         flux_obs = fluxes / fit
         new_errors = errors / fit
-        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))        
+        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+
+        if plot_result:
+            plt.plot(wavelengths, fluxes, label='Original Spectrum')
+            plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
+            plt.legend()
+            plt.show()
         return poly_coeffs, flux_obs, new_errors
 
     def read_in_frames(self, order, filelist, file_type, directory=None):

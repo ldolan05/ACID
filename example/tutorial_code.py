@@ -17,7 +17,7 @@ except:
 acid._reload_all()
 skips = 2 # Skip some values to save time in this tutorial
 
-#%% Quickstart Example
+# Quickstart Example
 spec_file = fits.open('example/sample_spec_1.fits')
 
 wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
