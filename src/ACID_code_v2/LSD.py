@@ -136,7 +136,7 @@ class LSD:
             mem_size = available_memory // 2
             bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
             max_block = max(1, mem_size // bytes_per_row)
-            block = min(max_block, len(self.wavelengths_expected))
+            block = int(min(max_block, len(self.wavelengths_expected)))
 
             # Set initial alpha matrix to np.zeros
             self.alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
