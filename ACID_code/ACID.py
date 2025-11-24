@@ -483,7 +483,8 @@ def combineprofiles(spectra, errors):
 
     return  spectrum, spec_errors
 
-def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns, vgrid, all_frames='default', poly_or=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96], order = 0):
+def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns, vgrid, all_frames='default', poly_or=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96], order = 0,
+         max_wavelengths=7000): # BEN - added max_wavelengths option
     """Accurate Continuum fItting and Deconvolution
 
     Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -550,7 +551,10 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # print('Set up before LSD %s'%(t2-t0))
     #### getting the initial profile
     global alpha
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
+    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities,
+    max_wavelengths = max_wavelengths) # BEN - adding max_wavelengths to show differences
+
+    return velocities, profile, profile_errors, alpha # BEN - added to compare
 
     # t3 = time.time()
     # print('LSD run takes: %s'%(t3-t2))
@@ -603,7 +607,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # print('MCMC set up takes: %s'%(t1-t4))
     # print('Initialised in %ss'%round((t1-t0), 2))
 
-    return velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes1, flux_error_order1
+    return velocities, profile, profile_errors, alpha, x, y, yerr, poly_inputs, fluxes1, flux_error_order1 # BEN - added to compare
 
     print('Fitting the Continuum...')
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))

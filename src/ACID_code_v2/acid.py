@@ -300,12 +300,13 @@ class Acid:
 
         # Get the initial profile
         LSD_initial_profile = LSD.LSD(self)
-        LSD_initial_profile.run_LSD(self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1)
+        LSD_initial_profile.run_LSD(self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1, **kwargs)
 
         # Use alpha matrix and initial profile class variables from initial LSD run
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
+        return self.velocities, self.initial_profile, self.initial_profile_errors, self.alpha
 
         # Set x, y, yerr, and model_inputs for emcee
         self.x = self.combined_wavelengths

@@ -8,7 +8,7 @@ from scipy.signal import find_peaks
 from scipy.interpolate import interp1d,LSQUnivariateSpline
 import warnings
 
-def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities):
+def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities, max_wavelengths=7000): # BEN -added max_wavelengths option
 
     # t0 = time.time()
 
@@ -56,7 +56,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     vel = 2.99792458e5 * (diff / wavelengths_expected)
 
     # Calculate x and delta_x for valid velocities
-    if len(wavelengths)<= 7000:
+    if len(wavelengths) <= max_wavelengths: # BEN - added max_wavelengths condition
         x = (vel[:, :, np.newaxis] - velocities) / deltav
         alpha_mask_1 = np.logical_and(-1. < x, x < 0.)
         alpha_mask_2 = np.logical_and(0. <= x, x < 1.)

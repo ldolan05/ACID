@@ -38,6 +38,7 @@ class LSD:
         linelist    :str|dict   = None,
         velocities  :np.ndarray = None,
         verbose     :int|None   = None,
+        force_chunked = False,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
         """
@@ -123,7 +124,7 @@ class LSD:
         mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
         m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
         
-        if mat_size < m_available:
+        if mat_size < m_available or not force_chunked:
             # Calculating entire alpha matrix at once
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
