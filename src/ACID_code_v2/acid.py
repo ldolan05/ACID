@@ -958,7 +958,9 @@ class Acid:
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
 
         else:
-            log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
+            # log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data) # This didn't work initialising global data
+            mcmc_utils._init_worker(self.global_data)
+            log_prob = mcmc_utils._log_probability
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
             self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
