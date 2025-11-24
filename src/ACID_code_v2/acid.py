@@ -52,9 +52,10 @@ class Acid:
             Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
         verbose : bool | int, optional
-            An integer between 0 and 2. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
-            about any potential issues with the input data or autocorrelation warnings. If True, defaults to 1. If False, defaults to 0.
-            If you want to ignore the warnings but still keep progress information, set verbose to 1, by default 2
+            An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
+            about any potential issues with the input data or autocorrelation warnings. If True, defaults to 2. If False, defaults to 0.
+            If you want to ignore the warnings but still keep progress information, set verbose to 1. A verbosity of 3 will produce 
+            additional plots, such as the result of the continuum fit. By default 2
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
@@ -103,8 +104,8 @@ class Acid:
         elif verbose is False:
             verbose = 0
         elif isinstance(verbose, int):
-            if verbose < 0 or verbose > 2:
-                raise ValueError("verbose must be an integer between 0 and 2 (or True/False)")
+            if verbose < 0 or verbose > 3:
+                raise ValueError("verbose must be an integer between 0 and 3 (or True/False)")
 
         # Set the above class attributes
         self.velocities     = velocities
@@ -652,7 +653,7 @@ class Acid:
         new_errors = errors / fit
         poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
 
-        if plot_result:
+        if self.verbose > 2 or plot_result:
             plt.plot(wavelengths, fluxes, label='Original Spectrum')
             plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
             plt.legend()
