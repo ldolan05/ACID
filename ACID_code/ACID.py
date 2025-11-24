@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import emcee
 import matplotlib.pyplot as plt
@@ -605,7 +606,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)
 
-    with Pool() as pool:
+    with Pool(processes=int(os.environ.get('SLURM_CPUS_ON_NODE', 1))) as pool:
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
         sampler.run_mcmc(pos, nsteps, progress=True)
 
@@ -766,7 +767,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         #     all_frames = get_profiles(all_frames, order, poly_cos, continuum_error, counter)  
     else: all_frames = get_profiles(all_frames, order, poly_cos, continuum_error, 0)
 
-    return all_frames
+    return all_frames, sampler
 
 def ACID_HARPS(filelist, line, vgrid, poly_or=3, order_range=np.arange(10,70), save_path = './', file_type = 'e2ds', pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]):
 
