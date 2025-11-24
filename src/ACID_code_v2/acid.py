@@ -300,7 +300,7 @@ class Acid:
 
         # Get the initial profile
         LSD_initial_profile = LSD.LSD(self)
-        LSD_initial_profile.run_LSD(self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1, **kwargs)
+        LSD_initial_profile.run_LSD(self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1)
 
         # Use alpha matrix and initial profile class variables from initial LSD run
         self.initial_profile = LSD_initial_profile.profile
