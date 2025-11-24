@@ -9,7 +9,6 @@ __pycache__*/
 test.py
 tests/spawn multithreading tests/
 tests/test_data/
-tests/data/classes_test.pkl
 *.h5
 
 # Distribution / packaging
