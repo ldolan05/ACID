@@ -306,7 +306,6 @@ class Acid:
         self.initial_profile = LSD_initial_profile.profile
         self.initial_profile_errors = LSD_initial_profile.profile_errors
         self.alpha = LSD_initial_profile.alpha
-        return self.velocities, self.initial_profile, self.initial_profile_errors, self.alpha
 
         # Set x, y, yerr, and model_inputs for emcee
         self.x = self.combined_wavelengths
