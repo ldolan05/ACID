@@ -6,3 +6,6 @@ astropy
 sphinx_rtd_theme
 tqdm
 psutil
+specutils
+corner
+beartype

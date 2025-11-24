@@ -9,17 +9,17 @@ def _init_worker(global_data):
     y = global_data["y"]
     yerr = global_data["yerr"]
     alpha = global_data["alpha"]
-    k_max = global_data["k_max"]
     velocities = global_data["velocities"]
+    k_max = alpha.shape[1]
 
 def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
         alpha = kwargs.get("alpha", globals().get("alpha"))
-        k_max = kwargs.get("k_max", globals().get("k_max"))
+        k_max = kwargs.get("k_max", alpha.shape[1])
 
         z = inputs[:k_max]
 
-        mdl = np.dot(alpha, z) ##alpha has been declared a global variable after LSD is run.
+        mdl = np.dot(alpha, z)
 
         #converting model from optical depth to flux
         mdl = np.exp(mdl)
@@ -28,32 +28,28 @@ def model_func(inputs, x, **kwargs):
         a = 2/(np.max(x)-np.min(x))
         b = 1 - a*np.max(x)
 
-        mdl1 = 0
-        for i in range(k_max, len(inputs) - 1):
-            mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - k_max))
+        # mdl1 = 0
+        # for i in range(k_max, len(inputs) - 1):
+        #     mdl1 = mdl1 + (inputs[i] * ((x * a) + b) ** (i - k_max))
+        # mdl1 = mdl1 * inputs[-1]
+        # mdl = mdl * mdl1
 
-        # coefs = np.asarray(inputs[k_max:-1], dtype=float) # Potential improvement - Ben
-        # X = (a * x) + b
-        # if coefs.size:
-        #     powers = np.arange(coefs.size)
-        #     # X[:, None] ** powers -> shape (len(x), coefs.size); dot with coefs -> (len(x),)
-        #     mdl1 = np.dot(X[:, None] ** powers[None, :], coefs)
-        # else:
-        #     mdl1 = 0.0
+        # The above commented section is replaced with the following for enormous speedup
+        coefs = np.asarray(inputs[k_max:-1], dtype=float)
+        scale = inputs[-1]
+        u = (a * x) + b
 
-        mdl1 = mdl1 * inputs[-1]
-        
-        mdl = mdl * mdl1
-    
+        mdl1 = 0.0
+        for c in reversed(coefs):
+            mdl1 = mdl1 * u + c
+        mdl *= mdl1 * scale
+
         return mdl
 
 def _log_likelihood(theta, x, y, yerr):
-    ## maximum likelihood estimation for the mcmc model.
     model = model_func(theta, x)
-
-    lnlike = -0.5 * np.sum(((y) - (model)) ** 2 / yerr**2 + np.log(yerr**2)+ np.log(2*np.pi))
-
-    return lnlike
+    diff = y - model
+    return -0.5 * np.sum(diff*diff / (yerr*yerr) + np.log(2*np.pi*(yerr*yerr)))
 
 def _log_prior(theta):
     ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
@@ -88,7 +84,6 @@ def _log_prior(theta):
     return -np.inf
 
 def _log_probability(theta):
-    # TODO!: Turn to classes and potentially if possible move to separate file
     ## calculates log probability - used for mcmc
     lp = _log_prior(theta)
     if not np.isfinite(lp):

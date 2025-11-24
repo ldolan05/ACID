@@ -25,7 +25,10 @@ dependencies = [
     "scipy",
     "astropy",
     "tqdm",
-    "psutil"
+    "psutil",
+    "specutils",
+    "corner",
+    "beartype"
 ]
 dynamic = ["version"]
 

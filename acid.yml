@@ -12,4 +12,7 @@ dependencies:
   - tqdm
   - emcee
   - sphinx_rtd_theme
+  - specutils
+  - corner
+  - beartype
 prefix: /Users/benjamincadell/miniforge3/envs/acid
