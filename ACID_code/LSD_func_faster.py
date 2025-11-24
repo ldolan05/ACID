@@ -7,6 +7,7 @@ import time
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d,LSQUnivariateSpline
 import warnings
+from tqdm import tqdm
 
 def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, order, run_name, velocities, max_wavelengths=7000): # BEN -added max_wavelengths option
 
@@ -73,7 +74,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
         warnings.warn('Large wavelength ranges give large computation time. Seperate wavelength range into smaller chunks for faster computation.', DeprecationWarning, stacklevel=2)
         alpha=np.zeros((len(blankwaves), len(velocities)))
 
-        for j in range(0, len(blankwaves)):
+        for j in tqdm(range(0, len(blankwaves))): # added tqdm to know if being done
             for i in (range(0,len(wavelengths_expected))):
                 vdiff = ((blankwaves[j] - wavelengths_expected[i])*2.99792458e5)/wavelengths_expected[i]
                 if vdiff<=(np.max(velocities)+deltav) and vdiff>=(np.min(velocities)-deltav):
