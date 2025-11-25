@@ -329,7 +329,7 @@ class Acid:
         self.residual_mask()
 
         # Set a random seed
-        np.random.seed(42)
+        # np.random.seed(42) # disabled for testing purposes
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
