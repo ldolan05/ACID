@@ -140,6 +140,7 @@ class Acid:
             nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
             production_run :bool           = False,
+            seed           :int|npint|None = 42,
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -199,6 +200,9 @@ class Acid:
             If True, skips the final process_results step and returns a Result object directly. This allows for
             faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
             If true, some methods in Result will be desabled, by default False
+        seed : int | None, optional
+            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
+            the universe and everything)
         **kwargs : dict, optional
             Additional keyword arguments. For the moment, these are not used. They are included to allow for
             future expansion of the function without breaking existing code.
@@ -330,7 +334,7 @@ class Acid:
         self.residual_mask()
 
         # Set a random seed
-        np.random.seed(42)
+        np.random.seed(seed)
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
