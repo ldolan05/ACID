@@ -32,6 +32,7 @@ class Acid:
             verbose        :int|npint|bool       = 2,
             telluric_lines :np.ndarray|list|None = None,
             name           :str                  = 'ACID',
+            seed           :int|npint|None       = 42,
             ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -61,6 +62,9 @@ class Acid:
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
         name : str, optional
             Name to call any saved files, by default 'ACID'
+        seed : int | None, optional
+            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
+            the universe and everything)
         """
 
         # Sets self.velocities, self.linelist_path, self.telluric_lines, self.name, given the inputs
@@ -113,6 +117,7 @@ class Acid:
         self.telluric_lines = telluric_lines
         self.name           = name
         self.verbose        = verbose
+        self.seed           = seed
 
         # Define default order range, can be overwritten in ACID_HARPS
         self.order_range = [1]
@@ -140,7 +145,6 @@ class Acid:
             nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
             production_run :bool           = False,
-            seed           :int|npint|None = 42,
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -200,9 +204,6 @@ class Acid:
             If True, skips the final process_results step and returns a Result object directly. This allows for
             faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
             If true, some methods in Result will be desabled, by default False
-        seed : int | None, optional
-            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
-            the universe and everything)
         **kwargs : dict, optional
             Additional keyword arguments. For the moment, these are not used. They are included to allow for
             future expansion of the function without breaking existing code.
@@ -334,12 +335,12 @@ class Acid:
         self.residual_mask()
 
         # Set a random seed
-        np.random.seed(seed)
+        np.random.seed(self.seed)
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(self.seed)
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
@@ -358,7 +359,7 @@ class Acid:
 
         # Setting global data for multiprocessing
         self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
-                            "alpha": self.alpha, "velocities": self.velocities, "seed": seed}
+                            "alpha": self.alpha, "velocities": self.velocities, "seed": self.seed}
 
         if self.verbose>0:
             t5 = time.time()
