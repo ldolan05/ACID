@@ -1,6 +1,11 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.0.3] - 2025-11-24
+
+### Fixed
+- Fixed the non-multiprocessing case, as this was broken with the partial function. Log prob is now called directly and mcmc_utils initialised directly.
+
 ## [1.0.2] - 2025-11-21
 
 ### Changed

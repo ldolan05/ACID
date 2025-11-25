@@ -52,9 +52,10 @@ class Acid:
             Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
         verbose : bool | int, optional
-            An integer between 0 and 2. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
-            about any potential issues with the input data or autocorrelation warnings. If True, defaults to 1. If False, defaults to 0.
-            If you want to ignore the warnings but still keep progress information, set verbose to 1, by default 2
+            An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
+            about any potential issues with the input data or autocorrelation warnings. If True, defaults to 2. If False, defaults to 0.
+            If you want to ignore the warnings but still keep progress information, set verbose to 1. A verbosity of 3 will produce 
+            additional plots, such as the result of the continuum fit. By default 2
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
@@ -103,8 +104,8 @@ class Acid:
         elif verbose is False:
             verbose = 0
         elif isinstance(verbose, int):
-            if verbose < 0 or verbose > 2:
-                raise ValueError("verbose must be an integer between 0 and 2 (or True/False)")
+            if verbose < 0 or verbose > 3:
+                raise ValueError("verbose must be an integer between 0 and 3 (or True/False)")
 
         # Set the above class attributes
         self.velocities     = velocities
@@ -139,6 +140,7 @@ class Acid:
             nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
             production_run :bool           = False,
+            seed           :int|npint|None = 42,
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -198,6 +200,9 @@ class Acid:
             If True, skips the final process_results step and returns a Result object directly. This allows for
             faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
             If true, some methods in Result will be desabled, by default False
+        seed : int | None, optional
+            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
+            the universe and everything)
         **kwargs : dict, optional
             Additional keyword arguments. For the moment, these are not used. They are included to allow for
             future expansion of the function without breaking existing code.
@@ -329,12 +334,12 @@ class Acid:
         self.residual_mask()
 
         # Set a random seed
-        # np.random.seed(42) # disabled for testing purposes
+        np.random.seed(seed)
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(seed)
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
@@ -353,7 +358,7 @@ class Acid:
 
         # Setting global data for multiprocessing
         self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
-                            "alpha": self.alpha, "velocities": self.velocities}
+                            "alpha": self.alpha, "velocities": self.velocities, "seed": seed}
 
         if self.verbose>0:
             t5 = time.time()
@@ -369,8 +374,13 @@ class Acid:
         else:
             return Result(self, production_run=True)
 
-    def ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
-                       file_type:str='e2ds', **kwargs):
+    def ACID_HARPS(self,
+        filelist    : list,
+        order_range : list|np.ndarray|None = None,
+        save_path   : str                  = './',
+        file_type   : str                  = 'e2ds',
+        **kwargs,
+        ):
         """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -652,7 +662,7 @@ class Acid:
         new_errors = errors / fit
         poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
 
-        if plot_result:
+        if self.verbose > 2 or plot_result:
             plt.plot(wavelengths, fluxes, label='Original Spectrum')
             plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
             plt.legend()
@@ -957,7 +967,7 @@ class Acid:
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
 
         else:
-            # log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data)
+            # log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data) # This didn't work initialising global data
             mcmc_utils._init_worker(self.global_data)
             log_prob = mcmc_utils._log_probability
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
@@ -1042,7 +1052,18 @@ class Acid:
             return Result(self, production_run=True)
 
     def get_result(self=None):
-        """Return a Result object for this instance or one passed explicitly."""
+        """Return a Result object for this instance or one passed explicitly.
+        
+        Parameters
+        ----------
+        self : Acid instance, optional
+            The Acid instance to get the Result for. If None, must be called on an instance of Acid.
+        
+        Returns
+        -------
+        Result
+            The Result object for the given Acid instance.
+        """
         if self is None:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
