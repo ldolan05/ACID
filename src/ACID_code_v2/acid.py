@@ -1051,7 +1051,18 @@ class Acid:
             return Result(self, production_run=True)
 
     def get_result(self=None):
-        """Return a Result object for this instance or one passed explicitly."""
+        """Return a Result object for this instance or one passed explicitly.
+        
+        Parameters
+        ----------
+        self : Acid instance, optional
+            The Acid instance to get the Result for. If None, must be called on an instance of Acid.
+        
+        Returns
+        -------
+        Result
+            The Result object for the given Acid instance.
+        """
         if self is None:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
