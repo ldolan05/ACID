@@ -140,7 +140,7 @@ class Acid:
             nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
             production_run :bool           = False,
-            seed           :int|npint|None = 42,
+            seed           :int|npint|None = None,
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
