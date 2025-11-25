@@ -374,8 +374,13 @@ class Acid:
         else:
             return Result(self, production_run=True)
 
-    def ACID_HARPS(self, filelist:list, order_range:list|np.ndarray|None=None, save_path:str='./',
-                       file_type:str='e2ds', **kwargs):
+    def ACID_HARPS(self,
+        filelist    : list,
+        order_range : list|np.ndarray|None = None,
+        save_path   : str                  = './',
+        file_type   : str                  = 'e2ds',
+        **kwargs,
+        ):
         """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
 
         Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
