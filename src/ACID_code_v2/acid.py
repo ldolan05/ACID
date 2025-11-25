@@ -339,7 +339,7 @@ class Acid:
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(seed)
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
@@ -358,7 +358,7 @@ class Acid:
 
         # Setting global data for multiprocessing
         self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
-                            "alpha": self.alpha, "velocities": self.velocities}
+                            "alpha": self.alpha, "velocities": self.velocities, "seed": seed}
 
         if self.verbose>0:
             t5 = time.time()
