@@ -30,3 +30,4 @@ wheels/
 .installed.cfg
 *.egg
 packager/
+*.code-workspace
