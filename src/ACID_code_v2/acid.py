@@ -876,7 +876,7 @@ class Acid:
 
         else:
             LSD_profiles = LSD.LSD(self)
-            LSD_profiles.run_LSD(wavelengths, flux, error)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
             # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
