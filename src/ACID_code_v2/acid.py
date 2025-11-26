@@ -875,7 +875,7 @@ class Acid:
 
         else:
             LSD_profiles = LSD.LSD(self)
-            LSD_profiles.run_LSD(wavelengths, flux, error)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
             # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
@@ -960,7 +960,8 @@ class Acid:
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(
                         self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
-                        moves=emcee.moves.DEMove())
+                        # moves=emcee.moves.DEMove()
+                        ) # Using default move to revert test
                     self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
             else: # This doesn't work, needs serious modifications to make work

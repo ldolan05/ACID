@@ -485,7 +485,7 @@ def combineprofiles(spectra, errors):
     return  spectrum, spec_errors
 
 def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns, vgrid, all_frames='default', poly_or=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96], order = 0,
-         nsteps=10000): # BEN - added max_wavelengths option
+         nsteps=10000): # BEN - added nsteps option
     """Accurate Continuum fItting and Deconvolution
 
     Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
