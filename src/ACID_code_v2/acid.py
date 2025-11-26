@@ -640,7 +640,11 @@ class Acid:
         if poly_ord is None:
             raise ValueError("poly_ord must be specified either in the function call or as a class attribute.")
 
-        cont_factor = np.percentile(fluxes, 95)
+        ### THIS SECTION WAS REVERTED TO ACID FROM # cont_factor = np.percentile(fluxes, 95)
+        cont_factor = fluxes[0]
+        if cont_factor == 0: 
+            cont_factor = np.mean(fluxes)
+        ### END REVERT
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
         fluxe = fluxes[idx] / cont_factor
