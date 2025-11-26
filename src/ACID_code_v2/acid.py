@@ -141,6 +141,10 @@ class Acid:
             return_result  :bool           = True,
             production_run :bool           = False,
             seed           :int|npint|None = None,
+            # Tests below
+            moves = False,
+            lsd_wrong = False,
+            cf_percentile = False,
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -264,6 +268,11 @@ class Acid:
         self.parallel = parallel
         self.production_run = production_run
         self.cores = cores
+
+        # The tests
+        self.moves = moves
+        self.lsd_wrong = lsd_wrong
+        self.cf_percentile = cf_percentile
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -641,9 +650,12 @@ class Acid:
             raise ValueError("poly_ord must be specified either in the function call or as a class attribute.")
 
         ### THIS SECTION WAS REVERTED TO ACID FROM # cont_factor = np.percentile(fluxes, 95)
-        cont_factor = fluxes[0]
-        if cont_factor == 0: 
-            cont_factor = np.mean(fluxes)
+        if self.cf_percentile is False:
+            cont_factor = fluxes[0]
+            if cont_factor == 0: 
+                cont_factor = np.mean(fluxes)
+        else:
+            cont_factor = np.percentile(fluxes, 95)
         ### END REVERT
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
@@ -879,7 +891,10 @@ class Acid:
 
         else:
             LSD_profiles = LSD.LSD(self)
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            if self.lsd_wrong is False:
+                LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            else:
+                LSD_profiles.run_LSD(wavelengths, flux, error)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
             # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
@@ -959,12 +974,20 @@ class Acid:
             # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
             # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
+            if self.moves is False:
+                moves = None
+            else:
+                moves=[
+                    (emcee.moves.StretchMove(), 0.6),
+                    (emcee.moves.DEMove(), 0.3),
+                    (emcee.moves.DESnookerMove(), 0.1),
+                ]
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(
                         self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
-                        # moves=emcee.moves.DEMove()
+                        moves=moves,
                         ) # Using default move to revert test
                     self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
