@@ -1022,7 +1022,7 @@ class Acid:
         for i in range(self.ndim):
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
-            if i<len(self.ve1locities):
+            if i<len(self.velocities):
                 self.profile.append(mcmc[1])
                 self.profile_err.append(np.max(error))
             else:
