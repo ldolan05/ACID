@@ -57,7 +57,7 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     vel = 2.99792458e5 * (diff / wavelengths_expected)
 
     # Calculate x and delta_x for valid velocities
-    if len(wavelengths) <= 6000:
+    if len(wavelengths) <= 30000: # increased from 6k to 30k for faster computation on slurm
         x = (vel[:, :, np.newaxis] - velocities) / deltav
         alpha_mask_1 = np.logical_and(-1. < x, x < 0.)
         alpha_mask_2 = np.logical_and(0. <= x, x < 1.)
