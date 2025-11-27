@@ -485,7 +485,7 @@ def combineprofiles(spectra, errors):
     return  spectrum, spec_errors
 
 def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns, vgrid, all_frames='default', poly_or=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96], order = 0,
-         nsteps=10000): # BEN - added nsteps option
+         nsteps=10000, sampler=None): # BEN - added nsteps option
     """Accurate Continuum fItting and Deconvolution
 
     Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -606,9 +606,10 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)
 
-    with Pool(processes=int(os.environ.get('SLURM_CPUS_ON_NODE', 1))) as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
-        sampler.run_mcmc(pos, nsteps, progress=True)
+    if sampler is None:
+        with Pool(processes=int(os.environ.get('SLURM_CPUS_ON_NODE', 1))) as pool:
+            sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+            sampler.run_mcmc(pos, nsteps, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(nsteps-1000))

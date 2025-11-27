@@ -145,6 +145,7 @@ class Acid:
             moves = False,
             lsd_wrong = False,
             cf_percentile = False,
+            sampler=None,
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -273,6 +274,7 @@ class Acid:
         self.moves = moves
         self.lsd_wrong = lsd_wrong
         self.cf_percentile = cf_percentile
+        self.sampler = sampler
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -952,54 +954,55 @@ class Acid:
 
     def _run_mcmc(self, state, nsteps):
 
-        sampler_verbosity = True if self.verbose>0 else False
-        backend = None
-        if state is None:
-            if not hasattr(self, 'sampler'):
-                raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
-            backend = self.sampler.backend
+        if self.sampler is None:
+            sampler_verbosity = True if self.verbose>0 else False
+            backend = None
+            if state is None:
+                if not hasattr(self, 'sampler'):
+                    raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
+                backend = self.sampler.backend
 
-        if self.cores is None:
-            if self.slurm:
-                self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
+            if self.cores is None:
+                if self.slurm:
+                    self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
+                else:
+                    self.cores = os.cpu_count()
+
+            if self.parallel:
+                os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+                if self.verbose>0:
+                    print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
+
+                # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
+                # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
+                # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
+                # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
+                if self.moves is False:
+                    moves = None
+                else:
+                    moves=[
+                        (emcee.moves.StretchMove(), 0.6),
+                        (emcee.moves.DEMove(), 0.3),
+                        (emcee.moves.DESnookerMove(), 0.1),
+                    ]
+                if sys.platform != "win32":
+                    ctx = mp.get_context("fork")
+                    with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
+                        self.sampler = emcee.EnsembleSampler(
+                            self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
+                            moves=moves,
+                            ) # Using default move to revert test
+                        self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
+
+                else: # This doesn't work, needs serious modifications to make work
+                    raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
+
             else:
-                self.cores = os.cpu_count()
-
-        if self.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if self.verbose>0:
-                print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
-
-            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
-            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
-            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
-            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
-            if self.moves is False:
-                moves = None
-            else:
-                moves=[
-                    (emcee.moves.StretchMove(), 0.6),
-                    (emcee.moves.DEMove(), 0.3),
-                    (emcee.moves.DESnookerMove(), 0.1),
-                ]
-            if sys.platform != "win32":
-                ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(
-                        self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
-                        moves=moves,
-                        ) # Using default move to revert test
-                    self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
-
-            else: # This doesn't work, needs serious modifications to make work
-                raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
-
-        else:
-            # log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data) # This didn't work initialising global data
-            mcmc_utils._init_worker(self.global_data)
-            log_prob = mcmc_utils._log_probability
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
-            self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
+                # log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data) # This didn't work initialising global data
+                mcmc_utils._init_worker(self.global_data)
+                log_prob = mcmc_utils._log_probability
+                self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
+                self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
     def process_results(self, return_result=True):
 
@@ -1017,10 +1020,9 @@ class Acid:
         self.poly_cos_err = []
 
         for i in range(self.ndim):
-            error = np.std(flat_samples[:, i])
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
-            if i<len(self.velocities):
+            if i<len(self.ve1locities):
                 self.profile.append(mcmc[1])
                 self.profile_err.append(np.max(error))
             else:
