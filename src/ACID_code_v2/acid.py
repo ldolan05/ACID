@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from . import utils
 from . import LSD
 from . import mcmc_utils
+from . import fast_mcmc as fmcmc
 from .result import Result
 
 warnings.filterwarnings("ignore")
@@ -338,8 +339,12 @@ class Acid:
         np.random.seed(self.seed)
 
         ## Setting number of walkers and their start values(pos)
+
+        ## FROM HERE WE EDIT FOR FAST_MCMC
+        self.model_inputs = self.model_inputs[len(self.velocities):]
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
+
         rng = np.random.default_rng(self.seed)
 
         ### starting values of walkers with independent variation
@@ -842,10 +847,21 @@ class Acid:
 
         a, b = utils.get_normalisation_coeffs(wavelengths)
 
-        mdl1 =0
-        for i in np.arange(0, len(self.poly_cos)-1):
-            mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
-        mdl1 = mdl1*self.poly_cos[-1]
+        # mdl1 =0
+        # for i in np.arange(0, len(self.poly_cos)-1):
+        #     mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
+        # mdl1 = mdl1*self.poly_cos[-1]
+
+        coefs = np.array(self.poly_cos[:-1])
+        scale = self.poly_cos[-1]
+
+        a, b = utils.get_normalisation_coeffs(wavelengths)
+        u = (a * wavelengths) + b
+
+        mdl1 = np.zeros_like(wavelengths, dtype=float)
+        for c in reversed(coefs):
+            mdl1 = mdl1 * u + c
+        mdl1 *= scale
 
         # Masking based off residuals interpolated onto new wavelength grid
         if len(self.frame_wavelengths)>1:
@@ -958,9 +974,9 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
+                with ctx.Pool(processes=self.cores, initializer=fmcmc._init_worker, initargs=(self.global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(
-                        self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
+                        self.nwalkers, self.ndim, fmcmc._log_probability, pool=pool, backend=backend,
                         moves=emcee.moves.DEMove())
                     self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
@@ -974,62 +990,156 @@ class Acid:
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
             self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
+    # def process_results(self, return_result=True):
+
+    #     # Discarding all vales except the last 1000 steps.
+    #     # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
+    #     dis_no = self.nsteps-1000
+
+    #     # Obtain flattened samples
+    #     flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
+
+    #     # Getting the final profile and continuum values - median of last 1000 steps
+    #     self.profile = []
+    #     self.poly_cos = []
+    #     self.profile_err = []
+    #     self.poly_cos_err = []
+
+    #     for i in range(self.ndim):
+    #         error = np.std(flat_samples[:, i])
+    #         mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+    #         error = np.diff(mcmc)
+    #         if i<len(self.velocities):
+    #             self.profile.append(mcmc[1])
+    #             self.profile_err.append(np.max(error))
+    #         else:
+    #             self.poly_cos.append(mcmc[1])
+    #             self.poly_cos_err.append(np.max(error))
+
+    #     self.profile = np.array(self.profile)
+    #     self.profile_err = np.array(self.profile_err)
+
+    #     print('Getting the final profiles...')
+
+    #     # # Finding error for the continuum fit
+    #     inds = np.random.randint(len(flat_samples), size=50)
+    #     conts = []
+    #     # a, b = utils.get_normalisation_coeffs(self.x)
+    #     # for ind in inds:
+    #     #     sample = flat_samples[ind]
+    #     #     mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
+    #     #     mdl1_temp = 0
+    #     #     for i in np.arange(len(self.velocities), len(sample)-1):
+    #     #         mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-len(self.velocities))
+    #     #     mdl1_temp = mdl1_temp*sample[-1]
+    #     #     conts.append(mdl1_temp)
+
+    #     for ind in inds:
+    #         theta_cont = flat_samples[ind]
+    #         fmcmc._init_worker(self.global_data)
+    #         mdl, z_hat = fmcmc._solve_profile_and_model(theta_cont)
+    #         if mdl is None:
+    #             continue  # skip invalid continuum
+    #         # rebuild continuum term explicitly (same as in _solve_profile_and_model)
+    #         n_poly = len(theta_cont) - 1
+    #         coefs = theta_cont[:n_poly]
+    #         scale = theta_cont[-1]
+    #         a, b = utils.get_normalisation_coeffs(self.x)
+    #         u = a * self.combined_wavelengths + b
+    #         cont = np.zeros_like(self.combined_wavelengths)
+    #         for c in reversed(coefs):
+    #             cont = cont * u + c
+    #         cont *= scale
+    #         conts.append(cont)
+
+
+    #     self.continuum_error = np.std(np.array(conts), axis = 0)
+
+    #     # TODO: make get_profiles the LSD function actually correct for using classes
+    #     if len(self.frame_flux)>1:
+    #         for counter in range(len(self.frame_flux)):
+    #             self.all_frames = self._get_profiles(self.all_frames, counter)  
+    #     else:
+    #         self.all_frames = self._get_profiles(self.all_frames, 0)
+
+    #     if self.return_result and return_result:
+    #         return Result(self)
+    #     return
+
     def process_results(self, return_result=True):
+        """Post-process MCMC results for continuum-only MCMC."""
 
-        # Discarding all vales except the last 1000 steps.
-        # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
-        dis_no = self.nsteps-1000
-
-        # Obtain flattened samples
+        # --- Keep last 1000 steps ---
+        dis_no = self.nsteps - 1000
         flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
-        # Getting the final profile and continuum values - median of last 1000 steps
-        self.profile = []
+        # --- Compute median and errors for continuum coefficients ---
         self.poly_cos = []
-        self.profile_err = []
         self.poly_cos_err = []
 
         for i in range(self.ndim):
-            error = np.std(flat_samples[:, i])
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-            error = np.diff(mcmc)
-            if i<len(self.velocities):
-                self.profile.append(mcmc[1])
-                self.profile_err.append(np.max(error))
-            else:
-                self.poly_cos.append(mcmc[1])
-                self.poly_cos_err.append(np.max(error))
+            err = np.diff(mcmc)
+            self.poly_cos.append(mcmc[1])           # median
+            self.poly_cos_err.append(np.max(err))   # symmetric error estimate
 
-        self.profile = np.array(self.profile)
-        self.profile_err = np.array(self.profile_err)
+        self.poly_cos = np.array(self.poly_cos)
+        self.poly_cos_err = np.array(self.poly_cos_err)
 
-        print('Getting the final profiles...')
+        print("Computing final continuum and profile...")
 
-        # Finding error for the continuum fit
+        # --- Estimate continuum error using random posterior draws ---
         inds = np.random.randint(len(flat_samples), size=50)
         conts = []
-        a, b = utils.get_normalisation_coeffs(self.x)
+        profiles = []
+
         for ind in inds:
-            sample = flat_samples[ind]
-            mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
-            mdl1_temp = 0
-            for i in np.arange(len(self.velocities), len(sample)-1):
-                mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-len(self.velocities))
-            mdl1_temp = mdl1_temp*sample[-1]
-            conts.append(mdl1_temp)
+            theta_cont = flat_samples[ind]
 
-        self.continuum_error = np.std(np.array(conts), axis = 0)
+            # ensure worker globals exist once, not per loop
+            if not hasattr(self, "_prepared_system"):
+                fmcmc._init_worker(self.global_data)
+                self._prepared_system = True
 
-        # TODO: make get_profiles the LSD function actually correct for using classes
-        if len(self.frame_flux)>1:
+            mdl, z_hat = fmcmc._solve_profile_and_model(theta_cont)
+            if mdl is None:
+                continue
+
+            # rebuild continuum explicitly (same as in _solve_profile_and_model)
+            n_poly = len(theta_cont) - 1
+            coefs = theta_cont[:n_poly]
+            scale = theta_cont[-1]
+            a, b = utils.get_normalisation_coeffs(self.x)
+            u = a * self.combined_wavelengths + b
+            cont = np.zeros_like(self.combined_wavelengths)
+            for c in reversed(coefs):
+                cont = cont * u + c
+            cont *= scale
+
+            conts.append(cont)
+            profiles.append(z_hat)
+
+        self.continuum_error = np.std(np.array(conts), axis=0)
+
+        # --- Compute final LSD profile from posterior draws ---
+        if profiles:
+            self.profile = np.median(np.array(profiles), axis=0)
+            self.profile_err = np.std(np.array(profiles), axis=0)
+        else:
+            self.profile = np.zeros_like(self.velocities)
+            self.profile_err = np.zeros_like(self.velocities)
+
+        # --- Optional per-frame normalization (still valid) ---
+        if len(self.frame_flux) > 1:
             for counter in range(len(self.frame_flux)):
-                self.all_frames = self._get_profiles(self.all_frames, counter)  
+                self.all_frames = self._get_profiles(self.all_frames, counter)
         else:
             self.all_frames = self._get_profiles(self.all_frames, 0)
 
         if self.return_result and return_result:
             return Result(self)
         return
+
 
     def continue_sampling(self, nsteps:int|npint, production_run:bool=False):
         """Continue MCMC sampling for additional steps.
