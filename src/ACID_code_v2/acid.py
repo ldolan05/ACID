@@ -867,8 +867,7 @@ class Acid:
         flux[remove]=1.
         error[remove]=10000000000000000000
 
-        idx = tuple([flux>0])
-        
+        # idx = tuple([flux>0])
         # if len(flux[idx])==0:
         #     print('continuing... frame %s'%counter)
         # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
