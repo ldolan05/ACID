@@ -796,6 +796,7 @@ class Acid:
             idx = np.logical_and((line-limit) <= self.x, self.x <= (limit+line))
             self.yerr[idx] = 10000000000000000000
 
+        # Note that this is used to keep track of the residual masks for later use in _get_profiles
         self.residual_masks = tuple([self.yerr >= 10000000000000000000])
 
         ###################################
