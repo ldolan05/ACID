@@ -848,10 +848,7 @@ class Acid:
         mdl1 = mdl1*self.poly_cos[-1]
 
         # Masking based off residuals interpolated onto new wavelength grid
-        if len(self.frame_wavelengths)>1:
-            reference_wave = self.frame_wavelengths[self.frame_sns==max(self.frame_sns)][0]
-        else:
-            reference_wave = self.frame_wavelengths[0]
+        reference_wave = self.frame_wavelengths[np.argmax(self.frame_sns)]
         mask_pos = np.ones(reference_wave.shape)
         mask_pos[self.residual_masks]=10000000000000000000
         f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
