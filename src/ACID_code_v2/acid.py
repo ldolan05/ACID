@@ -32,6 +32,7 @@ class Acid:
             verbose        :int|npint|bool       = 2,
             telluric_lines :np.ndarray|list|None = None,
             name           :str                  = 'ACID',
+            seed           :int|npint|None       = 42,
             ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -61,6 +62,9 @@ class Acid:
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
         name : str, optional
             Name to call any saved files, by default 'ACID'
+        seed : int | None, optional
+            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
+            the universe and everything)
         """
 
         # Sets self.velocities, self.linelist_path, self.telluric_lines, self.name, given the inputs
@@ -113,6 +117,7 @@ class Acid:
         self.telluric_lines = telluric_lines
         self.name           = name
         self.verbose        = verbose
+        self.seed           = seed
 
         # Define default order range, can be overwritten in ACID_HARPS
         self.order_range = [1]
@@ -122,6 +127,10 @@ class Acid:
 
         # Determine if running in SLURM environment
         self.slurm = "SLURM_JOB_ID" in os.environ
+
+        # Set a random seed
+        np.random.seed(self.seed)
+        
         return
 
     def ACID(self,
@@ -205,9 +214,6 @@ class Acid:
             If True, skips the final process_results step and returns a Result object directly. This allows for
             faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
             If true, some methods in Result will be desabled, by default False
-        seed : int | None, optional
-            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
-            the universe and everything)
         **kwargs : dict, optional
             Additional keyword arguments. For the moment, these are not used. They are included to allow for
             future expansion of the function without breaking existing code.
@@ -345,13 +351,10 @@ class Acid:
         # self.alpha, self.yerr
         self.residual_mask()
 
-        # Set a random seed
-        np.random.seed(seed)
-
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
         self.nwalkers = self.ndim * 3
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(self.seed)
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
@@ -370,7 +373,7 @@ class Acid:
 
         # Setting global data for multiprocessing
         self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
-                            "alpha": self.alpha, "velocities": self.velocities, "seed": seed}
+                            "alpha": self.alpha, "velocities": self.velocities, "seed": self.seed}
 
         if self.verbose>0:
             t5 = time.time()
@@ -814,6 +817,7 @@ class Acid:
             idx = np.logical_and((line-limit) <= self.x, self.x <= (limit+line))
             self.yerr[idx] = 10000000000000000000
 
+        # Note that this is used to keep track of the residual masks for later use in _get_profiles
         self.residual_masks = tuple([self.yerr >= 10000000000000000000])
 
         ###################################
@@ -864,12 +868,11 @@ class Acid:
         for i in np.arange(0, len(self.poly_cos)-1):
             mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
         mdl1 = mdl1*self.poly_cos[-1]
+        # norm_wavelengths = (a*wavelengths)+b
+        # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
 
         # Masking based off residuals interpolated onto new wavelength grid
-        if len(self.frame_wavelengths)>1:
-            reference_wave = self.frame_wavelengths[self.frame_sns==max(self.frame_sns)][0]
-        else:
-            reference_wave = self.frame_wavelengths[0]
+        reference_wave = self.frame_wavelengths[np.argmax(self.frame_sns)]
         mask_pos = np.ones(reference_wave.shape)
         mask_pos[self.residual_masks]=10000000000000000000
         f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
@@ -880,38 +883,36 @@ class Acid:
 
         # corrrecting continuum
         error = (error/flux) + (self.continuum_error/mdl1)
-        flux = flux/mdl1
-        error  = flux*error
+        flux /= mdl1
+        error *= flux
 
         remove = tuple([flux<0])
         flux[remove]=1.
         error[remove]=10000000000000000000
 
-        idx = tuple([flux>0])
-        
-        if len(flux[idx])==0:
-            print('continuing... frame %s'%counter)
+        # idx = tuple([flux>0])
+        # if len(flux[idx])==0:
+        #     print('continuing... frame %s'%counter)
+        # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
+        # else:
 
+        LSD_profiles = LSD.LSD(self)
+        if self.lsd_wrong is False:
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
         else:
-            LSD_profiles = LSD.LSD(self)
-            if self.lsd_wrong is False:
-                LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
-            else:
-                LSD_profiles.run_LSD(wavelengths, flux, error)
-            profile_OD = LSD_profiles.profile
-            profile_errors = LSD_profiles.profile_errors
-            # velocities1, profile1, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD_profiles(
-            #     wavelengths, flux, error, self.linelist_path, 'False', self.poly_ord, sn, 10, 'test', self.velocities)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+        profile_OD = LSD_profiles.profile
+        profile_errors = LSD_profiles.profile_errors
 
-            # Need to check whats going on here with the -1
-            p = np.exp(profile_OD)-1
-            profile_f = np.exp(profile_OD)
-            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
-            profile_f = profile_f-1
+        # Need to check whats going on here with the -1
+        p = np.exp(profile_OD)-1
+        profile_f = np.exp(profile_OD)
+        profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+        profile_f = profile_f-1
 
-            all_frames[counter, self.order]=[profile_f, profile_errors_f]
-            
-            return all_frames
+        all_frames[counter, self.order]=[profile_f, profile_errors_f]
+        
+        return all_frames
 
     def combineprofiles(self, spectra, errors):
         spectra = np.array(spectra)
@@ -955,13 +956,16 @@ class Acid:
 
     def _run_mcmc(self, state, nsteps):
 
+        # Reset seed
+        np.random.seed(self.seed)
+
         if self.sampler is None:
             sampler_verbosity = True if self.verbose>0 else False
             backend = None
             if state is None:
                 if not hasattr(self, 'sampler'):
                     raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
-                backend = self.sampler.backend
+                backend = self.sampler.backend # This includes previous seed
 
             if self.cores is None:
                 if self.slurm:
@@ -1029,34 +1033,64 @@ class Acid:
             else:
                 self.poly_cos.append(mcmc[1])
                 self.poly_cos_err.append(np.max(error))
-
         self.profile = np.array(self.profile)
         self.profile_err = np.array(self.profile_err)
+        nvel = len(self.velocities)
+        # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        # errors = np.diff(quartiles, axis=0)
+        # errors = np.max(errors, axis=0) # why?
+        # self.profile       = quartiles[1, :nvel]
+        # self.profile_err   = errors[:nvel]
+        # self.poly_cos      = quartiles[1, nvel:]
+        # self.poly_cos_err  = errors[nvel:]
 
         print('Getting the final profiles...')
 
         # Finding error for the continuum fit
+        nsamples = 50
         np.random.seed(self.seed)
-        inds = np.random.randint(len(flat_samples), size=50)
-        conts = []
+        inds = np.random.randint(len(flat_samples), size=nsamples)
         a, b = utils.get_normalisation_coeffs(self.x)
+        norm_wavelengths = (self.x * a) + b
+        nvel = len(self.velocities)
+        conts = []
         for ind in inds:
             sample = flat_samples[ind]
-            mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
+            # mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
             mdl1_temp = 0
             for i in np.arange(len(self.velocities), len(sample)-1):
-                mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-len(self.velocities))
+                mdl1_temp = mdl1_temp+sample[i]*(norm_wavelengths**(i-nvel))
             mdl1_temp = mdl1_temp*sample[-1]
             conts.append(mdl1_temp)
 
-        self.continuum_error = np.std(np.array(conts), axis = 0)
+        # samples = flat_samples[inds]
+        # inds = np.random.randint(len(flat_samples), size=nsamples)
+        # a, b = utils.get_normalisation_coeffs(self.x)
+        # conts = np.zeros((nsamples, len(norm_wavelengths)))
+        # nvel = len(self.velocities)
+        # for i, sample in enumerate(samples):
+        #     coeffs = sample[nvel:-1]             # [c0, c1, ..., c_(M-1)]
+        #     scale  = sample[-1]                  # continuum scale factor
+        #     # Evaluate polynomial: c0 + c1*x + ... + c_(M-1)*x^(M-1)
+        #     polynomial = np.polynomial.polynomial.polyval(norm_wavelengths, coeffs)
+        #     conts[i] = polynomial * scale
+
+        # samples = flat_samples[inds]
+        # coeffs  = samples[:, nvel:-1]       # shape (nsamples, M)
+        # scales  = samples[:, -1]            # shape (nsamples,)
+        # # Evaluate polynomial for all samples at once
+        # # polyvander gives: [1, x, x^2, ..., x^(M-1)] for each x
+        # V = np.polynomial.polynomial.polyvander(norm_wavelengths, coeffs.shape[1] - 1)
+        # # V shape: (npoints, M)
+        # # Multiply each row of coeffs with V → get conts
+        # conts = coeffs @ V.T                 # shape (nsamples, npoints)
+        # conts *= scales[:, None]
+
+        self.continuum_error = np.std(np.array(conts), axis=0)
 
         # TODO: make get_profiles the LSD function actually correct for using classes
-        if len(self.frame_flux)>1:
-            for counter in range(len(self.frame_flux)):
-                self.all_frames = self._get_profiles(self.all_frames, counter)  
-        else:
-            self.all_frames = self._get_profiles(self.all_frames, 0)
+        for counter in range(len(self.frame_flux)):
+            self.all_frames = self._get_profiles(self.all_frames, counter)  
 
         if self.return_result and return_result:
             return self.all_frames, self.sampler
