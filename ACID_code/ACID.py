@@ -511,6 +511,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     """ 
     print('Initialising...')
 
+    np.random.seed(seed)
+
     t0 = time.time()
 
     global velocities
@@ -582,7 +584,6 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     ## setting number of walkers and their start values(pos)
     ndim = len(model_inputs)
     nwalkers= ndim*3
-    np.random.seed(seed)
     rng = np.random.default_rng(seed)
 
     ### starting values of walkers with indpendent variation
@@ -606,6 +607,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     print('Fitting the Continuum...')
     # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
     # sampler.run_mcmc(pos, steps_no, progress=True)
+
+    np.random.seed(seed)
 
     if sampler is None:
         with Pool(processes=int(os.environ.get('SLURM_CPUS_ON_NODE', 1))) as pool:
