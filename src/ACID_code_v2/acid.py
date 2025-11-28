@@ -127,6 +127,10 @@ class Acid:
 
         # Determine if running in SLURM environment
         self.slurm = "SLURM_JOB_ID" in os.environ
+
+        # Set a random seed
+        np.random.seed(self.seed)
+        
         return
 
     def ACID(self,
@@ -333,9 +337,6 @@ class Acid:
         # Modifies:
         # self.alpha, self.yerr
         self.residual_mask()
-
-        # Set a random seed
-        np.random.seed(self.seed)
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
@@ -932,12 +933,15 @@ class Acid:
 
     def _run_mcmc(self, state, nsteps):
 
+        # Reset seed
+        np.random.seed(self.seed)
+
         sampler_verbosity = True if self.verbose>0 else False
         backend = None
         if state is None:
             if not hasattr(self, 'sampler'):
                 raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
-            backend = self.sampler.backend
+            backend = self.sampler.backend # This includes previous seed
 
         if self.cores is None:
             if self.slurm:
@@ -1011,6 +1015,7 @@ class Acid:
 
         # Finding error for the continuum fit
         nsamples = 50
+        np.random.seed(self.seed)
         inds = np.random.randint(len(flat_samples), size=nsamples)
         a, b = utils.get_normalisation_coeffs(self.x)
         norm_wavelengths = (self.x * a) + b
