@@ -1001,6 +1001,14 @@ class Acid:
 
         self.profile = np.array(self.profile)
         self.profile_err = np.array(self.profile_err)
+        # nvel = len(self.velocities)
+        # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        # errors = np.diff(quartiles, axis=0)
+        # errors = np.max(errors, axis=0) # why?
+        # self.profile       = quartiles[1, :nvel]
+        # self.profile_err   = errors[:nvel]
+        # self.poly_cos      = quartiles[1, nvel:]
+        # self.poly_cos_err  = errors[nvel:]
 
         print('Getting the final profiles...')
 
