@@ -1035,6 +1035,7 @@ class Acid:
         print('Getting the final profiles...')
 
         # Finding error for the continuum fit
+        np.random.seed(42)
         inds = np.random.randint(len(flat_samples), size=50)
         conts = []
         a, b = utils.get_normalisation_coeffs(self.x)
