@@ -989,7 +989,6 @@ class Acid:
         self.poly_cos_err = []
 
         for i in range(self.ndim):
-            error = np.std(flat_samples[:, i])
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
             error = np.diff(mcmc)
             if i<len(self.velocities):
@@ -998,7 +997,6 @@ class Acid:
             else:
                 self.poly_cos.append(mcmc[1])
                 self.poly_cos_err.append(np.max(error))
-
         self.profile = np.array(self.profile)
         self.profile_err = np.array(self.profile_err)
         # nvel = len(self.velocities)
@@ -1018,21 +1016,18 @@ class Acid:
         a, b = utils.get_normalisation_coeffs(self.x)
         for ind in inds:
             sample = flat_samples[ind]
-            mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
+            # mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
             mdl1_temp = 0
             for i in np.arange(len(self.velocities), len(sample)-1):
                 mdl1_temp = mdl1_temp+sample[i]*((a*self.combined_wavelengths)+b)**(i-len(self.velocities))
             mdl1_temp = mdl1_temp*sample[-1]
             conts.append(mdl1_temp)
 
-        self.continuum_error = np.std(np.array(conts), axis = 0)
+        self.continuum_error = np.std(np.array(conts), axis=0)
 
         # TODO: make get_profiles the LSD function actually correct for using classes
-        if len(self.frame_flux)>1:
-            for counter in range(len(self.frame_flux)):
-                self.all_frames = self._get_profiles(self.all_frames, counter)  
-        else:
-            self.all_frames = self._get_profiles(self.all_frames, 0)
+        for counter in range(len(self.frame_flux)):
+            self.all_frames = self._get_profiles(self.all_frames, counter)  
 
         if self.return_result and return_result:
             return Result(self)
