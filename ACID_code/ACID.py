@@ -743,7 +743,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     print('Getting the final profiles...')
 
     # finding error for the continuuum fit
-    np.random.seed(42)
+    np.random.seed(seed)
     inds = np.random.randint(len(flat_samples), size=50)
     conts = []
     for ind in inds:

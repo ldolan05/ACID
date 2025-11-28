@@ -275,6 +275,7 @@ class Acid:
         self.lsd_wrong = lsd_wrong
         self.cf_percentile = cf_percentile
         self.sampler = sampler
+        self.seed = seed
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -1035,7 +1036,7 @@ class Acid:
         print('Getting the final profiles...')
 
         # Finding error for the continuum fit
-        np.random.seed(42)
+        np.random.seed(self.seed)
         inds = np.random.randint(len(flat_samples), size=50)
         conts = []
         a, b = utils.get_normalisation_coeffs(self.x)
