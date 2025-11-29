@@ -149,7 +149,6 @@ class Acid:
             nsteps         :int|npint      = 10000,
             return_result  :bool           = True,
             production_run :bool           = False,
-            seed           :int|npint|None = None,
             # Tests below
             moves = False,
             lsd_wrong = False,
@@ -283,7 +282,6 @@ class Acid:
         self.lsd_wrong = lsd_wrong
         self.cf_percentile = cf_percentile
         self.sampler = sampler
-        self.seed = seed
         self.highsamples = highsamples
         self.super_fast = super_fast
 
@@ -377,7 +375,9 @@ class Acid:
 
         # Setting global data for multiprocessing
         self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
-                            "alpha": self.alpha, "velocities": self.velocities, "seed": self.seed}
+                            "alpha": self.alpha, "velocities": self.velocities,
+                            "seed": self.seed
+                            }
 
         if self.verbose>0:
             t5 = time.time()
@@ -962,9 +962,6 @@ class Acid:
 
     def _run_mcmc(self, state, nsteps):
 
-        # Reset seed
-        np.random.seed(self.seed)
-
         if self.sampler is None:
             sampler_verbosity = True if self.verbose>0 else False
             backend = None
@@ -1057,8 +1054,8 @@ class Acid:
             nsamples = 50
         else:
             nsamples = 5000
-        np.random.seed(self.seed)
-        inds = np.random.randint(len(flat_samples), size=nsamples)
+        rng = np.random.default_rng(self.seed)
+        inds = rng.integers(len(flat_samples), size=nsamples)
         a, b = utils.get_normalisation_coeffs(self.x)
         norm_wavelengths = (self.x * a) + b
         nvel = len(self.velocities)
