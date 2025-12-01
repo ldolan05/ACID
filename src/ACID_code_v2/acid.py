@@ -966,6 +966,8 @@ class Acid:
             else: # This doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
 
+            os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
+
         else:
             # log_prob = partial(mcmc_utils._log_probability, global_data=self.mcmc_global_data) # This didn't work initialising global data
             mcmc_utils._init_worker(self.mcmc_global_data)
