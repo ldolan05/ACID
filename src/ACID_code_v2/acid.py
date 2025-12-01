@@ -359,7 +359,7 @@ class Acid:
         initial_state = np.transpose(np.array(initial_state))
 
         # Setting global data for multiprocessing
-        self.global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
+        self.mcmc_global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
                             "alpha": self.alpha, "velocities": self.velocities, "seed": self.seed}
 
         if self.verbose>0:
@@ -933,9 +933,6 @@ class Acid:
 
     def _run_mcmc(self, state, nsteps):
 
-        # Reset seed
-        np.random.seed(self.seed)
-
         sampler_verbosity = True if self.verbose>0 else False
         backend = None
         if state is None:
@@ -960,7 +957,7 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.global_data,)) as pool:
+                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(
                         self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
                         moves=emcee.moves.DEMove())
@@ -970,8 +967,8 @@ class Acid:
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
 
         else:
-            # log_prob = partial(mcmc_utils._log_probability, global_data=self.global_data) # This didn't work initialising global data
-            mcmc_utils._init_worker(self.global_data)
+            # log_prob = partial(mcmc_utils._log_probability, global_data=self.mcmc_global_data) # This didn't work initialising global data
+            mcmc_utils._init_worker(self.mcmc_global_data)
             log_prob = mcmc_utils._log_probability
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
             self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
@@ -1015,8 +1012,8 @@ class Acid:
 
         # Finding error for the continuum fit
         nsamples = 50
-        np.random.seed(self.seed)
-        inds = np.random.randint(len(flat_samples), size=nsamples)
+        rng = np.random.default_rng(self.seed)
+        inds = rng.integers(len(flat_samples), size=nsamples)
         a, b = utils.get_normalisation_coeffs(self.x)
         norm_wavelengths = (self.x * a) + b
         nvel = len(self.velocities)
