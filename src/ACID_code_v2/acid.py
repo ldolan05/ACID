@@ -869,58 +869,60 @@ class Acid:
 
         return
 
-    def _get_profiles(self, all_frames, counter):
-        flux = self.frame_flux[counter]
-        error = self.frame_errors[counter]
-        wavelengths = self.frame_wavelengths[counter]
-        sn = self.frame_sns[counter]
+    def _get_profiles(self, all_frames):
 
-        a, b = utils.get_normalisation_coeffs(wavelengths)
+        for counter in range(len(self.flux["input"])):
+            flux = self.frame_flux[counter]
+            error = self.frame_errors[counter]
+            wavelengths = self.frame_wavelengths[counter]
+            sn = self.frame_sns[counter]
 
-        mdl1 =0
-        for i in np.arange(0, len(self.poly_cos)-1):
-            mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
-        mdl1 = mdl1*self.poly_cos[-1]
-        # norm_wavelengths = (a*wavelengths)+b
-        # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
+            a, b = utils.get_normalisation_coeffs(wavelengths)
 
-        # Masking based off residuals interpolated onto new wavelength grid
-        reference_wave = self.frame_wavelengths[np.argmax(self.frame_sns)]
-        mask_pos = np.ones(reference_wave.shape)
-        mask_pos[self.residual_masks]=10000000000000000000
-        f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
-        interp_mask_pos = f2(wavelengths)
-        interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
+            mdl1 =0
+            for i in np.arange(0, len(self.poly_cos)-1):
+                mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
+            mdl1 = mdl1*self.poly_cos[-1]
+            # norm_wavelengths = (a*wavelengths)+b
+            # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
 
-        error[interp_mask_idx]=10000000000000000000
+            # Masking based off residuals interpolated onto new wavelength grid
+            reference_wave = self.frame_wavelengths[np.argmax(self.frame_sns)]
+            mask_pos = np.ones(reference_wave.shape)
+            mask_pos[self.residual_masks]=10000000000000000000
+            f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
+            interp_mask_pos = f2(wavelengths)
+            interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
 
-        # corrrecting continuum
-        error = (error/flux) + (self.continuum_error/mdl1)
-        flux /= mdl1
-        error *= flux
+            error[interp_mask_idx]=10000000000000000000
 
-        remove = tuple([flux<0])
-        flux[remove]=1.
-        error[remove]=10000000000000000000
+            # corrrecting continuum
+            error = (error/flux) + (self.continuum_error/mdl1)
+            flux /= mdl1
+            error *= flux
 
-        # idx = tuple([flux>0])
-        # if len(flux[idx])==0:
-        #     print('continuing... frame %s'%counter)
-        # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
-        # else:
+            remove = tuple([flux<0])
+            flux[remove]=1.
+            error[remove]=10000000000000000000
 
-        LSD_profiles = LSD.LSD(self)
-        LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
-        profile_OD = LSD_profiles.profile
-        profile_errors = LSD_profiles.profile_errors
+            # idx = tuple([flux>0])
+            # if len(flux[idx])==0:
+            #     print('continuing... frame %s'%counter)
+            # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
+            # else:
 
-        # Need to check whats going on here with the -1
-        p = np.exp(profile_OD)-1
-        profile_f = np.exp(profile_OD)
-        profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
-        profile_f = profile_f-1
+            LSD_profiles = LSD.LSD(self)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            profile_OD = LSD_profiles.profile
+            profile_errors = LSD_profiles.profile_errors
 
-        all_frames[counter, self.order]=[profile_f, profile_errors_f]
+            # Need to check whats going on here with the -1
+            p = np.exp(profile_OD)-1
+            profile_f = np.exp(profile_OD)
+            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+            profile_f = profile_f-1
+
+            all_frames[counter, self.order]=[profile_f, profile_errors_f]
         
         return all_frames
 
@@ -1018,9 +1020,9 @@ class Acid:
         flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
-        self.profile = []
-        self.poly_cos = []
-        self.profile_err = []
+        self.profile      = []
+        self.poly_cos     = []
+        self.profile_err  = []
         self.poly_cos_err = []
 
         for i in range(self.ndim):
@@ -1049,8 +1051,7 @@ class Acid:
         nsamples = 50
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
-        a, b = utils.get_normalisation_coeffs(self.x)
-        norm_wl = (self.x * a) + b
+        norm_wl = self.wavelengths["combined_normalized"]
         nvel = len(self.velocities)
 
         # conts1 = []
@@ -1072,9 +1073,7 @@ class Acid:
 
         self.continuum_error = np.std(np.array(conts), axis=0)
 
-        # TODO: make get_profiles the LSD function actually correct for using classes
-        for counter in range(len(self.frame_flux)):
-            self.all_frames = self._get_profiles(self.all_frames, counter)  
+        self.all_frames = self._get_profiles(self.all_frames)  
 
         if self.return_result and return_result:
             return Result(self)
