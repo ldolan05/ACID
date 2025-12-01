@@ -11,7 +11,7 @@ def _init_worker(global_data):
     alpha = global_data["alpha"]
     velocities = global_data["velocities"]
     k_max = alpha.shape[1]
-    np.random.seed(global_data["seed"])
+    # np.random.seed(global_data["seed"])
 
 def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.

@@ -153,7 +153,7 @@ class Acid:
             moves = False,
             lsd_wrong = False,
             cf_percentile = False,
-            highsamples = True,
+            highsamples = False,
             super_fast = False,
             sampler=None,
             **kwargs
