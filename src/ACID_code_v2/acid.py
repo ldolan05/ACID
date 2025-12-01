@@ -151,8 +151,8 @@ class Acid:
             production_run :bool           = False,
 
             # Testing and internal kwargs
-            _sampler                       = None,
-            
+            _input_data                    = None,
+
             **kwargs
             ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -371,11 +371,11 @@ class Acid:
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
-        if _sampler is None:
+        if _input_data.get("sampler") is None:
             self._run_mcmc(initial_state, self.nsteps)
 
         else: # Only for testing
-            self.sampler = _sampler
+            self.sampler = _input_data.get("sampler")
 
         # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
         # when using ACID function, but if using class directly, user can choose to call this part separately.
