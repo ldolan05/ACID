@@ -308,28 +308,28 @@ class Acid:
 
         # Get the initial polynomial coefficents
         a, b = utils.get_normalisation_coeffs(self.wavelengths["combined"])
+        self.wavelengths["combined_normalized"] = (self.wavelengths["combined"]*a)+b
 
         # Compute an initial continuum fit
-        self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
-            self.combined_spectrum, (self.combined_wavelengths*a)+b, self.combined_errors, self.poly_ord)
+        # poly inputs has polynomial coefficients and scale at the end
+        self.poly_inputs, self.flux["fitted"], self.errors["fitted"] = self.continuumfit(
+            self.flux["combined"], self.wavelengths["combined_normalized"], self.errors["combined"])
+        self.wavelengths["fitted"] = np.copy(self.wavelengths["combined"]) # Just to keep track
 
-        # Get the initial profile
-        LSD_initial_profile = LSD.LSD(self)
-        LSD_initial_profile.run_LSD(self.combined_wavelengths, self.fluxes_order1, self.flux_error_order1)
+        # Get the initial LSD profile using the initial fit
+        initial_LSD = LSD.LSD(self) # Initialise LSD class with standard Acid attributes
+        initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"])
 
         # Use alpha matrix and initial profile class variables from initial LSD run
-        self.initial_profile = LSD_initial_profile.profile
-        self.initial_profile_errors = LSD_initial_profile.profile_errors
-        self.alpha = LSD_initial_profile.alpha
+        self.initial_profile = initial_LSD.profile
+        self.initial_profile_errors = initial_LSD.profile_errors
+        self.alpha = initial_LSD.alpha
 
         # Set x, y, yerr, and model_inputs for emcee
-        self.x = self.combined_wavelengths
-        self.y = self.combined_spectrum
-        self.yerr = self.combined_errors
+        # self.x = self.combined_wavelengths
+        # self.y = self.combined_spectrum
+        # self.yerr = self.combined_errors
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
-
-        ## Setting these normalisation factors as global variables - used in the figures below
-        a, b = utils.get_normalisation_coeffs(self.x)
 
         # Masking based off residuals
         if self.verbose>0:
@@ -341,7 +341,7 @@ class Acid:
         # self.model_inputs_resi
         # Modifies:
         # self.alpha, self.yerr
-        self.residual_mask()
+        self.residual_mask() # will eventually add options for this
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
@@ -362,17 +362,24 @@ class Acid:
             initial_state.append(pos)
 
         initial_state = np.transpose(np.array(initial_state))
+        self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
-        # Setting global data for multiprocessing
-        self.mcmc_global_data = {"x": self.x, "y": self.y, "yerr": self.yerr,
-                            "alpha": self.alpha, "velocities": self.velocities, "seed": self.seed}
+        # Setting global data for mcmc_utils initialisation
+        self.mcmc_global_data = {
+            "x"         : self.wavelengths["masked"],
+            "y"         : self.flux["masked"],
+            "yerr"      : self.errors["masked"],
+            "alpha"     : self.alpha,
+            "velocities": self.velocities,
+            "seed"      : self.seed
+            }
 
         if self.verbose>0:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
-        if _input_data.get("sampler") is None:
+        if "sampler" not in _input_data:
             self._run_mcmc(initial_state, self.nsteps)
 
         else: # Only for testing
@@ -639,8 +646,8 @@ class Acid:
             fluxes     : np.ndarray,
             wavelengths: np.ndarray,
             errors     : np.ndarray,
-            poly_ord   : int|npint|None = 3,
-            plot_result: bool           = False
+            poly_ord   : int|npint = 3,
+            plot_result: bool      = False
             ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -662,10 +669,6 @@ class Acid:
         tuple
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
-        if poly_ord is None:
-            poly_ord = self.poly_ord
-        if poly_ord is None:
-            raise ValueError("poly_ord must be specified either in the function call or as a class attribute.")
 
         cont_factor = np.percentile(fluxes, 95)
         idx = wavelengths.argsort()
@@ -779,18 +782,22 @@ class Acid:
     def residual_mask(self):
         ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
-        forward = mcmc_utils.model_func(self.model_inputs, self.x, alpha=self.alpha)
+        # Set standard variables
+        x = self.wavelengths["combined"]
+        y = self.flux["combined"]
+        yerr = self.errors["combined"]
+        x_norm = self.wavelengths["combined_normalized"]
 
-        a, b = utils.get_normalisation_coeffs(self.x)
+        forward = mcmc_utils.model_func(self.model_inputs, x, alpha=self.alpha)
 
         mdl1 = 0
-        len_velocities = len(self.velocities)
-        for i in range(len_velocities, len(self.model_inputs) - 1):
-            mdl1 = mdl1 + (self.model_inputs[i] * ((self.x * a) + b) ** (i - len_velocities))
+        nvel = len(self.velocities)
+        for i in range(nvel, len(self.model_inputs) - 1):
+            mdl1 = mdl1 + (self.model_inputs[i] * x_norm ** (i - nvel))
 
         mdl1 = mdl1 * self.model_inputs[-1]
 
-        data_normalised = (self.y - np.min(self.y)) / (np.max(self.y) - np.min(self.y))
+        data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
         residuals = data_normalised - forward_normalised
         
@@ -806,7 +813,7 @@ class Acid:
             elif idx[value] == True and flag_max < value:
                 flag_max = value
             elif idx[value] == False and flag_max - flag_min >= self.pix_chunk:
-                self.yerr[flag_min:flag_max] = 10000000000000000000
+                yerr[flag_min:flag_max] = 10000000000000000000
                 flag_min = value
                 flag_max = value
 
@@ -819,11 +826,11 @@ class Acid:
         ## masking tellurics
         for line in self.telluric_lines:
             limit = (21/LSD.ckms)*line +3
-            idx = np.logical_and((line-limit) <= self.x, self.x <= (limit+line))
-            self.yerr[idx] = 10000000000000000000
+            idx = np.logical_and((line-limit) <= x, x <= (limit+line))
+            yerr[idx] = 10000000000000000000
 
         # Note that this is used to keep track of the residual masks for later use in _get_profiles
-        self.residual_masks = tuple([self.yerr >= 10000000000000000000])
+        self.residual_masks = tuple([yerr >= 1e12])
 
         ###################################
         ###      sigma clip masking     ###
@@ -843,21 +850,22 @@ class Acid:
         idx1 = tuple([rcopy <= lower_clip])
         idx2 = tuple([rcopy >= upper_clip])
 
-        self.yerr[idx1] = 10000000000000000000
-        self.yerr[idx2] = 10000000000000000000
+        yerr[idx1] = 10000000000000000000
+        yerr[idx2] = 10000000000000000000
 
-        poly_inputs, _bin, bye = self.continuumfit(self.y, (self.x*a_old)+b, self.yerr, self.poly_ord)
+        a, b = utils.get_normalisation_coeffs(x)
+        poly_inputs, _bin, bye = self.continuumfit(y, (x*a_old)+b, yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
         LSD_masking = LSD.LSD(self)
-        LSD_masking.run_LSD(self.x, _bin, bye, sn=100)
+        LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
 
-        # model_input_resids = np.concatenate((profile, poly_inputs))
-
-        # ## comment if you would like to keep sigma clipping masking in for final LSD run 
-        # self.residual_masks = tuple([self.yerr>=1000000000000000000])
+        self.wavelengths["masked"] = x
+        self.flux["masked"]        = y # x and y dont change in this func
+        self.errors["masked"]      = yerr # yerr is modified in this func
+        # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
 
         return
 
