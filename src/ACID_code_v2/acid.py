@@ -259,20 +259,20 @@ class Acid:
             "not an array of S/N values for each pixel.")
 
         # Assign all inputs to class variables (except all frames, handled below)
-        self.frame_wavelengths = input_wavelengths
-        self.frame_flux = input_spectra
-        self.frame_errors = input_spectral_errors
-        self.frame_sns = frame_sns
-        self.poly_ord = poly_ord
-        self.nsteps = nsteps
-        self.order = order
-        self.pix_chunk = pix_chunk
-        self.dev_perc = dev_perc
-        self.n_sig = n_sig
-        self.return_result = return_result
-        self.parallel = parallel
+        self.wavelengths    = {"input": input_wavelengths}
+        self.flux           = {"input": input_spectra}
+        self.errors         = {"input": input_spectral_errors}
+        self.sn             = {"input": frame_sns}
+        self.poly_ord       = poly_ord
+        self.nsteps         = nsteps
+        self.order          = order
+        self.pix_chunk      = pix_chunk
+        self.dev_perc       = dev_perc
+        self.n_sig          = n_sig
+        self.return_result  = return_result
+        self.parallel       = parallel
         self.production_run = production_run
-        self.cores = cores
+        self.cores          = cores
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -281,7 +281,7 @@ class Acid:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
                 # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
-                self.all_frames = np.zeros((len(self.frame_flux), len(self.order_range), 2, len(self.velocities)))
+                self.all_frames = np.zeros((len(self.flux["input"]), len(self.order_range), 2, len(self.velocities)))
         else:
             self.all_frames = all_frames
         if isinstance(self.all_frames, Result):
@@ -303,10 +303,11 @@ class Acid:
         # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
         # To generate:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
+        # As of 1.0.4, this now generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
         self.combine_spec(output=False)
 
         # Get the initial polynomial coefficents
-        a, b = utils.get_normalisation_coeffs(self.combined_wavelengths)
+        a, b = utils.get_normalisation_coeffs(self.wavelengths["combined"])
 
         # Compute an initial continuum fit
         self.poly_inputs, self.fluxes_order1, self.flux_error_order1 = self.continuumfit(
@@ -539,60 +540,66 @@ class Acid:
         """
         # Inputs are now self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
         # they were: wavelengths_f, spectra_f, errors_f, sns_f):
-        if frame_wavelengths:
-            self.frame_wavelengths = frame_wavelengths
-            self.frame_flux = frame_flux
-            self.frame_errors = frame_errors
-            self.frame_sns = frame_sns
+        if frame_wavelengths: # This should only be for testing
+            self.wavelengths["input"] = frame_wavelengths
+            self.flux["input"]        = frame_flux
+            self.errors["input"]      = frame_errors
+            self.sn["input"]          = frame_sns
 
-        if len(self.frame_wavelengths)==1:
-            self.combined_wavelengths = self.frame_wavelengths[0]
-            self.combined_spectrum = self.frame_flux[0]
-            self.combined_errors = self.frame_errors[0]
-            self.combined_sn = self.frame_sns[0]
+        # Set simple names for variables (just used in this function)
+        wavelengths = self.wavelengths["input"]
+        flux        = self.flux["input"]
+        errors      = self.errors["input"]
+        sn          = self.sn["input"]
+
+        # Return as is if only one spectrum
+        if len(self.wavelengths["input"])==1:
+            self.wavelengths["combined"] = self.wavelengths["input"][0]
+            self.flux["combined"]        = self.flux["input"][0]
+            self.errors["combined"]      = self.errors["input"][0]
+            self.sn["combined"]          = self.sn["input"][0]
 
         else:
-            self.combined_spectrum = np.copy(self.frame_flux)
+            # Get wavelength grid with highest S/N
+            combined_wavelengths = wavelengths[np.argmax(sn)]
+
+            interpolated_flux   = np.zeros_like(flux)
+            interpolated_errors = np.zeros_like(errors)
 
             # combine all spectra to one spectrum
-            for n in range(len(self.combined_spectrum)):
+            for n in range(len(flux)):
 
-                self.combined_wavelengths = self.frame_wavelengths[np.argmax(self.frame_sns)]
-
-                idx = np.where(self.frame_wavelengths[n] != 0)[0]
-
-                f2 = interp1d(self.frame_wavelengths[n][idx], self.combined_spectrum[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                f2_err = interp1d(self.frame_wavelengths[n][idx], self.frame_errors[n][idx], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                self.combined_spectrum[n] = f2(self.combined_wavelengths)
-                self.frame_errors[n] = f2_err(self.combined_wavelengths)
+                # Interpolate each spectrum onto the combined wavelength grid
+                f2 = interp1d(wavelengths[n], flux[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                interpolated_flux[n] = f2(combined_wavelengths)
+                interpolated_errors[n] = f2_err(combined_wavelengths)
 
                 # Mask out out extrapolated areas
-                idx_ex = np.logical_and(self.combined_wavelengths<=np.max(self.frame_wavelengths[n][idx]),
-                                        self.combined_wavelengths>=np.min(self.frame_wavelengths[n][idx]))
+                idx_ex = np.logical_and(combined_wavelengths<=np.max(wavelengths[n]),
+                                        combined_wavelengths>=np.min(wavelengths[n]))
                 idx_ex = tuple([idx_ex==False])
 
-                # TODO: Why [0] on where_are_zeros, why are we making errors large and flux 1, rather than masking out?
-                self.combined_spectrum[n][idx_ex] = 1.
-                self.frame_errors[n][idx_ex] = 1000000000000
+                interpolated_flux[n][idx_ex] = 1.
+                interpolated_errors[n][idx_ex] = 1000000000000
 
                 # Mask out nans and zeros (these do not contribute to the main spectrum)
-                where_are_NaNs = np.isnan(self.combined_spectrum[n])
-                self.frame_errors[n][where_are_NaNs] = 1000000000000
-                where_are_zeros = np.where(self.combined_spectrum[n] == 0)[0]
-                self.frame_errors[n][where_are_zeros] = 1000000000000
+                where_are_NaNs = np.isnan(interpolated_flux[n])
+                interpolated_errors[n][where_are_NaNs] = 1000000000000
+                where_are_zeros = np.where(interpolated_flux[n] == 0)[0]
+                interpolated_errors[n][where_are_zeros] = 1000000000000
 
-                where_are_NaNs = np.isnan(self.frame_errors[n])
-                self.frame_errors[n][where_are_NaNs] = 1000000000000
-                where_are_zeros = np.where(self.frame_errors[n] == 0)[0]
-                self.frame_errors[n][where_are_zeros] = 1000000000000
+                where_are_NaNs = np.isnan(interpolated_errors[n])
+                interpolated_errors[n][where_are_NaNs] = 1000000000000
+                where_are_zeros = np.where(interpolated_errors[n] == 0)[0]
+                interpolated_errors[n][where_are_zeros] = 1000000000000
 
-            width = len(self.combined_wavelengths)
-            spectrum_f = np.zeros((width,))
-            self.combined_errors = np.zeros((width,))
+            combined_flux = np.zeros_like(combined_wavelengths)
+            combined_errors = np.zeros_like(combined_wavelengths)
 
-            for n in range(0,width):
-                temp_spec_f = self.combined_spectrum[:, n]
-                temp_err_f = self.frame_errors[:, n]
+            for n in range(len(combined_wavelengths)):
+                temp_spec_f = interpolated_flux[:, n]
+                temp_err_f = interpolated_errors[:, n]
 
                 weights_f = (1/temp_err_f**2)
 
@@ -602,20 +609,30 @@ class Acid:
                 if sum(weights_f) > 0:
                     weights_f = weights_f / np.sum(weights_f)
 
-                    spectrum_f[n] = sum(weights_f * temp_spec_f)
-                    self.combined_sn = sum(weights_f * self.frame_sns) / sum(weights_f)
+                    combined_flux[n] = sum(weights_f * temp_spec_f)
+                    combined_sn = sum(weights_f * sn) / sum(weights_f)
 
-                    self.combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
-                
-                else: 
-                    spectrum_f[n] = np.mean(temp_spec_f)
-                    self.combined_errors[n] = 1000000000000
+                    combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
 
-            self.combined_spectrum = spectrum_f
+                else:
+                    combined_flux[n] = np.mean(temp_spec_f)
+                    combined_errors[n] = 1000000000000
+
+            # Faster and hopefully correct method once checked with Ernst
+            # invvars = 1 / interpolated_errors**2
+            # invvars[interpolated_errors >= 1e12] = 0
+            # weighted_flux = interpolated_flux * invvars
+            # combined_flux = np.sum(weighted_flux, axis=0) / np.sum(invvars, axis=0)
+            # combined_errors = 1 / np.sqrt(np.sum(invvars, axis=0))
+
+            self.wavelengths["combined"] = combined_wavelengths
+            self.flux["combined"]        = combined_flux
+            self.errors["combined"]      = combined_errors
+            self.sn["combined"]          = combined_sn
 
         if output is True:
             # ie if called as a function rather than from ACID function
-            return self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
+            return combined_wavelengths, combined_flux, combined_errors, combined_sn
 
     def continuumfit(
             self,
