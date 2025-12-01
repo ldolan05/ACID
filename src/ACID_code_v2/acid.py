@@ -1025,40 +1025,25 @@ class Acid:
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
         a, b = utils.get_normalisation_coeffs(self.x)
-        norm_wavelengths = (self.x * a) + b
+        norm_wl = (self.x * a) + b
         nvel = len(self.velocities)
-        conts = []
-        for ind in inds:
-            sample = flat_samples[ind]
-            # mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
-            mdl1_temp = 0
-            for i in np.arange(len(self.velocities), len(sample)-1):
-                mdl1_temp = mdl1_temp+sample[i]*(norm_wavelengths**(i-nvel))
-            mdl1_temp = mdl1_temp*sample[-1]
-            conts.append(mdl1_temp)
 
-        # samples = flat_samples[inds]
-        # inds = np.random.randint(len(flat_samples), size=nsamples)
-        # a, b = utils.get_normalisation_coeffs(self.x)
-        # conts = np.zeros((nsamples, len(norm_wavelengths)))
-        # nvel = len(self.velocities)
-        # for i, sample in enumerate(samples):
-        #     coeffs = sample[nvel:-1]             # [c0, c1, ..., c_(M-1)]
-        #     scale  = sample[-1]                  # continuum scale factor
-        #     # Evaluate polynomial: c0 + c1*x + ... + c_(M-1)*x^(M-1)
-        #     polynomial = np.polynomial.polynomial.polyval(norm_wavelengths, coeffs)
-        #     conts[i] = polynomial * scale
+        # conts1 = []
+        # for ind in inds:
+        #     sample = flat_samples[ind]
+        #     # mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
+        #     mdl1_temp = 0
+        #     for i in np.arange(len(self.velocities), len(sample)-1):
+        #         mdl1_temp = mdl1_temp+sample[i]*(norm_wl**(i-nvel))
+        #     mdl1_temp = mdl1_temp*sample[-1]
+        #     conts1.append(mdl1_temp)
 
-        # samples = flat_samples[inds]
-        # coeffs  = samples[:, nvel:-1]       # shape (nsamples, M)
-        # scales  = samples[:, -1]            # shape (nsamples,)
-        # # Evaluate polynomial for all samples at once
-        # # polyvander gives: [1, x, x^2, ..., x^(M-1)] for each x
-        # V = np.polynomial.polynomial.polyvander(norm_wavelengths, coeffs.shape[1] - 1)
-        # # V shape: (npoints, M)
-        # # Multiply each row of coeffs with V → get conts
-        # conts = coeffs @ V.T                 # shape (nsamples, npoints)
-        # conts *= scales[:, None]
+        samples = flat_samples[inds]
+        coeffs = samples[:, nvel:-1]
+        ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+        scales = samples[:, -1]
+        powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+        conts = (coeffs @ powers.T) * scales[:, None]
 
         self.continuum_error = np.std(np.array(conts), axis=0)
 
