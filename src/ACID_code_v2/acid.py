@@ -636,7 +636,7 @@ class Acid:
         errors : np.ndarray
             The error values associated with the spectrum.
         poly_ord : int
-            The order of the polynomial to fit to the continuum. Uses class default of 3 if not provided.
+            The order of the polynomial to fit to the continuum. By default 3.
         plot_result : bool, optional
             If True, plots the original spectrum and the fitted continuum, by default False
 
