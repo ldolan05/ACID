@@ -1009,8 +1009,11 @@ class Acid:
                     backend=backend,
                     moves=emcee.moves.DEMove()
                 )
+                z_array = np.zeros((self.nwalkers, len(self.velocities)))
 
-                mcmc_utils.current_z = np.mean(state[:, :len(self.velocities)], axis=0)
+                coords = state[:, len(self.velocities):].mean(axis=0)
+                mcmc_utils.current_z = mcmc_utils.solve_z(coords)
+                
                 self.sampler.run_mcmc(state[:,len(self.velocities):], 1, progress=False, store=True)
                 for _ in tqdm(range(nsteps)):
                     # --- Gibbs Block A: analytic z given current continuum ---
@@ -1033,75 +1036,130 @@ class Acid:
             self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
             self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
 
+    # def process_results(self, return_result=True):
+
+    #     # Discarding all vales except the last 1000 steps.
+    #     # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
+    #     dis_no = self.nsteps-1000
+
+    #     # Obtain flattened samples
+    #     flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
+
+    #     # Getting the final profile and continuum values - median of last 1000 steps
+    #     self.profile      = []
+    #     self.poly_cos     = []
+    #     self.profile_err  = []
+    #     self.poly_cos_err = []
+
+    #     for i in range(self.ndim):
+    #         mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+    #         error = np.diff(mcmc)
+    #         if i<len(self.velocities):
+    #             self.profile.append(mcmc[1])
+    #             self.profile_err.append(np.max(error))
+    #         else:
+    #             self.poly_cos.append(mcmc[1])
+    #             self.poly_cos_err.append(np.max(error))
+    #     self.profile = np.array(self.profile)
+    #     self.profile_err = np.array(self.profile_err)
+    #     nvel = len(self.velocities)
+    #     # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+    #     # errors = np.diff(quartiles, axis=0)
+    #     # errors = np.max(errors, axis=0) # why?
+    #     # self.profile       = quartiles[1, :nvel]
+    #     # self.profile_err   = errors[:nvel]
+    #     # self.poly_cos      = quartiles[1, nvel:]
+    #     # self.poly_cos_err  = errors[nvel:]
+
+    #     if self.verbose > 0:
+    #         print('Getting the final profiles...')
+
+    #     # Finding error for the continuum fit
+    #     nsamples = 50
+    #     rng = np.random.default_rng(self.seed)
+    #     inds = rng.integers(len(flat_samples), size=nsamples)
+    #     norm_wl = self.wavelengths["combined_normalized"]
+    #     nvel = len(self.velocities)
+
+    #     # conts1 = []
+    #     # for ind in inds:
+    #     #     sample = flat_samples[ind]
+    #     #     # mdl = mcmc_utils.model_func(sample, self.wavelengths["combined"], alpha=self.alpha)
+    #     #     mdl1_temp = 0
+    #     #     for i in np.arange(len(self.velocities), len(sample)-1):
+    #     #         mdl1_temp = mdl1_temp+sample[i]*(norm_wl**(i-nvel))
+    #     #     mdl1_temp = mdl1_temp*sample[-1]
+    #     #     conts1.append(mdl1_temp)
+
+    #     samples = flat_samples[inds]
+    #     coeffs = samples[:, nvel:-1]
+    #     ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+    #     scales = samples[:, -1]
+    #     powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+    #     conts = (coeffs @ powers.T) * scales[:, None]
+
+    #     self.continuum_error = np.std(np.array(conts), axis=0)
+
+    #     self.all_frames = self._get_profiles(self.all_frames)  
+
+    #     if self.return_result and return_result:
+    #         return Result(self)
+    #     return
+
     def process_results(self, return_result=True):
 
-        # Discarding all vales except the last 1000 steps.
-        # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
-        dis_no = self.nsteps-1000
-
-        # Obtain flattened samples
+        dis_no = self.nsteps - 1000
         flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
-        # Getting the final profile and continuum values - median of last 1000 steps
-        self.profile      = []
-        self.poly_cos     = []
-        self.profile_err  = []
-        self.poly_cos_err = []
+        # --- Continuum posterior summaries ---
+        quart = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        errors = np.diff(quart, axis=0)
+        errors = np.max(errors, axis=0)
 
-        for i in range(self.ndim):
-            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-            error = np.diff(mcmc)
-            if i<len(self.velocities):
-                self.profile.append(mcmc[1])
-                self.profile_err.append(np.max(error))
-            else:
-                self.poly_cos.append(mcmc[1])
-                self.poly_cos_err.append(np.max(error))
-        self.profile = np.array(self.profile)
-        self.profile_err = np.array(self.profile_err)
-        nvel = len(self.velocities)
-        # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
-        # errors = np.diff(quartiles, axis=0)
-        # errors = np.max(errors, axis=0) # why?
-        # self.profile       = quartiles[1, :nvel]
-        # self.profile_err   = errors[:nvel]
-        # self.poly_cos      = quartiles[1, nvel:]
-        # self.poly_cos_err  = errors[nvel:]
+        # poly coeffs and scale
+        self.poly_cos     = quart[1, :-1]
+        self.poly_cos_err = errors[:-1]
 
-        if self.verbose > 0:
-            print('Getting the final profiles...')
+        self.scale        = quart[1, -1]
+        self.scale_err    = errors[-1]
 
-        # Finding error for the continuum fit
+        # --- Final profile (z) from median continuum ---
+        theta_cont_median = np.concatenate([self.poly_cos, [self.scale]])
+        self.profile = mcmc_utils.solve_z(theta_cont_median)
+        plt.plot(self.velocities,self.profile)
+        plt.show()
+
+        # --- Profile error from solving z for sample of continuum draws ---
         nsamples = 50
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
+
+        z_stack = []
+        for i in inds:
+            z_i = mcmc_utils.solve_z(flat_samples[i])
+            if z_i is not None:
+                z_stack.append(z_i)
+        self.profile_err = np.std(np.array(z_stack), axis=0)
+
+        # --- Continuum error (your existing vectorized code) ---
         norm_wl = self.wavelengths["combined_normalized"]
-        nvel = len(self.velocities)
-
-        # conts1 = []
-        # for ind in inds:
-        #     sample = flat_samples[ind]
-        #     # mdl = mcmc_utils.model_func(sample, self.wavelengths["combined"], alpha=self.alpha)
-        #     mdl1_temp = 0
-        #     for i in np.arange(len(self.velocities), len(sample)-1):
-        #         mdl1_temp = mdl1_temp+sample[i]*(norm_wl**(i-nvel))
-        #     mdl1_temp = mdl1_temp*sample[-1]
-        #     conts1.append(mdl1_temp)
-
         samples = flat_samples[inds]
-        coeffs = samples[:, nvel:-1]
-        ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+
+        coeffs = samples[:, :-1]
         scales = samples[:, -1]
+        ncoeffs = self.poly_ord + 1
+
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
         conts = (coeffs @ powers.T) * scales[:, None]
 
         self.continuum_error = np.std(np.array(conts), axis=0)
 
-        self.all_frames = self._get_profiles(self.all_frames)  
+        # build all frames
+        self.all_frames = self._get_profiles(self.all_frames)
 
         if self.return_result and return_result:
             return Result(self)
-        return
+
 
     def continue_sampling(self, nsteps:int|npint, production_run:bool=False):
         """Continue MCMC sampling for additional steps.
