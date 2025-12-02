@@ -79,6 +79,7 @@ class Result:
         self.model_inputs = Acid.model_inputs
         self.verbose = Acid.verbose
         self.order_range = Acid.order_range
+        self.alpha = Acid.alpha
         self.BJDs = getattr(Acid, 'BJDs', None)
         self.profiles = getattr(Acid, 'profiles', None)
         self.errors = getattr(Acid, 'errors', None)
@@ -89,6 +90,7 @@ class Result:
             self.all_frames = None
 
         self.ndim = len(self.model_inputs)
+        self.nvel = len(self.velocities)
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
@@ -337,8 +339,8 @@ class Result:
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        model_flux = model_func(theta_median, input_wavelengths, alpha=self.Acid.alpha, k_max=self.Acid.k_max)
-
+        model_flux = model_func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
+        
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
         ax[0].plot(input_wavelengths, input_flux, color='black', linewidth=1, label='Observed Spectrum')

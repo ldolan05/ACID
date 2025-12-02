@@ -352,7 +352,9 @@ class Acid:
         initial_state = []
         for i in range(0, self.ndim):
             if i < self.ndim - self.poly_ord - 2:
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                # pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                # Test extremely small sigma
+                pos = rng.normal(self.model_inputs[i], 1e-12, (self.nwalkers, ))
             else:
                 x1 = self.model_inputs[i]
                 rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
