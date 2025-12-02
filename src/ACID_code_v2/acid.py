@@ -9,12 +9,12 @@ from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
 from . import utils
-from . import LSD
+from . import lsd
 from . import mcmc_utils
 from .result import Result
 
 warnings.filterwarnings("ignore")
-importlib.reload(LSD)
+importlib.reload(lsd)
 importlib.reload(utils)
 
 @beartype
@@ -316,7 +316,7 @@ class Acid:
         self.wavelengths["fitted"] = np.copy(self.wavelengths["combined"]) # Just to keep track
 
         # Get the initial LSD profile using the initial fit
-        initial_LSD = LSD.LSD(self) # Initialise LSD class with standard Acid attributes
+        initial_LSD = lsd.LSD(self) # Initialise LSD class with standard Acid attributes
         initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"])
 
         # Use alpha matrix and initial profile class variables from initial LSD run
@@ -698,7 +698,7 @@ class Acid:
 
     def read_in_frames(self, order, filelist, file_type, directory=None):
         # read in first frame
-        fluxes, wavelengths, flux_error_order, sn = LSD.LSD().blaze_correct(
+        fluxes, wavelengths, flux_error_order, sn = lsd.LSD().blaze_correct(
             file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
         #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
@@ -715,7 +715,7 @@ class Acid:
 
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
-            frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD.LSD().blaze_correct(
+            frames[i], frame_wavelengths[i], errors[i], sns[i] = lsd.LSD().blaze_correct(
                 file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns
@@ -822,7 +822,7 @@ class Acid:
 
         ## masking tellurics
         for line in self.telluric_lines:
-            limit = (21/LSD.ckms)*line +3
+            limit = (21/lsd.ckms)*line +3
             idx = np.logical_and((line-limit) <= x, x <= (limit+line))
             yerr[idx] = 10000000000000000000
 
@@ -854,7 +854,7 @@ class Acid:
         poly_inputs, _bin, bye = self.continuumfit(y, (x*a_old)+b, yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
-        LSD_masking = LSD.LSD(self)
+        LSD_masking = lsd.LSD(self)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
@@ -908,7 +908,7 @@ class Acid:
             # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
             # else:
 
-            LSD_profiles = LSD.LSD(self)
+            LSD_profiles = lsd.LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
