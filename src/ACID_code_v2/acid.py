@@ -771,8 +771,8 @@ class Acid:
         # TODO! : check what the hell is gong on here with a_old
         a_old = 1
 
-        upper_clip = m + self.nsig * sigma
-        lower_clip = m - self.nsig * sigma
+        upper_clip = m + self.n_sig * sigma
+        lower_clip = m - self.n_sig * sigma
 
         rcopy = residuals.copy()
 
