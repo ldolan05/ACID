@@ -1,6 +1,16 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.0.4] - 2025-12-02
+
+### Changed
+- Minor bugfixes, code improvements for readability, and performance optimisations.
+- Reset OMP threads after sampler call, which should in the future speed everything up with numpy optimisations in python 3.14
+
+### Added
+- Ability to add a seed to Acid for consistent results across runs. The seed now determining the result of the sampler, while other random calls in Acid are done using a seperate seed instance (np.default_rng)
+- Added ability to inject _input_data to skip sections of Acid, though this remains only available for the sampler and in testing and for development purposes for now.
+
 ## [1.0.3] - 2025-11-24
 
 ### Fixed
