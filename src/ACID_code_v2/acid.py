@@ -300,7 +300,7 @@ class Acid:
         # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra.
         # If only one frame, just uses that frame (handled in the function).
         # This function requires assigned values:
-        # self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
+        # self.wavelengths["input"], self.flux["input"], self.errors["input"], self.sn["input"]
         # To generate:
         # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
         # As of 1.0.4, this now generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
@@ -545,8 +545,7 @@ class Acid:
         combined_sn : float
             Signal-to-noise ratio for the combined spectrum
         """
-        # Inputs are now self.frame_wavelengths, self.frame_flux, self.frame_errors, self.frame_sns
-        # they were: wavelengths_f, spectra_f, errors_f, sns_f):
+
         if frame_wavelengths: # This should only be for testing
             self.wavelengths["input"] = frame_wavelengths
             self.flux["input"]        = frame_flux
@@ -872,22 +871,22 @@ class Acid:
     def _get_profiles(self, all_frames):
 
         for counter in range(len(self.flux["input"])):
-            flux = self.frame_flux[counter]
-            error = self.frame_errors[counter]
-            wavelengths = self.frame_wavelengths[counter]
-            sn = self.frame_sns[counter]
+            flux = self.flux["input"][counter]
+            error = self.errors["input"][counter]
+            wavelengths = self.wavelengths["input"][counter]
+            sn = self.sn["input"][counter]
 
             a, b = utils.get_normalisation_coeffs(wavelengths)
-
+            norm_wavelengths = (a*wavelengths)+b
             mdl1 =0
             for i in np.arange(0, len(self.poly_cos)-1):
-                mdl1 = mdl1+self.poly_cos[i]*((a*wavelengths)+b)**(i)
+                mdl1 = mdl1+self.poly_cos[i]*norm_wavelengths**(i)
             mdl1 = mdl1*self.poly_cos[-1]
-            # norm_wavelengths = (a*wavelengths)+b
+
             # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
 
             # Masking based off residuals interpolated onto new wavelength grid
-            reference_wave = self.frame_wavelengths[np.argmax(self.frame_sns)]
+            reference_wave = self.wavelengths["input"][np.argmax(self.sn["input"])]
             mask_pos = np.ones(reference_wave.shape)
             mask_pos[self.residual_masks]=10000000000000000000
             f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
@@ -902,11 +901,11 @@ class Acid:
             error *= flux
 
             remove = tuple([flux<0])
-            flux[remove]=1.
-            error[remove]=10000000000000000000
+            flux[remove] = 1.
+            error[remove] = 10000000000000000000
 
             # idx = tuple([flux>0])
-            # if len(flux[idx])==0:
+            # if len(flux[idx]) == 0:
             #     print('continuing... frame %s'%counter)
             # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
             # else:
