@@ -994,7 +994,7 @@ class Acid:
             "backend": backend,
         }
         mcmc_kwargs = {
-            "state": state,
+            "initial_state": state,
             "nsteps": nsteps,
             "progress": sampler_verbosity,
             "store": True,
