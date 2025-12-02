@@ -302,8 +302,7 @@ class Acid:
         # This function requires assigned values:
         # self.wavelengths["input"], self.flux["input"], self.errors["input"], self.sn["input"]
         # To generate:
-        # self.combined_wavelengths, self.combined_spectrum, self.combined_errors, self.combined_sn
-        # As of 1.0.4, this now generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
+        # As of 1.0.4, this generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
         self.combine_spec(output=False)
 
         # Get the initial polynomial coefficents
@@ -326,9 +325,6 @@ class Acid:
         self.alpha = initial_LSD.alpha
 
         # Set x, y, yerr, and model_inputs for emcee
-        # self.x = self.combined_wavelengths
-        # self.y = self.combined_spectrum
-        # self.yerr = self.combined_errors
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
 
         # Masking based off residuals
@@ -379,6 +375,7 @@ class Acid:
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
+        _input_data = _input_data if _input_data is not None else {}
         if "sampler" not in _input_data:
             self._run_mcmc(initial_state, self.nsteps)
 
@@ -536,14 +533,15 @@ class Acid:
 
         Returns
         -------
-        combined_wavelengths : array
-            Wavelengths for the combined spectrum
-        combined_spectrum : array
-            Fluxes for the combined spectrum
-        combined_errors : array
-            Errors for the combined spectrum
-        combined_sn : float
-            Signal-to-noise ratio for the combined spectrum
+        Tuple, if output is True, containing:
+            combined_wavelengths : array
+                Wavelengths for the combined spectrum
+            combined_spectrum : array
+                Fluxes for the combined spectrum
+            combined_errors : array
+                Errors for the combined spectrum
+            combined_sn : float
+                Signal-to-noise ratio for the combined spectrum
         """
 
         if frame_wavelengths: # This should only be for testing
@@ -1056,7 +1054,7 @@ class Acid:
         # conts1 = []
         # for ind in inds:
         #     sample = flat_samples[ind]
-        #     # mdl = mcmc_utils.model_func(sample, self.combined_wavelengths, alpha=self.alpha)
+        #     # mdl = mcmc_utils.model_func(sample, self.wavelengths["combined"], alpha=self.alpha)
         #     mdl1_temp = 0
         #     for i in np.arange(len(self.velocities), len(sample)-1):
         #         mdl1_temp = mdl1_temp+sample[i]*(norm_wl**(i-nvel))
