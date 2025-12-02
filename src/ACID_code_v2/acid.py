@@ -1042,7 +1042,8 @@ class Acid:
         # self.poly_cos      = quartiles[1, nvel:]
         # self.poly_cos_err  = errors[nvel:]
 
-        print('Getting the final profiles...')
+        if self.verbose > 0:
+            print('Getting the final profiles...')
 
         # Finding error for the continuum fit
         nsamples = 50
