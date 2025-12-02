@@ -22,7 +22,7 @@ def _init_worker(global_data):
     # Precompute Aᵀ/σ for later RHS computation
     AT_over_yerr = Aw.T
 
-def _log_prior_from_z(z):
+def _log_prior(z):
     """
     Apply your original prior to a given LSD profile z (length k_max).
     This is basically the old _log_prior, but with z passed in instead
@@ -56,7 +56,7 @@ def _log_prior_from_z(z):
 
     return p_pent
 
-def _solve_profile_and_model(theta_cont):
+def _model(theta_cont):
     """
     Given continuum parameters only (theta_cont), solve for best-fit
     LSD profile z_hat using precomputed Cholesky factors.
@@ -98,14 +98,14 @@ def _log_probability(theta_cont):
     theta_cont: [c0, ..., c_{n_poly-1}, scale]
     """
     # Solve for profile and model
-    mdl, z_hat = _solve_profile_and_model(theta_cont)
-
+    mdl, z_hat = _model(theta_cont)
+    
     # If continuum was invalid (e.g. cont <= 0), reject
     if mdl is None:
         return -np.inf
 
     # Prior on z_hat (reusing your old structure)
-    lp = _log_prior_from_z(z_hat)
+    lp = _log_prior(z_hat)
     if not np.isfinite(lp):
         return -np.inf
 

@@ -1101,11 +1101,11 @@ class Acid:
                 fmcmc._init_worker(self.global_data)
                 self._prepared_system = True
 
-            mdl, z_hat = fmcmc._solve_profile_and_model(theta_cont)
+            mdl, z_hat = fmcmc._model(theta_cont)
             if mdl is None:
                 continue
 
-            # rebuild continuum explicitly (same as in _solve_profile_and_model)
+            # rebuild continuum explicitly (same as in _model)
             n_poly = len(theta_cont) - 1
             coefs = theta_cont[:n_poly]
             scale = theta_cont[-1]
