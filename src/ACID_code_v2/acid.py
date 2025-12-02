@@ -1,3 +1,4 @@
+from multiprocessing import pool
 import sys, emcee, warnings, os, time, importlib, inspect
 import numpy as np
 from math import log10, floor
@@ -9,6 +10,7 @@ from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
 import scipy.constants as const
+from tqdm import tqdm
 from . import utils
 from . import lsd
 from . import mcmc_utils
@@ -343,15 +345,15 @@ class Acid:
         self.residual_mask() # will eventually add options for this
 
         ## Setting number of walkers and their start values(pos)
-        self.ndim = len(self.model_inputs)
+        self.ndim = self.poly_ord + 2 # only continuum params now
         self.nwalkers = self.ndim * 3
         rng = np.random.default_rng(self.seed)
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
         initial_state = []
-        for i in range(0, self.ndim):
-            if i < self.ndim - self.poly_ord - 2:
+        for i in range(len(self.model_inputs)):
+            if i < len(self.model_inputs) - self.poly_ord - 2:
                 pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             else:
                 x1 = self.model_inputs[i]
@@ -359,6 +361,9 @@ class Acid:
                 sigma = abs(rounded_sigma) / 10
                 pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
+
+        self.full_inputs = np.copy(self.model_inputs)
+        self.model_inputs = self.model_inputs[len(self.velocities):] # only continuum params now
 
         initial_state = np.transpose(np.array(initial_state))
         self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
@@ -370,7 +375,7 @@ class Acid:
             "yerr"      : self.errors["masked"],
             "alpha"     : self.alpha,
             "velocities": self.velocities,
-            "seed"      : self.seed
+            "seed"      : self.seed,
             }
 
         if self.verbose>0:
@@ -991,12 +996,30 @@ class Acid:
             # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
-                ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(
-                        self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
-                        moves=emcee.moves.DEMove())
-                    self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
+                # ctx = mp.get_context("fork")
+                # with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                mcmc_utils._init_worker(self.mcmc_global_data)
+                # self.sampler = emcee.EnsembleSampler(
+                #     self.nwalkers, self.ndim, mcmc_utils._log_probability,
+                #     # pool=pool,
+                #     backend=backend,
+                #     moves=emcee.moves.DEMove())
+                self.sampler = emcee.EnsembleSampler(
+                    self.nwalkers, self.ndim, mcmc_utils._log_probability,
+                    backend=backend,
+                    moves=emcee.moves.DEMove()
+                )
+
+                mcmc_utils.current_z = np.mean(state[:, :len(self.velocities)], axis=0)
+                self.sampler.run_mcmc(state[:,len(self.velocities):], 1, progress=False, store=True)
+                for _ in tqdm(range(nsteps)):
+                    # --- Gibbs Block A: analytic z given current continuum ---
+                    # current continuum is the mean position of walkers
+                    coords = np.mean(self.sampler.get_last_sample().coords, axis=0)
+                    mcmc_utils.current_z = mcmc_utils.solve_z(coords)
+
+                    # --- Gibbs Block B: one emcee step conditioning on that z ---
+                    self.sampler.run_mcmc(None, 1, progress=False, store=True)
 
             else: # This doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")

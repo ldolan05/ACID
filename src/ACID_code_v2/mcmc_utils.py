@@ -1,6 +1,7 @@
 import emcee
 import numpy as np
 import multiprocessing as mp
+from scipy.linalg import cho_factor, cho_solve
 
 def _init_worker(global_data):
     """Called once per worker."""
@@ -12,6 +13,48 @@ def _init_worker(global_data):
     velocities = global_data["velocities"]
     k_max = alpha.shape[1]
     np.random.seed(global_data["seed"])
+
+    # Precompute for fast solving
+    global L_factor, AT_over_yerr
+    # Weighted design matrix
+    Aw = alpha / yerr[:, None]
+    # Precompute AᵀA and its Cholesky factor
+    ATA = Aw.T @ Aw
+    L_factor = cho_factor(ATA, overwrite_a=True)
+    # Precompute Aᵀ/σ for later RHS computation
+    AT_over_yerr = Aw.T
+
+    global current_z
+
+def solve_z(theta_cont):
+    """
+    Analytic solve for z | theta_cont.
+    This is the fast block replacing sampling z in emcee.
+    """
+    # Unpack continuum parameters
+    coefs = theta_cont[:-1]
+    scale = theta_cont[-1]
+
+    # Build continuum
+    a = 2/(np.max(x)-np.min(x))
+    b = 1 - a*np.max(x)
+    u = a*x + b
+
+    cont = np.zeros_like(x)
+    for c in reversed(coefs):
+        cont = cont*u + c
+    cont *= scale
+
+    if np.any(cont <= 0):
+        return None
+
+    # RHS = AT_over_yerr @ log(y/cont)
+    rhs = AT_over_yerr @ np.log(y/cont)
+
+    # z_hat = solve (A^T A)z = RHS
+    z_hat = cho_solve(L_factor, rhs)
+
+    return z_hat
 
 def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
@@ -86,8 +129,14 @@ def _log_prior(theta):
 
 def _log_probability(theta):
     ## calculates log probability - used for mcmc
-    lp = _log_prior(theta)
+    # theta are now just cont_params
+    # print(current_theta_array.shape, current_z.shape, theta.shape)
+    # idx = np.where((current_theta_array == theta).all(axis=1))[0][0]
+    full_theta = np.concatenate([current_z, theta])
+
+    lp = _log_prior(full_theta)
     if not np.isfinite(lp):
         return -np.inf
-    final = lp + _log_likelihood(theta, x, y, yerr)
+    final = lp + _log_likelihood(full_theta, x, y, yerr)
     return final
+
