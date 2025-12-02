@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
+from scipy.linalg import cho_factor, cho_solve
 c_kms = float(const.c/1e3)  # speed of light in km/s
 
 class LSD:
@@ -160,30 +161,47 @@ class LSD:
 
                 self.alpha += (dep[:, None] * delta).sum(axis=1)
 
-        id_matrix = np.identity(len(self.flux_obs))
-        S_matrix = (1/self.rms) * id_matrix
+        # id_matrix = np.identity(len(self.flux_obs))
+        # S_matrix = (1/self.rms) * id_matrix
 
-        S_squared = np.dot(S_matrix, S_matrix)
-        alpha_transpose = (np.transpose(self.alpha))
+        # S_squared = np.dot(S_matrix, S_matrix)
+        # alpha_transpose = (np.transpose(self.alpha))
 
-        RHS_1 = np.dot(alpha_transpose, S_squared)
-        RHS_final = np.dot(RHS_1, R_matrix)
+        # RHS_1 = np.dot(alpha_transpose, S_squared)
+        # RHS_final = np.dot(RHS_1, R_matrix)
 
-        LHS_preinvert = np.dot(RHS_1, self.alpha)
-        LHS_prep = np.matrix(LHS_preinvert)
+        # LHS_preinvert = np.dot(RHS_1, self.alpha)
+        # LHS_prep = np.matrix(LHS_preinvert)
 
-        P, L, U = linalg.lu(LHS_prep)
+        # P, L, U = linalg.lu(LHS_prep)
 
-        n = len(LHS_prep)
-        B = np.identity(n)
-        Z = linalg.solve_triangular(L, B, lower=True)
-        X = linalg.solve_triangular(U, Z, lower=False)
-        LHS_final = np.matmul(X, np.transpose(P))
+        # n = len(LHS_prep)
+        # B = np.identity(n)
+        # Z = linalg.solve_triangular(L, B, lower=True)
+        # X = linalg.solve_triangular(U, Z, lower=False)
+        # LHS_final = np.matmul(X, np.transpose(P))
 
-        profile_errors_squared = np.diagonal(LHS_final)
+        # profile_errors_squared = np.diagonal(LHS_final)
 
-        self.profile = np.dot(LHS_final, RHS_final)
-        self.profile_errors = np.sqrt(profile_errors_squared)
+        # self.profile1 = np.dot(LHS_final, RHS_final)
+        # self.profile_errors1 = np.sqrt(profile_errors_squared)
+
+        w = 1.0 / (self.rms ** 2)
+
+        # M = αᵀ V α,  b = αᵀ V R
+        ATA = self.alpha.T @ (w[:, None] * self.alpha)
+        ATy = self.alpha.T @ (w * R_matrix)
+
+        # Cholesky factorisation of M (symmetric positive definite)
+        c_factor, lower = cho_factor(ATA, overwrite_a=True)
+
+        # z = M⁻¹ b
+        self.profile = cho_solve((c_factor, lower), ATy)
+
+        # Cov(z) = M⁻¹, take diagonal
+        cov_z = cho_solve((c_factor, lower), np.eye(ATA.shape[0]))
+        self.profile_errors = np.sqrt(np.diag(cov_z))
+
         return
 
     def get_wave(self, data, header):
