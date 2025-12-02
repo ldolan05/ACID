@@ -694,9 +694,11 @@ class Acid:
         new_errors = errors / fit
         poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
 
-        if self.verbose > 2 or plot_result:
+        if self.verbose > 2 or plot_result is True:
+            plt.figure(figsize=(10, 6))
             plt.plot(wavelengths, fluxes, label='Original Spectrum')
             plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
+            plt.title('Continuum Fit')
             plt.legend()
             plt.show()
         return poly_coeffs, flux_obs, new_errors
@@ -740,7 +742,7 @@ class Acid:
             elif idx[value] == True and flag_max < value:
                 flag_max = value
             elif idx[value] == False and flag_max - flag_min >= self.pix_chunk:
-                yerr[flag_min:flag_max] = 10000000000000000000
+                yerr[flag_min:flag_max] = 1e12
                 flag_min = value
                 flag_max = value
 
@@ -754,7 +756,7 @@ class Acid:
         for line in self.telluric_lines:
             limit = (21/c_kms)*line +3
             idx = np.logical_and((line-limit) <= x, x <= (limit+line))
-            yerr[idx] = 10000000000000000000
+            yerr[idx] = 1e12
 
         # Note that this is used to keep track of the residual masks for later use in _get_profiles
         self.residual_masks = tuple([yerr >= 1e12])
@@ -777,8 +779,8 @@ class Acid:
         idx1 = tuple([rcopy <= lower_clip])
         idx2 = tuple([rcopy >= upper_clip])
 
-        yerr[idx1] = 10000000000000000000
-        yerr[idx2] = 10000000000000000000
+        yerr[idx1] = 1e12
+        yerr[idx2] = 1e12
 
         a, b = utils.get_normalisation_coeffs(x)
         poly_inputs, _bin, bye = self.continuumfit(y, (x*a_old)+b, yerr, self.poly_ord)
@@ -788,6 +790,34 @@ class Acid:
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
+
+        if self.verbose > 2:
+            nremoved = np.sum(idx1)+np.sum(idx2)
+            print(f"Residal masking has removed {nremoved}/{len(residuals)} points.")
+
+            plt.figure(figsize=(10, 6))
+            plt.plot(x, residuals, label='Residuals', color='blue')
+            plt.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
+            plt.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
+            plt.fill_between(x, upper_clip, lower_clip, color='gray', alpha=0.3, label='Clipped Region')
+            for i, line in enumerate(self.telluric_lines):
+                limit = (21/c_kms)*line + 3
+                label = 'Telluric Masking Region' if i==0 else None
+                plt.axvspan(line-limit, line+limit, color='orange', alpha=0.5, label=label)
+            plt.xlim(np.min(x), np.max(x))
+            plt.title('Residuals with Sigma Clipping Thresholds')
+            plt.xlabel('Wavelength')
+            plt.ylabel('Residuals')
+            plt.legend()
+            plt.show()
+
+            plt.figure(figsize=(10, 6))
+            plt.plot(self.velocities, LSD_masking.profile, label='LSD Profile after Masking and before sampling', color='red')
+            plt.title('LSD Profile after Residual Masking')
+            plt.xlabel('Velocity (km/s)')
+            plt.ylabel('LSD Profile')
+            plt.legend()
+            plt.show()
 
         self.wavelengths["masked"] = x
         self.flux["masked"]        = y # x and y dont change in this func
