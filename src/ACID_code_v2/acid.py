@@ -980,6 +980,25 @@ class Acid:
                 self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.cores = os.cpu_count()
+        
+        moves=[ # Use the new moves option in emcee v3 for faster convergence
+            (emcee.moves.StretchMove(), 0.6),
+            (emcee.moves.DEMove(), 0.3),
+            (emcee.moves.DESnookerMove(), 0.1),
+        ]
+        sampler_kwargs = {
+            "nwalkers": self.nwalkers,
+            "ndim": self.ndim,
+            "log_prob_fn": mcmc_utils._log_probability,
+            "moves": moves,
+            "backend": backend,
+        }
+        mcmc_kwargs = {
+            "state": state,
+            "nsteps": nsteps,
+            "progress": sampler_verbosity,
+            "store": True,
+        }
 
         if self.parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
@@ -993,10 +1012,8 @@ class Acid:
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(
-                        self.nwalkers, self.ndim, mcmc_utils._log_probability, pool=pool, backend=backend,
-                        moves=emcee.moves.DEMove())
-                    self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
+                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool)
+                    self.sampler.run_mcmc(**mcmc_kwargs)
 
             else: # This doesn't work, needs serious modifications to make work
                 raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
@@ -1006,9 +1023,8 @@ class Acid:
         else:
             # log_prob = partial(mcmc_utils._log_probability, global_data=self.mcmc_global_data) # This didn't work initialising global data
             mcmc_utils._init_worker(self.mcmc_global_data)
-            log_prob = mcmc_utils._log_probability
-            self.sampler = emcee.EnsembleSampler(self.nwalkers, self.ndim, log_prob, backend=backend)
-            self.sampler.run_mcmc(state, nsteps, progress=sampler_verbosity, store=True)
+            self.sampler = emcee.EnsembleSampler(**sampler_kwargs)
+            self.sampler.run_mcmc(**mcmc_kwargs)
 
     def process_results(self, return_result=True):
 
