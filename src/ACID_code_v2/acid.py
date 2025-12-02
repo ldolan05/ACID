@@ -987,17 +987,17 @@ class Acid:
             (emcee.moves.DESnookerMove(), 0.1),
         ]
         sampler_kwargs = {
-            "nwalkers": self.nwalkers,
-            "ndim": self.ndim,
+            "nwalkers"   : self.nwalkers,
+            "ndim"       : self.ndim,
             "log_prob_fn": mcmc_utils._log_probability,
-            "moves": moves,
-            "backend": backend,
+            "moves"      : moves,
+            "backend"    : backend,
         }
         mcmc_kwargs = {
             "initial_state": state,
-            "nsteps": nsteps,
-            "progress": sampler_verbosity,
-            "store": True,
+            "nsteps"       : nsteps,
+            "progress"     : sampler_verbosity,
+            "store"        : True,
         }
 
         if self.parallel:
