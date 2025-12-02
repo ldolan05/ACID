@@ -8,6 +8,7 @@ from functools import partial
 from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
+import scipy.constants as const
 from . import utils
 from . import lsd
 from . import mcmc_utils
@@ -16,6 +17,8 @@ from .result import Result
 warnings.filterwarnings("ignore")
 importlib.reload(lsd)
 importlib.reload(utils)
+
+c_kms = float(const.c/1e3)
 
 @beartype
 class Acid:
@@ -822,7 +825,7 @@ class Acid:
 
         ## masking tellurics
         for line in self.telluric_lines:
-            limit = (21/lsd.ckms)*line +3
+            limit = (21/c_kms)*line +3
             idx = np.logical_and((line-limit) <= x, x <= (limit+line))
             yerr[idx] = 10000000000000000000
 

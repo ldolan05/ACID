@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
-ckms = float(const.c/1e3)  # speed of light in km/s
+c_kms = float(const.c/1e3)  # speed of light in km/s
 
 class LSD:
 
@@ -107,7 +107,7 @@ class LSD:
 
         # Find differences and velocities
         diff = blankwaves[:, np.newaxis] - self.wavelengths_expected
-        vel = ckms * (diff / self.wavelengths_expected)
+        vel = c_kms * (diff / self.wavelengths_expected)
 
         # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
 
@@ -154,7 +154,7 @@ class LSD:
                 dep = self.depths_expected[start_pos:end_pos]
 
                 # Perform calculations for this block
-                vel_blk = ckms * (blankwaves[:, None] - wl) / wl
+                vel_blk = c_kms * (blankwaves[:, None] - wl) / wl
                 x_blk   = (vel_blk[:, :, None] - self.velocities) / deltav
                 delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
 
