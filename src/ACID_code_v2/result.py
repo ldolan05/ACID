@@ -59,18 +59,9 @@ class Result:
         self.sampler = Acid.sampler
 
         # Store different used wavelengths in ACID (later this may go into Acid itself):
-        self.wavelengths = {
-            'combined': Acid.combined_wavelengths,
-            'input'   : Acid.frame_wavelengths,
-        }
-        self.flux = {
-            'combined': Acid.combined_spectrum,
-            'input'   : Acid.frame_flux,
-        }
-        self.flux_error = {
-            'combined': Acid.combined_errors,
-            'input'   : Acid.frame_errors,
-        }
+        self.wavelengths = Acid.wavelengths
+        self.flux = Acid.flux
+        self.errors = Acid.errors
 
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
@@ -287,7 +278,7 @@ class Result:
     @_require_all_results
     def plot_forward_model(
         self,
-        input_version   :str       = "combined",
+        input_version   :str       = "masked",
         grid            :bool      = True,
         labels          :dict|None = None,
         return_fig      :bool      = False,
@@ -298,7 +289,7 @@ class Result:
         Parameters
         ----------
         input_version : str, optional
-            Which input spectrum to use: 'combined' or 'input', by default "combined"
+            Which input spectrum to use: 'combined', 'input', 'masked', by default 'masked'
         grid : bool, optional
             Show or hide grid, by default True
         labels : dict | None, optional

@@ -13,21 +13,21 @@ class LSD:
 
     def __init__(self, Acid=None):
 
-        self.verbose = 2
+        self.verbose          = 2
         self.adjust_continuum = None
-        self.slurm = "SLURM_JOB_ID" in os.environ
+        self.slurm            = "SLURM_JOB_ID" in os.environ
 
         if not Acid:
             self.Acid = False
 
         else:
             self.Acid = True
-            self.linelist = Acid.linelist_path
-            self.sn = Acid.combined_sn
-            self.order = Acid.order
-            self.run_name = Acid.name
+            self.linelist   = Acid.linelist_path
+            self.sn         = Acid.sn["combined"]
+            self.order      = Acid.order
+            self.run_name   = Acid.name
             self.velocities = Acid.velocities
-            self.verbose = Acid.verbose
+            self.verbose    = Acid.verbose
 
     def run_LSD(
         self,
@@ -52,7 +52,7 @@ class LSD:
         self.flux_obs    = flux_obs
         self.rms         = rms
 
-        # Optional kwargs (default set in init)
+        # Optional kwargs, overriden by inputs if Acid provided (default set in init)
         if self.Acid:
             self.sn         = sn         if sn         is not None else self.sn
             self.linelist   = linelist   if linelist   is not None else self.linelist
