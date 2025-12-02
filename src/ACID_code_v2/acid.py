@@ -837,7 +837,7 @@ class Acid:
         if self.parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
             if self.verbose>0:
-                print(f"Using {self.cores} out of {os.cpu_count()} cores for MCMC")
+                print(f"Using {self.cores} cores for MCMC")
 
             # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
             # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
