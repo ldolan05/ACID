@@ -27,16 +27,17 @@ class Acid:
     LSD profiles for each spectrum. It also contains many internal methods used within the main ACID 
     function."""
 
-    def __init__(self,
-            velocities     :np.ndarray|None      = None,
-            linelist_path  :str|None             = None,
-            linelist_wl    :np.ndarray|list|None = None,
-            linelist_depths:np.ndarray|list|None = None,
-            verbose        :int|npint|bool       = 2,
-            telluric_lines :np.ndarray|list|None = None,
-            name           :str                  = 'ACID',
-            seed           :int|npint|None       = 42,
-            ):
+    def __init__(
+        self,
+        velocities     :np.ndarray|None      = None,
+        linelist_path  :str|None             = None,
+        linelist_wl    :np.ndarray|list|None = None,
+        linelist_depths:np.ndarray|list|None = None,
+        verbose        :int|npint|bool       = 2,
+        telluric_lines :np.ndarray|list|None = None,
+        name           :str                  = 'ACID',
+        seed           :int|npint|None       = 42,
+        ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
 
@@ -136,28 +137,28 @@ class Acid:
         
         return
 
-    def ACID(self,
-            input_wavelengths,
-            input_spectra,
-            input_spectral_errors,
-            frame_sns                      = None,
-            all_frames                     = None,
-            poly_ord       :int|npint      = 3,
-            pix_chunk      :int|npint      = 20,
-            dev_perc       :int|npint      = 25,
-            n_sig          :int|npint      = 1,
-            order          :int|npint      = 0,
-            parallel       :bool           = True,
-            cores          :int|npint|None = None,
-            nsteps         :int|npint      = 10000,
-            return_result  :bool           = True,
-            production_run :bool           = False,
+    def ACID(
+        self,
+        input_wavelengths,
+        input_spectra,
+        input_spectral_errors,
+        frame_sns                      = None,
+        all_frames                     = None,
+        poly_ord       :int|npint      = 3,
+        pix_chunk      :int|npint      = 20,
+        dev_perc       :int|npint      = 25,
+        n_sig          :int|npint      = 1,
+        order          :int|npint      = 0,
+        parallel       :bool           = True,
+        cores          :int|npint|None = None,
+        nsteps         :int|npint      = 10000,
+        return_result  :bool           = True,
+        production_run :bool           = False,
 
-            # Testing and internal kwargs
-            _input_data                    = None,
-
-            **kwargs
-            ):
+        # Testing and internal kwargs
+        _input_data                    = None,
+        **kwargs,
+        ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
@@ -392,7 +393,8 @@ class Acid:
         else:
             return Result(self, production_run=True)
 
-    def ACID_HARPS(self,
+    def ACID_HARPS(
+        self,
         filelist    : list,
         order_range : list|np.ndarray|None = None,
         save_path   : str                  = './',
@@ -512,13 +514,13 @@ class Acid:
         return Result(self, ACID_HARPS=True)
 
     def combine_spec(
-            self,
-            frame_wavelengths: np.ndarray | None = None,
-            frame_flux:        np.ndarray | None = None,
-            frame_errors:      np.ndarray | None = None,
-            frame_sns:         np.ndarray | None = None,
-            output:            bool              = True
-            ):
+        self,
+        frame_wavelengths: np.ndarray | None = None,
+        frame_flux:        np.ndarray | None = None,
+        frame_errors:      np.ndarray | None = None,
+        frame_sns:         np.ndarray | None = None,
+        output:            bool              = True
+        ):
         """Combines multiple spectral frames into one spectrum
 
         Parameters
@@ -642,13 +644,13 @@ class Acid:
             return combined_wavelengths, combined_flux, combined_errors, combined_sn
 
     def continuumfit(
-            self,
-            fluxes     : np.ndarray,
-            wavelengths: np.ndarray,
-            errors     : np.ndarray,
-            poly_ord   : int|npint = 3,
-            plot_result: bool      = False
-            ):
+        self,
+        fluxes     : np.ndarray,
+        wavelengths: np.ndarray,
+        errors     : np.ndarray,
+        poly_ord   : int|npint = 3,
+        plot_result: bool      = False
+        ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
         Parameters
@@ -699,7 +701,13 @@ class Acid:
             plt.show()
         return poly_coeffs, flux_obs, new_errors
 
-    def read_in_frames(self, order, filelist, file_type, directory=None):
+    def read_in_frames(
+        self,
+        order,
+        filelist,
+        file_type,
+        directory=None,
+        ):
         # read in first frame
         fluxes, wavelengths, flux_error_order, sn = lsd.LSD().blaze_correct(
             file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
@@ -779,7 +787,12 @@ class Acid:
 
         return frame_wavelengths, frames, errors, sns
 
-    def residual_mask(self):
+    def residual_mask(
+        self,
+        ):
+        """Masks regions of the spectrum based on residuals from an initial model fit.
+        """
+
         ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
         # Set standard variables
@@ -869,7 +882,10 @@ class Acid:
 
         return
 
-    def _get_profiles(self, all_frames):
+    def _get_profiles(
+        self,
+        all_frames,
+        ):
 
         for counter in range(len(self.flux["input"])):
             flux = self.flux["input"][counter]
@@ -926,7 +942,11 @@ class Acid:
         
         return all_frames
 
-    def combineprofiles(self, spectra, errors):
+    def combineprofiles(
+        self,
+        spectra,
+        errors,
+        ):
         spectra = np.array(spectra)
         idx = np.isnan(spectra)
         shape_og = spectra.shape
@@ -966,7 +986,11 @@ class Acid:
 
         return spectrum, spec_errors
 
-    def _run_mcmc(self, state, nsteps):
+    def _run_mcmc(
+        self,
+        state,
+        nsteps,
+        ):
 
         sampler_verbosity = True if self.verbose>0 else False
         backend = None
@@ -1026,10 +1050,12 @@ class Acid:
             self.sampler = emcee.EnsembleSampler(**sampler_kwargs)
             self.sampler.run_mcmc(**mcmc_kwargs)
 
-    def process_results(self, return_result=True):
+    def process_results(
+        self,
+        return_result=True,
+        ):
 
         # Discarding all vales except the last 1000 steps.
-        # TODO: Should be made to find autocorrelation time and discard accordingly (see result class)
         dis_no = self.nsteps-1000
 
         # Obtain flattened samples
@@ -1096,7 +1122,11 @@ class Acid:
             return Result(self)
         return
 
-    def continue_sampling(self, nsteps:int|npint, production_run:bool=False):
+    def continue_sampling(
+        self,
+        nsteps        : int|npint,
+        production_run: bool = False,
+        ):
         """Continue MCMC sampling for additional steps.
 
         Parameters
@@ -1116,7 +1146,9 @@ class Acid:
         else:
             return Result(self, production_run=True)
 
-    def get_result(self=None):
+    def get_result(
+        self=None,
+        ):
         """Return a Result object for this instance or one passed explicitly.
         
         Parameters
