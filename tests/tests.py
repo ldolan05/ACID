@@ -195,6 +195,25 @@ def classes_test():
     print(result[0,0,0][:5])
     return result
 
+def no_verbosity():
+    spec_file = fits.open('example/sample_spec_1.fits')
+
+    wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
+    spectrum = spec_file[1].data[::skips]     # Spectral Flux
+    error = spec_file[2].data[::skips]        # Spectral Flux Errors
+    sn = spec_file[3].data           # SN of Spectrum
+
+    linelist = 'example/example_linelist.txt' # Insert path to line list
+
+    # choose a velocity grid for the final profile(s)
+    deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
+    velocities = np.arange(-25, 25, deltav)
+
+    # run ACID function
+    Acid = acid.Acid(velocities=velocities, linelist_path=linelist, verbose=False)
+    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
+    return result
+
 def result_handling_test():
     files = glob.glob('example/sample_spec_*.fits')
 
@@ -235,6 +254,7 @@ classes_res = classes_test()
 classes_res.continue_sampling(nsteps=2000)
 classes_res.plot_walkers()
 result_handling_res = result_handling_test()
+res_nv = no_verbosity()
 
 print("All tests passed!")
 

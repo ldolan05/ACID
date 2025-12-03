@@ -7,37 +7,45 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
-ckms = float(const.c/1e3)  # speed of light in km/s
+from numpy import integer as npint
+from scipy.linalg import cho_factor, cho_solve
+from beartype import beartype
+c_kms = float(const.c/1e3)  # speed of light in km/s
 
+@beartype
 class LSD:
 
-    def __init__(self, Acid=None):
+    def __init__(self, Acid:object=None):
 
-        self.verbose = 2
+        self.verbose          = 2
         self.adjust_continuum = None
-        self.slurm = "SLURM_JOB_ID" in os.environ
+        self.slurm            = "SLURM_JOB_ID" in os.environ
 
         if not Acid:
             self.Acid = False
 
         else:
             self.Acid = True
-            self.linelist = Acid.linelist_path
-            self.sn = Acid.combined_sn
-            self.order = Acid.order
-            self.run_name = Acid.name
+            self.linelist   = Acid.linelist_path
+            self.sn         = Acid.sn["combined"]
+            self.order      = Acid.order
+            self.run_name   = Acid.name
             self.velocities = Acid.velocities
-            self.verbose = Acid.verbose
+            self.verbose    = Acid.verbose
+
+    def __call__(self, *args, **kwargs):
+        # This call will not calculate the alpha matrix, only generating profiles
+        pass
 
     def run_LSD(
         self,
         wavelengths :np.ndarray,
         flux_obs    :np.ndarray,
         rms         :np.ndarray,
-        sn          :float      = None,
-        linelist    :str|dict   = None,
-        velocities  :np.ndarray = None,
-        verbose     :int|None   = None,
+        sn          :float|int|npint = None,
+        linelist    :str|dict        = None,
+        velocities  :np.ndarray      = None,
+        verbose     :int|None        = None,
         force_chunked = False,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
@@ -53,7 +61,7 @@ class LSD:
         self.flux_obs    = flux_obs
         self.rms         = rms
 
-        # Optional kwargs (default set in init)
+        # Optional kwargs, overriden by inputs if Acid provided (default set in init)
         if self.Acid:
             self.sn         = sn         if sn         is not None else self.sn
             self.linelist   = linelist   if linelist   is not None else self.linelist
@@ -66,6 +74,9 @@ class LSD:
             self.linelist   = linelist
             self.velocities = velocities
             self.verbose    = verbose if verbose is not None else 2
+
+        # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
+        self.alpha = self.calc_alpha()
 
         # Converting to optical depth space
         self.rms = self.rms / self.flux_obs
@@ -103,12 +114,10 @@ class LSD:
         # Converting to log space for depths
         self.depths_expected = -np.log(1-self.depths_expected)
 
-        blankwaves = self.wavelengths
-        R_matrix = self.flux_obs
-
         # Find differences and velocities
+        blankwaves = self.wavelengths
         diff = blankwaves[:, np.newaxis] - self.wavelengths_expected
-        vel = ckms * (diff / self.wavelengths_expected)
+        vel = c_kms * (diff / self.wavelengths_expected)
 
         # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
 
@@ -155,37 +164,50 @@ class LSD:
                 dep = self.depths_expected[start_pos:end_pos]
 
                 # Perform calculations for this block
-                vel_blk = ckms * (blankwaves[:, None] - wl) / wl
+                vel_blk = c_kms * (blankwaves[:, None] - wl) / wl
                 x_blk   = (vel_blk[:, :, None] - self.velocities) / deltav
                 delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
 
                 self.alpha += (dep[:, None] * delta).sum(axis=1)
 
-        id_matrix = np.identity(len(self.flux_obs))
-        S_matrix = (1/self.rms) * id_matrix
+        # Now solve for profile using Cholesky decomposition
+        c_factor = self.calc_cholesky(self.alpha, self.rms)
 
-        S_squared = np.dot(S_matrix, S_matrix)
-        alpha_transpose = (np.transpose(self.alpha))
+        # Solve for profile and profile errors using Cholesky factors
+        self.profile, self.profile_errors = self.solve_z(self.alpha, self.flux_obs, self.rms, c_factor)
 
-        RHS_1 = np.dot(alpha_transpose, S_squared)
-        RHS_final = np.dot(RHS_1, R_matrix)
-
-        LHS_preinvert = np.dot(RHS_1, self.alpha)
-        LHS_prep = np.matrix(LHS_preinvert)
-
-        P, L, U = linalg.lu(LHS_prep)
-
-        n = len(LHS_prep)
-        B = np.identity(n)
-        Z = linalg.solve_triangular(L, B, lower=True)
-        X = linalg.solve_triangular(U, Z, lower=False)
-        LHS_final = np.matmul(X, np.transpose(P))
-
-        profile_errors_squared = np.diagonal(LHS_final)
-
-        self.profile = np.dot(LHS_final, RHS_final)
-        self.profile_errors = np.sqrt(profile_errors_squared)
         return
+
+    def calc_alpha(self,):
+        return
+
+    @staticmethod
+    def calc_cholesky(alpha, error):
+        V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
+
+        # M = αT V α,  b = αT V R
+        AVA = alpha.T @ (V[:, None] * alpha)
+
+        # Cholesky factorisation of M
+        c_factor = cho_factor(AVA, overwrite_a=True)
+        return c_factor
+
+    @staticmethod
+    def solve_z(alpha, flux, error, c_factor):
+        V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
+        R = flux         # R matrix in log space
+
+        # 
+        AVR = alpha.T @ (V * R)
+        AVA = alpha.T @ (V[:, None] * alpha)
+
+        # z = M⁻¹ b
+        profile = cho_solve(c_factor, AVR)
+
+        # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
+        cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]))
+        profile_errors = np.sqrt(np.diag(cov_z))
+        return profile, profile_errors
 
     def get_wave(self, data, header):
 

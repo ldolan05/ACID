@@ -5,7 +5,7 @@ import astropy.units as u
 from astropy.nddata import StdDevUncertainty
 from specutils import Spectrum
 from specutils.analysis import snr
-ckms = float(const.c/1e3)
+c_kms = float(const.c/1e3)
 
 def validate_args(x, i, allow_none=False, sn=False):
     """Validates the input arguments. This function can be used to ensure inputs to Acid
@@ -105,7 +105,7 @@ def calc_deltav(wavelengths):
         float: Velocity pixel size in km/s
     """
     resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * ckms
+    return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * c_kms
 
 def guess_SNR(
         frame_wavelengths : np.ndarray,

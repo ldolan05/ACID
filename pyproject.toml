@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Returns line profiles from input spectra by fitting the stellar continuum and performing LSD"
 readme = "README.md"
-requires-python = "<3.14, >= 3.10"
+requires-python = ">=3.8"
 license = "MIT"
 keywords = ["lsd", "least squares deconvolution", "fitting", "ACID"]
 license-files = ["LICENSE"]

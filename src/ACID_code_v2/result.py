@@ -59,18 +59,9 @@ class Result:
         self.sampler = Acid.sampler
 
         # Store different used wavelengths in ACID (later this may go into Acid itself):
-        self.wavelengths = {
-            'combined': Acid.combined_wavelengths,
-            'input'   : Acid.frame_wavelengths,
-        }
-        self.flux = {
-            'combined': Acid.combined_spectrum,
-            'input'   : Acid.frame_flux,
-        }
-        self.flux_error = {
-            'combined': Acid.combined_errors,
-            'input'   : Acid.frame_errors,
-        }
+        self.wavelengths = Acid.wavelengths
+        self.flux = Acid.flux
+        self.errors = Acid.errors
 
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
@@ -79,6 +70,8 @@ class Result:
         self.model_inputs = Acid.model_inputs
         self.verbose = Acid.verbose
         self.order_range = Acid.order_range
+        self.alpha = Acid.alpha
+
         self.BJDs = getattr(Acid, 'BJDs', None)
         self.profiles = getattr(Acid, 'profiles', None)
         self.errors = getattr(Acid, 'errors', None)
@@ -89,6 +82,7 @@ class Result:
             self.all_frames = None
 
         self.ndim = len(self.model_inputs)
+        self.nvel = len(Acid.velocities)
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
@@ -287,7 +281,7 @@ class Result:
     @_require_all_results
     def plot_forward_model(
         self,
-        input_version   :str       = "combined",
+        input_version   :str       = "masked",
         grid            :bool      = True,
         labels          :dict|None = None,
         return_fig      :bool      = False,
@@ -298,7 +292,7 @@ class Result:
         Parameters
         ----------
         input_version : str, optional
-            Which input spectrum to use: 'combined' or 'input', by default "combined"
+            Which input spectrum to use: 'combined', 'input', 'masked', by default 'masked'
         grid : bool, optional
             Show or hide grid, by default True
         labels : dict | None, optional
@@ -337,7 +331,7 @@ class Result:
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        model_flux = model_func(theta_median, input_wavelengths, alpha=self.Acid.alpha, k_max=self.Acid.k_max)
+        model_flux = model_func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
