@@ -40,8 +40,8 @@ class LSD:
     def run_LSD(
         self,
         wavelengths :np.ndarray,
-        flux_obs    :np.ndarray,
-        rms         :np.ndarray,
+        flux        :np.ndarray,
+        errors      :np.ndarray,
         sn          :float|int|npint = None,
         linelist    :str|dict        = None,
         velocities  :np.ndarray      = None,
@@ -50,73 +50,63 @@ class LSD:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
         """
 
-        if not wavelengths.shape == flux_obs.shape == rms.shape:
-            raise ValueError("Input wavelengths, flux_obs, and rms must have the same shape.")
+        if not wavelengths.shape == flux.shape == errors.shape:
+            raise ValueError("Input wavelengths, flux, and errors must have the same shape.")
         if wavelengths.ndim != 1:
-            raise ValueError("Input wavelengths, flux_obs, and rms must be 1D arrays.")
-
-        # Required kwargs (no default)
-        self.wavelengths = wavelengths
-        self.flux_obs    = flux_obs
-        self.rms         = rms
+            raise ValueError("Input wavelengths, flux, and errors must be 1D arrays.")
 
         # Optional kwargs, overriden by inputs if Acid provided (default set in init)
         if self.Acid:
-            self.sn         = sn         if sn         is not None else self.sn
-            self.linelist   = linelist   if linelist   is not None else self.linelist
-            self.velocities = velocities if velocities is not None else self.velocities
-            self.verbose    = verbose    if verbose    is not None else self.verbose
+            sn = self.sn
+            linelist = self.linelist
+            velocities = self.velocities
+            verbose = self.verbose
         else:
             if sn is None or linelist is None or velocities is None:
                 raise ValueError("sn, linelist, and velocities must be provided if no Acid instance is provided in initialisation.")
-            self.sn         = sn
-            self.linelist   = linelist
-            self.velocities = velocities
-            self.verbose    = verbose if verbose is not None else 2
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.alpha = self.calc_alpha()
+        alpha = self.calc_alpha() # tbd later
 
         # Converting to optical depth space
-        self.rms = self.rms / self.flux_obs
-        self.flux_obs = np.log(self.flux_obs)
-
-        deltav = self.velocities[1] - self.velocities[0]
+        errors = errors / flux
+        flux = np.log(flux)
+        deltav = velocities[1] - velocities[0]
 
         #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
         # Reading the linelist
-        if isinstance(self.linelist, str):
-            linelist_expected = np.genfromtxt('%s'%self.linelist, skip_header=4, delimiter=',', usecols=(1,9))
+        if isinstance(linelist, str):
+            linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
             wavelengths_expected_all = np.array(linelist_expected[:,0])
             depths_expected_all = np.array(linelist_expected[:,1])
         else: # If user input linelist_wl and linelist_depths in Acid
-            wavelengths_expected_all = np.array(self.linelist["wavelength"])
-            depths_expected_all = np.array(self.linelist["depth"])
+            wavelengths_expected_all = np.array(linelist["wavelength"])
+            depths_expected_all = np.array(linelist["depth"])
 
         # Selecting lines within the wavelength range of the observed spectrum
-        wavelength_min = np.min(self.wavelengths)
-        wavelength_max = np.max(self.wavelengths)
+        wavelength_min = np.min(wavelengths)
+        wavelength_max = np.max(wavelengths)
         idx = np.logical_and(wavelengths_expected_all >= wavelength_min,
                             wavelengths_expected_all <= wavelength_max)
-        self.wavelengths_expected = wavelengths_expected_all[idx]
-        self.depths_expected = depths_expected_all[idx]
+        wavelengths_expected = wavelengths_expected_all[idx]
+        depths_expected = depths_expected_all[idx]
 
         # Selecting lines deeper than 1/(3*sn)
-        line_min = 1 / (3 * self.sn)
-        idx = (self.depths_expected >= line_min)
+        line_min = 1 / (3 * sn)
+        idx = (depths_expected >= line_min)
 
         # print(100*len(idx)/len(self.depths_expected), "% of lines used in LSD")
-        self.wavelengths_expected = self.wavelengths_expected[idx]
-        self.depths_expected = self.depths_expected[idx]
-        self.no_line = len(self.depths_expected)
+        wavelengths_expected = wavelengths_expected[idx]
+        depths_expected = depths_expected[idx]
+        no_line = len(depths_expected)
         
         # Converting to log space for depths
-        self.depths_expected = -np.log(1-self.depths_expected)
+        depths_expected = -np.log(1-depths_expected)
 
         # Find differences and velocities
-        blankwaves = self.wavelengths
-        diff = blankwaves[:, np.newaxis] - self.wavelengths_expected
-        vel = c_kms * (diff / self.wavelengths_expected)
+        blankwaves = wavelengths
+        diff = blankwaves[:, np.newaxis] - wavelengths_expected
+        vel = c_kms * (diff / wavelengths_expected)
 
         # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
 
@@ -129,37 +119,36 @@ class LSD:
         else:
             available_memory = psutil.virtual_memory().available
         
-        mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
+        mat_size = len(wavelengths_expected) * len(velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
         m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
         
         if mat_size < m_available:
             # Calculating entire alpha matrix at once
-            x = (vel[:, :, np.newaxis] - self.velocities) / deltav
+            x = (vel[:, :, np.newaxis] - velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
-            self.alpha = (self.depths_expected[:, None] * delta).sum(axis=1)  # (nb, n_vel)
+            alpha = (depths_expected[:, None] * delta).sum(axis=1)  # (nb, n_vel)
 
         else:
             # Calculate in blocks to save memory
             n_blank = len(blankwaves)
-            n_vel   = len(self.velocities)
+            n_vel   = len(velocities)
             mem_size = available_memory // 2
             bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
             max_block = max(1, mem_size // bytes_per_row)
-            block = int(min(max_block, len(self.wavelengths_expected)))
-
+            block = int(min(max_block, len(wavelengths_expected)))
             # Set initial alpha matrix to np.zeros
-            self.alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
+            alpha  = np.zeros((len(blankwaves), len(velocities)), dtype=np.float64)
 
             # Use tqdm progress bar if verbose
             if self.verbose>0:
-                iterable = tqdm(range(0, len(self.wavelengths_expected), block), desc='Calculating alpha matrix')
+                iterable = tqdm(range(0, len(wavelengths_expected), block), desc='Calculating alpha matrix')
             else:
-                iterable = range(0, len(self.wavelengths_expected), block)
+                iterable = range(0, len(wavelengths_expected), block)
 
             for start_pos in iterable:
                 # Ensure we don't go out of bounds on last iteration
-                end_pos = min(start_pos + block, len(self.wavelengths_expected))
-                wl  = self.wavelengths_expected[start_pos:end_pos]
+                end_pos = min(start_pos + block, len(wavelengths_expected))
+                wl  = wavelengths_expected[start_pos:end_pos]
                 dep = self.depths_expected[start_pos:end_pos]
 
                 # Perform calculations for this block
