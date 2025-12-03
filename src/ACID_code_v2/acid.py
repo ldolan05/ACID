@@ -981,6 +981,7 @@ class Acid:
         self.all_frames = self._get_profiles(self.all_frames)  
 
         if self.return_result and return_result:
+            return self.all_frames, self.sampler
             return Result(self)
         return
 
