@@ -8,11 +8,13 @@ from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
+from beartype import beartype
 c_kms = float(const.c/1e3)  # speed of light in km/s
 
+@beartype
 class LSD:
 
-    def __init__(self, Acid=None):
+    def __init__(self, Acid:object=None):
 
         self.verbose          = 2
         self.adjust_continuum = None
@@ -29,6 +31,10 @@ class LSD:
             self.run_name   = Acid.name
             self.velocities = Acid.velocities
             self.verbose    = Acid.verbose
+
+    def __call__(self, *args, **kwargs):
+        # This call will not calculate the alpha matrix, only generating profiles
+        pass
 
     def run_LSD(
         self,
@@ -67,6 +73,9 @@ class LSD:
             self.velocities = velocities
             self.verbose    = verbose if verbose is not None else 2
 
+        # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
+        self.alpha = self.calc_alpha()
+
         # Converting to optical depth space
         self.rms = self.rms / self.flux_obs
         self.flux_obs = np.log(self.flux_obs)
@@ -103,10 +112,8 @@ class LSD:
         # Converting to log space for depths
         self.depths_expected = -np.log(1-self.depths_expected)
 
-        blankwaves = self.wavelengths
-        R_matrix = self.flux_obs
-
         # Find differences and velocities
+        blankwaves = self.wavelengths
         diff = blankwaves[:, np.newaxis] - self.wavelengths_expected
         vel = c_kms * (diff / self.wavelengths_expected)
 
@@ -162,23 +169,43 @@ class LSD:
                 self.alpha += (dep[:, None] * delta).sum(axis=1)
 
         # Now solve for profile using Cholesky decomposition
-        w = 1.0 / (self.rms ** 2)
+        c_factor = self.calc_cholesky(self.alpha, self.rms)
 
-        # M = αᵀ V α,  b = αᵀ V R
-        ATA = self.alpha.T @ (w[:, None] * self.alpha)
-        ATy = self.alpha.T @ (w * R_matrix)
-
-        # Cholesky factorisation of M (symmetric positive definite)
-        c_factor, lower = cho_factor(ATA, overwrite_a=True)
-
-        # z = M⁻¹ b
-        self.profile = cho_solve((c_factor, lower), ATy)
-
-        # Cov(z) = M⁻¹, take diagonal
-        cov_z = cho_solve((c_factor, lower), np.eye(ATA.shape[0]))
-        self.profile_errors = np.sqrt(np.diag(cov_z))
+        # Solve for profile and profile errors using Cholesky factors
+        self.profile, self.profile_errors = self.solve_z(self.alpha, self.flux_obs, self.rms, c_factor)
 
         return
+
+    def calc_alpha(self,):
+        return
+
+    @staticmethod
+    def calc_cholesky(alpha, error):
+        V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
+
+        # M = αT V α,  b = αT V R
+        AVA = alpha.T @ (V[:, None] * alpha)
+
+        # Cholesky factorisation of M
+        c_factor = cho_factor(AVA, overwrite_a=True)
+        return c_factor
+
+    @staticmethod
+    def solve_z(alpha, flux, error, c_factor):
+        V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
+        R = flux         # R matrix in log space
+
+        # 
+        AVR = alpha.T @ (V * R)
+        AVA = alpha.T @ (V[:, None] * alpha)
+
+        # z = M⁻¹ b
+        profile = cho_solve(c_factor, AVR)
+
+        # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
+        cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]))
+        profile_errors = np.sqrt(np.diag(cov_z))
+        return profile, profile_errors
 
     def get_wave(self, data, header):
 
