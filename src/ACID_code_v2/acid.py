@@ -550,23 +550,23 @@ class Acid:
         """
 
         if frame_wavelengths: # This should only be for testing
-            self.wavelengths["input"] = frame_wavelengths
-            self.flux["input"]        = frame_flux
-            self.errors["input"]      = frame_errors
-            self.sn["input"]          = frame_sns
+            self.wavelengths["input"] = np.copy(frame_wavelengths)
+            self.flux["input"]        = np.copy(frame_flux)
+            self.errors["input"]      = np.copy(frame_errors)
+            self.sn["input"]          = np.copy(frame_sns)
 
         # Set simple names for variables (just used in this function)
-        wavelengths = self.wavelengths["input"]
-        flux        = self.flux["input"]
-        errors      = self.errors["input"]
-        sn          = self.sn["input"]
+        wavelengths = np.copy(self.wavelengths["input"])
+        flux        = np.copy(self.flux["input"])
+        errors      = np.copy(self.errors["input"])
+        sn          = np.copy(self.sn["input"])
 
         # Return as is if only one spectrum
         if len(self.wavelengths["input"])==1:
-            self.wavelengths["combined"] = self.wavelengths["input"][0]
-            self.flux["combined"]        = self.flux["input"][0]
-            self.errors["combined"]      = self.errors["input"][0]
-            self.sn["combined"]          = self.sn["input"][0]
+            self.wavelengths["combined"] = np.copy(self.wavelengths["input"][0])
+            self.flux["combined"]        = np.copy(self.flux["input"][0])
+            self.errors["combined"]      = np.copy(self.errors["input"][0])
+            self.sn["combined"]          = np.copy(self.sn["input"][0])
 
         else:
             # Get wavelength grid with highest S/N
