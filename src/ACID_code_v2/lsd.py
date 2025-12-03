@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d, LSQUnivariateSpline
 from tqdm import tqdm
+from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 c_kms = float(const.c/1e3)  # speed of light in km/s
@@ -41,10 +42,10 @@ class LSD:
         wavelengths :np.ndarray,
         flux_obs    :np.ndarray,
         rms         :np.ndarray,
-        sn          :float      = None,
-        linelist    :str|dict   = None,
-        velocities  :np.ndarray = None,
-        verbose     :int|None   = None,
+        sn          :float|int|npint = None,
+        linelist    :str|dict        = None,
+        velocities  :np.ndarray      = None,
+        verbose     :int|None        = None,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
         """
