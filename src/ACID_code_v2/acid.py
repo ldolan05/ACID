@@ -600,18 +600,18 @@ class Acid:
                 idx_ex = tuple([idx_ex==False])
 
                 interpolated_flux[n][idx_ex] = 1.
-                interpolated_errors[n][idx_ex] = 1000000000000
+                interpolated_errors[n][idx_ex] = 1e12
 
                 # Mask out nans and zeros (these do not contribute to the main spectrum)
                 where_are_NaNs = np.isnan(interpolated_flux[n])
-                interpolated_errors[n][where_are_NaNs] = 1000000000000
+                interpolated_errors[n][where_are_NaNs] = 1e12
                 where_are_zeros = np.where(interpolated_flux[n] == 0)[0]
-                interpolated_errors[n][where_are_zeros] = 1000000000000
+                interpolated_errors[n][where_are_zeros] = 1e12
 
                 where_are_NaNs = np.isnan(interpolated_errors[n])
-                interpolated_errors[n][where_are_NaNs] = 1000000000000
+                interpolated_errors[n][where_are_NaNs] = 1e12
                 where_are_zeros = np.where(interpolated_errors[n] == 0)[0]
-                interpolated_errors[n][where_are_zeros] = 1000000000000
+                interpolated_errors[n][where_are_zeros] = 1e12
 
             combined_flux = np.zeros_like(combined_wavelengths)
             combined_errors = np.zeros_like(combined_wavelengths)
@@ -622,7 +622,7 @@ class Acid:
 
                 weights_f = (1/temp_err_f**2)
 
-                idx = tuple([temp_err_f>=1000000000000])
+                idx = tuple([temp_err_f>=1e12])
                 weights_f[idx] = 0.
 
                 if sum(weights_f) > 0:
@@ -635,7 +635,7 @@ class Acid:
 
                 else:
                     combined_flux[n] = np.mean(temp_spec_f)
-                    combined_errors[n] = 1000000000000
+                    combined_errors[n] = 1e12
 
             # Faster and hopefully correct method once checked with Ernst
             # invvars = 1 / interpolated_errors**2
@@ -1008,12 +1008,12 @@ class Acid:
             # Masking based off residuals interpolated onto new wavelength grid
             reference_wave = self.wavelengths["input"][np.argmax(self.sn["input"])]
             mask_pos = np.ones(reference_wave.shape)
-            mask_pos[self.residual_masks]=10000000000000000000
+            mask_pos[self.residual_masks]=1e12
             f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
             interp_mask_pos = f2(wavelengths)
-            interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
+            interp_mask_idx = tuple([interp_mask_pos>=1e12])
 
-            error[interp_mask_idx]=10000000000000000000
+            error[interp_mask_idx]=1e12
 
             # corrrecting continuum
             error = (error/flux) + (self.continuum_error/mdl1)
@@ -1022,7 +1022,7 @@ class Acid:
 
             remove = tuple([flux<0])
             flux[remove] = 1.
-            error[remove] = 10000000000000000000
+            error[remove] = 1e12
 
             # idx = tuple([flux>0])
             # if len(flux[idx]) == 0:
@@ -1091,7 +1091,7 @@ class Acid:
         reference_frame = frames[idx][0]
         reference_frame[reference_frame == 0] = 0.001
         reference_error = errors[idx][0]
-        reference_error[reference_frame == 0] = 1000000000000000000
+        reference_error[reference_frame == 0] = 1e12
 
         # global frames_unadjusted
         frames_unadjusted = frames
@@ -1130,7 +1130,7 @@ class Acid:
             errors[n] = errors[n]/fit
             idx = (frames[n] == 0)
             frames[n][idx] = 0.00001
-            errors[n][idx] = 1000000000
+            errors[n][idx] = 1e12
 
         return frame_wavelengths, frames, errors, sns
 

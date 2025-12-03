@@ -80,7 +80,7 @@ def scale_spectra(wavelength, spectrum, error):
     tuple
         A tuple containing the scaled wavelength, spectrum, and error arrays.
     """
-
+    print("Scaling spectrum and error...")
     # Rescale spectrum and error
     fmax = np.max(spectrum)
     scaled_spec = (spectrum) / (fmax)

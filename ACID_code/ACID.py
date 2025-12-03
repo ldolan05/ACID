@@ -108,7 +108,7 @@ def read_in_frames(order, filelist, file_type):
     reference_frame=frames[idx][0]
     reference_frame[reference_frame == 0]=0.001
     reference_error=errors[idx][0]
-    reference_error[reference_frame == 0]=1000000000000000000
+    reference_error[reference_frame == 0]=1e12
 
     global frames_unadjusted
     frames_unadjusted = frames
@@ -147,7 +147,7 @@ def read_in_frames(order, filelist, file_type):
         errors[n] = errors[n]/fit
         idx = (frames[n] ==0)
         frames[n][idx]=0.00001
-        errors[n][idx]=1000000000
+        errors[n][idx]=1e12
 
     return frame_wavelengths, frames, errors, sns, telluric_spec
 
@@ -190,18 +190,18 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
         idx_ex = tuple([idx_ex==False])
 
         spectra_f[n][idx_ex]=1.
-        errors_f[n][idx_ex]=1000000000000
+        errors_f[n][idx_ex]=1e12
 
         ## mask out nans and zeros (these do not contribute to the main spectrum)
         where_are_NaNs = np.isnan(spectra_f[n])
-        errors_f[n][where_are_NaNs] = 1000000000000
+        errors_f[n][where_are_NaNs] = 1e12
         where_are_zeros = np.where(spectra_f[n] == 0)[0]
-        errors_f[n][where_are_zeros] = 1000000000000
+        errors_f[n][where_are_zeros] = 1e12
 
         where_are_NaNs = np.isnan(errors_f[n])
-        errors_f[n][where_are_NaNs] = 1000000000000
+        errors_f[n][where_are_NaNs] = 1e12
         where_are_zeros = np.where(errors_f[n] == 0)[0]
-        errors_f[n][where_are_zeros] = 1000000000000
+        errors_f[n][where_are_zeros] = 1e12
 
     width = len(reference_wave)
     spectrum_f = np.zeros((width,))
@@ -213,7 +213,7 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
 
         weights_f = (1/temp_err_f**2)
 
-        idx = tuple([temp_err_f>=1000000000000])
+        idx = tuple([temp_err_f>=1e12])
         # print(weights_f[idx])
         weights_f[idx] = 0.
 
@@ -227,7 +227,7 @@ def combine_spec(wavelengths_f, spectra_f, errors_f, sns_f):
         
         else: 
             spectrum_f[n] = np.mean(temp_spec_f)
-            spec_errors_f[n] = 1000000000000
+            spec_errors_f[n] = 1e12
 
     
     return reference_wave, spectrum_f, spec_errors_f, sn_f
@@ -344,7 +344,7 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
         elif idx[value] == True and flag_max < value:
             flag_max = value
         elif idx[value] == False and flag_max-flag_min>=pix_chunk:
-            data_err[flag_min:flag_max]=10000000000000000000
+            data_err[flag_min:flag_max]=1e12
             flag_min = value
             flag_max = value
 
@@ -358,9 +358,9 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     for line in tell_lines:
         limit = (21/2.99792458e5)*line +3
         idx = np.logical_and((line-limit)<=wavelengths, wavelengths<=(limit+line))
-        data_err[idx] = 1000000000000000000
+        data_err[idx] = 1e12
 
-    residual_masks = tuple([data_err>=1000000000000000000])
+    residual_masks = tuple([data_err>=1e12])
 
     ###################################
     ###      sigma clip masking     ###
@@ -378,14 +378,14 @@ def residual_mask(wavelengths, data_spec_in, data_err, initial_inputs, poly_ord,
     idx1 = tuple([rcopy<=lower_clip])
     idx2 = tuple([rcopy>=upper_clip])
 
-    data_err[idx1]=10000000000000000000
-    data_err[idx2]=10000000000000000000
+    data_err[idx1]=1e12
+    data_err[idx2]=1e12
 
     poly_inputs, bin, bye, fit=continuumfit(data_spec_in,  (wavelengths*a)+b, data_err, poly_ord)
     velocities1, profile, profile_err, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, bin, bye, linelist, 'False', poly_ord, 100, 30, run_name, velocities)
 
     # ## comment if you would like to keep sigma clipping masking in for final LSD run 
-    # residual_masks = tuple([data_err>=1000000000000000000])
+    # residual_masks = tuple([data_err>=1e12])
 
     return data_err, np.concatenate((profile, poly_inputs)), residual_masks
 
@@ -409,12 +409,12 @@ def get_profiles(all_frames, order, poly_cos, continuum_error, counter):
     else:
         reference_wave = frame_wavelengths[0]
     mask_pos = np.ones(reference_wave.shape)
-    mask_pos[mask_idx]=10000000000000000000
+    mask_pos[mask_idx]=1e12
     f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
     interp_mask_pos = f2(wavelengths)
-    interp_mask_idx = tuple([interp_mask_pos>=10000000000000000000])
+    interp_mask_idx = tuple([interp_mask_pos>=1e12])
 
-    error[interp_mask_idx]=10000000000000000000
+    error[interp_mask_idx]=1e12
 
     # corrrecting continuum
     error = (error/flux) + (continuum_error/mdl1)
@@ -423,7 +423,7 @@ def get_profiles(all_frames, order, poly_cos, continuum_error, counter):
 
     remove = tuple([flux<0])
     flux[remove]=1.
-    error[remove]=10000000000000000000
+    error[remove]=1e12
 
     idx = tuple([flux>0])
     
@@ -720,7 +720,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         ax[1].scatter(x[non_masked], residuals_2[non_masked], marker = '.')
         ax[0].plot(x, y, 'r', alpha = 0.3, label = 'data')
         ax[0].plot(x, mcmc_mdl, 'k', alpha =0.3, label = 'mcmc spec')
-        residual_masks = tuple([yerr>=100000000000000])
+        residual_masks = tuple([yerr>=1e12])
 
         #residual_masks = tuple([yerr>10])
         ax[0].scatter(x[residual_masks], y[residual_masks], label = 'masked', color = 'b', alpha = 0.3)

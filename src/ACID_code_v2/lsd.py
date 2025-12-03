@@ -257,7 +257,7 @@ class LSD:
                 # print('WARNING NEGATIVE/ZERO FLUX - corrected')
 
             where_are_zeros = (spec<=0)
-            spec[where_are_zeros] = 1000000000000
+            spec[where_are_zeros] = 1e12
             flux_error = np.sqrt(spec)
 
             wave=self.get_wave(spec, header)*(1.+brv/2.99792458e5)
@@ -285,7 +285,7 @@ class LSD:
             wave=hdu[0].header['CRVAL1']+(np.arange(spec.shape[0]))*hdu[0].header['CDELT1']
             
             where_are_zeros = (spec<=0)
-            spec[where_are_zeros] = 1000000000000
+            spec[where_are_zeros] = 1e12
             flux_error = np.sqrt(spec)
 
             if spec_type == 'order':
@@ -315,7 +315,7 @@ class LSD:
                 #     print('WARNING NEGATIVE/ZERO FLUX - corrected')
 
                 # where_are_zeros = (spec<=0)
-                # spec[where_are_zeros] = 1000000000000
+                # spec[where_are_zeros] = 1e12
                 # flux_error = np.sqrt(spec)
                 
                 flux_error_order = flux_error
@@ -338,7 +338,7 @@ class LSD:
                         #print(np.max(mask), np.min(mask))
                         idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
                         #print(flux_error_order[idx])
-                        flux_error_order[idx] = 10000000000000000000
+                        flux_error_order[idx] = 1e12
                         #print(idx)
                         if len(wavelengths[idx])>0:
                             masked_waves.append(wavelengths[idx])
@@ -374,7 +374,7 @@ class LSD:
                             print(np.max(mask), np.min(mask))
                             idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
                             #print(flux_error_order[idx])
-                            flux_error_order[idx] = 10000000000000000000
+                            flux_error_order[idx] = 1e12
 
                             if len(wavelengths[idx])>0:
                                 masked_waves.append(wavelengths[idx])
@@ -418,9 +418,9 @@ class LSD:
 
 
             # where_are_NaNs = np.isnan(flux_error)
-            # flux_error[where_are_NaNs] = 1000000000000
+            # flux_error[where_are_NaNs] = 1e12
             where_are_zeros = (spec<=0)
-            spec[where_are_zeros] = 1000000000000
+            spec[where_are_zeros] = 1e12
             flux_error = np.sqrt(spec)
             '''
             flux_error1 = header['HIERARCH ESO DRS SPE EXT SN%s'%order]
@@ -501,7 +501,7 @@ class LSD:
                     #print(np.max(mask), np.min(mask))
                     idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
                     #print(flux_error_order[idx])
-                    flux_error_order[idx] = 10000000000000000000
+                    flux_error_order[idx] = 1e12
                     #print(idx)
                     if len(wavelengths[idx])>0:
                         masked_waves.append(wavelengths[idx])
@@ -537,7 +537,7 @@ class LSD:
                         #print(np.max(mask), np.min(mask))
                         idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
                         #print(flux_error_order[idx])
-                        flux_error_order[idx] = 10000000000000000000
+                        flux_error_order[idx] = 1e12
 
                         if len(wavelengths[idx])>0:
                             masked_waves.append(wavelengths[idx])
