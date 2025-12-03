@@ -156,6 +156,10 @@ class Acid:
         production_run :bool           = False,
 
         # Testing and internal kwargs
+        moves                          = False,
+        lsd_wrong                      = False,
+        cf_percentile                  = False,
+        highsamples                    = False,
         _input_data                    = None,
         **kwargs,
         ):
@@ -282,9 +286,7 @@ class Acid:
         self.moves = moves
         self.lsd_wrong = lsd_wrong
         self.cf_percentile = cf_percentile
-        self.sampler = sampler
         self.highsamples = highsamples
-        self.super_fast = super_fast
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -680,7 +682,12 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
 
-        cont_factor = np.percentile(fluxes, 95)
+        if self.cf_percentile is True:
+            cont_factor = np.percentile(fluxes, 95)
+        else:
+            cont_factor = fluxes[0]
+            if cont_factor == 0: 
+                cont_factor = np.mean(fluxes)
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
         fluxe = fluxes[idx] / cont_factor
@@ -854,11 +861,14 @@ class Acid:
             else:
                 self.cores = os.cpu_count()
         
-        moves=[ # Use the new moves option in emcee v3 for faster convergence
-            (emcee.moves.StretchMove(), 0.6),
-            (emcee.moves.DEMove(), 0.3),
-            (emcee.moves.DESnookerMove(), 0.1),
-        ]
+        if self.moves is True:
+            moves=[ # Use the new moves option in emcee v3 for faster convergence
+                (emcee.moves.StretchMove(), 0.6),
+                (emcee.moves.DEMove(), 0.3),
+                (emcee.moves.DESnookerMove(), 0.1),
+            ]
+        else:
+            moves = None
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
@@ -940,7 +950,10 @@ class Acid:
             print('Getting the final profiles...')
 
         # Finding error for the continuum fit
-        nsamples = 50
+        if self.highsamples is True:
+            nsamples = 2000
+        else:
+            nsamples = 50
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
         norm_wl = self.wavelengths["combined_normalized"]
@@ -1017,8 +1030,8 @@ class Acid:
             # else:
 
         LSD_profiles = lsd.LSD(self)
-        if self.lsd_wrong is False:
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+        if self.lsd_wrong is True:
+            LSD_profiles.run_LSD(wavelengths, flux, error)
         else:
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
         profile_OD = LSD_profiles.profile
