@@ -743,6 +743,7 @@ class Acid:
                 flag_max = value
             elif idx[value] == False and flag_max - flag_min >= self.pix_chunk:
                 yerr[flag_min:flag_max] = 1e12
+                # print(f"Masking from {x[flag_min]} to {x[flag_max]} due to residuals.")
                 flag_min = value
                 flag_max = value
 
@@ -783,7 +784,7 @@ class Acid:
         yerr[idx2] = 1e12
 
         a, b = utils.get_normalisation_coeffs(x)
-        poly_inputs, _bin, bye = self.continuumfit(y, (x*a_old)+b, yerr, self.poly_ord)
+        poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
         LSD_masking = lsd.LSD(self)
@@ -808,7 +809,7 @@ class Acid:
             plt.title('Residuals with Sigma Clipping Thresholds')
             plt.xlabel('Wavelength')
             plt.ylabel('Residuals')
-            plt.legend()
+            plt.legend(loc="lower right")
             plt.show()
 
             plt.figure(figsize=(10, 6))
