@@ -1030,21 +1030,21 @@ class Acid:
             # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
             # else:
 
-        LSD_profiles = lsd.LSD(self)
-        if self.lsd_wrong is True:
-            LSD_profiles.run_LSD(wavelengths, flux, error)
-        else:
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
-        profile_OD = LSD_profiles.profile
-        profile_errors = LSD_profiles.profile_errors
+            LSD_profiles = lsd.LSD(self)
+            if self.lsd_wrong is True:
+                LSD_profiles.run_LSD(wavelengths, flux, error)
+            else:
+                LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            profile_OD = LSD_profiles.profile
+            profile_errors = LSD_profiles.profile_errors
 
-        # Need to check whats going on here with the -1
-        p = np.exp(profile_OD)-1
-        profile_f = np.exp(profile_OD)
-        profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
-        profile_f = profile_f-1
+            # Need to check whats going on here with the -1
+            p = np.exp(profile_OD)-1
+            profile_f = np.exp(profile_OD)
+            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+            profile_f = profile_f-1
 
-        all_frames[counter, self.order]=[profile_f, profile_errors_f]
+            all_frames[counter, self.order]=[profile_f, profile_errors_f]
         
         return all_frames
 
