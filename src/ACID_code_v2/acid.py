@@ -994,9 +994,12 @@ class Acid:
             error[interp_mask_idx]=1e12
 
             # corrrecting continuum
-            error = (error/flux) + (self.continuum_error/mdl1)
+            # error = (error/flux) + (self.continuum_error/mdl1)
+            # error = np.sqrt((error/flux)**2 + (self.continuum_error/mdl1)**2) # Compare before after
+            error = np.sqrt((error/mdl1)**2 + (self.continuum_error/mdl1)**2) # Compare before after
+
             flux /= mdl1
-            error *= flux
+            # error *= flux
 
             remove = tuple([flux<0])
             flux[remove] = 1.
