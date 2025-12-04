@@ -156,6 +156,7 @@ class Acid:
         production_run :bool           = False,
 
         # Testing and internal kwargs
+        correct_error_combine          = False,
         fork                           = False,
         moves                          = False,
         cf_percentile                  = False,
@@ -284,6 +285,7 @@ class Acid:
         self.cores          = cores
 
         # The tests
+        self.correct_error_combine = correct_error_combine
         self.no_sn100 = no_sn100
         self.fork = fork
         self.moves = moves
@@ -633,7 +635,10 @@ class Acid:
                     combined_flux[n] = sum(weights_f * temp_spec_f)
                     combined_sn = sum(weights_f * sn) / sum(weights_f)
 
-                    combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
+                    if self.correct_error_combine is True:
+                        combined_errors[n] = 1 / np.sqrt(sum(weights_f))
+                    else:
+                        combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
 
                 else:
                     combined_flux[n] = np.mean(temp_spec_f)
