@@ -156,6 +156,7 @@ class Acid:
         production_run :bool           = False,
 
         # Testing and internal kwargs
+        correct_autocorrelation        = True,
         correct_error_combine          = False,
         fork                           = False,
         moves                          = False,
@@ -285,6 +286,7 @@ class Acid:
         self.cores          = cores
 
         # The tests
+        self.correct_autocorrelation = True
         self.correct_error_combine = correct_error_combine
         self.no_sn100 = no_sn100
         self.fork = fork
@@ -929,10 +931,15 @@ class Acid:
         ):
 
         # Discarding all vales except the last 1000 steps.
-        dis_no = self.nsteps-1000
+        if self.correct_autocorrelation is True:
+            tau = self.sampler.get_autocorr_time(quiet=True)
+            burnin = int(2 * np.max(tau))
+            thin = int(np.min(tau)/5)
+        else:
+            burnin = self.nsteps-1000
 
         # Obtain flattened samples
-        flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
+        flat_samples = self.sampler.get_chain(discard=burnin, thin=thin, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
         self.profile      = []
