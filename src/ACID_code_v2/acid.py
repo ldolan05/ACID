@@ -156,7 +156,8 @@ class Acid:
         production_run :bool           = False,
 
         # Testing and internal kwargs
-        correct_autocorrelation        = True,
+        correct_continuum              = False,
+        correct_autocorrelation        = False,
         correct_error_combine          = False,
         fork                           = False,
         moves                          = False,
@@ -286,7 +287,8 @@ class Acid:
         self.cores          = cores
 
         # The tests
-        self.correct_autocorrelation = True
+        self.correct_continuum = correct_continuum
+        self.correct_autocorrelation = correct_autocorrelation
         self.correct_error_combine = correct_error_combine
         self.no_sn100 = no_sn100
         self.fork = fork
@@ -1036,10 +1038,14 @@ class Acid:
 
             error[interp_mask_idx]=1e12
 
-            # corrrecting continuum
-            error = (error/flux) + (self.continuum_error/mdl1)
-            flux /= mdl1
-            error *= flux
+            # correcting continuum
+            if self.correct_continuum is True:
+                error = np.sqrt((error/mdl1)**2 + (self.continuum_error/mdl1)**2)
+                flux /= mdl1
+            else:
+                error = (error/flux) + (self.continuum_error/mdl1)
+                flux /= mdl1
+                error *= flux
 
             remove = tuple([flux<0])
             flux[remove] = 1.
