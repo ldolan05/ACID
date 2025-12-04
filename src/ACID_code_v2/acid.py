@@ -164,6 +164,7 @@ class Acid:
         cf_percentile                  = False,
         highsamples                    = False,
         no_sn100                       = False,
+        no_a_old                       = False,
         _input_data                    = None,
         **kwargs,
         ):
@@ -287,6 +288,7 @@ class Acid:
         self.cores          = cores
 
         # The tests
+        self.no_a_old                = no_a_old
         self.correct_continuum = correct_continuum
         self.correct_autocorrelation = correct_autocorrelation
         self.correct_error_combine = correct_error_combine
@@ -809,8 +811,12 @@ class Acid:
         yerr[idx1] = 1e12
         yerr[idx2] = 1e12
 
-        a, b = utils.get_normalisation_coeffs(x)
-        poly_inputs, _bin, bye = self.continuumfit(y, (x*a_old)+b, yerr, self.poly_ord)
+        if self.no_a_old is True:
+            a, b = utils.get_normalisation_coeffs(x)
+        else:
+            a, b = utils.get_normalisation_coeffs(x)
+            a = 1
+        poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
         LSD_masking = lsd.LSD(self)
