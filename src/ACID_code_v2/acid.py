@@ -939,6 +939,7 @@ class Acid:
             thin = int(np.min(tau)/5)
         else:
             burnin = self.nsteps-1000
+            thin = 1
 
         # Obtain flattened samples
         flat_samples = self.sampler.get_chain(discard=burnin, thin=thin, flat=True)
