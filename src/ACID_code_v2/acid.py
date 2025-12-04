@@ -158,7 +158,6 @@ class Acid:
         # Testing and internal kwargs
         fork                           = False,
         moves                          = False,
-        lsd_wrong                      = False,
         cf_percentile                  = False,
         highsamples                    = False,
         no_sn100                       = False,
@@ -288,7 +287,6 @@ class Acid:
         self.no_sn100 = no_sn100
         self.fork = fork
         self.moves = moves
-        self.lsd_wrong = lsd_wrong
         self.cf_percentile = cf_percentile
         self.highsamples = highsamples
 
@@ -1042,10 +1040,7 @@ class Acid:
             # else:
 
             LSD_profiles = lsd.LSD(self)
-            if self.lsd_wrong is True:
-                LSD_profiles.run_LSD(wavelengths, flux, error)
-            else:
-                LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
 
