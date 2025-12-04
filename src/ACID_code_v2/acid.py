@@ -947,25 +947,25 @@ class Acid:
         self.profile_err  = []
         self.poly_cos_err = []
 
-        for i in range(self.ndim):
-            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-            error = np.diff(mcmc)
-            if i<len(self.velocities):
-                self.profile.append(mcmc[1])
-                self.profile_err.append(np.max(error))
-            else:
-                self.poly_cos.append(mcmc[1])
-                self.poly_cos_err.append(np.max(error))
-        self.profile = np.array(self.profile)
-        self.profile_err = np.array(self.profile_err)
-        nvel = len(self.velocities)
-        # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
-        # errors = np.diff(quartiles, axis=0)
-        # errors = np.max(errors, axis=0) # why?
-        # self.profile       = quartiles[1, :nvel]
-        # self.profile_err   = errors[:nvel]
-        # self.poly_cos      = quartiles[1, nvel:]
-        # self.poly_cos_err  = errors[nvel:]
+        # for i in range(self.ndim):
+        #     mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+        #     error = np.diff(mcmc)
+        #     if i<len(self.velocities):
+        #         self.profile.append(mcmc[1])
+        #         self.profile_err.append(np.max(error))
+        #     else:
+        #         self.poly_cos.append(mcmc[1])
+        #         self.poly_cos_err.append(np.max(error))
+        # self.profile = np.array(self.profile)
+        # self.profile_err = np.array(self.profile_err)
+        # nvel = len(self.velocities)
+        quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        errors = np.diff(quartiles, axis=0)
+        errors = np.max(errors, axis=0) # why?
+        self.profile       = quartiles[1, :nvel]
+        self.profile_err   = errors[:nvel]
+        self.poly_cos      = quartiles[1, nvel:]
+        self.poly_cos_err  = errors[nvel:]
 
         if self.verbose > 0:
             print('Getting the final profiles...')
