@@ -156,6 +156,7 @@ class Acid:
         production_run :bool           = False,
 
         # Testing and internal kwargs
+        fork                           = False,
         moves                          = False,
         lsd_wrong                      = False,
         cf_percentile                  = False,
@@ -893,8 +894,12 @@ class Acid:
             # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
-                ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                if self.fork is True:
+                    ctx = mp.get_context("fork")
+                    mp_obj = ctx
+                else:
+                    mp_obj = mp
+                with mp_obj.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
