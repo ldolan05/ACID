@@ -971,10 +971,7 @@ class Acid:
             print('Getting the final profiles...')
 
         # Finding error for the continuum fit
-        if self.highsamples is True:
-            nsamples = 2000
-        else:
-            nsamples = 50
+        nsamples = 50
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
         norm_wl = self.wavelengths["combined_normalized"]
@@ -990,7 +987,10 @@ class Acid:
         #     mdl1_temp = mdl1_temp*sample[-1]
         #     conts1.append(mdl1_temp)
 
-        samples = flat_samples[inds]
+        if self.highsamples is True:
+            samples = flat_samples
+        else:
+            samples = flat_samples[inds]
         coeffs = samples[:, nvel:-1]
         ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
         scales = samples[:, -1]
