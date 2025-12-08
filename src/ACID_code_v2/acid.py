@@ -33,7 +33,7 @@ class Acid:
         verbose        :int|npint|bool       = 2,
         telluric_lines :np.ndarray|list|None = None,
         name           :str                  = 'ACID',
-        seed           :int|npint|None       = 42,
+        seed           :int|npint|None       = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
