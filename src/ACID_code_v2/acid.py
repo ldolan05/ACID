@@ -245,8 +245,7 @@ class Acid:
                 print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
                 f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
                 f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
-            input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
-                input_wavelengths, input_spectra, input_spectral_errors)
+            input_spectra, input_spectral_errors = utils.scale_spectra(input_spectra, input_spectral_errors)
 
         # Validated frame_sns input
         # If frame_sns is not provided, estimate using specutils, this is a very rudimentary guess and get around for not

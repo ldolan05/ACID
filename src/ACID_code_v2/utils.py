@@ -64,7 +64,7 @@ def validate_args(x, i, allow_none=False, sn=False):
     else: # should not reach here, somehow ndim is negative
         raise ValueError(f"Input in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
-def scale_spectra(wavelength, spectrum, error):
+def scale_spectra(spectrum, error):
     """Scales the input spectrum and error to be between 0 and 1, masking any non-positive values by making
     their flux equal to 1 and their error very large (1e12). This is done so that the alpha matrix calculation
     maintains even spacing between wavelength pixels. The flux must be positive regardless as Acid works in
@@ -72,8 +72,6 @@ def scale_spectra(wavelength, spectrum, error):
 
     Parameters
     ----------
-    wavelength : array_like
-        The wavelengths corresponding to the spectrum.
     spectrum : array_like
         The flux values of the spectrum.
     error : array_like
@@ -82,7 +80,7 @@ def scale_spectra(wavelength, spectrum, error):
     Returns
     -------
     tuple
-        A tuple containing the scaled wavelength, spectrum, and error arrays.
+        A tuple containing the scaled spectrum, and error arrays.
     """
 
     # Rescale spectrum and error
@@ -95,7 +93,7 @@ def scale_spectra(wavelength, spectrum, error):
     scaled_spec[mask_idx] = 1
     scaled_error[mask_idx] = int(1e12)
 
-    return wavelength, scaled_spec, scaled_error
+    return scaled_spec, scaled_error
 
 def calc_deltav(wavelengths):
     """Calculates velocity pixel size
