@@ -326,7 +326,8 @@ class LSD:
         error : np.ndarray
             The flux errors in optical depth space
         c_factor : tuple
-            Cholesky factorisation matrix and lower/upper flag, to be put straight into solve_z as c_factor
+            Cholesky factorisation matrix and lower/upper flag, to be put straight into 
+            scipy.linalg.cho_solve as c_factor
 
         Returns
         -------
