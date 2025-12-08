@@ -787,7 +787,7 @@ class Acid:
         yerr[idx2] = 1e12
 
         a, b = utils.get_normalisation_coeffs(x)
-        poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord)
+        poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord, plot_result=False)
 
         LSD_masking = LSD(self)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
