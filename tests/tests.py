@@ -1,18 +1,14 @@
 #%%
 from astropy.io import fits
-import os, glob, importlib, sys
 import numpy as np
 import matplotlib.pyplot as plt
-os.chdir(os.path.dirname(__file__))
-os.chdir("..")  # ensures we are in the main directory
-try:
-    import ACID_code_v2 as acid
-except:
-    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-    sys.path.append(PROJECT_ROOT)
-    from src import ACID_code_v2 as acid
-    print("pip module failed to import, imported from local instead")
+import glob, os, sys
+from pathlib import Path
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = next(p for p in SCRIPT_DIR.parents if (p / "pyproject.toml").exists())
+sys.path.append(str(PROJECT_ROOT))
+os.chdir(PROJECT_ROOT)
+import ACID_code_v2 as acid
 acid._reload_all()
 
 def test_run_e2ds():
