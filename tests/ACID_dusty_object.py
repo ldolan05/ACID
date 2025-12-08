@@ -11,7 +11,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.append(PROJECT_ROOT)
 from src import ACID_code_v2 as acid
 from src.ACID_code_v2 import utils
-importlib.reload(acid)
+acid._reload_all()
 
 spec_file = fits.open('tests/test_data/sky_subtracted_s1d_A_26.fits')
 
@@ -116,15 +116,17 @@ spectrum = spectrum[::15]
 error = error[::15]
 
 # wavelength, scaled_spec, scaled_error = utils.scale_spectra(wavelength, spectrum, error)
-sn = acid.guess_SNR(wavelengths=wavelength, spectra=spectrum, errors=error)
+sn = acid.guess_SNR(wavelength, 1-spectrum, error)
 # velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))
 # plt.errorbar(wavelength, scaled_spec, scaled_error)
 # wavelength, spectrum, error = utils.scale_spectra(wavelength, spectrum, error)
 # plt.show()
-Acid = acid.Acid(velocities, linelist) # FIX THIS!!!
-# result = Acid.ACID(wavelength, spectrum, error, sn , nsteps=2000)
-result = acid.Result.load_result('tests/test_data/dusty_result.pkl')
-result.plot_profile()
+Acid = acid.Acid(velocities, linelist, verbose=3)
+sn = 50
+# spectrum = np.max(spectrum) - spectrum  # convert to absorption line profile
+result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, n_sig=2)
+# result = acid.Result.load_result('tests/test_data/dusty_result.pkl')
+# result.plot_profile()
 
 # # extract profile and errors
 # profile = result[0, 0, 0]
