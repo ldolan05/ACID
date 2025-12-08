@@ -1,22 +1,19 @@
-import sys, emcee, warnings, os, time, importlib, inspect
+import sys, emcee, warnings, os, time, inspect
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
-from functools import partial
 from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
 import scipy.constants as const
 from . import utils
-from . import lsd
+from .lsd import LSD
 from . import mcmc_utils
 from .result import Result
 
 warnings.filterwarnings("ignore")
-importlib.reload(lsd)
-importlib.reload(utils)
 
 c_kms = float(const.c/1e3)
 
@@ -93,7 +90,7 @@ class Acid:
         # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
         # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
         if linelist_path is None:
-            linelist_path = {"wavelength": linelist_wl, "depth": linelist_depths}
+            linelist_path = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
         # Define telluric_lines with defaults if not input, check type if it is
         if telluric_lines is None:
@@ -318,10 +315,11 @@ class Acid:
         self.poly_inputs, self.flux["fitted"], self.errors["fitted"] = self.continuumfit(
             self.flux["combined"], self.wavelengths["combined_normalized"], self.errors["combined"])
         self.wavelengths["fitted"] = np.copy(self.wavelengths["combined"]) # Just to keep track
+        self.sn["fitted"]      = np.copy(self.sn["combined"])      # SN is not changed here
 
         # Get the initial LSD profile using the initial fit
-        initial_LSD = lsd.LSD(self) # Initialise LSD class with standard Acid attributes
-        initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"])
+        initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes
+        initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"], self.sn["fitted"])
 
         # Use alpha matrix and initial profile class variables from initial LSD run
         self.initial_profile = initial_LSD.profile
@@ -785,9 +783,8 @@ class Acid:
 
         a, b = utils.get_normalisation_coeffs(x)
         poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord)
-        # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
-        #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
-        LSD_masking = lsd.LSD(self)
+
+        LSD_masking = LSD(self)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
@@ -1011,7 +1008,7 @@ class Acid:
             # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
             # else:
 
-            LSD_profiles = lsd.LSD(self)
+            LSD_profiles = LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
@@ -1034,7 +1031,7 @@ class Acid:
         directory=None,
         ):
         # read in first frame
-        fluxes, wavelengths, flux_error_order, sn = lsd.LSD().blaze_correct(
+        fluxes, wavelengths, flux_error_order, sn = LSD().blaze_correct(
             file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
         #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
@@ -1051,7 +1048,7 @@ class Acid:
 
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
-            frames[i], frame_wavelengths[i], errors[i], sns[i] = lsd.LSD().blaze_correct(
+            frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD().blaze_correct(
                 file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns

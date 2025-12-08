@@ -14,174 +14,292 @@ c_kms = float(const.c/1e3)  # speed of light in km/s
 
 @beartype
 class LSD:
+    """Class containing all useful functions for performing least-squares deconvolution.
+    This does not simultaneously fit continuum and perform LSD (which ACID does). It is used
+    for the initial parameters of the ACID mcmc run and for obtaining final profiles. It 
+    can also be used as a standalone LSD implementation.
+    """
+    def __init__(self, Acid:object|None=None):
+        """Intilialises the LSD class, optionally with an ACID instance to take parameters from.
 
-    def __init__(self, Acid:object=None):
-
-        self.verbose          = 2
-        self.adjust_continuum = None
+        Parameters
+        ----------
+        Acid : object | None, optional
+            The Acid instanse to draw parameters from, by default None
+        """
+        self.verbose          = getattr(Acid, 'verbose', 2) # class default of 2
         self.slurm            = "SLURM_JOB_ID" in os.environ
-
-        if not Acid:
-            self.Acid = False
-
-        else:
-            self.Acid = True
-            self.linelist   = Acid.linelist_path
-            self.sn         = Acid.sn["combined"]
-            self.order      = Acid.order
-            self.run_name   = Acid.name
-            self.velocities = Acid.velocities
-            self.verbose    = Acid.verbose
-
-    def __call__(self, *args, **kwargs):
-        # This call will not calculate the alpha matrix, only generating profiles
-        pass
+        self.velocities       = getattr(Acid, 'velocities', None)
+        self.linelist         = getattr(Acid, 'linelist_path', None)
+        self.order            = getattr(Acid, 'order', None)
+        self.run_name         = getattr(Acid, 'name', None)
+        self.adjust_continuum = None
 
     def run_LSD(
         self,
-        wavelengths :np.ndarray,
-        flux_obs    :np.ndarray,
-        rms         :np.ndarray,
-        sn          :float|int|npint = None,
-        linelist    :str|dict        = None,
-        velocities  :np.ndarray      = None,
-        verbose     :int|None        = None,
+        wavelengths : np.ndarray,
+        flux        : np.ndarray,
+        errors      : np.ndarray,
+        sn          : float|int|npint|np.ndarray,
+        linelist    : str|dict        = None,
+        velocities  : np.ndarray      = None,
+        verbose     : int|npint|None  = None,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
+
+        Parameters
+        ----------
+        wavelengths : np.ndarray
+            Array of wavelengths of the observed spectrum in Angstroms
+        flux : np.ndarray
+            Array of flux values corresponding to the wavelengths (in linear space, and should be continuum normalized)
+        errors : np.ndarray
+            Array of error values corresponding to the flux
+        sn : float | int
+            Signal-to-noise ratio of the observed spectrum
+        linelist : str | dict, optional
+            Path to the linelist file or a dictionary containing 'wavelengths' and 'depths'. If the class was 
+            not initialised with an Acid instance, this is required, by default None
+        velocities : np.ndarray, optional
+            Array of velocities corresponding to the observed spectrum. If the class was not initialised with 
+            an Acid instance, this is required, by default None
+        verbose : int | None, optional
+            Verbosity level, if None, uses the class default of 2. See the Acid class for more information about
+            verbosity integer levels, by default None
         """
 
-        if not wavelengths.shape == flux_obs.shape == rms.shape:
-            raise ValueError("Input wavelengths, flux_obs, and rms must have the same shape.")
+        if not wavelengths.shape == flux.shape == errors.shape:
+            raise ValueError("Input wavelengths, flux, and errors must have the same shape.")
         if wavelengths.ndim != 1:
-            raise ValueError("Input wavelengths, flux_obs, and rms must be 1D arrays.")
+            raise ValueError("Input wavelengths, flux, and errors must be 1D arrays.")        
 
-        # Required kwargs (no default)
-        self.wavelengths = wavelengths
-        self.flux_obs    = flux_obs
-        self.rms         = rms
+        self.velocities = velocities if velocities is not None else self.velocities
+        self.verbose    = verbose    if verbose    is not None else self.verbose # not from self.Acid
+        self.linelist   = linelist   if linelist   is not None else self.linelist
 
-        # Optional kwargs, overriden by inputs if Acid provided (default set in init)
-        if self.Acid:
-            self.sn         = sn         if sn         is not None else self.sn
-            self.linelist   = linelist   if linelist   is not None else self.linelist
-            self.velocities = velocities if velocities is not None else self.velocities
-            self.verbose    = verbose    if verbose    is not None else self.verbose
-        else:
-            if sn is None or linelist is None or velocities is None:
-                raise ValueError("sn, linelist, and velocities must be provided if no Acid instance is provided in initialisation.")
-            self.sn         = sn
-            self.linelist   = linelist
-            self.velocities = velocities
-            self.verbose    = verbose if verbose is not None else 2
+        #### Read the EXPECTED linelist (for a slow rotator of the same spectral type) ####
+        wavelengths_linelist, depths_linelist = self.read_linelist(self.linelist)
+
+        # Clip linelist to wavelength range of spectrum
+        wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+
+        # Apply S/N cut (of 1/(3*SN)) to linelist
+        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
+
+        # Convert to optical depth space for the linelist and the spectrum (may move to own function)
+        errors = errors / flux
+        flux = np.log(flux)
+        depths_linelist = -np.log(1-depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.alpha = self.calc_alpha()
+        self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
 
-        # Converting to optical depth space
-        self.rms = self.rms / self.flux_obs
-        self.flux_obs = np.log(self.flux_obs)
+        # Now solve for profile using Cholesky decomposition
+        c_factor = self.calc_cholesky(self.alpha, errors)
 
+        # Solve for profile and profile errors using Cholesky factors
+        self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, c_factor)
+
+        return
+
+    def read_linelist(
+        self,
+        linelist : str|dict):
+        """Reads in the linelist from a file or dictionary.
+
+        Parameters
+        ----------
+        linelist : str or dict
+            Path to the linelist file or a dictionary containing 'wavelengths' and 'depths'
+        
+        Returns
+        ----------
+        wavelengths_linelist : np.ndarray
+            Wavelengths from the linelist
+        depths_linelist : np.ndarray
+            Fluxes from the linelist
+        """
+        # Reading the linelist file or dictionary
+        if isinstance(linelist, str):
+            full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
+            wavelengths_linelist = np.array(full_linelist[:,0])
+            depths_linelist = np.array(full_linelist[:,1])
+
+        # If user input linelist_wl and linelist_depths in Acid
+        else:
+            wavelengths_linelist = np.array(linelist["wavelengths"])
+            depths_linelist = np.array(linelist["depths"])
+
+        # Save for debugging
+        self._input_linelist_wavelengths = wavelengths_linelist
+        self._input_linelist_depths = depths_linelist
+
+        return wavelengths_linelist, depths_linelist
+
+    @staticmethod
+    def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
+        """Clips the linelist to only include lines within the wavelength range of the observed spectrum.
+
+        Parameters
+        ----------
+        wavelengths : np.ndarray
+            Wavelengths of the observed spectrum
+        wavelengths_linelist : np.ndarray
+            Wavelengths from the linelist
+        depths_linelist : np.ndarray
+            Depths from the linelist
+
+        Returns
+        -------
+        wavelengths_linelist : np.ndarray
+            Clipped wavelengths from the linelist
+        depths_linelist : np.ndarray
+            Clipped depths from the linelist
+        """
+        lower, upper = wavelengths.min(), wavelengths.max()
+        idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
+        return wavelengths_linelist[idx], depths_linelist[idx]
+
+    def sn_clip(self, wavelengths_linelist, depths_linelist, sn):
+        """Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn).
+
+        Parameters
+        ----------
+        wavelengths_linelist : np.ndarray
+            Wavelengths from the linelist
+        depths_linelist : np.ndarray
+            Depths from the linelist
+        sn : float
+            Signal-to-noise ratio threshold
+
+        Returns
+        -------
+        np.ndarray
+            Clipped wavelengths from the linelist
+        np.ndarray
+            Clipped depths from the linelist
+        """
+        # Selecting lines deeper than 1/(3*sn)
+        idx = (depths_linelist >= 1/(3*sn))
+        wavelengths_linelist = wavelengths_linelist[idx]
+        depths_linelist = depths_linelist[idx]
+        if self.verbose > 0:
+            ncut = np.sum(~idx)
+            nrest = np.sum(idx)
+            perc = 100 * nrest / (nrest + ncut)
+            if perc < 5:
+                print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
+        if self.verbose > 2:
+            print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
+        return wavelengths_linelist, depths_linelist
+
+    def calc_alpha(
+        self,
+        wavelengths         : np.ndarray,
+        wavelengths_linelist: np.ndarray,
+        depths_linelist     : np.ndarray,
+        velocities          : np.ndarray     = None,
+        verbose             : int|npint|None = None,
+        ):
+        """Calculates the alpha matrix given flux and errors in OD space, and a line_list in OD space.
+        Note that if this function is called without using run_LSD, there is no selection of lines deeper than 1/(3*sn).
+        If you still wish to do this, it needs to be done in linear space with the sn_clip function before converting to OD space.
+
+        Parameters
+        ----------
+        wavelengths : np.ndarray
+            Array of wavelengths of the observed spectrum in optical depth space
+        wavelengths_linelist : np.ndarray
+            Array of wavelengths from the linelist in optical depth space
+        depths_linelist : np.ndarray
+            Array of depths from the linelist in optical depth space
+        velocities : np.ndarray, optional
+            Array of velocities, needs to either be initialised by class with Acid instance, or input here, by default None
+        verbose : int | None, optional
+            Verbosity level, uses the class default of 2 if None, by default None
+        """
+
+        self.velocities = velocities if velocities is not None else self.velocities
+        self.verbose    = verbose    if verbose    is not None else self.verbose
+
+        # Calculate velocity pixel size
         deltav = self.velocities[1] - self.velocities[0]
 
-        #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
-        # Reading the linelist
-        if isinstance(self.linelist, str):
-            linelist_expected = np.genfromtxt('%s'%self.linelist, skip_header=4, delimiter=',', usecols=(1,9))
-            wavelengths_expected_all = np.array(linelist_expected[:,0])
-            depths_expected_all = np.array(linelist_expected[:,1])
-        else: # If user input linelist_wl and linelist_depths in Acid
-            wavelengths_expected_all = np.array(self.linelist["wavelength"])
-            depths_expected_all = np.array(self.linelist["depth"])
-
-        # Selecting lines within the wavelength range of the observed spectrum
-        wavelength_min = np.min(self.wavelengths)
-        wavelength_max = np.max(self.wavelengths)
-        idx = np.logical_and(wavelengths_expected_all >= wavelength_min,
-                            wavelengths_expected_all <= wavelength_max)
-        self.wavelengths_expected = wavelengths_expected_all[idx]
-        self.depths_expected = depths_expected_all[idx]
-
-        # Selecting lines deeper than 1/(3*sn)
-        line_min = 1 / (3 * self.sn)
-        idx = (self.depths_expected >= line_min)
-
-        # print(100*len(idx)/len(self.depths_expected), "% of lines used in LSD")
-        self.wavelengths_expected = self.wavelengths_expected[idx]
-        self.depths_expected = self.depths_expected[idx]
-        self.no_line = len(self.depths_expected)
-        
-        # Converting to log space for depths
-        self.depths_expected = -np.log(1-self.depths_expected)
+        # Clip linelist to wavelength range of spectrum (again just in case this is called without run_LSD)
+        wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
 
         # Find differences and velocities
-        blankwaves = self.wavelengths
-        diff = blankwaves[:, np.newaxis] - self.wavelengths_expected
-        vel = c_kms * (diff / self.wavelengths_expected)
+        blankwaves = wavelengths
+        diff = blankwaves[:, np.newaxis] - wavelengths_linelist
+        vel = c_kms * (diff / wavelengths_linelist)
 
-        # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
-
-        # Note this used to be "if len(wavelengths)<6000", which I believe is way too high
-        # for 16GB RAM. With testing, I found that if the matrix was half the available memory,
-        # it would always be fast, otherwise seperate into blocks as the else statment below.
         if self.slurm:
             available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
             available_memory *= 1e6  # Convert to bytes as in the else statement below
         else:
             available_memory = psutil.virtual_memory().available
-        
-        mat_size = len(self.wavelengths_expected) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
+
+        mat_size = len(wavelengths_linelist) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
         m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
-        
+
+        # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
         if mat_size < m_available:
             # Calculating entire alpha matrix at once
             x = (vel[:, :, np.newaxis] - self.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
-            self.alpha = (self.depths_expected[:, None] * delta).sum(axis=1)  # (nb, n_vel)
+            alpha = (depths_linelist[:, None] * delta).sum(axis=1)  # (nb, n_vel)
 
+        # Else, calculate in blocks to save memory
         else:
-            # Calculate in blocks to save memory
             n_blank = len(blankwaves)
             n_vel   = len(self.velocities)
             mem_size = available_memory // 2
             bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
             max_block = max(1, mem_size // bytes_per_row)
-            block = int(min(max_block, len(self.wavelengths_expected)))
-
+            block = int(min(max_block, len(wavelengths_linelist)))
             # Set initial alpha matrix to np.zeros
-            self.alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
+            alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
 
             # Use tqdm progress bar if verbose
-            if self.verbose>0:
-                iterable = tqdm(range(0, len(self.wavelengths_expected), block), desc='Calculating alpha matrix')
+            if self.verbose>1:
+                iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
             else:
-                iterable = range(0, len(self.wavelengths_expected), block)
+                iterable = range(0, len(wavelengths_linelist), block)
 
             for start_pos in iterable:
                 # Ensure we don't go out of bounds on last iteration
-                end_pos = min(start_pos + block, len(self.wavelengths_expected))
-                wl  = self.wavelengths_expected[start_pos:end_pos]
-                dep = self.depths_expected[start_pos:end_pos]
+                end_pos = min(start_pos + block, len(wavelengths_linelist))
+                wl  = wavelengths_linelist[start_pos:end_pos]
+                dep = depths_linelist[start_pos:end_pos]
 
                 # Perform calculations for this block
                 vel_blk = c_kms * (blankwaves[:, None] - wl) / wl
                 x_blk   = (vel_blk[:, :, None] - self.velocities) / deltav
                 delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
 
-                self.alpha += (dep[:, None] * delta).sum(axis=1)
-
-        # Now solve for profile using Cholesky decomposition
-        c_factor = self.calc_cholesky(self.alpha, self.rms)
-
-        # Solve for profile and profile errors using Cholesky factors
-        self.profile, self.profile_errors = self.solve_z(self.alpha, self.flux_obs, self.rms, c_factor)
-
-        return
-
-    def calc_alpha(self,):
-        return
+                alpha += (dep[:, None] * delta).sum(axis=1)
+        return alpha
 
     @staticmethod
-    def calc_cholesky(alpha, error):
+    def calc_cholesky(
+        alpha : np.ndarray,
+        error : np.ndarray,
+        ):
+        """Calculates the LHS Cholesky factorisation matrix given the alpha matrix and flux errors (in optical depth space)
+
+
+        Parameters
+        ----------
+        alpha : np.ndarray
+            The precomputed alpha matrix
+        error : np.ndarray
+            Flux errors in optical depth space
+
+        Returns
+        -------
+        c_factor : tuple
+            Cholesky factorisation matrix and lower/upper flag, to be put straight into solve_z as c_factor
+        """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
 
         # M = αT V α,  b = αT V R
@@ -192,11 +310,33 @@ class LSD:
         return c_factor
 
     @staticmethod
-    def solve_z(alpha, flux, error, c_factor):
+    def solve_z(
+        alpha,
+        flux,
+        error,
+        c_factor):
+        """Solves for the LSD profile and its errors using the Cholesky factors.
+
+        Parameters
+        ----------
+        alpha : np.ndarray
+            The precomputed alpha matrix
+        flux : np.ndarray
+            The observed flux values in optical depth space
+        error : np.ndarray
+            The flux errors in optical depth space
+        c_factor : tuple
+            Cholesky factorisation matrix and lower/upper flag, to be put straight into solve_z as c_factor
+
+        Returns
+        -------
+        profile, profile_errors : tuple
+            LSD profile and its errors
+        """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
         R = flux         # R matrix in log space
 
-        # 
+        # M = αT V α,  b = αT V R
         AVR = alpha.T @ (V * R)
         AVA = alpha.T @ (V[:, None] * alpha)
 
