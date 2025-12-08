@@ -189,8 +189,8 @@ class LSD:
             perc = 100 * nrest / (nrest + ncut)
             if perc < 5:
                 print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-        if self.verbose > 2 or perc < 5:
-            print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
+            if self.verbose > 2 or perc < 5:
+                print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist
 
     def calc_alpha(
