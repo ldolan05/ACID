@@ -243,8 +243,8 @@ class Acid:
         if np.any(input_spectra <= 0):
             if self.verbose > 1:
                 print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
-                "negative values. However, it is recommended to input spectra that are already normalised and positive. " \
-                "Please check your data. You can check acid.scale_spectra for more information on how this is done.")
+                f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
+                f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
             input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
                 input_wavelengths, input_spectra, input_spectral_errors)
 
