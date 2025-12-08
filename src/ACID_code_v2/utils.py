@@ -14,7 +14,7 @@ def validate_args(x, i, allow_none=False, sn=False):
     Parameters
     ----------
     x : array_like
-        array or list to be validated
+        array, list, or int to be validated
     i : int
         position of the input argument
     allow_none : bool, optional
@@ -37,7 +37,8 @@ def validate_args(x, i, allow_none=False, sn=False):
         else:
             raise TypeError(f"Input in position {i} must be a list or numpy array, not None")
     if not isinstance(x, (list, np.ndarray)):
-        raise TypeError(f"Input in position {i} must be a list or numpy array")
+        if sn is False:
+            raise TypeError(f"Input in position {i} must be a list or numpy array")
     if isinstance(x, list):
         if len(x) == 0:
             raise TypeError(f"Input list in position {i} is empty")
@@ -45,7 +46,10 @@ def validate_args(x, i, allow_none=False, sn=False):
     if x.ndim > 2:
         raise TypeError(f"Input in position {i} must be a list or numpy array with at most two dimensions")
     elif x.ndim == 0:
-        raise TypeError(f"Input in position {i} must be a list or numpy array with at least one dimension")
+        if sn is False:
+            raise TypeError(f"Input in position {i} must be a list or numpy array with at least one dimension")
+        else:
+            return np.array([x])
     elif x.ndim == 1:
         if sn:
             return x
