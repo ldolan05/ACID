@@ -1,4 +1,4 @@
-import sys, emcee, warnings, os, time, importlib, inspect
+import sys, emcee, warnings, os, time, inspect
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
@@ -14,8 +14,6 @@ from . import mcmc_utils
 from .result import Result
 
 warnings.filterwarnings("ignore")
-importlib.reload(lsd)
-importlib.reload(utils)
 
 c_kms = float(const.c/1e3)
 
