@@ -284,6 +284,7 @@ class LSD:
     def calc_cholesky(
         alpha : np.ndarray,
         error : np.ndarray,
+        **kwargs,
         ):
         """Calculates the LHS Cholesky factorisation matrix given the alpha matrix and flux errors (in optical depth space)
 
@@ -294,6 +295,9 @@ class LSD:
             The precomputed alpha matrix
         error : np.ndarray
             Flux errors in optical depth space
+        **kwargs : dict, optional
+            Additional keyword arguments to pass to scipy.linalg.cho_factor. 
+            Overwrite_a=True is already set by default, do not pass this as a kwarg.
 
         Returns
         -------
@@ -306,7 +310,7 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         # Cholesky factorisation of M
-        c_factor = cho_factor(AVA, overwrite_a=True)
+        c_factor = cho_factor(AVA, overwrite_a=True, **kwargs)
         return c_factor
 
     @staticmethod
@@ -314,7 +318,9 @@ class LSD:
         alpha,
         flux,
         error,
-        c_factor):
+        c_factor,
+        **kwargs,
+        ):
         """Solves for the LSD profile and its errors using the Cholesky factors.
 
         Parameters
@@ -328,6 +334,10 @@ class LSD:
         c_factor : tuple
             Cholesky factorisation matrix and lower/upper flag, to be put straight into 
             scipy.linalg.cho_solve as c_factor
+        **kwargs : dict, optional
+            Additional keyword arguments to pass to both scipy.linalg.cho_solve calls
+            (one for the profile, one for the covariance matrix)
+            Overwrite_b=True is already set by default, do not pass this as a kwarg.
 
         Returns
         -------
@@ -342,10 +352,10 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         # z = M⁻¹ b
-        profile = cho_solve(c_factor, AVR)
+        profile = cho_solve(c_factor, AVR, overwrite_b=True, **kwargs)
 
         # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
-        cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]))
+        cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=True, **kwargs)
         profile_errors = np.sqrt(np.diag(cov_z))
         return profile, profile_errors
 
