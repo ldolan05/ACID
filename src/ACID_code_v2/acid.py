@@ -258,6 +258,12 @@ class Acid:
         if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
             "not an array of S/N values for each pixel.")
+        
+        init_keys = ["velocities", "linelist_path", "linelist_wl", "linelist_depths", "verbose",
+                     "telluric_lines", "name", "seed"]
+        for key in init_keys:
+            if key in kwargs and self.verbose > 0:
+                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
 
         # Assign all inputs to class variables (except all frames, handled below)
         self.wavelengths    = {"input": input_wavelengths}
