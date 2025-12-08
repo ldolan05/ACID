@@ -231,3 +231,47 @@ These inputs can be input into the HARPS function of ACID (ACID_HARPS):
    result.plot_profiles()
 
 ACID computes and returns the Barycentric Julian Date, average profile and errors for each frame. The average profile is computed using a weighted mean across all orders.
+
+Performing LSD
+------------
+The ACID package can perform traditional LSD on its own via the LSD class. This can be useful for comparison to ACID results or for quick-look analysis.
+The LSD class can be used as follows:
+
+.. code-block:: python
+
+   import ACID_code_v2 as acid
+   import numpy as np
+   from astropy.io import fits
+   import matplotlib.pyplot as plt
+
+   spec_file = fits.open('example/sample_spec_1.fits')
+
+   wavelength = spec_file[0].data   # Wavelengths in Angstroms
+   spectrum = spec_file[1].data     # Spectral Flux
+   error = spec_file[2].data        # Spectral Flux Errors
+   sn = spec_file[3].data           # SN of Spectrum
+
+   linelist = 'example/example_linelist.txt' # Insert path to line list
+
+   # choose a velocity grid for the final profile(s)
+   deltav = acid.calc_deltav(wavelength)  
+   velocities = np.arange(-25, 25, deltav)  
+
+   # Initiate LSD class
+   LSD = acid.LSD() # Can be initiated with an instance of Acid 
+
+   # Perform LSD
+   LSD.run_LSD(wavelength, spectrum, error, sn, linelist, velocities)
+
+   # Extract useful attributes
+   profile = LSD.profile
+   profile_errors = LSD.profile_errors
+
+   # Example plot
+   plt.errorbar(velocities, LSD.profile, yerr=LSD.profile_errors, ecolor='red')
+   plt.title('LSD Profile')
+   plt.xlabel('Velocity (km/s)')
+   plt.ylabel('LSD Profile Value')
+   plt.show()
+
+See the LSD API for more information on available methods and attributes.
