@@ -4,7 +4,6 @@ from math import log10, floor
 from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
-from functools import partial
 from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
