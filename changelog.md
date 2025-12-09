@@ -1,6 +1,21 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.1.0] - 2025-12-09
+
+### Changed
+- Optimised the LSD matrix inversion algorithm using a 2-step Cholesky matrix factorisation. (2-3x speedup)
+- Changed moves model for emcee to a mixed moves model using stretch moves and DE moves.
+- Loosened python requirements to just >=3.8, the fastest python version for Acid is now 3.14.
+- Default seed is now None
+
+### Fixed
+- Fixed a bug for n_sig kwarg input to Acid to now actually clip n sigma from the residuals.
+- Corrected the continuum error propagation formula in final stage of Acid.
+
+### Added
+- LSD class that can now be interacted with by a user. The tutorial and API sections in the reatthedocs have been updated.
+
 ## [1.0.4] - 2025-12-02
 
 ### Changed
