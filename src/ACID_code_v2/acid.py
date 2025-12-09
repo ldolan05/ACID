@@ -967,7 +967,8 @@ class Acid:
         #         self.poly_cos_err.append(np.max(error))
         # self.profile = np.array(self.profile)
         # self.profile_err = np.array(self.profile_err)
-        # nvel = len(self.velocities)
+
+        nvel = len(self.velocities)
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
         errors = np.max(errors, axis=0) # why?
@@ -984,7 +985,6 @@ class Acid:
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
         norm_wl = self.wavelengths["combined_normalized"]
-        nvel = len(self.velocities)
 
         # conts1 = []
         # for ind in inds:
