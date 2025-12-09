@@ -116,7 +116,7 @@ spectrum = spectrum[::15]
 error = error[::15]
 
 # wavelength, scaled_spec, scaled_error = utils.scale_spectra(wavelength, spectrum, error)
-sn = acid.guess_SNR(wavelength, 1-spectrum, error)
+sn = acid.guess_SNR(wavelength, spectrum, error)
 # velocities = np.arange(-25, 25, acid.calc_deltav(wavelength))
 # plt.errorbar(wavelength, scaled_spec, scaled_error)
 # wavelength, spectrum, error = utils.scale_spectra(wavelength, spectrum, error)
