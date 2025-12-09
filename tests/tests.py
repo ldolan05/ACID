@@ -8,7 +8,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = next(p for p in SCRIPT_DIR.parents if (p / "pyproject.toml").exists())
 sys.path.append(str(PROJECT_ROOT))
 os.chdir(PROJECT_ROOT)
-import ACID_code_v2 as acid
+from src import  ACID_code_v2 as acid
 acid._reload_all()
 
 def test_run_e2ds():
