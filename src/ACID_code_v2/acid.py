@@ -645,7 +645,8 @@ class Acid:
                     combined_sn = sum(weights_f * sn) / sum(weights_f)
 
                     if self.correct_error_combine is True:
-                        combined_errors[n] = 1 / np.sqrt(sum(weights_f))
+                        print("correct_error_combine is enabled")
+                        combined_errors[n] = 1 / np.sqrt(sum(weights_f ** 2))
                     else:
                         combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
 
@@ -699,6 +700,7 @@ class Acid:
         """
 
         if self.cf_percentile is True:
+            print("cf_percentile is enabled")
             cont_factor = np.percentile(fluxes, 95)
         else:
             cont_factor = fluxes[0]
@@ -803,6 +805,8 @@ class Acid:
         # TODO! : check what the hell is gong on here with a_old
         a_old = 1
 
+        if self.n_sig == 2:
+            print("n_sig is 2")
         upper_clip = m + self.n_sig * sigma
         lower_clip = m - self.n_sig * sigma
 
@@ -815,6 +819,7 @@ class Acid:
         yerr[idx2] = 1e12
 
         if self.no_a_old is True:
+            print("no_a_old is enabled")
             a, b = utils.get_normalisation_coeffs(x)
         else:
             a, b = utils.get_normalisation_coeffs(x)
@@ -824,6 +829,7 @@ class Acid:
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
         LSD_masking = LSD(self)
         if self.no_sn100 is True:
+            print("no_sn100 is enabled")
             LSD_masking.run_LSD(x, _bin, bye, sn=self.sn["combined"])
         else:
             LSD_masking.run_LSD(x, _bin, bye, sn=100)
@@ -885,6 +891,7 @@ class Acid:
                 self.cores = os.cpu_count()
         
         if self.moves is True:
+            print("moves is True")
             moves=[ # Use the new moves option in emcee v3 for faster convergence
                 (emcee.moves.StretchMove(), 0.6),
                 (emcee.moves.DEMove(), 0.3),
@@ -917,6 +924,7 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 if self.fork is True:
+                    print("fork is True")
                     ctx = mp.get_context("fork")
                     mp_obj = ctx
                 else:
@@ -943,6 +951,7 @@ class Acid:
 
         # Discarding all vales except the last 1000 steps.
         if self.correct_autocorrelation is True:
+            print("correct_autocorrelation is enabled")
             tau = self.sampler.get_autocorr_time(quiet=True)
             burnin = int(2 * np.max(tau))
             thin = int(np.min(tau)/5)
@@ -1000,6 +1009,7 @@ class Acid:
         #     conts1.append(mdl1_temp)
 
         if self.highsamples is True:
+            print("highsamples is True")
             samples = flat_samples
         else:
             samples = flat_samples[inds]
@@ -1050,6 +1060,7 @@ class Acid:
 
             # correcting continuum
             if self.correct_continuum is True:
+                print("correct_continuum is enabled")
                 error = np.sqrt((error/mdl1)**2 + (self.continuum_error/mdl1)**2)
                 flux /= mdl1
             else:
