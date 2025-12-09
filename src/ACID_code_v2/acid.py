@@ -174,7 +174,7 @@ class Acid:
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
             frame_sns[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
-            spectra (this will make the code work, but is unlikely to produce the desired result)., by default None
+            spectra, by default None
         all_frames : str | np.ndarray | None, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
             regions or order (in the case of echelle spectra). General shape needs to be
