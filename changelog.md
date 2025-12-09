@@ -1,6 +1,17 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.1.1] - 2025-12-09
+
+### Fixed
+- Fixed tests import
+- Fixed velocities docstring for Acid init
+- Fixed assert statement for SNR and input_wavelengths ndim (rather than shape)
+
+### Changed
+- guess_SNR now does a much better job at estimating SNR (no longer using specutils)
+- Removed specutils requirement
+
 ## [1.1.0] - 2025-12-09
 
 ### Changed
