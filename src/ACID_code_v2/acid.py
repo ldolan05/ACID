@@ -1,22 +1,19 @@
-import sys, emcee, warnings, os, time, importlib, inspect
+import sys, emcee, warnings, os, time, inspect
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
-from functools import partial
 from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
 import scipy.constants as const
 from . import utils
-from . import lsd
+from .lsd import LSD
 from . import mcmc_utils
 from .result import Result
 
 warnings.filterwarnings("ignore")
-importlib.reload(lsd)
-importlib.reload(utils)
 
 c_kms = float(const.c/1e3)
 
@@ -36,20 +33,20 @@ class Acid:
         verbose        :int|npint|bool       = 2,
         telluric_lines :np.ndarray|list|None = None,
         name           :str                  = 'ACID',
-        seed           :int|npint|None       = 42,
+        seed           :int|npint|None       = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
 
         Parameters
         ----------
+        velocities : np.ndarray | None, optional
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
+            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
         linelist_path : str | None, optional
             Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
             be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. If None, you can directly provide linelist_wl
             and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided., by default None
-        velocities : np.ndarray | None, optional
-            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
-            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
         linelist_wl : np.ndarray | list | None, optional
             Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
@@ -93,7 +90,7 @@ class Acid:
         # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
         # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
         if linelist_path is None:
-            linelist_path = {"wavelength": linelist_wl, "depth": linelist_depths}
+            linelist_path = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
         # Define telluric_lines with defaults if not input, check type if it is
         if telluric_lines is None:
@@ -186,7 +183,7 @@ class Acid:
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
             frame_sns[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
-            spectra (this will make the code work, but is unlikely to produce the desired result)., by default None
+            spectra, by default None
         all_frames : str | np.ndarray | None, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
             regions or order (in the case of echelle spectra). General shape needs to be
@@ -255,21 +252,26 @@ class Acid:
         if np.any(input_spectra <= 0):
             if self.verbose > 1:
                 print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
-                "negative values. However, it is recommended to input spectra that are already normalised and positive. " \
-                "Please check your data. You can check acid.scale_spectra for more information on how this is done.")
-            input_wavelengths, input_spectra, input_spectral_errors = utils.scale_spectra(
-                input_wavelengths, input_spectra, input_spectral_errors)
+                f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
+                f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
+            input_spectra, input_spectral_errors = utils.scale_spectra(input_spectra, input_spectral_errors)
 
         # Validated frame_sns input
         # If frame_sns is not provided, estimate using specutils, this is a very rudimentary guess and get around for not
         # providing a SNS which should normally come from fits files.
         if frame_sns is None:
             frame_sns = utils.guess_SNR(input_wavelengths, input_spectra, input_spectral_errors)
-            assert frame_sns.shape == input_spectra.shape, \
-            "frame_sns.shape and input_spectra.shape do not match"
+            assert frame_sns.ndim == input_spectra.ndim - 1, \
+            "frame_sns.ndim and input_spectra.ndim-1 do not match"
         if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
             "not an array of S/N values for each pixel.")
+        
+        init_keys = ["velocities", "linelist_path", "linelist_wl", "linelist_depths", "verbose",
+                     "telluric_lines", "name", "seed"]
+        for key in init_keys:
+            if key in kwargs and self.verbose > 0:
+                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
 
         # Assign all inputs to class variables (except all frames, handled below)
         self.wavelengths    = {"input": input_wavelengths}
@@ -338,10 +340,11 @@ class Acid:
         self.poly_inputs, self.flux["fitted"], self.errors["fitted"] = self.continuumfit(
             self.flux["combined"], self.wavelengths["combined_normalized"], self.errors["combined"])
         self.wavelengths["fitted"] = np.copy(self.wavelengths["combined"]) # Just to keep track
+        self.sn["fitted"]      = np.copy(self.sn["combined"])      # SN is not changed here
 
         # Get the initial LSD profile using the initial fit
-        initial_LSD = lsd.LSD(self) # Initialise LSD class with standard Acid attributes
-        initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"])
+        initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes
+        initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"], self.sn["fitted"])
 
         # Use alpha matrix and initial profile class variables from initial LSD run
         self.initial_profile = initial_LSD.profile
@@ -570,10 +573,10 @@ class Acid:
         """
 
         if frame_wavelengths: # This should only be for testing
-            self.wavelengths["input"] = frame_wavelengths
-            self.flux["input"]        = frame_flux
-            self.errors["input"]      = frame_errors
-            self.sn["input"]          = frame_sns
+            self.wavelengths["input"] = np.copy(frame_wavelengths)
+            self.flux["input"]        = np.copy(frame_flux)
+            self.errors["input"]      = np.copy(frame_errors)
+            self.sn["input"]          = np.copy(frame_sns)
 
         # Set simple names for variables (just used in this function)
         wavelengths = np.copy(self.wavelengths["input"])
@@ -819,7 +822,7 @@ class Acid:
         poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord)
         # velocities1, profile, profile_err, self.alpha, continuum_waves, continuum_flux, no_line = LSD.LSD(
         #     self.x, _bin, bye, self.linelist_path, 'False', self.poly_ord, 100, 30, self.name, self.velocities)
-        LSD_masking = lsd.LSD(self)
+        LSD_masking = LSD(self)
         if self.no_sn100 is True:
             LSD_masking.run_LSD(x, _bin, bye, sn=self.sn["combined"])
         else:
@@ -1064,7 +1067,7 @@ class Acid:
             # Removed this if else block as you should be able to assert len(flux[idx])>0 from earlier checks
             # else:
 
-            LSD_profiles = lsd.LSD(self)
+            LSD_profiles = LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
@@ -1087,7 +1090,7 @@ class Acid:
         directory=None,
         ):
         # read in first frame
-        fluxes, wavelengths, flux_error_order, sn = lsd.LSD().blaze_correct(
+        fluxes, wavelengths, flux_error_order, sn = LSD().blaze_correct(
             file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
         #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
@@ -1104,7 +1107,7 @@ class Acid:
 
         def task_frames(frames, errors, frame_wavelengths, sns, i):
             file = filelist[i]
-            frames[i], frame_wavelengths[i], errors[i], sns[i] = lsd.LSD().blaze_correct(
+            frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD().blaze_correct(
                 file_type, 'order', order, file, directory, 'unmasked', self.name, 'y')
             # print(i, frames)
             return frames, frame_wavelengths, errors, sns

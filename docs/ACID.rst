@@ -14,6 +14,7 @@ Core Classes
 
    Acid
    Result
+   LSD
 
 Utility Functions
 ------------------
