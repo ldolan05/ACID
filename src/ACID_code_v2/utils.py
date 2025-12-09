@@ -3,8 +3,6 @@ import glob
 import scipy.constants as const
 import astropy.units as u
 from astropy.nddata import StdDevUncertainty
-from specutils import Spectrum
-from specutils.analysis import snr
 c_kms = float(const.c/1e3)
 
 def validate_args(x, i, allow_none=False, sn=False):
@@ -110,20 +108,20 @@ def calc_deltav(wavelengths):
     return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * c_kms
 
 def guess_SNR(
-        frame_wavelengths : np.ndarray,
-        frame_flux        : np.ndarray,
-        frame_errors      : np.ndarray
+        frame_wavelengths : np.ndarray | list,
+        frame_flux        : np.ndarray | list,
+        frame_errors      : np.ndarray | list
         ) -> np.ndarray:
-    """Estimates S/N for each frame using specutils
+    """Estimates S/N for each frame
 
     Parameters
     ----------
-    frame_wavelengths : np.ndarray
-        Array of wavelengths for each frame.
-    frame_flux : np.ndarray
-        Array of flux values for each frame.
-    frame_errors : np.ndarray
-        Array of error values for each frame.
+    frame_wavelengths : np.ndarray | list
+        Array/list of wavelengths for each frame.
+    frame_flux : np.ndarray | list
+        Array/list of flux values for each frame.
+    frame_errors : np.ndarray | list
+        Array/list of error values for each frame.
 
     Returns
     -------
@@ -134,14 +132,23 @@ def guess_SNR(
     frame_wavelengths, frame_flux, frame_errors = [
         validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
 
-    frame_sns = []
-    for wavelengths, spectra, errors in zip(frame_wavelengths.tolist(), frame_flux.tolist(), frame_errors.tolist()):
-        spectrum_model = Spectrum(spectral_axis = u.Quantity(wavelengths, u.AA),
-                                    flux          = u.Quantity(spectra, u.Jy),
-                                    uncertainty   = StdDevUncertainty(u.Quantity(errors, u.Jy)))
-        estimated_sn = snr(spectrum_model)
-        frame_sns.append(float(estimated_sn.value))
-    return np.array(frame_sns)
+    wavelength_upper = np.max(frame_wavelengths, axis=-1)
+    wavelength_lower = np.min(frame_wavelengths, axis=-1)
+    delta_wavelength = wavelength_upper - wavelength_lower
+    upper_cut = wavelength_lower + delta_wavelength * (2/3)
+    lower_cut = wavelength_lower + delta_wavelength * (1/3)
+
+    # Keep shape; drop out-of-band values as NaN
+    mask = (frame_wavelengths > lower_cut[:, None]) & (frame_wavelengths < upper_cut[:, None])
+
+    frame_wavelengths = np.where(mask, frame_wavelengths, np.nan)
+    frame_flux = np.where(mask, frame_flux, np.nan)
+    frame_errors = np.where(mask, frame_errors, np.nan)
+
+    median = np.nanmedian(frame_flux, axis=-1)
+    median_error = np.nanmedian(frame_errors, axis=-1)
+
+    return np.abs(median / median_error)
 
 def get_normalisation_coeffs(wl):
     """Calculates normalization coefficients for wavelength array
