@@ -252,8 +252,8 @@ class Acid:
         # providing a SNS which should normally come from fits files.
         if frame_sns is None:
             frame_sns = utils.guess_SNR(input_wavelengths, input_spectra, input_spectral_errors)
-            assert frame_sns.shape == input_spectra.shape, \
-            "frame_sns.shape and input_spectra.shape do not match"
+            assert frame_sns.ndim == input_spectra.ndim - 1, \
+            "frame_sns.ndim and input_spectra.ndim-1 do not match"
         if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
             "not an array of S/N values for each pixel.")
