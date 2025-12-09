@@ -40,13 +40,13 @@ class Acid:
 
         Parameters
         ----------
+        velocities : np.ndarray | None, optional
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
+            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
         linelist_path : str | None, optional
             Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
             be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. If None, you can directly provide linelist_wl
             and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided., by default None
-        velocities : np.ndarray | None, optional
-            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
-            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
         linelist_wl : np.ndarray | list | None, optional
             Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
