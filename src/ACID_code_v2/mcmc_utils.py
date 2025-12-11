@@ -1,17 +1,28 @@
 import emcee
 import numpy as np
 import multiprocessing as mp
+from .lsd import LSD
+from . import utils
 
 def _init_worker(global_data):
     """Called once per worker."""
-    global x, y, yerr, alpha, k_max, velocities
+    global x, y, yerr, alpha, k_max, velocities, c_factor, fit_profile
     x = global_data["x"]
     y = global_data["y"]
     yerr = global_data["yerr"]
     alpha = global_data["alpha"]
     velocities = global_data["velocities"]
     k_max = alpha.shape[1]
+    fit_profile = global_data["fit_profile"]
     np.random.seed(global_data["seed"])
+
+    c_factor = LSD.calc_cholesky(alpha, yerr)
+
+    global lp_function
+    if global_data["fit_profile"]:
+        lp_function = model_func
+    else:
+        lp_function = fast_func
 
 def model_func(inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
@@ -48,7 +59,7 @@ def model_func(inputs, x, **kwargs):
         return mdl
 
 def _log_likelihood(theta, x, y, yerr):
-    model = model_func(theta, x)
+    model = lp_function(theta, x)
     diff = y - model
     return -0.5 * np.sum(diff*diff / (yerr*yerr) + np.log(2*np.pi*(yerr*yerr)))
 
@@ -86,8 +97,36 @@ def _log_prior(theta):
 
 def _log_probability(theta):
     ## calculates log probability - used for mcmc
-    lp = _log_prior(theta)
-    if not np.isfinite(lp):
-        return -np.inf
-    final = lp + _log_likelihood(theta, x, y, yerr)
+    if fit_profile:
+        lp = _log_prior(theta)
+        if not np.isfinite(lp):
+            return -np.inf
+        final = lp + _log_likelihood(theta, x, y, yerr)
+    else:
+        final = _log_likelihood(theta, x, y, yerr)
     return final
+
+def fast_func(inputs, x, **kwargs):
+        ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
+        alpha = kwargs.get("alpha", globals().get("alpha"))
+
+        z = LSD.solve_z(alpha, y, yerr, c_factor, return_error=False)
+
+        mdl = np.dot(alpha, z)
+
+        #converting model from optical depth to flux
+        mdl = np.exp(mdl)
+
+        ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
+        a, b = utils.get_normalisation_coeffs(x)
+
+        coefs = np.asarray(inputs[:-1], dtype=float)
+        scale = inputs[-1]
+        u = (a * x) + b
+
+        mdl1 = 0.0
+        for c in reversed(coefs):
+            mdl1 = mdl1 * u + c
+        mdl *= mdl1 * scale
+
+        return mdl

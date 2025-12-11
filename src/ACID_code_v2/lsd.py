@@ -319,6 +319,7 @@ class LSD:
         flux,
         error,
         c_factor,
+        return_error : bool = True,
         **kwargs,
         ):
         """Solves for the LSD profile and its errors using the Cholesky factors.
@@ -334,6 +335,9 @@ class LSD:
         c_factor : tuple
             Cholesky factorisation matrix and lower/upper flag, to be put straight into 
             scipy.linalg.cho_solve as c_factor
+        return_error : bool, optional
+            Whether to calculate and return the profile errors along with the
+            profile, by default True
         **kwargs : dict, optional
             Additional keyword arguments to pass to both scipy.linalg.cho_solve calls
             (one for the profile, one for the covariance matrix)
@@ -342,7 +346,7 @@ class LSD:
         Returns
         -------
         profile, profile_errors : tuple
-            LSD profile and its errors
+            LSD profile and its errors (if return_error is True)
         """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
         R = flux         # R matrix in log space
@@ -355,9 +359,12 @@ class LSD:
         profile = cho_solve(c_factor, AVR, overwrite_b=True, **kwargs)
 
         # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
-        cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=True, **kwargs)
-        profile_errors = np.sqrt(np.diag(cov_z))
-        return profile, profile_errors
+        if return_error:
+            cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=True, **kwargs)
+            profile_errors = np.sqrt(np.diag(cov_z))
+            return profile, profile_errors
+        else:
+            return profile
 
     def get_wave(self, data, header):
 
