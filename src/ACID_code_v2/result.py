@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools
 from beartype import beartype
 from numpy import integer as npint
-from .mcmc_utils import model_func
+
+from .lsd import LSD
+from . import mcmc_utils
 from . import utils
 
 warnings.filterwarnings("ignore")
@@ -71,6 +73,8 @@ class Result:
         self.verbose = Acid.verbose
         self.order_range = Acid.order_range
         self.alpha = Acid.alpha
+        self.fit_profile = Acid.fit_profile
+        self.mcmc_global_data = Acid.mcmc_global_data
 
         self.BJDs = getattr(Acid, 'BJDs', None)
         self.profiles = getattr(Acid, 'profiles', None)
@@ -214,7 +218,7 @@ class Result:
         labels          :dict|None = None,
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
-        errorbar_kwargs :dict|None = None
+        errorbar_kwargs :dict|None = None,
         ):
         """Plots the LSD profile result from Acid.
 
@@ -286,6 +290,7 @@ class Result:
         labels          :dict|None = None,
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
+        **kwargs # for testing
         ):
         """Plots the forward model fit to the observed spectrum.
 
@@ -331,7 +336,12 @@ class Result:
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        model_flux = model_func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
+        if self.fit_profile:
+            func = mcmc_utils.model_func
+        else:
+            func = mcmc_utils.fast_func
+        mcmc_utils._init_worker(self.mcmc_global_data)
+        model_flux = func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
