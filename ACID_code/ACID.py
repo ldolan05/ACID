@@ -485,7 +485,7 @@ def combineprofiles(spectra, errors):
     return  spectrum, spec_errors
 
 def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sns, vgrid, all_frames='default', poly_or=3, pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96], order = 0,
-         nsteps=10000, sampler=None, seed=None, parallel=True): # BEN - added nsteps option
+         nsteps=10000, seed=None, parallel=True, _input_data=None): # BEN - added nsteps option
     """Accurate Continuum fItting and Deconvolution
 
     Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra, returning an LSD profile for each spectrum given. 
@@ -535,88 +535,102 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     if type(all_frames)!=np.ndarray:
         if all_frames=='default':
             all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
-
-    fw = frame_wavelengths.copy()
-    f = frames.copy()
-    fe = frame_errors.copy()
-    s = sns.copy()
     
-    if len(fw)>1:
-        wavelengths, fluxes, flux_error_order, sn = combine_spec(fw, f, fe, s)
-    else: wavelengths, fluxes, flux_error_order, sn = fw[0], f[0], fe[0], s[0]
+    skip_acid = False
+    global input_data, mask_idx, sampler
+    input_data = _input_data if _input_data is not None else {}
+    if len(input_data) > 0:
+        print("Skipping V1 sampling")
+        sampler = input_data["sampler"]
+    if len(input_data) > 1:
+        print("Skipping V1 initialisation")
+        mask_idx = input_data["residual_masks"]
+        wavelengths = input_data["wavelengths"]["combined"]
+        a = 2/(np.max(wavelengths)-np.min(wavelengths))
+        b = 1 - a*np.max(wavelengths)
+        skip_acid = True
 
-    ### getting the initial polynomial coefficents
-    a = 2/(np.max(wavelengths)-np.min(wavelengths))
-    b = 1 - a*np.max(wavelengths)
-    poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
+    if skip_acid is False:
+        fw = frame_wavelengths.copy()
+        f = frames.copy()
+        fe = frame_errors.copy()
+        s = sns.copy()
+        
+        if len(fw)>1:
+            wavelengths, fluxes, flux_error_order, sn = combine_spec(fw, f, fe, s)
+        else: wavelengths, fluxes, flux_error_order, sn = fw[0], f[0], fe[0], s[0]
 
-    # t2 = time.time()
-    # print('Set up before LSD %s'%(t2-t0))
-    #### getting the initial profile
-    global alpha
-    velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
+        ### getting the initial polynomial coefficents
+        a = 2/(np.max(wavelengths)-np.min(wavelengths))
+        b = 1 - a*np.max(wavelengths)
+        poly_inputs, fluxes1, flux_error_order1, fit = continuumfit(fluxes,  (wavelengths*a)+b, flux_error_order, poly_ord)
 
-    # t3 = time.time()
-    # print('LSD run takes: %s'%(t3-t2))
+        # t2 = time.time()
+        # print('Set up before LSD %s'%(t2-t0))
+        #### getting the initial profile
+        global alpha
+        velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
 
-    ## Setting the number of points in vgrid (k_max)
-    global k_max
-    k_max = len(profile)
-    model_inputs = np.concatenate((profile, poly_inputs))
+        # t3 = time.time()
+        # print('LSD run takes: %s'%(t3-t2))
 
-    ## setting x, y, yerr for emcee
-    x = wavelengths
-    y = fluxes
-    yerr = flux_error_order
+        ## Setting the number of points in vgrid (k_max)
+        global k_max
+        k_max = len(profile)
+        model_inputs = np.concatenate((profile, poly_inputs))
 
-    ## setting these normalisation factors as global variables - used in the figures below
-    a = 2/(np.max(x)-np.min(x))
-    b = 1 - a*np.max(x)
+        ## setting x, y, yerr for emcee
+        x = wavelengths
+        y = fluxes
+        yerr = flux_error_order
 
-    #masking based off residuals
-    global mask_idx
-    
-    yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines = telluric_lines, n_sig=n_sig)
+        ## setting these normalisation factors as global variables - used in the figures below
+        a = 2/(np.max(x)-np.min(x))
+        b = 1 - a*np.max(x)
 
-    # t4 = time.time()
-    # print('residual masking takes: %s' %(t4-t3))
+        #masking based off residuals
+        
+        yerr, model_inputs_resi, mask_idx = residual_mask(x, y, yerr, model_inputs, poly_ord, linelist, pix_chunk=pix_chunk, dev_perc=dev_perc, tell_lines = telluric_lines, n_sig=n_sig)
 
-    ## setting number of walkers and their start values(pos)
-    ndim = len(model_inputs)
-    nwalkers= ndim*3
-    rng = np.random.default_rng(seed)
+        # t4 = time.time()
+        # print('residual masking takes: %s' %(t4-t3))
 
-    ### starting values of walkers with indpendent variation
-    sigma = 0.8*0.005
-    pos = []
-    for i in range(0, ndim):
-        if i <ndim-poly_ord-2:
-            pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+        ## setting number of walkers and their start values(pos)
+        ndim = len(model_inputs)
+        nwalkers= ndim*3
+        rng = np.random.default_rng(seed)
+
+        ### starting values of walkers with indpendent variation
+        sigma = 0.8*0.005
+        pos = []
+        for i in range(0, ndim):
+            if i <ndim-poly_ord-2:
+                pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+            else:
+                sigma = abs(round_sig(model_inputs[i], 1))/10
+                pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
+            pos.append(pos2)
+
+        pos = np.array(pos)
+        pos = np.transpose(pos)
+
+        t1 = time.time()
+        # print('MCMC set up takes: %s'%(t1-t4))
+        # print('Initialised in %ss'%round((t1-t0), 2))
+
+        print('Fitting the Continuum...')
+        # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
+        # sampler.run_mcmc(pos, steps_no, progress=True)a
+
+        if parallel:
+            if sampler is None:
+                with Pool(processes=int(os.environ.get('SLURM_CPUS_ON_NODE', 1))) as pool:
+                    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+                    sampler.run_mcmc(pos, nsteps, progress=True)
         else:
-            sigma = abs(round_sig(model_inputs[i], 1))/10
-            pos2 = rng.normal(model_inputs[i], sigma, (nwalkers, ))
-        pos.append(pos2)
-
-    pos = np.array(pos)
-    pos = np.transpose(pos)
-
-    t1 = time.time()
-    # print('MCMC set up takes: %s'%(t1-t4))
-    # print('Initialised in %ss'%round((t1-t0), 2))
-
-    print('Fitting the Continuum...')
-    # sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-    # sampler.run_mcmc(pos, steps_no, progress=True)a
-
-    if parallel:
-        if sampler is None:
-            with Pool(processes=int(os.environ.get('SLURM_CPUS_ON_NODE', 1))) as pool:
-                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool)
+            if sampler is None:
+                sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
                 sampler.run_mcmc(pos, nsteps, progress=True)
-    else:
-        if sampler is None:
-            sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr))
-            sampler.run_mcmc(pos, nsteps, progress=True)
 
     ## discarding all vales except the last 1000 steps.
     dis_no = int(np.floor(nsteps-1000))
@@ -632,6 +646,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     profile_err = []
     poly_cos_err = []
     
+    ndim = sampler.get_chain().shape[2]
+    k_max = len(velocities)
     for i in range(ndim):
         mcmc = np.median(flat_samples[:, i])
         error = np.std(flat_samples[:, i])
@@ -776,7 +792,13 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         #     all_frames = get_profiles(all_frames, order, poly_cos, continuum_error, counter)  
     else: all_frames = get_profiles(all_frames, order, poly_cos, continuum_error, 0)
 
-    return all_frames, sampler
+    _input_data = {
+        "sampler": sampler,
+        "residual_masks": mask_idx,
+        "wavelengths": {"combined": wavelengths},
+        }
+
+    return all_frames, _input_data
 
 def ACID_HARPS(filelist, line, vgrid, poly_or=3, order_range=np.arange(10,70), save_path = './', file_type = 'e2ds', pix_chunk = 20, dev_perc = 25, n_sig=1, telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34, 5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]):
 

@@ -317,6 +317,18 @@ class Acid:
             raise TypeError("'all_frames' must be a numpy array")
         if not self.all_frames.ndim == 4:
             raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
+        
+        # Testing to input raw data:
+        if isinstance(_input_data, dict):
+            print("Skipping v2 sampling")
+            if len(_input_data) > 1: # ie if more than just sampler put in
+                print("Skipping v2 initialisation")
+                self.wavelengths["combined"] = _input_data["wavelengths"]["combined"]
+                a, b = utils.get_normalisation_coeffs(self.wavelengths["combined"])
+                self.wavelengths["combined_normalized"] = (self.wavelengths["combined"]*a)+b
+                self.residual_masks = _input_data["residual_masks"]
+                self.sampler        = _input_data["sampler"]
+                return self.process_results()
 
         ### Begin ACID process
 
@@ -1022,8 +1034,15 @@ class Acid:
 
         self.all_frames = self._get_profiles(self.all_frames)  
 
+        # For testing
+        self._input_data = {
+            "wavelengths": self.wavelengths, # contains combined
+            "sampler"    : self.sampler,
+            "residual_masks": self.residual_masks,
+        }
+
         if self.return_result and return_result:
-            return self.all_frames, self.sampler
+            return self.all_frames, self._input_data
             return Result(self)
         return
 
