@@ -288,6 +288,7 @@ class Acid:
         self.parallel       = parallel
         self.production_run = production_run
         self.cores          = cores
+        self._input_data    = _input_data if _input_data is not None else {}
 
         # The tests
         self.no_a_old                = no_a_old
@@ -402,13 +403,11 @@ class Acid:
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
 
-        _input_data = _input_data if _input_data is not None else {}
-        if "sampler" not in _input_data:
+        if "sampler" not in self._input_data:
             self._run_mcmc(initial_state, self.nsteps)
 
         else: # Only for testing
-            self.sampler = _input_data.get("sampler")
-
+            self.sampler = self._input_data.get("sampler")
         # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
         # when using ACID function, but if using class directly, user can choose to call this part separately.
         if production_run is False:
