@@ -364,6 +364,7 @@ class Acid:
                 pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
+        # Transpose initial state to have shape (nwalkers, ndim) for emcee
         initial_state = np.transpose(np.array(initial_state))
         self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
