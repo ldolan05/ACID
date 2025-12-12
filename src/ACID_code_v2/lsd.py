@@ -297,7 +297,7 @@ class LSD:
             Flux errors in optical depth space
         **kwargs : dict, optional
             Additional keyword arguments to pass to scipy.linalg.cho_factor. 
-            Overwrite_a=True is already set by default, do not pass this as a kwarg.
+            Overwrite_a=False is already set by default, do not pass this as a kwarg.
 
         Returns
         -------
@@ -310,7 +310,7 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         # Cholesky factorisation of M
-        c_factor = cho_factor(AVA, overwrite_a=True, **kwargs)
+        c_factor = cho_factor(AVA, overwrite_a=False, **kwargs)
         return c_factor
 
     @staticmethod
@@ -319,6 +319,7 @@ class LSD:
         flux,
         error,
         c_factor,
+        return_error : bool = True,
         **kwargs,
         ):
         """Solves for the LSD profile and its errors using the Cholesky factors.
@@ -334,15 +335,18 @@ class LSD:
         c_factor : tuple
             Cholesky factorisation matrix and lower/upper flag, to be put straight into 
             scipy.linalg.cho_solve as c_factor
+        return_error : bool, optional
+            Whether to calculate and return the profile errors along with the
+            profile, by default True
         **kwargs : dict, optional
             Additional keyword arguments to pass to both scipy.linalg.cho_solve calls
             (one for the profile, one for the covariance matrix)
-            Overwrite_b=True is already set by default, do not pass this as a kwarg.
+            Overwrite_b=False is already set by default, do not pass this as a kwarg.
 
         Returns
         -------
         profile, profile_errors : tuple
-            LSD profile and its errors
+            LSD profile and its errors (if return_error is True)
         """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
         R = flux         # R matrix in log space
@@ -352,12 +356,15 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         # z = M⁻¹ b
-        profile = cho_solve(c_factor, AVR, overwrite_b=True, **kwargs)
+        profile = cho_solve(c_factor, AVR, overwrite_b=False, **kwargs)
 
         # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
-        cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=True, **kwargs)
-        profile_errors = np.sqrt(np.diag(cov_z))
-        return profile, profile_errors
+        if return_error:
+            cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=False, **kwargs)
+            profile_errors = np.sqrt(np.diag(cov_z))
+            return profile, profile_errors
+        else:
+            return profile
 
     def get_wave(self, data, header):
 

@@ -240,6 +240,33 @@ def result_handling_test():
     result.plot_profiles()
     return result
 
+def no_profile_fit():
+    files = glob.glob('example/sample_spec_*.fits')
+
+    # create lists for wavelengths, spectra, errors and sn for all frames
+    wavelengths = []
+    spectra = []
+    errors = []
+    sns = []
+
+    for file in files:
+        spec_file = fits.open('%s'%file)
+
+        wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
+        spectra.append(spec_file[1].data[::skips])        # Spectral Flux
+        errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
+        sns.append(float(spec_file[3].data))     # SN of Spectrum
+
+    linelist_path = 'example/example_linelist.txt' # Insert path to line list
+
+    # choose a velocity grid for the final profile(s)
+    velocities = np.arange(-25, 25, 0.82)
+
+    # run ACID function
+    Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+    result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000, fit_profile=False)
+    result.plot_walkers()
+    return result
 
 q_res = quickstart()
 mf_res = multiple_frames()
@@ -251,6 +278,7 @@ classes_res.continue_sampling(nsteps=2000)
 classes_res.plot_walkers()
 result_handling_res = result_handling_test()
 res_nv = no_verbosity()
+res_no_profile_fit = no_profile_fit()
 
 print("All tests passed!")
 

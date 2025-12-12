@@ -151,6 +151,7 @@ class Acid:
         nsteps         :int|npint      = 10000,
         return_result  :bool           = True,
         production_run :bool           = False,
+        fit_profile    :bool           = True,
 
         # Testing and internal kwargs
         _input_data                    = None,
@@ -279,6 +280,7 @@ class Acid:
         self.parallel       = parallel
         self.production_run = production_run
         self.cores          = cores
+        self.fit_profile    = fit_profile
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -364,18 +366,24 @@ class Acid:
                 pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
+        if self.fit_profile is False:
+            self.ndim = self.poly_ord + 2
+            self.nwalkers = self.ndim * 3
+            initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
+
         # Transpose initial state to have shape (nwalkers, ndim) for emcee
         initial_state = np.transpose(np.array(initial_state))
         self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
         # Setting global data for mcmc_utils initialisation
         self.mcmc_global_data = {
-            "x"         : self.wavelengths["masked"],
-            "y"         : self.flux["masked"],
-            "yerr"      : self.errors["masked"],
-            "alpha"     : self.alpha,
-            "velocities": self.velocities,
-            "seed"      : self.seed
+            "x"          : self.wavelengths["masked"],
+            "y"          : self.flux["masked"],
+            "yerr"       : self.errors["masked"],
+            "alpha"      : self.alpha,
+            "velocities" : self.velocities,
+            "seed"       : self.seed,
+            "fit_profile": self.fit_profile,
             }
 
         if self.verbose>0:
@@ -721,7 +729,7 @@ class Acid:
         yerr = self.errors["combined"]
         x_norm = self.wavelengths["combined_normalized"]
 
-        forward = mcmc_utils.model_func(self.model_inputs, x, alpha=self.alpha)
+        forward, z = mcmc_utils.full_func(self.model_inputs, x, alpha=self.alpha)
 
         mdl1 = 0
         nvel = len(self.velocities)
@@ -911,25 +919,25 @@ class Acid:
         self.profile_err  = []
         self.poly_cos_err = []
 
-        for i in range(self.ndim):
-            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-            error = np.diff(mcmc)
-            if i<len(self.velocities):
-                self.profile.append(mcmc[1])
-                self.profile_err.append(np.max(error))
-            else:
-                self.poly_cos.append(mcmc[1])
-                self.poly_cos_err.append(np.max(error))
-        self.profile = np.array(self.profile)
-        self.profile_err = np.array(self.profile_err)
-        nvel = len(self.velocities)
-        # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
-        # errors = np.diff(quartiles, axis=0)
-        # errors = np.max(errors, axis=0) # why?
-        # self.profile       = quartiles[1, :nvel]
-        # self.profile_err   = errors[:nvel]
-        # self.poly_cos      = quartiles[1, nvel:]
-        # self.poly_cos_err  = errors[nvel:]
+        # for i in range(self.ndim):
+        #     mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+        #     error = np.diff(mcmc)
+        #     if i<len(self.velocities):
+        #         self.profile.append(mcmc[1])
+        #         self.profile_err.append(np.max(error))
+        #     else:
+        #         self.poly_cos.append(mcmc[1])
+        #         self.poly_cos_err.append(np.max(error))
+        # self.profile = np.array(self.profile)
+        # self.profile_err = np.array(self.profile_err)
+        nvel = len(self.velocities) if self.fit_profile else 0
+        quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        errors = np.diff(quartiles, axis=0)
+        errors = np.max(errors, axis=0) # why?
+        self.profile       = quartiles[1, :nvel]
+        self.profile_err   = errors[:nvel]
+        self.poly_cos      = quartiles[1, nvel:]
+        self.poly_cos_err  = errors[nvel:]  
 
         if self.verbose > 0:
             print('Getting the final profiles...')
@@ -939,7 +947,7 @@ class Acid:
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
         norm_wl = self.wavelengths["combined_normalized"]
-        nvel = len(self.velocities)
+        # nvel = len(self.velocities)
 
         # conts1 = []
         # for ind in inds:
