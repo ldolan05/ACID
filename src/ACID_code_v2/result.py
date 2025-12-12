@@ -210,16 +210,22 @@ class Result:
     @_require_all_results
     def plot_profiles(
         self,
-        grid            :bool      = True,
-        labels          :dict|None = None,
-        return_fig      :bool      = False,
-        subplot_kwargs  :dict|None = None,
-        errorbar_kwargs :dict|None = None
+        frame           :int|npint|None|str|list|tuple = None,
+        grid            :bool                          = True,
+        labels          :dict|None                     = None,
+        return_fig      :bool                          = False,
+        subplot_kwargs  :dict|None                     = None,
+        errorbar_kwargs :dict|None                     = None
         ):
-        """Plots the LSD profile result from Acid.
+        """Plots the LSD profile of the combined frames from Acid.
 
         Parameters
         ----------
+        frame: int | npint | None | str | list | tuple, optional
+            Which frame(s) to plot. Can be an integer index, list/tuple of integer indices,
+            'all' to plot all frames, or None (default) to plot the combined frame only. If Acid has
+            multiple orders, the combined frame is always plotted for every order, and instead the frame
+            is counted as the order index with the same behaviour. By default None.
         grid : bool, optional
             Show or hide grid, by default True
         labels : dict | None, optional
