@@ -85,7 +85,7 @@ class Result:
         else:
             self.all_frames = None
 
-        self.ndim = len(self.model_inputs)
+        self.ndim = Acid.ndim
         self.nvel = len(Acid.velocities)
 
         # Calculate autocorr time, burnin, thin
@@ -337,11 +337,11 @@ class Result:
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
         if self.fit_profile:
-            func = mcmc_utils.model_func
+            func = mcmc_utils.full_func
         else:
             func = mcmc_utils.fast_func
         mcmc_utils._init_worker(self.mcmc_global_data)
-        model_flux = func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
+        model_flux, _ = func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)

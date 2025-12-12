@@ -368,8 +368,8 @@ class Acid:
 
         if self.fit_profile is False:
             self.ndim = self.poly_ord + 2
-            # print(np.asarray(initial_state).shape)
-            initial_state = initial_state[-self.ndim:]
+            self.nwalkers = self.ndim * 3
+            initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
 
         initial_state = np.transpose(np.array(initial_state))
         self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
@@ -728,7 +728,7 @@ class Acid:
         yerr = self.errors["combined"]
         x_norm = self.wavelengths["combined_normalized"]
 
-        forward = mcmc_utils.model_func(self.model_inputs, x, alpha=self.alpha)
+        forward, z = mcmc_utils.full_func(self.model_inputs, x, alpha=self.alpha)
 
         mdl1 = 0
         nvel = len(self.velocities)

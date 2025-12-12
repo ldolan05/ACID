@@ -297,7 +297,7 @@ class LSD:
             Flux errors in optical depth space
         **kwargs : dict, optional
             Additional keyword arguments to pass to scipy.linalg.cho_factor. 
-            Overwrite_a=True is already set by default, do not pass this as a kwarg.
+            Overwrite_a=False is already set by default, do not pass this as a kwarg.
 
         Returns
         -------
@@ -310,7 +310,7 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         # Cholesky factorisation of M
-        c_factor = cho_factor(AVA, overwrite_a=True, **kwargs)
+        c_factor = cho_factor(AVA, overwrite_a=False, **kwargs)
         return c_factor
 
     @staticmethod
@@ -341,7 +341,7 @@ class LSD:
         **kwargs : dict, optional
             Additional keyword arguments to pass to both scipy.linalg.cho_solve calls
             (one for the profile, one for the covariance matrix)
-            Overwrite_b=True is already set by default, do not pass this as a kwarg.
+            Overwrite_b=False is already set by default, do not pass this as a kwarg.
 
         Returns
         -------
@@ -356,11 +356,11 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         # z = M⁻¹ b
-        profile = cho_solve(c_factor, AVR, overwrite_b=True, **kwargs)
+        profile = cho_solve(c_factor, AVR, overwrite_b=False, **kwargs)
 
         # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
         if return_error:
-            cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=True, **kwargs)
+            cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=False, **kwargs)
             profile_errors = np.sqrt(np.diag(cov_z))
             return profile, profile_errors
         else:
