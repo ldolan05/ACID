@@ -56,6 +56,37 @@ def full_func(inputs, x, **kwargs):
 
         return mdl, z
 
+def fast_func(inputs, x, **kwargs):
+    ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
+    alpha = kwargs.get("alpha", globals().get("alpha"))
+
+    ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
+    a, b = utils.get_normalisation_coeffs(x)
+
+    coefs = np.asarray(inputs[:-1], dtype=float)
+    scale = inputs[-1]
+    u = (a * x) + b
+
+    mdl = 0.0
+    for c in reversed(coefs):
+        mdl = mdl * u + c
+    mdl *= scale
+
+    if np.any(mdl <= 0):
+        return mdl, np.full(alpha.shape[1], 1) # return very low z to trigger prior rejection
+
+
+    fitted_flux = y/mdl
+    fitted_err = yerr/mdl
+    err_od = fitted_err / fitted_flux
+    flux_od = np.log(fitted_flux)
+
+    z = LSD.solve_z(alpha, flux_od, err_od, c_factor, return_error=False)
+
+    forward = np.exp(alpha @ z) * mdl
+
+    return forward, z
+
 def _log_prior(z):
     ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
 
@@ -90,57 +121,3 @@ def _log_probability(theta):
     diff = y - forward
     ll = -0.5 * np.sum(diff*diff / (yerr*yerr) + np.log(2*np.pi*(yerr*yerr)))
     return lp + ll
-
-def fast_func(inputs, x, **kwargs):
-        ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", globals().get("alpha"))
-
-        # z = LSD.solve_z(alpha, y, yerr, c_factor, return_error=False)
-
-        # mdl = np.dot(alpha, z)
-
-        # #converting model from optical depth to flux
-        # mdl = np.exp(mdl)
-
-        ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        a, b = utils.get_normalisation_coeffs(x)
-
-        coefs = np.asarray(inputs[:-1], dtype=float)
-        scale = inputs[-1]
-        u = (a * x) + b
-
-        mdl = 0.0
-        for c in reversed(coefs):
-            mdl = mdl * u + c
-        mdl *= scale
-
-        if np.any(mdl <= 0):
-            return mdl, np.full(alpha.shape[1], 1) # return very low z to trigger prior rejection
-
-        # global c_factor
-        # if c_factor is None:
-        #     c_factor = LSD.calc_cholesky(np.copy(alpha), np.copy(yerr/mdl))
-
-        fitted_flux = y/mdl
-        fitted_err = yerr/mdl
-        err_od = fitted_err / fitted_flux
-        flux_od = np.log(fitted_flux)
-
-        z = LSD.solve_z(alpha, flux_od, err_od, c_factor, return_error=False)
-
-        forward = np.exp(alpha @ z) * mdl
-        # plt.plot(x, fitted_flux, color='blue')
-        # plt.plot(x, forward, color='red')
-        # plt.plot(x, y, color='black')
-        # plt.yscale('log')
-        # plt.show()
-        # plt.plot(velocities, z)
-        # plt.plot(x, fitted_flux - y, color='green')
-        # plt.plot(x, y, color='black')
-        # plt.show()
-        # plt.plot(velocities, z)
-        # plt.show()
-        # sys.exit()
-        # sleep(0.1)
-
-        return forward, z
