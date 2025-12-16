@@ -95,10 +95,10 @@ class LSD:
         self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
 
         # Now solve for profile using Cholesky decomposition
-        c_factor = self.calc_cholesky(self.alpha, errors)
+        self.c_factor = self.calc_cholesky(self.alpha, errors)
 
         # Solve for profile and profile errors using Cholesky factors
-        self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, c_factor)
+        self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
 
         return
 
