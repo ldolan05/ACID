@@ -340,12 +340,9 @@ class Acid:
         if self.verbose>0:
             print('Residual masking...')
 
-        # Inputs:
-        # self.x, self.y, self.yerr, self.model_inputs, self.poly
-        # Sets:
-        # self.model_inputs_resi
-        # Modifies:
-        # self.alpha, self.yerr
+        # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
+        # Sets: self.c_factor
+        # Modifies: self.alpha, self.yerr
         self.residual_mask() # will eventually add options for this
 
         ## Setting number of walkers and their start values(pos)
@@ -384,6 +381,7 @@ class Acid:
             "velocities" : self.velocities,
             "seed"       : self.seed,
             "fit_profile": self.fit_profile,
+            "c_factor"   : self.c_factor,
             }
 
         if self.verbose>0:
@@ -802,6 +800,7 @@ class Acid:
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
+        self.c_factor = LSD_masking.c_factor
 
         if self.verbose > 2:
             nremoved = np.sum(idx1)+np.sum(idx2)

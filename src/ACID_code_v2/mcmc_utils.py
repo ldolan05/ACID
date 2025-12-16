@@ -15,11 +15,9 @@ def _init_worker(global_data):
     alpha = global_data["alpha"]
     velocities = global_data["velocities"]
     k_max = alpha.shape[1]
+    c_factor = global_data["c_factor"]
     fit_profile = global_data["fit_profile"]
     np.random.seed(global_data["seed"])
-
-    # TODO: precalculate log space error in Acid class and pass as global data
-    c_factor = LSD.calc_cholesky(alpha, yerr/y)
 
     global model_function
     if global_data["fit_profile"]:
