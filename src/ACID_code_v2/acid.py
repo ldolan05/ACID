@@ -301,7 +301,7 @@ class Acid:
 
         ### Begin ACID process
 
-        if self.verbose>0:
+        if self.verbose>1:
             t0 = time.time()
             print('Initialising...')
 
@@ -337,7 +337,7 @@ class Acid:
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
 
         # Masking based off residuals
-        if self.verbose>0:
+        if self.verbose>1:
             print('Residual masking...')
 
         # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
@@ -384,7 +384,7 @@ class Acid:
             "c_factor"   : self.c_factor,
             }
 
-        if self.verbose>0:
+        if self.verbose>1:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
@@ -843,7 +843,7 @@ class Acid:
         nsteps,
         ):
 
-        sampler_verbosity = True if self.verbose>0 else False
+        sampler_verbosity = True if self.verbose>1 else False
         backend = None
         if state is None:
             if not hasattr(self, 'sampler'):
@@ -877,7 +877,7 @@ class Acid:
 
         if self.parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if self.verbose>0:
+            if self.verbose>1:
                 print(f"Using {self.cores} cores for MCMC")
 
             # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
@@ -938,7 +938,7 @@ class Acid:
         self.poly_cos      = quartiles[1, nvel:]
         self.poly_cos_err  = errors[nvel:]  
 
-        if self.verbose > 0:
+        if self.verbose > 1:
             print('Getting the final profiles...')
 
         # Finding error for the continuum fit
