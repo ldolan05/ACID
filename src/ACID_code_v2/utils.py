@@ -201,6 +201,23 @@ def findfiles(directory, file_type):
 
     return filelist_final
 
+def robust_mean(data, nsig=1):
+    """Calculates the robust mean of the input data by excluding outliers beyond a
+    specified number of standard deviations.
+
+    Args:
+        data (array_like): Input data array.
+        nsig (int, optional): Number of standard deviations to use for outlier rejection. Defaults to 1.
+
+    Returns:
+        float: Robust mean of the input data.
+    """
+    median = np.median(data, axis=0)
+    std = np.std(data, axis=0)
+    mask = np.abs(data - median) < nsig * std
+    robust_data = np.where(mask, data, np.nan)
+    return np.nanmean(robust_data, axis=0)
+
 def od2flux(x):
     return np.exp(x)-1
 
