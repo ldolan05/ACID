@@ -98,8 +98,9 @@ class Result:
         if self.nsteps < 50 * np.max(self.tau):
             if self.verbose>1:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
-                "time. The sampler may not have converged. Consider running more steps or checking " \
-                "the walker plots.")
+                "time.\n The sampler may not have converged. Consider running more steps or checking " \
+                f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
+                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.")
 
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
