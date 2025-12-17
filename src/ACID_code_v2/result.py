@@ -107,9 +107,9 @@ class Result:
             self.thin = int(np.min(self.tau)/5)
         except:
             if self.verbose>0:
-                print("Warning: Could not compute autocorrelation time for burnin and thinning. This is likely" \
-                " due to all posterior samples being rejected by prior constraints. The resulting profile is likely" \
-                " wrong. Setting burnin=0 and thin=1.")
+                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
+                f" wrong. Setting burnin=0 and thin=1.")
             self.burnin = 0
             self.thin = 1
 
