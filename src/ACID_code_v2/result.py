@@ -102,8 +102,17 @@ class Result:
                 f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
                 f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.")
 
-        self.burnin = int(2 * np.max(self.tau))
-        self.thin = int(np.min(self.tau)/5)
+        try:
+            self.burnin = int(2 * np.max(self.tau))
+            self.thin = int(np.min(self.tau)/5)
+        except:
+            if self.verbose>0:
+                print("Warning: Could not compute autocorrelation time for burnin and thinning. This is likely" \
+                " due to all posterior samples being rejected by prior constraints. The resulting profile is likely" \
+                " wrong. Setting burnin=0 and thin=1.")
+            self.burnin = 0
+            self.thin = 1
+
         # Samples if burnin and thin dont need inputs
         self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
