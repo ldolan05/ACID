@@ -32,7 +32,7 @@ class Profiles:
         self.fitted_x = np.linspace(np.min(velocities), np.max(velocities), 1000)
         pass
 
-    def plot_fit(self, model:str|None='all'):
+    def plot_fit(self, model:str|None='all', **kwargs):
         """Plots the original data and the fitted profile if available.
         
         Parameters
@@ -41,6 +41,9 @@ class Profiles:
             The type of model to plot. String options are 'voigt', 'gaussian', 
             'lorentzian', or 'all'. Choosing None will plot whichever models have 
             already been fitted for, by default 'all'.
+        **kwargs : dict
+            Additional keyword arguments to pass to the fitting functions if the models
+            have not been fitted yet.
         Returns
         -------
         None
@@ -51,42 +54,36 @@ class Profiles:
             if model not in models + ['all']:
                 raise ValueError("Model must be 'voigt', 'gaussian', 'lorentzian' or 'all'.")
         
-        fitted_y = []
-        fit_on_x = []
-        labels = []
-        colors = []
-        if model in ['voigt', 'all']:
-            if not hasattr(self, 'fitted_voigt'):
-                self.fit_voigt()
-            fitted_y.append(self.fitted_voigt)
-            fit_on_x.append(self.voigt_on_x)
-            labels.append('Voigt Fit')
-            colors.append('C1')
-        if model in ['gaussian', 'all']:
-            if not hasattr(self, 'fitted_gaussian'):
-                self.fit_gaussian()
-            fitted_y.append(self.fitted_gaussian)
-            fit_on_x.append(self.gaussian_on_x)
-            labels.append('Gaussian Fit')
-            colors.append('C2')
-        if model in ['lorentzian', 'all']:
-            if not hasattr(self, 'fitted_lorentzian'):
-                self.fit_lorentzian()
-            fitted_y.append(self.fitted_lorentzian)
-            fit_on_x.append(self.lorentzian_on_x)
-            labels.append('Lorentzian Fit')
-            colors.append('C3')
+        if model == 'all':
+            model_list = models
+        elif model is None:
+            model_list = list(self.fitted_y.keys())
+        else:
+            model_list = [model]
+        
+        for m in model_list:
+            if m not in self.fitted_y:
+                fit_func = getattr(self, f"fit_{m}")
+                fit_func(**kwargs)
 
+        # Plotting
         fig, ax = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
-        ax[0].plot(self.velocities, self.flux, 'b.', label='ACID Profile', color='C0')
-        ax[1].axhline(0, color='C0', linestyle='--')
-        for y_fit, y_fit_on_x, label, color in zip(fitted_y, fit_on_x, labels, colors):
-            ax[0].plot(self.fitted_x, y_fit, label=label, color=color)
-            ax[1].plot(self.velocities, y_fit_on_x-self.flux, label=label, color=color)
-        ax[0].set_xlabel('Velocity')
+        ax[0].errorbar(self.velocities, self.flux, yerr=self.flux_err, fmt='b.', label='ACID Profile', color='C0')
+        ax[1].axhline(0, color='black', linestyle='--')
+
+        for i, model in enumerate(self.fitted_y.keys()):
+            y_fit = self.fitted_y[model]
+            y_fit_on_x = self.fit_on_x[model]
+            y_err_lo, y_err_hi = self.fitted_yerr[model]
+            ax[0].plot(self.fitted_x, y_fit, label=f'{model.capitalize()} Fit', color=f'C{i+1}')
+            ax[0].fill_between(self.fitted_x, y_fit - y_err_lo, y_fit + y_err_hi, color=f'C{i+1}', alpha=0.3)
+            ax[1].plot(self.velocities, y_fit_on_x - self.flux, label=f'{model.capitalize()} Residuals', color=f'C{i+1}')
+        ax[1].set_xlabel('Velocity')
         ax[0].set_title('Profile Fit(s)')
+        ax[1].set_ylabel('Flux')
         ax[0].set_ylabel('Flux')
         ax[0].legend()
+        ax[1].legend()
         plt.show()
 
     def fit_voigt(self, x=None, y=None, yerr=None, p0=None, **kwargs):
@@ -205,7 +202,7 @@ class Profiles:
         """
         x    = np.copy(self.velocities) if x    is None else x
         y    = np.copy(self.flux)       if y    is None else y
-        yerr = np.copy(self.flux_err)   if yerr is None else yerr
+        yerr = self.flux_err   if yerr is None else yerr
         return x, y, yerr
 
     def _fit_model(self, model_name, x, y, yerr, p0, **kwargs):
@@ -239,7 +236,7 @@ class Profiles:
         self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
         self.fit_on_x[model_name] = model_func(x, *popt)
 
-        # Get errprs
+        # Get errors
         samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=1000)
         y_samples = np.array([model_func(self.fitted_x, *sample) for sample in samples])
         y_lo, y_med, y_hi = np.quantile(y_samples, [0.16, 0.50, 0.84], axis=0)
