@@ -141,6 +141,7 @@ class Acid:
         input_spectral_errors,
         frame_sns                      = None,
         all_frames                     = None,
+        fit_profile    :bool           = True,
         poly_ord       :int|npint      = 3,
         pix_chunk      :int|npint      = 20,
         dev_perc       :int|npint      = 25,
@@ -151,7 +152,6 @@ class Acid:
         nsteps         :int|npint      = 10000,
         return_result  :bool           = True,
         production_run :bool           = False,
-        fit_profile    :bool           = True,
 
         # Testing and internal kwargs
         _input_data                    = None,
@@ -181,6 +181,11 @@ class Acid:
             regions or order (in the case of echelle spectra). General shape needs to be
             (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape.
              The only allowed string is "default" due to legacy behaviour, which now acts the same as None, by default None
+        fit_profile : bool, optional
+            If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
+            profile is inferred from the continuum fit. Setting this to False can significantly speed up compution time, 
+            depending on the machine used as it is not as easy to parallelise. It may decrease accuracy, and is not fully tested
+            as of yet, by default True.
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
         pix_chunk : int, optional
