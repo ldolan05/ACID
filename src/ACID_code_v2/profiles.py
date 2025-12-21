@@ -110,9 +110,7 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x    = np.copy(self.velocities) if x    is None else x
-        y    = np.copy(self.flux)       if y    is None else y
-        yerr = np.copy(self.flux_err)   if yerr is None else yerr
+        x, y, yerr = self._copy_inputs(x, y, yerr)
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -121,10 +119,7 @@ class Profiles:
             gamma0 = sigma0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0]
 
-        popt, pcov = curve_fit(self.voigt_func, x, y, sigma=yerr, p0=p0, **kwargs)
-
-        self.fitted_y["voigt"] = self.voigt_func(self.fitted_x, *popt)
-        self.fit_on_x["voigt"] = self.voigt_func(x, *popt)
+        popt, pcov = self._fit_model("voigt", x, y, yerr, p0, **kwargs)
         return popt, pcov
 
     def fit_gaussian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
@@ -148,9 +143,7 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x    = np.copy(self.velocities) if x    is None else x
-        y    = np.copy(self.flux)       if y    is None else y
-        yerr = np.copy(self.flux_err)   if yerr is None else yerr
+        x, y, yerr = self._copy_inputs(x, y, yerr)
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -158,10 +151,7 @@ class Profiles:
             stddev_guess = (x.max() - x.min()) / 10.0
             p0 = [amplitude_guess, mean_guess, stddev_guess]
 
-        popt, pcov = curve_fit(self.gaussian_func, x, y, sigma=yerr, p0=p0, **kwargs)
-
-        self.fitted_y["gaussian"] = self.gaussian_func(self.fitted_x, *popt)
-        self.fit_on_x["gaussian"] = self.gaussian_func(x, *popt)
+        popt, pcov = self._fit_model("gaussian", x, y, yerr, p0, **kwargs)
         return popt, pcov
 
     def fit_lorentzian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
@@ -185,9 +175,7 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x    = np.copy(self.velocities) if x    is None else x
-        y    = np.copy(self.flux)       if y    is None else y
-        yerr = np.copy(self.flux_err)   if yerr is None else yerr
+        x, y, yerr = self._copy_inputs(x, y, yerr)
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -195,10 +183,59 @@ class Profiles:
             gamma0 = (x.max() - x.min()) / 10.0
             p0 = [amplitude_guess, centre_guess, gamma0]
 
-        popt, pcov = curve_fit(self.lorentzian_func, x, y, sigma=yerr, p0=p0, **kwargs)
+        popt, pcov = self._fit_model("lorentzian", x, y, yerr, p0, **kwargs)
+        return popt, pcov
 
-        self.fitted_y["lorentzian"] = self.lorentzian_func(self.fitted_x, *popt)
-        self.fit_on_x["lorentzian"] = self.lorentzian_func(x, *popt)
+    def _copy_inputs(self, x, y, yerr):
+        """Internal method to copy input data or use class attributes.
+
+        Parameters
+        ----------
+        x : array_like | None
+            The x values of the data. If None, uses self.velocities.
+        y : array_like | None
+            The y values of the data. If None, uses self.flux.
+        yerr : array_like | None
+            The y errors of the data. If None, uses self.flux_err.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the copied x, y, and yerr arrays.
+        """
+        x    = np.copy(self.velocities) if x    is None else x
+        y    = np.copy(self.flux)       if y    is None else y
+        yerr = np.copy(self.flux_err)   if yerr is None else yerr
+        return x, y, yerr
+
+    def _fit_model(self, model_name, x, y, yerr, p0, **kwargs):
+        """Internal method to fit a specified model to the data.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the model to fit ('voigt', 'gaussian', 'lorentzian').
+        x : array_like
+            The x values of the data.
+        y : array_like
+            The y values of the data.
+        yerr : array_like
+            The y errors of the data.
+        p0 : list
+            Initial guess for the parameters.
+        **kwargs : dict
+            Additional keyword arguments to pass to curve_fit.
+        
+        Returns
+        -------
+        tuple
+            A tuple containing the optimal parameters and the covariance matrix.
+        """
+        model_func = getattr(self, f"{model_name}_func")
+
+        popt, pcov = curve_fit(model_func, x, y, sigma=yerr, p0=p0, **kwargs)
+        self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
+        self.fit_on_x[model_name] = model_func(x, *popt)
         return popt, pcov
 
     @staticmethod
