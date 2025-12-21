@@ -71,7 +71,7 @@ class Profiles:
         ax[0].legend()
         plt.show()
 
-    def fit_voigt(self, x=None, y=None, p0=None):
+    def fit_voigt(self, x=None, y=None, p0=None, **kwargs):
         """Fits a Voigt profile to the given data.
 
         Parameters
@@ -82,6 +82,8 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, sigma, gamma], by default None.
+        **kwargs : dict
+            Additional keyword arguments to pass to curve_fit.
 
         Returns
         -------
@@ -98,13 +100,13 @@ class Profiles:
             gamma0 = sigma0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0]
 
-        popt, pcov = curve_fit(self.voigt_func, x, y, p0=p0)
+        popt, pcov = curve_fit(self.voigt_func, x, y, p0=p0, **kwargs)
 
         self.fitted_voigt = self.voigt_func(self.fitted_x, *popt)
         self.voigt_on_x = self.voigt_func(x, *popt)
         return popt, pcov
 
-    def fit_gaussian(self, x=None, y=None, p0=None):
+    def fit_gaussian(self, x=None, y=None, p0=None, **kwargs):
         """Fits a Gaussian profile to the given data.
 
         Parameters
@@ -115,6 +117,8 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         p0 : list, optional
             Initial guess for the parameters [amplitude, mean, stddev], by default None.
+        **kwargs : dict
+            Additional keyword arguments to pass to curve_fit.
 
         Returns
         -------
@@ -130,13 +134,13 @@ class Profiles:
             stddev_guess = (x.max() - x.min()) / 10.0
             p0 = [amplitude_guess, mean_guess, stddev_guess]
 
-        popt, pcov = curve_fit(self.gaussian_func, x, y, p0=p0)
+        popt, pcov = curve_fit(self.gaussian_func, x, y, p0=p0, **kwargs)
 
         self.fitted_gaussian = self.gaussian_func(self.fitted_x, *popt)
         self.gaussian_on_x = self.gaussian_func(x, *popt)
         return popt, pcov
 
-    def fit_lorentzian(self, x=None, y=None, p0=None):
+    def fit_lorentzian(self, x=None, y=None, p0=None, **kwargs):
         """Fits a Lorentzian profile to the given data.
 
         Parameters
@@ -147,6 +151,8 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, gamma], by default None.
+        **kwargs : dict
+            Additional keyword arguments to pass to curve_fit.
 
         Returns
         -------
@@ -162,7 +168,7 @@ class Profiles:
             gamma0 = (x.max() - x.min()) / 10.0
             p0 = [amplitude_guess, centre_guess, gamma0]
 
-        popt, pcov = curve_fit(self.lorentzian_func, x, y, p0=p0)
+        popt, pcov = curve_fit(self.lorentzian_func, x, y, p0=p0, **kwargs)
 
         self.fitted_lorentzian = self.lorentzian_func(self.fitted_x, *popt)
         self.lorentzian_on_x = self.lorentzian_func(x, *popt)
