@@ -231,11 +231,20 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
+        # Get the model function
         model_func = getattr(self, f"{model_name}_func")
 
+        # Perform the curve fitting
         popt, pcov = curve_fit(model_func, x, y, sigma=yerr, p0=p0, **kwargs)
         self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
         self.fit_on_x[model_name] = model_func(x, *popt)
+
+        # Get errprs
+        samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=1000)
+        y_samples = np.array([model_func(self.fitted_x, *sample) for sample in samples])
+        y_lo, y_med, y_hi = np.quantile(y_samples, [0.16, 0.50, 0.84], axis=0)
+        self.fitted_yerr[model_name] = (y_med - y_lo, y_hi - y_med)
+
         return popt, pcov
 
     @staticmethod
