@@ -25,6 +25,10 @@ class Profiles:
         self.flux = flux
         self.flux_err = flux_err
 
+        self.fitted_y    = {}
+        self.fitted_yerr = {}
+        self.fit_on_x    = {} # Store fitted values on original x for residuals
+
         self.fitted_x = np.linspace(np.min(velocities), np.max(velocities), 1000)
         pass
 
@@ -119,8 +123,8 @@ class Profiles:
 
         popt, pcov = curve_fit(self.voigt_func, x, y, sigma=yerr, p0=p0, **kwargs)
 
-        self.fitted_voigt = self.voigt_func(self.fitted_x, *popt)
-        self.voigt_on_x = self.voigt_func(x, *popt)
+        self.fitted_y["voigt"] = self.voigt_func(self.fitted_x, *popt)
+        self.fit_on_x["voigt"] = self.voigt_func(x, *popt)
         return popt, pcov
 
     def fit_gaussian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
@@ -156,8 +160,8 @@ class Profiles:
 
         popt, pcov = curve_fit(self.gaussian_func, x, y, sigma=yerr, p0=p0, **kwargs)
 
-        self.fitted_gaussian = self.gaussian_func(self.fitted_x, *popt)
-        self.gaussian_on_x = self.gaussian_func(x, *popt)
+        self.fitted_y["gaussian"] = self.gaussian_func(self.fitted_x, *popt)
+        self.fit_on_x["gaussian"] = self.gaussian_func(x, *popt)
         return popt, pcov
 
     def fit_lorentzian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
@@ -193,8 +197,8 @@ class Profiles:
 
         popt, pcov = curve_fit(self.lorentzian_func, x, y, sigma=yerr, p0=p0, **kwargs)
 
-        self.fitted_lorentzian = self.lorentzian_func(self.fitted_x, *popt)
-        self.lorentzian_on_x = self.lorentzian_func(x, *popt)
+        self.fitted_y["lorentzian"] = self.lorentzian_func(self.fitted_x, *popt)
+        self.fit_on_x["lorentzian"] = self.lorentzian_func(x, *popt)
         return popt, pcov
 
     @staticmethod
@@ -219,8 +223,6 @@ class Profiles:
         array_like
             The Voigt profile evaluated at the input x values.
         """
-        from scipy.special import wofz
-
         z = ((x - centre) + 1j*gamma) / (sigma * np.sqrt(2))
         voigt_profile = amplitude * np.real(wofz(z)) / (sigma * np.sqrt(2*np.pi))
         return voigt_profile
