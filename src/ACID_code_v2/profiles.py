@@ -7,9 +7,22 @@ from beartype import beartype
 class Profiles:
     """A class for fitting spectral line profiles such as Voigt and Gaussian profiles.
     """
-    def __init__(self, velocities, flux):
+    def __init__(self, velocities, flux, flux_err=None):
+        """Initializes the Profiles class with velocity, flux, and optional flux error data.
+
+        Parameters
+        ----------
+        velocities : array_like
+            The velocity values corresponding to the spectral line profile.
+        flux : array_like
+            The flux values of the spectral line profile.
+        flux_err : array_like, optional
+            The errors associated with the flux values, by default None.
+        """
+
         self.velocities = velocities
         self.flux = flux
+        self.flux_err = flux_err
 
         self.fitted_x = np.linspace(np.min(velocities), np.max(velocities), 1000)
         pass
@@ -71,7 +84,7 @@ class Profiles:
         ax[0].legend()
         plt.show()
 
-    def fit_voigt(self, x=None, y=None, p0=None, **kwargs):
+    def fit_voigt(self, x=None, y=None, yerr=None, p0=None, **kwargs):
         """Fits a Voigt profile to the given data.
 
         Parameters
@@ -80,6 +93,8 @@ class Profiles:
             The x values of the data. If None, uses self.velocities.
         y : array_like, optional
             The y values of the data. If None, uses self.flux.
+        yerr : array_like, optional
+            The y errors of the data. If None, uses self.flux_err.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, sigma, gamma], by default None.
         **kwargs : dict
@@ -90,8 +105,9 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x = np.copy(self.velocities) if x is None else x
-        y = np.copy(self.flux) if y is None else y
+        x    = np.copy(self.velocities) if x    is None else x
+        y    = np.copy(self.flux)       if y    is None else y
+        yerr = np.copy(self.flux_err)   if yerr is None else yerr
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -100,13 +116,13 @@ class Profiles:
             gamma0 = sigma0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0]
 
-        popt, pcov = curve_fit(self.voigt_func, x, y, p0=p0, **kwargs)
+        popt, pcov = curve_fit(self.voigt_func, x, y, sigma=yerr, p0=p0, **kwargs)
 
         self.fitted_voigt = self.voigt_func(self.fitted_x, *popt)
         self.voigt_on_x = self.voigt_func(x, *popt)
         return popt, pcov
 
-    def fit_gaussian(self, x=None, y=None, p0=None, **kwargs):
+    def fit_gaussian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
         """Fits a Gaussian profile to the given data.
 
         Parameters
@@ -115,6 +131,8 @@ class Profiles:
             The x values of the data. If None, uses self.velocities.
         y : array_like, optional
             The y values of the data. If None, uses self.flux.
+        yerr : array_like, optional
+            The y errors of the data. If None, uses self.flux_err.
         p0 : list, optional
             Initial guess for the parameters [amplitude, mean, stddev], by default None.
         **kwargs : dict
@@ -125,8 +143,9 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x = np.copy(self.velocities) if x is None else x
-        y = np.copy(self.flux) if y is None else y
+        x    = np.copy(self.velocities) if x    is None else x
+        y    = np.copy(self.flux)       if y    is None else y
+        yerr = np.copy(self.flux_err)   if yerr is None else yerr
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -134,13 +153,13 @@ class Profiles:
             stddev_guess = (x.max() - x.min()) / 10.0
             p0 = [amplitude_guess, mean_guess, stddev_guess]
 
-        popt, pcov = curve_fit(self.gaussian_func, x, y, p0=p0, **kwargs)
+        popt, pcov = curve_fit(self.gaussian_func, x, y, sigma=yerr, p0=p0, **kwargs)
 
         self.fitted_gaussian = self.gaussian_func(self.fitted_x, *popt)
         self.gaussian_on_x = self.gaussian_func(x, *popt)
         return popt, pcov
 
-    def fit_lorentzian(self, x=None, y=None, p0=None, **kwargs):
+    def fit_lorentzian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
         """Fits a Lorentzian profile to the given data.
 
         Parameters
@@ -149,6 +168,8 @@ class Profiles:
             The x values of the data. If None, uses self.velocities.
         y : array_like, optional
             The y values of the data. If None, uses self.flux.
+        yerr : array_like, optional
+            The y errors of the data. If None, uses self.flux_err.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, gamma], by default None.
         **kwargs : dict
@@ -159,8 +180,9 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x = np.copy(self.velocities) if x is None else x
-        y = np.copy(self.flux) if y is None else y
+        x    = np.copy(self.velocities) if x    is None else x
+        y    = np.copy(self.flux)       if y    is None else y
+        yerr = np.copy(self.flux_err)   if yerr is None else yerr
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -168,7 +190,7 @@ class Profiles:
             gamma0 = (x.max() - x.min()) / 10.0
             p0 = [amplitude_guess, centre_guess, gamma0]
 
-        popt, pcov = curve_fit(self.lorentzian_func, x, y, p0=p0, **kwargs)
+        popt, pcov = curve_fit(self.lorentzian_func, x, y, sigma=yerr, p0=p0, **kwargs)
 
         self.fitted_lorentzian = self.lorentzian_func(self.fitted_x, *popt)
         self.lorentzian_on_x = self.lorentzian_func(x, *popt)
