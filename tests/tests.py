@@ -279,6 +279,8 @@ classes_res.plot_walkers()
 result_handling_res = result_handling_test()
 res_nv = no_verbosity()
 res_no_profile_fit = no_profile_fit()
+res = res_no_profile_fit
+acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=res[0,0,0]).plot_fit("all")
 
 print("All tests passed!")
 
