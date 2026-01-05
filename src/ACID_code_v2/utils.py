@@ -1,3 +1,7 @@
+"""
+Utility functions for the ACID package. Some functions may not be useful to the user.
+"""
+
 import numpy as np
 import glob
 import scipy.constants as const
