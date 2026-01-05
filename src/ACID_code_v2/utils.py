@@ -116,7 +116,8 @@ def guess_SNR(
         frame_flux        : np.ndarray | list,
         frame_errors      : np.ndarray | list
         ) -> np.ndarray:
-    """Estimates S/N for each frame
+    """Estimates S/N for each frame. Takes the median S/N in the central third of the
+    wavelength range. Fully vectorized so that all the frames can be passed at once.
 
     Parameters
     ----------
@@ -133,9 +134,11 @@ def guess_SNR(
         Array of estimated signal-to-noise ratios for each frame.
     """
 
+    # Quick validation check and conversion to numpy arrays
     frame_wavelengths, frame_flux, frame_errors = [
         validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
 
+    # Calculate S/N in central third of wavelength range
     wavelength_upper = np.max(frame_wavelengths, axis=-1)
     wavelength_lower = np.min(frame_wavelengths, axis=-1)
     delta_wavelength = wavelength_upper - wavelength_lower
@@ -230,7 +233,9 @@ def robust_mean(data:np.ndarray, nsig:int|float=1, axis:int=0) -> np.ndarray|flo
     return np.nanmean(robust_data, axis=axis)
 
 def od2flux(x):
+    # WIP, not currently used
     return np.exp(x)-1
 
 def flux2od(x):
+    # WIP, not currently used
     return np.log(x+1)
