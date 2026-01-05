@@ -283,5 +283,3 @@ res = res_no_profile_fit
 acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=res[0,0,0]).plot_fit("all")
 
 print("All tests passed!")
-
-#%%

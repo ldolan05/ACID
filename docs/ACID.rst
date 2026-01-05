@@ -16,6 +16,7 @@ Core Classes
    Result
    LSD
    Profiles
+   MCMC
 
 Utility Functions
 ------------------
