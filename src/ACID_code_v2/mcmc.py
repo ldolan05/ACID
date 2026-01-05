@@ -1,6 +1,8 @@
 import numpy as np
 from .lsd import LSD
 from . import utils
+from beartype import beartype
+from numpy import integer as npint
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -15,52 +17,61 @@ def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
     return _MCMC(theta)
 
+@beartype
 class MCMC:
 
-    def __init__(self, **global_data):
-        """Called once per worker."""
-        self.x = global_data.get("x")
-        self.y = global_data.get("y")
-        self.yerr = global_data.get("yerr")
-        self.alpha = global_data.get("alpha")
-        self.velocities = global_data.get("velocities")
+    def __init__(
+            self,
+            x           : np.ndarray,
+            y           : np.ndarray,
+            yerr        : np.ndarray,
+            alpha       : np.ndarray,
+            velocities  : np.ndarray|None = None, # 
+            c_factor                      = None,
+            fit_profile : bool            = True,
+            seed        : int|npint|None  = None,
+        ):
+        """Initialise MCMC functions with necessary data.
+        Called once per worker if using multiprocessing."""
+        
+        # No checks are performed here - assume data is valid from ACID class checks,
+        # else user is on their own!
+        self.x = x
+        self.y = y
+        self.yerr = yerr
+        self.alpha = alpha
+        self.velocities = velocities
         self.k_max = self.alpha.shape[1]
-        self.c_factor = global_data.get("c_factor")
-        self.fit_profile = global_data.get("fit_profile")
-        np.random.seed(global_data.get("seed"))
+        self.c_factor = c_factor
+        self.fit_profile = fit_profile
+        np.random.seed(seed)
 
         # Configure whether to use full or fast model
-        global model_function
         if self.fit_profile:
-            model_function = self.full_func
+            self.model_function = self.full_func
         else:
-            model_function = self.fast_func
+            self.model_function = self.fast_func
+        
+        # Precompute normalization coefficients these are used to adjust the wavelengths to
+        # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
         
         self.a, self.b = utils.get_normalisation_coeffs(self.x)
     
     def __call__(self, *args, **kwargs):
         return self._log_probability(*args, **kwargs)
 
-    def full_func(self, inputs, x, **kwargs):
-        ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", self.alpha)
-        k_max = kwargs.get("k_max", alpha.shape[1])
+    def full_func(self, theta):
 
-        z = inputs[:k_max]
-
-        mdl = np.dot(alpha, z)
+        z = theta[:self.k_max]
+        mdl = np.dot(self.alpha, z)
 
         #converting model from optical depth to flux
         mdl = np.exp(mdl)
 
-        ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        a = 2/(np.max(x)-np.min(x))
-        b = 1 - a*np.max(x)
-
         # Calculate continuum polynomial
-        coefs = np.asarray(inputs[k_max:-1], dtype=float)
-        scale = inputs[-1]
-        u = (a * x) + b
+        coefs = np.asarray(theta[self.k_max:-1], dtype=float)
+        scale = theta[-1]
+        u = (self.a * self.x) + self.b
 
         # Build continuum model
         mdl1 = 0.0
@@ -70,16 +81,12 @@ class MCMC:
 
         return mdl, z
 
-    def fast_func(self, inputs, x, **kwargs):
-        ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", self.alpha)
-
-        ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        a, b = utils.get_normalisation_coeffs(x)
+    def fast_func(self, inputs):
+        ## faster model for mcmc - takes the continuum coefficents(inputs) to create a model spectrum.
 
         coefs = np.asarray(inputs[:-1], dtype=float)
         scale = inputs[-1]
-        u = (a * x) + b
+        u = (self.a * self.x) + self.b
 
         # Build continuum model
         mdl = 0.0
@@ -88,16 +95,16 @@ class MCMC:
         mdl *= scale
 
         if np.any(mdl <= 0):
-            return mdl, np.full(alpha.shape[1], 1) # return very low z to trigger prior rejection
+            return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
 
         fitted_flux = self.y/mdl
         fitted_err = self.yerr/mdl
         err_od = fitted_err / fitted_flux
         flux_od = np.log(fitted_flux)
 
-        z = LSD.solve_z(alpha, flux_od, err_od, self.c_factor, return_error=False)
+        z = LSD.solve_z(self.alpha, flux_od, err_od, self.c_factor, return_error=False)
 
-        forward = np.exp(alpha @ z) * mdl
+        forward = np.exp(self.alpha @ z) * mdl
 
         return forward, z
 
@@ -126,8 +133,8 @@ class MCMC:
 
     def _log_probability(self, theta):
         ## calculates log probability depending on which model (full or fast)
-        forward, z = model_function(theta, self.x, alpha=self.alpha, k_max=self.k_max)
-
+        forward, z = self.model_function(theta)
+    
         lp = self._log_prior(z)
         if not np.isfinite(lp):
             return -np.inf

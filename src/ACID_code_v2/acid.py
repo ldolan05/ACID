@@ -732,8 +732,7 @@ class Acid:
         yerr = self.errors["combined"]
         x_norm = self.wavelengths["combined_normalized"]
 
-        data = {"x": x, "y": y, "yerr": yerr, "alpha": self.alpha}
-        forward, z = mcmc.MCMC(**data).full_func(self.model_inputs, x)
+        forward, _ = mcmc.MCMC(x, y, yerr, self.alpha).full_func(self.model_inputs)
 
         mdl1 = 0
         nvel = len(self.velocities)
