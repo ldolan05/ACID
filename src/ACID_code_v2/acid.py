@@ -866,10 +866,12 @@ class Acid:
             (emcee.moves.DEMove(), 0.3),
             (emcee.moves.DESnookerMove(), 0.1),
         ]
+        # Initialise MCMC sampler
+        MCMC = mcmc_utils.MCMC(self.mcmc_global_data)
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
-            "log_prob_fn": mcmc_utils._log_probability,
+            "log_prob_fn": MCMC._log_probability,
             "moves"      : moves,
             "backend"    : backend,
         }
@@ -901,8 +903,7 @@ class Acid:
             os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
 
         else:
-            # log_prob = partial(mcmc_utils._log_probability, global_data=self.mcmc_global_data) # This didn't work initialising global data
-            mcmc_utils._init_worker(self.mcmc_global_data)
+            # mcmc_utils._init_worker(self.mcmc_global_data)
             self.sampler = emcee.EnsembleSampler(**sampler_kwargs)
             self.sampler.run_mcmc(**mcmc_kwargs)
 

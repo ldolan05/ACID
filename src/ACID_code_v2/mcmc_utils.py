@@ -11,27 +11,28 @@ class MCMC:
 
     def __init__(self, global_data):
         """Called once per worker."""
-        global x, y, yerr, alpha, k_max, velocities, c_factor, fit_profile
-        x = global_data["x"]
-        y = global_data["y"]
-        yerr = global_data["yerr"]
-        alpha = global_data["alpha"]
-        velocities = global_data["velocities"]
-        k_max = alpha.shape[1]
-        c_factor = global_data["c_factor"]
-        fit_profile = global_data["fit_profile"]
+        self.x = global_data["x"]
+        self.y = global_data["y"]
+        self.yerr = global_data["yerr"]
+        self.alpha = global_data["alpha"]
+        self.velocities = global_data["velocities"]
+        self.k_max = self.alpha.shape[1]
+        self.c_factor = global_data["c_factor"]
+        self.fit_profile = global_data["fit_profile"]
         np.random.seed(global_data["seed"])
 
         # Configure whether to use full or fast model
         global model_function
-        if fit_profile:
+        if self.fit_profile:
             model_function = self.full_func
         else:
             model_function = self.fast_func
+        
+        self.a, self.b = utils.get_normalisation_coeffs(self.x)
 
     def full_func(self, inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", globals().get("alpha"))
+        alpha = kwargs.get("alpha", self.alpha)
         k_max = kwargs.get("k_max", alpha.shape[1])
 
         z = inputs[:k_max]
@@ -60,7 +61,7 @@ class MCMC:
 
     def fast_func(self, inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", globals().get("alpha"))
+        alpha = kwargs.get("alpha", self.alpha)
 
         ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
         a, b = utils.get_normalisation_coeffs(x)
@@ -78,13 +79,12 @@ class MCMC:
         if np.any(mdl <= 0):
             return mdl, np.full(alpha.shape[1], 1) # return very low z to trigger prior rejection
 
-
-        fitted_flux = y/mdl
-        fitted_err = yerr/mdl
+        fitted_flux = self.y/mdl
+        fitted_err = self.yerr/mdl
         err_od = fitted_err / fitted_flux
         flux_od = np.log(fitted_flux)
 
-        z = LSD.solve_z(alpha, flux_od, err_od, c_factor, return_error=False)
+        z = LSD.solve_z(alpha, flux_od, err_od, self.c_factor, return_error=False)
 
         forward = np.exp(alpha @ z) * mdl
 
@@ -102,9 +102,9 @@ class MCMC:
         v_cont = []
         for i in range(0, 5):
                 z_cont.append(np.exp(z[len(z)-i-1])-1)
-                v_cont.append(velocities[len(velocities)-i-1])
+                v_cont.append(self.velocities[len(self.velocities)-i-1])
                 z_cont.append(np.exp(z[i])-1)
-                v_cont.append(velocities[i])
+                v_cont.append(self.velocities[i])
 
         z_cont = np.array(z_cont)
         v_cont = np.array(v_cont)
@@ -115,12 +115,12 @@ class MCMC:
 
     def _log_probability(self, theta):
         ## calculates log probability depending on which model (full or fast)
-        forward, z = model_function(theta, x, alpha=alpha, k_max=k_max)
+        forward, z = model_function(theta, self.x, alpha=self.alpha, k_max=self.k_max)
 
         lp = self._log_prior(z)
         if not np.isfinite(lp):
             return -np.inf
 
-        diff = y - forward
-        ll = -0.5 * np.sum(diff*diff / (yerr*yerr) + np.log(2*np.pi*(yerr*yerr)))
+        diff = self.y - forward
+        ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))
         return lp + ll
