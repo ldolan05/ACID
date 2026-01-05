@@ -872,7 +872,7 @@ class Acid:
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
-            "log_prob_fn": MCMC._log_probability,
+            # "log_prob_fn": MCMC._log_probability,
             "moves"      : moves,
             "backend"    : backend,
         }
@@ -894,9 +894,9 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                MCMC = mcmc_utils.MCMC(self.mcmc_global_data) # need to reinit here for fork
+                MCMC = mcmc_utils.MCMC(self.mcmc_global_data)
                 with ctx.Pool(processes=self.cores, initializer=MCMC.__init__, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool)
+                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=MCMC._log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
             else: # This doesn't work, needs serious modifications to make work
@@ -906,7 +906,7 @@ class Acid:
 
         else:
             # mcmc_utils._init_worker(self.mcmc_global_data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs)
+            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC._log_probability)
             self.sampler.run_mcmc(**mcmc_kwargs)
 
     def process_results(
