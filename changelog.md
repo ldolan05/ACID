@@ -1,6 +1,12 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.3.0] - 2026-01-05
+
+### Changed
+- Usable MCMC class, if any of the functions need to be used. See the API for details.
+- Performance speedup as some calculations no longer need to be repeated (and are only once calculated in clas initialisation)
+
 ## [1.2.1] - 2026-01-05
 
 ### Updated
