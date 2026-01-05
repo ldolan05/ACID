@@ -11,15 +11,15 @@ class MCMC:
 
     def __init__(self, global_data):
         """Called once per worker."""
-        self.x = global_data["x"]
-        self.y = global_data["y"]
-        self.yerr = global_data["yerr"]
-        self.alpha = global_data["alpha"]
-        self.velocities = global_data["velocities"]
+        self.x = global_data.get("x")
+        self.y = global_data.get("y")
+        self.yerr = global_data.get("yerr")
+        self.alpha = global_data.get("alpha")
+        self.velocities = global_data.get("velocities")
         self.k_max = self.alpha.shape[1]
-        self.c_factor = global_data["c_factor"]
-        self.fit_profile = global_data["fit_profile"]
-        np.random.seed(global_data["seed"])
+        self.c_factor = global_data.get("c_factor")
+        self.fit_profile = global_data.get("fit_profile")
+        np.random.seed(global_data.get("seed"))
 
         # Configure whether to use full or fast model
         global model_function
