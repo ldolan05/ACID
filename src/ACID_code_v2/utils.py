@@ -203,7 +203,7 @@ def findfiles(directory, file_type):
 
 def robust_mean(data, nsig=1):
     """Calculates the robust mean of the input data by excluding outliers beyond a
-    specified number of standard deviations.
+    specified number of standard deviations from the median.
 
     Args:
         data (array_like): Input data array.
