@@ -894,7 +894,8 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                MCMC = mcmc_utils.MCMC(self.mcmc_global_data) # need to reinit here for fork
+                with ctx.Pool(processes=self.cores, initializer=MCMC.__init__, initargs=(self.mcmc_global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
