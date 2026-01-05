@@ -1,15 +1,23 @@
 import numpy as np
-import multiprocessing as mp
 from .lsd import LSD
 from . import utils
-from time import sleep
-import matplotlib.pyplot as plt
-import sys
 
-# TODO: Move a,b init to _init_worker to avoid recomputation
+# The following two wrapper functions are required for multiprocessing
+# support, without it, the fork method would need to reserialize everything
+# which is very inefficient. See parallelization in the emcee documentation
+# for more details.
+def mp_init_worker(**global_data):
+    """Initializes each worker process with global data."""
+    global _MCMC
+    _MCMC = MCMC(**global_data)
+
+def mp_log_probability(theta):
+    """Wrapper for log probability function for multiprocessing."""
+    return _MCMC._log_probability(theta)
+
 class MCMC:
 
-    def __init__(self, global_data):
+    def __init__(self, **global_data):
         """Called once per worker."""
         self.x = global_data.get("x")
         self.y = global_data.get("y")

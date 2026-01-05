@@ -868,11 +868,10 @@ class Acid:
             (emcee.moves.DESnookerMove(), 0.1),
         ]
         # Initialise MCMC sampler
-        MCMC = mcmc_utils.MCMC(self.mcmc_global_data)
+        MCMC = mcmc_utils.MCMC(**self.mcmc_global_data)
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
-            # "log_prob_fn": MCMC._log_probability,
             "moves"      : moves,
             "backend"    : backend,
         }
