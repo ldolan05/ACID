@@ -6,7 +6,7 @@ from beartype import beartype
 from numpy import integer as npint
 
 from .lsd import LSD
-from . import mcmc_utils
+from . import mcmc
 from . import utils
 
 warnings.filterwarnings("ignore")
@@ -347,10 +347,10 @@ class Result:
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
         if self.fit_profile:
-            func = mcmc_utils.full_func
+            func = mcmc.full_func
         else:
-            func = mcmc_utils.fast_func
-        mcmc_utils._init_worker(self.mcmc_global_data)
+            func = mcmc.fast_func
+        mcmc._init_worker(self.mcmc_global_data)
         model_flux, _ = func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
 
         # Plotting

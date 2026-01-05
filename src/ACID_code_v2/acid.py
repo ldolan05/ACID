@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import scipy.constants as const
 from . import utils
 from .lsd import LSD
-from . import mcmc_utils
+from . import mcmc
 from .result import Result
 
 warnings.filterwarnings("ignore")
@@ -733,7 +733,7 @@ class Acid:
         x_norm = self.wavelengths["combined_normalized"]
 
         data = {"x": x, "y": y, "yerr": yerr, "alpha": self.alpha}
-        forward, z = mcmc_utils.MCMC(data).full_func(self.model_inputs, x)
+        forward, z = mcmc.MCMC(data).full_func(self.model_inputs, x)
 
         mdl1 = 0
         nvel = len(self.velocities)
@@ -868,7 +868,7 @@ class Acid:
             (emcee.moves.DESnookerMove(), 0.1),
         ]
         # Initialise MCMC sampler
-        MCMC = mcmc_utils.MCMC(**self.mcmc_global_data)
+        MCMC = mcmc.MCMC(**self.mcmc_global_data)
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
@@ -893,7 +893,7 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                MCMC = mcmc_utils.MCMC(self.mcmc_global_data)
+                MCMC = mcmc.MCMC(self.mcmc_global_data)
                 with ctx.Pool(processes=self.cores, initializer=MCMC.__init__, initargs=(self.mcmc_global_data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=MCMC._log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
