@@ -1,6 +1,11 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.2.1] - 2026-01-05
+
+### Updated
+- Updateded the robust_mean function's docstring and usability with option to specify array axis to compute mean along.
+
 ## [1.2.0] - 2025-12-21
 
 ### Added
