@@ -733,7 +733,7 @@ class Acid:
         x_norm = self.wavelengths["combined_normalized"]
 
         data = {"x": x, "y": y, "yerr": yerr, "alpha": self.alpha}
-        forward, z = mcmc.MCMC(data).full_func(self.model_inputs, x)
+        forward, z = mcmc.MCMC(**data).full_func(self.model_inputs, x)
 
         mdl1 = 0
         nvel = len(self.velocities)
@@ -867,8 +867,6 @@ class Acid:
             (emcee.moves.DEMove(), 0.3),
             (emcee.moves.DESnookerMove(), 0.1),
         ]
-        # Initialise MCMC sampler
-        MCMC = mcmc.MCMC(**self.mcmc_global_data)
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
@@ -893,9 +891,8 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                MCMC = mcmc.MCMC(self.mcmc_global_data)
-                with ctx.Pool(processes=self.cores, initializer=MCMC.__init__, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=MCMC._log_probability)
+                with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
             else: # This doesn't work, needs serious modifications to make work
@@ -904,8 +901,8 @@ class Acid:
             os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
 
         else:
-            # mcmc_utils._init_worker(self.mcmc_global_data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC._log_probability)
+            MCMC = mcmc.MCMC(**self.mcmc_global_data)
+            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
             self.sampler.run_mcmc(**mcmc_kwargs)
 
     def process_results(

@@ -6,14 +6,14 @@ from . import utils
 # support, without it, the fork method would need to reserialize everything
 # which is very inefficient. See parallelization in the emcee documentation
 # for more details.
-def mp_init_worker(**global_data):
+def _mp_init_worker(global_data):
     """Initializes each worker process with global data."""
     global _MCMC
     _MCMC = MCMC(**global_data)
 
-def mp_log_probability(theta):
+def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
-    return _MCMC._log_probability(theta)
+    return _MCMC(theta)
 
 class MCMC:
 
@@ -37,6 +37,9 @@ class MCMC:
             model_function = self.fast_func
         
         self.a, self.b = utils.get_normalisation_coeffs(self.x)
+    
+    def __call__(self, *args, **kwargs):
+        return self._log_probability(*args, **kwargs)
 
     def full_func(self, inputs, x, **kwargs):
         ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
