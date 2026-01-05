@@ -19,8 +19,9 @@ def _init_worker(global_data):
     fit_profile = global_data["fit_profile"]
     np.random.seed(global_data["seed"])
 
+    # Configure whether to use full or fast model
     global model_function
-    if global_data["fit_profile"]:
+    if fit_profile:
         model_function = full_func
     else:
         model_function = fast_func
