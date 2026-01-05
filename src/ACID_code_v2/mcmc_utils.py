@@ -6,6 +6,8 @@ from time import sleep
 import matplotlib.pyplot as plt
 import sys
 
+# TODO: Move a,b init to _init_worker to avoid recomputation
+
 def _init_worker(global_data):
     """Called once per worker."""
     global x, y, yerr, alpha, k_max, velocities, c_factor, fit_profile
@@ -27,33 +29,33 @@ def _init_worker(global_data):
         model_function = fast_func
 
 def full_func(inputs, x, **kwargs):
-        ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
-        alpha = kwargs.get("alpha", globals().get("alpha"))
-        k_max = kwargs.get("k_max", alpha.shape[1])
+    ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
+    alpha = kwargs.get("alpha", globals().get("alpha"))
+    k_max = kwargs.get("k_max", alpha.shape[1])
 
-        z = inputs[:k_max]
+    z = inputs[:k_max]
 
-        mdl = np.dot(alpha, z)
+    mdl = np.dot(alpha, z)
 
-        #converting model from optical depth to flux
-        mdl = np.exp(mdl)
+    #converting model from optical depth to flux
+    mdl = np.exp(mdl)
 
-        ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        a = 2/(np.max(x)-np.min(x))
-        b = 1 - a*np.max(x)
+    ## these are used to adjust the wavelengths to between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
+    a = 2/(np.max(x)-np.min(x))
+    b = 1 - a*np.max(x)
 
-        # Calculate continuum polynomial
-        coefs = np.asarray(inputs[k_max:-1], dtype=float)
-        scale = inputs[-1]
-        u = (a * x) + b
+    # Calculate continuum polynomial
+    coefs = np.asarray(inputs[k_max:-1], dtype=float)
+    scale = inputs[-1]
+    u = (a * x) + b
 
-        # Build continuum model
-        mdl1 = 0.0
-        for c in reversed(coefs):
-            mdl1 = mdl1 * u + c
-        mdl *= mdl1 * scale
+    # Build continuum model
+    mdl1 = 0.0
+    for c in reversed(coefs):
+        mdl1 = mdl1 * u + c
+    mdl *= mdl1 * scale
 
-        return mdl, z
+    return mdl, z
 
 def fast_func(inputs, x, **kwargs):
     ## model for the mcmc - takes the profile(z) and the continuum coefficents(inputs[k_max:]) to create a model spectrum.
@@ -66,6 +68,7 @@ def fast_func(inputs, x, **kwargs):
     scale = inputs[-1]
     u = (a * x) + b
 
+    # Build continuum model
     mdl = 0.0
     for c in reversed(coefs):
         mdl = mdl * u + c
