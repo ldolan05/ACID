@@ -17,9 +17,9 @@ def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
     return _MCMC(theta)
 
-@beartype
 class MCMC:
 
+    @beartype
     def __init__(
             self,
             x           : np.ndarray,
@@ -32,7 +32,28 @@ class MCMC:
             seed        : int|npint|None  = None,
         ):
         """Initialise MCMC functions with necessary data.
-        Called once per worker if using multiprocessing."""
+        Called once per worker if using multiprocessing.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Wavelength array.
+        y : np.ndarray
+            Observed flux array.
+        yerr : np.ndarray
+            Observed flux error array.
+        alpha : np.ndarray
+            Precomputed alpha matrix.
+        velocities : np.ndarray|None, optional
+            Velocity grid for LSD profile, only needed when calling log-probability
+            function, by default None.
+        c_factor : optional
+            Precomputed c_factor for LSD profile calculation, by default None.
+        fit_profile : bool, optional
+            Whether to fit the full profile (True) or use the fast model (False), by default True.
+        seed : int|npint|None, optional
+            Random seed for reproducibility, by default None.
+        """
         
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
@@ -54,18 +75,31 @@ class MCMC:
         
         # Precompute normalization coefficients these are used to adjust the wavelengths to
         # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        
         self.a, self.b = utils.get_normalisation_coeffs(self.x)
     
     def __call__(self, *args, **kwargs):
+        # Sets the default call is the log_probability function
         return self._log_probability(*args, **kwargs)
 
     def full_func(self, theta):
+        """Full model for mcmc - takes all inputs (profile points + continuum coefficents)
+        to create a model spectrum.
 
+        Parameters
+        ----------
+        theta : array-like
+            Model parameters: first k_max values are profile points (z),
+            followed by continuum polynomial coefficients and scale factor.
+        
+        Returns
+        -------
+        tuple
+            Model spectrum and profile points (z).
+        """
         z = theta[:self.k_max]
         mdl = np.dot(self.alpha, z)
 
-        #converting model from optical depth to flux
+        # Converting model from optical depth to flux
         mdl = np.exp(mdl)
 
         # Calculate continuum polynomial
@@ -82,7 +116,19 @@ class MCMC:
         return mdl, z
 
     def fast_func(self, inputs):
-        ## faster model for mcmc - takes the continuum coefficents(inputs) to create a model spectrum.
+        """Fast model for mcmc - takes only continuum coefficents and scale factor
+        to create a model spectrum, solving for the profile points (z) directly.
+
+        Parameters
+        ----------
+        inputs : array-like
+            Model parameters: continuum polynomial coefficients followed by scale factor.
+        
+        Returns
+        -------
+        tuple
+            Model spectrum and profile points (z).
+        """
 
         coefs = np.asarray(inputs[:-1], dtype=float)
         scale = inputs[-1]
@@ -109,7 +155,19 @@ class MCMC:
         return forward, z
 
     def _log_prior(self, z):
-        ## imposes the prior restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
+        """Calculates the log prior probability of the profile points (z) and imposes the prior
+        restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
+
+        Parameters
+        ----------
+        z : array-like
+            Profile points.
+
+        Returns
+        -------
+        float
+            Log prior probability.
+        """
 
         # Hard box prior on each z[i]
         if np.any((z < -10.0) | (z > 0.5)):
@@ -132,7 +190,18 @@ class MCMC:
         return p_pent
 
     def _log_probability(self, theta):
-        ## calculates log probability depending on which model (full or fast)
+        """Calculates log probability depending on which model (full or fast).
+        
+        Parameters
+        ----------
+        theta : array-like
+            Model parameters.
+        
+        Returns
+        -------
+        float
+            Log probability.
+        """
         forward, z = self.model_function(theta)
     
         lp = self._log_prior(z)
