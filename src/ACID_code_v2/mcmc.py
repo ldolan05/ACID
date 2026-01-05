@@ -26,7 +26,7 @@ class MCMC:
             y           : np.ndarray,
             yerr        : np.ndarray,
             alpha       : np.ndarray,
-            velocities  : np.ndarray|None = None, # 
+            velocities  : np.ndarray|None = None,
             c_factor                      = None,
             fit_profile : bool            = True,
             seed        : int|npint|None  = None,
@@ -153,6 +153,16 @@ class MCMC:
         forward = np.exp(self.alpha @ z) * mdl
 
         return forward, z
+
+    def run_model_funciton(self, *args, **kwargs):
+        """Runs the selected model function (full or fast) with given arguments.
+
+        Returns
+        -------
+        tuple
+            Model spectrum and profile points (z).
+        """
+        return self.model_function(*args, **kwargs)
 
     def _log_prior(self, z):
         """Calculates the log prior probability of the profile points (z) and imposes the prior
