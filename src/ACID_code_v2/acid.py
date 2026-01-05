@@ -352,7 +352,8 @@ class Acid:
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
-        self.nwalkers = self.ndim * 3
+        factor = 3 if self.fit_profile else 5 # Can afford more walkers if not fitting profile
+        self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 
         ### starting values of walkers with independent variation
@@ -370,7 +371,7 @@ class Acid:
 
         if self.fit_profile is False:
             self.ndim = self.poly_ord + 2
-            self.nwalkers = self.ndim * 3
+            self.nwalkers = self.ndim * factor
             initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
 
         # Transpose initial state to have shape (nwalkers, ndim) for emcee
