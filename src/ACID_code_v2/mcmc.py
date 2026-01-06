@@ -79,7 +79,7 @@ class MCMC:
     
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
-        return self._log_probability(*args, **kwargs)
+        return self.log_probability(*args, **kwargs)
 
     def full_func(self, theta):
         """Full model for mcmc - takes all inputs (profile points + continuum coefficents)
@@ -164,7 +164,7 @@ class MCMC:
         """
         return self.model_function(*args, **kwargs)
 
-    def _log_prior(self, z):
+    def log_prior(self, z):
         """Calculates the log prior probability of the profile points (z) and imposes the prior
         restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
 
@@ -199,7 +199,7 @@ class MCMC:
 
         return p_pent
 
-    def _log_probability(self, theta):
+    def log_probability(self, theta):
         """Calculates log probability depending on which model (full or fast).
         
         Parameters
@@ -214,7 +214,7 @@ class MCMC:
         """
         forward, z = self.model_function(theta)
     
-        lp = self._log_prior(z)
+        lp = self.log_prior(z)
         if not np.isfinite(lp):
             return -np.inf
 
