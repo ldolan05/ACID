@@ -1,3 +1,7 @@
+"""
+Utility functions for the ACID package. Some functions may not be useful to the user.
+"""
+
 import numpy as np
 import glob
 import scipy.constants as const
@@ -112,7 +116,8 @@ def guess_SNR(
         frame_flux        : np.ndarray | list,
         frame_errors      : np.ndarray | list
         ) -> np.ndarray:
-    """Estimates S/N for each frame
+    """Estimates S/N for each frame. Takes the median S/N in the central third of the
+    wavelength range. Fully vectorized so that all the frames can be passed at once.
 
     Parameters
     ----------
@@ -129,9 +134,11 @@ def guess_SNR(
         Array of estimated signal-to-noise ratios for each frame.
     """
 
+    # Quick validation check and conversion to numpy arrays
     frame_wavelengths, frame_flux, frame_errors = [
         validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
 
+    # Calculate S/N in central third of wavelength range
     wavelength_upper = np.max(frame_wavelengths, axis=-1)
     wavelength_lower = np.min(frame_wavelengths, axis=-1)
     delta_wavelength = wavelength_upper - wavelength_lower
@@ -201,8 +208,34 @@ def findfiles(directory, file_type):
 
     return filelist_final
 
+def robust_mean(data:np.ndarray, nsig:int|float=1, axis:int=0) -> np.ndarray|float:
+    """Calculates the robust mean of the input data by excluding outliers beyond a
+    specified number of standard deviations from the median.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input data array.
+    nsig : int | float, optional
+        Number of standard deviations to use for outlier rejection. Defaults to 1.
+    axis : int, optional
+        Axis along which to compute the robust mean. Defaults to 0.
+
+    Returns
+    -------
+    float
+        Robust mean of the input data.
+    """
+    median = np.median(data, axis=axis)
+    std = np.std(data, axis=axis)
+    mask = np.abs(data - median) < nsig * std
+    robust_data = np.where(mask, data, np.nan)
+    return np.nanmean(robust_data, axis=axis)
+
 def od2flux(x):
+    # WIP, not currently used
     return np.exp(x)-1
 
 def flux2od(x):
+    # WIP, not currently used
     return np.log(x+1)

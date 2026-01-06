@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import scipy.constants as const
 from . import utils
 from .lsd import LSD
-from . import mcmc_utils
+from . import mcmc
 from .result import Result
 
 warnings.filterwarnings("ignore")
@@ -141,6 +141,7 @@ class Acid:
         input_spectral_errors,
         frame_sns                      = None,
         all_frames                     = None,
+        fit_profile    :bool           = True,
         poly_ord       :int|npint      = 3,
         pix_chunk      :int|npint      = 20,
         dev_perc       :int|npint      = 25,
@@ -189,6 +190,11 @@ class Acid:
             regions or order (in the case of echelle spectra). General shape needs to be
             (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape.
              The only allowed string is "default" due to legacy behaviour, which now acts the same as None, by default None
+        fit_profile : bool, optional
+            If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
+            profile is inferred from the continuum fit. Setting this to False can significantly speed up compution time, 
+            depending on the machine used as it is not as easy to parallelise. It may decrease accuracy, and is not fully tested
+            as of yet, by default True.
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
         pix_chunk : int, optional
@@ -300,6 +306,7 @@ class Acid:
         self.moves = moves
         self.cf_percentile = cf_percentile
         self.highsamples = highsamples
+        self.fit_profile    = fit_profile
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -332,7 +339,7 @@ class Acid:
 
         ### Begin ACID process
 
-        if self.verbose>0:
+        if self.verbose>1:
             t0 = time.time()
             print('Initialising...')
 
@@ -368,20 +375,18 @@ class Acid:
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
 
         # Masking based off residuals
-        if self.verbose>0:
+        if self.verbose>1:
             print('Residual masking...')
 
-        # Inputs:
-        # self.x, self.y, self.yerr, self.model_inputs, self.poly
-        # Sets:
-        # self.model_inputs_resi
-        # Modifies:
-        # self.alpha, self.yerr
+        # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
+        # Sets: self.c_factor
+        # Modifies: self.alpha, self.yerr
         self.residual_mask() # will eventually add options for this
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
-        self.nwalkers = self.ndim * 3
+        factor = 3 if self.fit_profile else 5 # Can afford more walkers if not fitting profile
+        self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 
         ### starting values of walkers with independent variation
@@ -397,20 +402,28 @@ class Acid:
                 pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
+        if self.fit_profile is False:
+            self.ndim = self.poly_ord + 2
+            self.nwalkers = self.ndim * factor
+            initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
+
+        # Transpose initial state to have shape (nwalkers, ndim) for emcee
         initial_state = np.transpose(np.array(initial_state))
         self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
         # Setting global data for mcmc_utils initialisation
         self.mcmc_global_data = {
-            "x"         : self.wavelengths["masked"],
-            "y"         : self.flux["masked"],
-            "yerr"      : self.errors["masked"],
-            "alpha"     : self.alpha,
-            "velocities": self.velocities,
-            "seed"      : self.seed
+            "x"          : self.wavelengths["masked"],
+            "y"          : self.flux["masked"],
+            "yerr"       : self.errors["masked"],
+            "alpha"      : self.alpha,
+            "velocities" : self.velocities,
+            "seed"       : self.seed,
+            "fit_profile": self.fit_profile,
+            "c_factor"   : self.c_factor,
             }
 
-        if self.verbose>0:
+        if self.verbose>1:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
             print('Fitting the continuum using emcee...')
@@ -761,7 +774,7 @@ class Acid:
         yerr = self.errors["combined"]
         x_norm = self.wavelengths["combined_normalized"]
 
-        forward = mcmc_utils.model_func(self.model_inputs, x, alpha=self.alpha)
+        forward, _ = mcmc.MCMC(x, y, yerr, self.alpha).full_func(self.model_inputs)
 
         mdl1 = 0
         nvel = len(self.velocities)
@@ -846,6 +859,7 @@ class Acid:
             LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
+        self.c_factor = LSD_masking.c_factor
 
         if self.verbose > 2:
             nremoved = np.sum(idx1)+np.sum(idx2)
@@ -888,7 +902,7 @@ class Acid:
         nsteps,
         ):
 
-        sampler_verbosity = True if self.verbose>0 else False
+        sampler_verbosity = True if self.verbose>1 else False
         backend = None
         if state is None:
             if not hasattr(self, 'sampler'):
@@ -913,7 +927,6 @@ class Acid:
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
-            "log_prob_fn": mcmc_utils._log_probability,
             "moves"      : moves,
             "backend"    : backend,
         }
@@ -926,7 +939,7 @@ class Acid:
 
         if self.parallel:
             os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if self.verbose>0:
+            if self.verbose>1:
                 print(f"Using {self.cores} cores for MCMC")
 
             # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
@@ -940,8 +953,8 @@ class Acid:
                     mp_obj = ctx
                 else:
                     mp_obj = mp
-                with mp_obj.Pool(processes=self.cores, initializer=mcmc_utils._init_worker, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool)
+                with mp_obj.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
             else: # This doesn't work, needs serious modifications to make work
@@ -950,9 +963,8 @@ class Acid:
             os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
 
         else:
-            # log_prob = partial(mcmc_utils._log_probability, global_data=self.mcmc_global_data) # This didn't work initialising global data
-            mcmc_utils._init_worker(self.mcmc_global_data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs)
+            MCMC = mcmc.MCMC(**self.mcmc_global_data)
+            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
             self.sampler.run_mcmc(**mcmc_kwargs)
 
     def process_results(
@@ -990,17 +1002,16 @@ class Acid:
         #         self.poly_cos_err.append(np.max(error))
         # self.profile = np.array(self.profile)
         # self.profile_err = np.array(self.profile_err)
-
-        nvel = len(self.velocities)
+        nvel = len(self.velocities) if self.fit_profile else 0
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
         errors = np.max(errors, axis=0) # why?
         self.profile       = quartiles[1, :nvel]
         self.profile_err   = errors[:nvel]
         self.poly_cos      = quartiles[1, nvel:]
-        self.poly_cos_err  = errors[nvel:]
+        self.poly_cos_err  = errors[nvel:]  
 
-        if self.verbose > 0:
+        if self.verbose > 1:
             print('Getting the final profiles...')
 
         # Finding error for the continuum fit
@@ -1008,6 +1019,7 @@ class Acid:
         rng = np.random.default_rng(self.seed)
         inds = rng.integers(len(flat_samples), size=nsamples)
         norm_wl = self.wavelengths["combined_normalized"]
+        # nvel = len(self.velocities)
 
         # conts1 = []
         # for ind in inds:

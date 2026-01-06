@@ -1,6 +1,31 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.3.0] - 2026-01-05
+
+### Changed
+- Usable MCMC class, if any of the functions need to be used. See the API for details.
+- Performance speedup as some calculations no longer need to be repeated (and are only once calculated in clas initialisation)
+
+## [1.2.1] - 2026-01-05
+
+### Updated
+- Updateded the robust_mean function's docstring and usability with option to specify array axis to compute mean along.
+
+## [1.2.0] - 2025-12-21
+
+### Added
+-  Ability to just fit the continuum using emcee (and not the profile), resulting in a large computational speedup at the cost of accuracy. The speedup is dependent on the system used to run the function. It is still untested and should be considered in beta for testing.
+- A robust mean calculation to utils, see docstring for details.
+- The Profiles class, which is a class that will later be integrated with Result. It fits standard models such as gaussian, lorentzians, and voigt profiles to the resulting Acid profiles with options to compare. See the docstrings for more details. 
+
+### Changed
+- LSD now has the c_factor attribute
+- Warning for low nsteps due to autocorrelation time now calculates the required number of steps.
+
+### Fixed
+- Verbosity defaults to more closely match the docstring description.
+
 ## [1.1.1] - 2025-12-09
 
 ### Fixed

@@ -15,6 +15,8 @@ Core Classes
    Acid
    Result
    LSD
+   Profiles
+   MCMC
 
 Utility Functions
 ------------------
@@ -24,8 +26,7 @@ Utility Functions
    :nosignatures:
 
    calc_deltav
-   guess_SNR
-   scale_spectra
+   utils
 
 Legacy ACID Functions
 ----------------------

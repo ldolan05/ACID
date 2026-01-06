@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools
 from beartype import beartype
 from numpy import integer as npint
-from .mcmc_utils import model_func
+
+from .lsd import LSD
+from . import mcmc
 from . import utils
 
 warnings.filterwarnings("ignore")
@@ -71,6 +73,8 @@ class Result:
         self.verbose = Acid.verbose
         self.order_range = Acid.order_range
         self.alpha = Acid.alpha
+        self.fit_profile = Acid.fit_profile
+        self.mcmc_global_data = Acid.mcmc_global_data
 
         self.BJDs = getattr(Acid, 'BJDs', None)
         self.profiles = getattr(Acid, 'profiles', None)
@@ -81,7 +85,7 @@ class Result:
         else:
             self.all_frames = None
 
-        self.ndim = len(self.model_inputs)
+        self.ndim = Acid.ndim
         self.nvel = len(Acid.velocities)
 
         # Calculate autocorr time, burnin, thin
@@ -94,11 +98,21 @@ class Result:
         if self.nsteps < 50 * np.max(self.tau):
             if self.verbose>1:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
-                "time. The sampler may not have converged. Consider running more steps or checking " \
-                "the walker plots.")
+                "time.\n The sampler may not have converged. Consider running more steps or checking " \
+                f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
+                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.")
 
-        self.burnin = int(2 * np.max(self.tau))
-        self.thin = int(np.min(self.tau)/5)
+        try:
+            self.burnin = int(2 * np.max(self.tau))
+            self.thin = int(np.min(self.tau)/5)
+        except:
+            if self.verbose>0:
+                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
+                f" wrong. Setting burnin=0 and thin=1.")
+            self.burnin = 0
+            self.thin = 1
+
         # Samples if burnin and thin dont need inputs
         self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
@@ -214,7 +228,7 @@ class Result:
         labels          :dict|None = None,
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
-        errorbar_kwargs :dict|None = None
+        errorbar_kwargs :dict|None = None,
         ):
         """Plots the LSD profile result from Acid.
 
@@ -286,6 +300,7 @@ class Result:
         labels          :dict|None = None,
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
+        **kwargs # for testing
         ):
         """Plots the forward model fit to the observed spectrum.
 
@@ -328,10 +343,12 @@ class Result:
         # Get input data
         input_wavelengths = self.wavelengths[input_version]
         input_flux = self.flux[input_version]
+        input_errors = self.errors[input_version]
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        model_flux = model_func(theta_median, input_wavelengths, alpha=self.alpha, k_max=self.nvel)
+        MCMC = mcmc.MCMC(input_wavelengths, input_flux, input_errors, self.alpha, self.fit_profile)
+        model_flux, _ = MCMC.run_model_funciton(theta_median)
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)

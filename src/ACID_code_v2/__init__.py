@@ -1,9 +1,13 @@
 from .acid import ACID, ACID_HARPS, Acid
 from .lsd import LSD
 from .result import Result
-from .utils import scale_spectra, calc_deltav, guess_SNR
-__all__ = ['ACID', 'ACID_HARPS', 'Acid', 'calc_deltav', 'LSD',
-           'Result', 'scale_spectra', 'guess_SNR']
+from . import utils
+from .profiles import Profiles
+from .mcmc import MCMC
+from .utils import calc_deltav # for legacy reasons
+
+__all__ = ['ACID', 'ACID_HARPS', 'Acid', 'LSD', 'MCMC', 'Result', 'Profiles',
+           'utils', 'calc_deltav',]
 
 def _reload_all():
     # Reloads all submodules of the ACID_code_v2 package. 
