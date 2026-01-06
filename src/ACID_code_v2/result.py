@@ -43,18 +43,25 @@ def _require_Acid(method):
 class Result:
     """Class to handle the results from the Acid MCMC sampling, and results processing."""
 
-    def __init__(self, Acid, ACID_HARPS:bool=False, production_run:bool=False):
+    def __init__(self, Acid=None, ACID_HARPS:bool=False, production_run:bool=False):
         """Initiate Result class
 
         Parameters
         ----------
-        Acid : object
-            An Acid object after MCMC sampling has been performed.
+        Acid : object, optional
+            An Acid object after MCMC sampling has been performed. If not provided,
+            initialisation is skipped and will likely cause errors., by default None
         ACID_HARPS : bool, optional
             Whether the ACID_HARPS function was used, by default False
         production_run : bool, optional
             Whether Acid was run in production mode, by default False
         """
+
+        if Acid is None:
+            if self.verbose>0:
+                print("Warning: Acid object not provided. Result object will not be fully functional.")
+            return
+
         self.Acid = Acid
 
         # This should be a temporary measure until Acid can be pickled properly
