@@ -183,12 +183,15 @@ class Result:
         self.production_run = False
         self.all_frames = self.Acid.all_frames
 
-    def plot_walkers(self, burnin:int|npint|None=None, thin:int|npint|None=None):
+    def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
 
         Parameters
         ----------
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to plot from, otherwise,
+            takes the sampler from the Result object, by default None
         burnin : int | None, optional
             Optionally define the number of burnin steps, by default None
         thin : int | None, optional
@@ -196,6 +199,9 @@ class Result:
         """
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
+
+        if sampler is not None:
+            self.initiate_sampler(sampler)
 
         naxes = min(10, self.ndim)
         fig, axes = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
@@ -213,14 +219,20 @@ class Result:
         plt.subplots_adjust(hspace=0.05)
         plt.show()
 
-    def plot_corner(self, **kwargs):
+    def plot_corner(self, sampler=None, **kwargs):
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
         
         Parameters
         ----------
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to plot from, otherwise,
+            takes the sampler from the Result object, by default None
         **kwargs:
             Additional keyword arguments to pass to corner.corner().
         """
+
+        if sampler is not None:
+            self.initiate_sampler(sampler)
 
         naxes = min(8, self.ndim)
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
@@ -398,6 +410,19 @@ class Result:
             pickle.dump(self, f)
         if self.verbose>0:
             print(f"Result object saved to {filename}")
+
+    def initiate_sampler(self, sampler):
+        """Initiates the sampler attribute from an external sampler.
+
+        Parameters
+        ----------
+        sampler : emcee.EnsembleSampler
+            An emcee EnsembleSampler object to set as the sampler attribute.
+        """
+        self.sampler = sampler
+        self.ndim = sampler.ndim
+        self.nwalkers = sampler.nwalkers
+        self.nsteps = sampler.get_chain().shape[0]
 
     @classmethod
     def load_result(cls, result_object:str|object="result.pkl"):
