@@ -892,7 +892,7 @@ class Acid:
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
                 with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_pr_logobability)
+                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
             else: # This doesn't work, needs serious modifications to make work
