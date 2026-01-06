@@ -115,7 +115,7 @@ class MCMC:
 
         return mdl, z
 
-    def fast_func(self, inputs):
+    def fast_func(self, theta):
         """Fast model for mcmc - takes only continuum coefficents and scale factor
         to create a model spectrum, solving for the profile points (z) directly.
 
@@ -130,8 +130,8 @@ class MCMC:
             Model spectrum and profile points (z).
         """
 
-        coefs = np.asarray(inputs[:-1], dtype=float)
-        scale = inputs[-1]
+        coefs = np.asarray(theta[:-1], dtype=float)
+        scale = theta[-1]
         u = (self.a * self.x) + self.b
 
         # Build continuum model
