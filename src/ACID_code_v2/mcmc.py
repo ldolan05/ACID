@@ -65,7 +65,7 @@ class MCMC:
         self.k_max = self.alpha.shape[1]
         self.c_factor = c_factor
         self.fit_profile = fit_profile
-        np.random.seed(seed)
+        self.seed = seed
 
         # Configure whether to use full or fast model
         if self.fit_profile:
