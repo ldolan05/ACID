@@ -178,7 +178,7 @@ class Result:
         self.production_run = False
         self.all_frames = self.Acid.all_frames
 
-    def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None):
+    def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None, return_fig:bool=False):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
 
@@ -191,6 +191,8 @@ class Result:
             Optionally define the number of burnin steps, by default None
         thin : int | None, optional
             Optionally define the number of thinning steps, by default None
+        return_fig : bool, optional
+            Whether to return the figure and axis objects instead of showing the plot, by default False
         """
 
         if sampler is not None:
@@ -200,22 +202,24 @@ class Result:
         thin = thin if thin is not None else self.thin
 
         naxes = min(10, self.ndim)
-        fig, axes = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
+        fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin + burnin
         for i in range(naxes):
-            ax = axes[i]
+            ax = ax[i]
             ax.plot(steps, samples[:, :, i], "k", alpha=0.3)
             ax.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
 
-        axes[-1].legend()
-        axes[-1].set_xlabel("Step number")
-        axes[-1].set_xlim(0, self.nsteps)
-        axes[0].set_title('MCMC Walkers')
+        ax[-1].legend()
+        ax[-1].set_xlabel("Step number")
+        ax[-1].set_xlim(0, self.nsteps)
+        ax[0].set_title('MCMC Walkers')
         plt.subplots_adjust(hspace=0.05)
+        if return_fig:
+            return fig, ax
         plt.show()
 
-    def plot_corner(self, sampler=None, **kwargs):
+    def plot_corner(self, sampler=None, return_fig:bool=False, **kwargs):
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
         
         Parameters
@@ -223,6 +227,8 @@ class Result:
         sampler : emcee.EnsembleSampler | None, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
+        return_fig : bool, optional
+            Whether to return the figure object instead of showing the plot, by default False
         **kwargs:
             Additional keyword arguments to pass to corner.corner().
         """
@@ -234,6 +240,8 @@ class Result:
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
         fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
+        if return_fig:
+            return fig
         plt.show()
 
     @_require_all_results
