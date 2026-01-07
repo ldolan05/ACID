@@ -225,7 +225,7 @@ def result_handling_test():
         wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
         spectra.append(spec_file[1].data[::skips])        # Spectral Flux
         errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
-        sns.append(float(spec_file[3].data))     # SN of Spectrum
+        sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
     linelist_path = 'example/example_linelist.txt' # Insert path to line list
 
@@ -235,8 +235,8 @@ def result_handling_test():
     # run ACID function
     Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
     result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
-    result.save_result(filename="tests/data/test_data/classes_test.pkl")
-    result = acid.Result.load_result("tests/data/classes_test.pkl")
+    result.save_result(filename="tests/test_data/classes_test.pkl")
+    result = acid.Result.load_result("tests/test_data/classes_test.pkl")
     result.plot_profiles()
     return result
 
@@ -255,7 +255,7 @@ def no_profile_fit():
         wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
         spectra.append(spec_file[1].data[::skips])        # Spectral Flux
         errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
-        sns.append(float(spec_file[3].data))     # SN of Spectrum
+        sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
     linelist_path = 'example/example_linelist.txt' # Insert path to line list
 
