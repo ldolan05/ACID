@@ -826,9 +826,6 @@ class Acid:
         m = np.median(residuals)
         sigma = np.std(residuals)
 
-        # TODO! : check what the hell is gong on here with a_old
-        a_old = 1
-
         if self.n_sig == 2:
             print("n_sig is 2")
         upper_clip = m + self.n_sig * sigma
