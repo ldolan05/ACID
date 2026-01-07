@@ -796,6 +796,15 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         "sampler": sampler,
         "residual_masks": mask_idx,
         "wavelengths": {"combined": wavelengths},
+        "initial_state": pos,
+        "mcmc_global_data": {
+            "x": x,
+            "y": y,
+            "yerr": yerr,
+            "alpha": alpha,
+            "velocities": velocities,
+            "seed": seed,
+        }
         }
 
     return all_frames, _input_data

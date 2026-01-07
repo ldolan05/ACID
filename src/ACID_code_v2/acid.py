@@ -1051,6 +1051,8 @@ class Acid:
             "wavelengths": self.wavelengths, # contains combined
             "sampler"    : self.sampler,
             "residual_masks": self.residual_masks,
+            "initial_state": self.initial_state,
+            "mcmc_global_data": self.mcmc_global_data,
         }
 
         if self.return_result and return_result:
