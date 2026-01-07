@@ -235,7 +235,7 @@ def result_handling_test():
     # run ACID function
     Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
     result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
-    result.save_result(filename="tests/data/classes_test.pkl")
+    result.save_result(filename="tests/data/test_data/classes_test.pkl")
     result = acid.Result.load_result("tests/data/classes_test.pkl")
     result.plot_profiles()
     return result
