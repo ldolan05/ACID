@@ -43,22 +43,54 @@ def _require_Acid(method):
 class Result:
     """Class to handle the results from the Acid MCMC sampling, and results processing."""
 
-    def __init__(self, Acid, ACID_HARPS:bool=False, production_run:bool=False):
+    def __init__(self, Acid=None, sampler=None, ACID_HARPS:bool=False, verbose:int|bool|None=None, production_run:bool=False):
         """Initiate Result class
 
         Parameters
         ----------
-        Acid : object
-            An Acid object after MCMC sampling has been performed.
+        Acid : object, optional
+            An Acid object after MCMC sampling has been performed. If not provided,
+            initialisation is skipped and will likely cause errors., by default None
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to use instead of the one from the
+            Acid object, by default None
         ACID_HARPS : bool, optional
             Whether the ACID_HARPS function was used, by default False
+        verbose : int|bool|None, optional
+            Verbosity level, works exactly the same as Acid verbosity, if not provided
+            defaults to provided Acid class verbosity otherwise defaults to 2.
         production_run : bool, optional
             Whether Acid was run in production mode, by default False
         """
-        self.Acid = Acid
 
-        # This should be a temporary measure until Acid can be pickled properly
-        self.sampler = Acid.sampler
+        if verbose is True:
+            verbose = 2
+        elif verbose is False:
+            verbose = 0
+
+        if Acid is None:
+            self.verbose = verbose if verbose is not None else 2
+            if sampler is not None:
+                self.initiate_sampler(sampler)
+            self.production_run = True # Forces True to activate @_require_all_results decorator
+            self.Acid = None
+            if self.verbose>0:
+                print("Warning: Acid object not provided. Result object will not be fully functional.")
+            return
+
+        # From here, Acid instance is provided
+
+        if verbose is None:
+            self.verbose = Acid.verbose
+        else:
+            self.verbose = verbose
+
+        if sampler is None:
+            self.initiate_sampler(Acid.sampler)
+        else:
+            self.initiate_sampler(sampler)
+
+        self.Acid = Acid
 
         # Store different used wavelengths in ACID (later this may go into Acid itself):
         self.wavelengths = Acid.wavelengths
@@ -67,7 +99,6 @@ class Result:
 
         self.ACID_HARPS = ACID_HARPS
         self.production_run = production_run
-        self.nsteps = Acid.nsteps
         self.velocities = Acid.velocities
         self.model_inputs = Acid.model_inputs
         self.verbose = Acid.verbose
@@ -85,36 +116,7 @@ class Result:
         else:
             self.all_frames = None
 
-        self.ndim = Acid.ndim
         self.nvel = len(Acid.velocities)
-
-        # Calculate autocorr time, burnin, thin
-        # Suppress output from get_autocorr_time call
-        with open(os.devnull, "w") as devnull, \
-            contextlib.redirect_stdout(devnull), \
-            contextlib.redirect_stderr(devnull):
-            self.tau = self.Acid.sampler.get_autocorr_time(quiet=True)
-        
-        if self.nsteps < 50 * np.max(self.tau):
-            if self.verbose>1:
-                print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
-                "time.\n The sampler may not have converged. Consider running more steps or checking " \
-                f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
-                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.")
-
-        try:
-            self.burnin = int(2 * np.max(self.tau))
-            self.thin = int(np.min(self.tau)/5)
-        except:
-            if self.verbose>0:
-                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
-                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
-                f" wrong. Setting burnin=0 and thin=1.")
-            self.burnin = 0
-            self.thin = 1
-
-        # Samples if burnin and thin dont need inputs
-        self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
     @_require_all_results
     def __getitem__(self, item):
@@ -176,17 +178,24 @@ class Result:
         self.production_run = False
         self.all_frames = self.Acid.all_frames
 
-    def plot_walkers(self, burnin:int|npint|None=None, thin:int|npint|None=None):
+    def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
 
         Parameters
         ----------
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to plot from, otherwise,
+            takes the sampler from the Result object, by default None
         burnin : int | None, optional
             Optionally define the number of burnin steps, by default None
         thin : int | None, optional
             Optionally define the number of thinning steps, by default None
         """
+
+        if sampler is not None:
+            self.initiate_sampler(sampler)
+
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
 
@@ -206,14 +215,20 @@ class Result:
         plt.subplots_adjust(hspace=0.05)
         plt.show()
 
-    def plot_corner(self, **kwargs):
+    def plot_corner(self, sampler=None, **kwargs):
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
         
         Parameters
         ----------
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to plot from, otherwise,
+            takes the sampler from the Result object, by default None
         **kwargs:
             Additional keyword arguments to pass to corner.corner().
         """
+
+        if sampler is not None:
+            self.initiate_sampler(sampler)
 
         naxes = min(8, self.ndim)
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
@@ -391,6 +406,47 @@ class Result:
             pickle.dump(self, f)
         if self.verbose>0:
             print(f"Result object saved to {filename}")
+
+    def initiate_sampler(self, sampler):
+        """Initiates the sampler attribute from an external sampler.
+
+        Parameters
+        ----------
+        sampler : emcee.EnsembleSampler
+            An emcee EnsembleSampler object to set as the sampler attribute.
+        """
+        self.sampler = sampler
+        self.ndim = sampler.ndim
+        self.nwalkers = sampler.nwalkers
+        self.nsteps = sampler.get_chain().shape[0]
+
+        # Calculate autocorr time, burnin, thin
+        # Suppress output from get_autocorr_time call
+        with open(os.devnull, "w") as devnull, \
+            contextlib.redirect_stdout(devnull), \
+            contextlib.redirect_stderr(devnull):
+            self.tau = self.sampler.get_autocorr_time(quiet=True)
+        
+        if self.nsteps < 50 * np.max(self.tau):
+            if self.verbose>1:
+                print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
+                "time.\n The sampler may not have converged. Consider running more steps or checking " \
+                f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
+                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.")
+
+        try:
+            self.burnin = int(2 * np.max(self.tau))
+            self.thin = int(np.min(self.tau)/5)
+        except:
+            if self.verbose>0:
+                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
+                f" wrong. Setting burnin=0 and thin=1.")
+            self.burnin = 0
+            self.thin = 1
+
+        # Samples if burnin and thin dont need inputs
+        self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
     @classmethod
     def load_result(cls, result_object:str|object="result.pkl"):
