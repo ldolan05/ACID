@@ -85,7 +85,7 @@ def multiple_frames():
         wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
         spectra.append(spec_file[1].data[::skips])        # Spectral Flux
         errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
-        sns.append(float(spec_file[3].data))     # SN of Spectrum
+        sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
     linelist = 'example/example_linelist.txt' # Insert path to line list
 
