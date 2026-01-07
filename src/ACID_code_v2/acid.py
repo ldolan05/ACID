@@ -163,6 +163,7 @@ class Acid:
         highsamples                    = False,
         no_sn100                       = False,
         no_a_old                       = False,
+        better_initial_state           = False,
         _input_data                    = None,
         **kwargs,
         ):
@@ -298,15 +299,16 @@ class Acid:
 
         # The tests
         self.no_a_old                = no_a_old
-        self.correct_continuum = correct_continuum
+        self.correct_continuum       = correct_continuum
         self.correct_autocorrelation = correct_autocorrelation
-        self.correct_error_combine = correct_error_combine
-        self.no_sn100 = no_sn100
-        self.fork = fork
-        self.moves = moves
-        self.cf_percentile = cf_percentile
-        self.highsamples = highsamples
-        self.fit_profile    = fit_profile
+        self.correct_error_combine   = correct_error_combine
+        self.no_sn100                = no_sn100
+        self.fork                    = fork
+        self.moves                   = moves
+        self.cf_percentile           = cf_percentile
+        self.highsamples             = highsamples
+        self.fit_profile             = fit_profile
+        self.better_initial_state    = better_initial_state
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -389,27 +391,55 @@ class Acid:
         self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 
-        ### starting values of walkers with independent variation
-        sigma = 0.8 * 0.005
-        initial_state = []
-        for i in range(0, self.ndim):
-            if i < self.ndim - self.poly_ord - 2:
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
-            else:
-                x1 = self.model_inputs[i]
-                rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
-                sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
-            initial_state.append(pos)
+        if self.better_initial_state:
+            print("Using better initial state for walkers")
 
-        if self.fit_profile is False:
-            self.ndim = self.poly_ord + 2
+            self.ndim = len(self.model_inputs)
+            factor = 3 if self.fit_profile else 5
             self.nwalkers = self.ndim * factor
-            initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
+            rng = np.random.default_rng(self.seed)
 
-        # Transpose initial state to have shape (nwalkers, ndim) for emcee
-        initial_state = np.transpose(np.array(initial_state))
-        self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
+            theta0 = np.asarray(self.model_inputs, float)
+
+            # simple: relative jitter with a floor so zeros don't collapse
+            rel = 1e-2
+            floor = 1e-6
+            sigma = rel * np.maximum(np.abs(theta0), floor)
+
+            initial_state = theta0 + rng.normal(0.0, sigma, size=(self.nwalkers, self.ndim))
+
+            # optional: keep the final scale positive (recommended)
+            initial_state[:, -1] = np.abs(initial_state[:, -1]) + floor
+
+            if self.fit_profile is False:
+                self.ndim = self.poly_ord + 2
+                self.nwalkers = self.ndim * factor
+                initial_state = initial_state[:, -self.ndim:][:self.nwalkers]
+
+            self.initial_state = initial_state
+
+        else:
+            ### starting values of walkers with independent variation
+            sigma = 0.8 * 0.005
+            initial_state = []
+            for i in range(0, self.ndim):
+                if i < self.ndim - self.poly_ord - 2:
+                    pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                else:
+                    x1 = self.model_inputs[i]
+                    rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
+                    sigma = abs(rounded_sigma) / 10
+                    pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                initial_state.append(pos)
+
+            if self.fit_profile is False:
+                self.ndim = self.poly_ord + 2
+                self.nwalkers = self.ndim * factor
+                initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
+
+            # Transpose initial state to have shape (nwalkers, ndim) for emcee
+            initial_state = np.transpose(np.array(initial_state))
+            self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
         # Setting global data for mcmc_utils initialisation
         self.mcmc_global_data = {
