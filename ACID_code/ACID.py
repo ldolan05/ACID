@@ -537,7 +537,8 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
             all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
     
     skip_acid = False
-    global input_data, mask_idx, sampler
+    global input_data, mask_idx, sampler, a, b, wavelengths
+    sampler = None
     input_data = _input_data if _input_data is not None else {}
     if len(input_data) > 0:
         print("Skipping V1 sampling")
