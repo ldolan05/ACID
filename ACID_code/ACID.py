@@ -771,7 +771,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
     conts = []
     for ind in inds:
         sample = flat_samples[ind]
-        mdl = model_func(sample, wavelengths)
+        # mdl = model_func(sample, wavelengths)
         #mdl = model_func(sample, x)
         #mdl = mdl[idx]
         mdl1_temp = 0
