@@ -537,7 +537,7 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
             all_frames = np.zeros((len(frames), 1, 2, len(velocities)))
     
     skip_acid = False
-    global input_data, mask_idx, sampler, a, b, wavelengths
+    global input_data, mask_idx, sampler, a, b, wavelengths, x, y, yerr, alpha, pos
     sampler = None
     input_data = _input_data if _input_data is not None else {}
     if len(input_data) > 0:
@@ -549,6 +549,11 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         wavelengths = input_data["wavelengths"]["combined"]
         a = 2/(np.max(wavelengths)-np.min(wavelengths))
         b = 1 - a*np.max(wavelengths)
+        x = input_data["mcmc_global_data"]["x"]
+        y = input_data["mcmc_global_data"]["y"]
+        yerr = input_data["mcmc_global_data"]["yerr"]
+        alpha = input_data["mcmc_global_data"]["alpha"]
+        pos = input_data["initial_state"]
         skip_acid = True
 
     if skip_acid is False:
@@ -569,7 +574,6 @@ def ACID(input_wavelengths, input_spectra, input_spectral_errors, line, frame_sn
         # t2 = time.time()
         # print('Set up before LSD %s'%(t2-t0))
         #### getting the initial profile
-        global alpha
         velocities, profile, profile_errors, alpha, continuum_waves, continuum_flux, no_line= LSD.LSD(wavelengths, fluxes1, flux_error_order1, linelist, 'False', poly_ord, sn, 30, run_name, velocities)
 
         # t3 = time.time()

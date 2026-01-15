@@ -337,6 +337,8 @@ class Acid:
                 self.wavelengths["combined_normalized"] = (self.wavelengths["combined"]*a)+b
                 self.residual_masks = _input_data["residual_masks"]
                 self.sampler        = _input_data["sampler"]
+                self.initial_state = _input_data["initial_state"]
+                self.mcmc_global_data = _input_data["mcmc_global_data"]
                 return self.process_results()
 
         ### Begin ACID process
