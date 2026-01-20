@@ -9,6 +9,7 @@ __pycache__*/
 test.py
 tests/spawn multithreading tests/
 *.h5
+test_Data/
 
 # Distribution / packaging
 .Python
