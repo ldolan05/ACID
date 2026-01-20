@@ -4,12 +4,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import glob, os, sys
 from pathlib import Path
+from time import time
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = next(p for p in SCRIPT_DIR.parents if (p / "pyproject.toml").exists())
 sys.path.append(str(PROJECT_ROOT))
 os.chdir(PROJECT_ROOT)
 from src import  ACID_code_v2 as acid
 acid._reload_all()
+start = time()
 
 def test_run_e2ds():
 
@@ -283,3 +285,4 @@ res = res_no_profile_fit
 acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=res[0,0,0]).plot_fit("all")
 
 print("All tests passed!")
+print(f"Total time: {time() - start:.2f} seconds")
