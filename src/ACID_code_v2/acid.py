@@ -389,7 +389,7 @@ class Acid:
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
-        factor = 3 if self.fit_profile else 5 # Can afford more walkers if not fitting profile
+        factor = 3 # emcee recommendation
         self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 

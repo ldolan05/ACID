@@ -8,8 +8,8 @@ __pycache__*/
 *.pyd
 test.py
 tests/spawn multithreading tests/
-tests/test_data/
 *.h5
+test_Data/
 *.sh
 
 # Distribution / packaging

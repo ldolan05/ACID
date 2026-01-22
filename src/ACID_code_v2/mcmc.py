@@ -3,6 +3,7 @@ from .lsd import LSD
 from . import utils
 from beartype import beartype
 from numpy import integer as npint
+from numpy.polynomial import polynomial as P
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -108,9 +109,7 @@ class MCMC:
         u = (self.a * self.x) + self.b
 
         # Build continuum model
-        mdl1 = 0.0
-        for c in reversed(coefs):
-            mdl1 = mdl1 * u + c
+        mdl1 = P.polyval(u, coefs)
         mdl *= mdl1 * scale
 
         return mdl, z
@@ -135,9 +134,7 @@ class MCMC:
         u = (self.a * self.x) + self.b
 
         # Build continuum model
-        mdl = 0.0
-        for c in reversed(coefs):
-            mdl = mdl * u + c
+        mdl = P.polyval(u, coefs)
         mdl *= scale
 
         if np.any(mdl <= 0):

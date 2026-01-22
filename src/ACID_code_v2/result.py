@@ -206,9 +206,9 @@ class Result:
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin + burnin
         for i in range(naxes):
-            ax = ax[i]
-            ax.plot(steps, samples[:, :, i], "k", alpha=0.3)
-            ax.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
+            ax_i = ax[i]
+            ax_i.plot(steps, samples[:, :, i], "k", alpha=0.3)
+            ax_i.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
 
         ax[-1].legend()
         ax[-1].set_xlabel("Step number")
