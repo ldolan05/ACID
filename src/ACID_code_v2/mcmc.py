@@ -151,7 +151,7 @@ class MCMC:
 
         return forward, z
 
-    def run_model_funciton(self, *args, **kwargs):
+    def run_model_function(self, *args, **kwargs):
         """Runs the selected model function (full or fast) with given arguments.
 
         Returns
