@@ -118,6 +118,10 @@ class Result:
 
         self.nvel = len(Acid.velocities)
 
+        # For convenience, let the user call the model without needing to input all required args
+        MCMC_class = mcmc.MCMC(**self.mcmc_global_data)
+        self.model = MCMC_class.run_model_function
+
     @_require_all_results
     def __getitem__(self, item):
         """Allows indexing into the all_frames array directly from the Result object.
@@ -370,8 +374,7 @@ class Result:
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        MCMC = mcmc.MCMC(input_wavelengths, input_flux, input_errors, self.alpha, self.fit_profile)
-        model_flux, _ = MCMC.run_model_function(theta_median)
+        model_flux, _ = self.model(theta_median)
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
