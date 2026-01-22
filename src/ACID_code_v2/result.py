@@ -256,6 +256,8 @@ class Result:
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
         errorbar_kwargs :dict|None = None,
+        fig_ax                     = None,
+        **kwargs,
         ):
         """Plots the LSD profile result from Acid.
 
@@ -271,6 +273,8 @@ class Result:
             Keyword arguments to be passed to plt.subplots(), by default None
         errorbar_kwargs : dict | None, optional
             Keyword arguments to be passed to ax.errorbar(), by default None
+        fig_ax : tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | None, optional
+            Optionally provide an existing fig/axis tuple to plot on, by default None
         """
         # Set default errorbar kwargs
         errorbar_defaults = {
@@ -295,7 +299,10 @@ class Result:
         nframes = len(self.all_frames)
         norders = len(self.all_frames[0])
         frames = np.copy(self.all_frames)
-        fig, ax = plt.subplots(**subplot_kwargs)
+        if fig_ax is None:
+            fig, ax = plt.subplots(**subplot_kwargs)
+        else:
+            fig, ax = fig_ax
         if nframes > 1:
             if norders > 1:
                 print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
