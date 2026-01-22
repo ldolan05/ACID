@@ -12,6 +12,7 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
+from dynesty.utils import resample_equal
 
 warnings.filterwarnings("ignore")
 
@@ -142,6 +143,7 @@ class Acid:
         frame_sns                      = None,
         all_frames                     = None,
         fit_profile    :bool           = True,
+        sampler_type   :str            = 'emcee',
         poly_ord       :int|npint      = 3,
         pix_chunk      :int|npint      = 20,
         dev_perc       :int|npint      = 25,
@@ -186,6 +188,8 @@ class Acid:
             profile is inferred from the continuum fit. Setting this to False can significantly speed up compution time, 
             depending on the machine used as it is not as easy to parallelise. It may decrease accuracy, and is not fully tested
             as of yet, by default True.
+        sampler_type : str, optional
+            Sampler to use for MCMC. Options are only 'emcee' and 'dynesty', by default 'emcee'.
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
         pix_chunk : int, optional
@@ -234,6 +238,12 @@ class Acid:
         """
         ### Setup, validation and input conversion
 
+        # Only attempt to import dynesty if it is needed
+        sampler_type = sampler_type.lower()
+        if sampler_type == 'dynesty':
+            global dynesty
+            import dynesty
+
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
         # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
         # inputs to numpy arrays.
@@ -279,6 +289,7 @@ class Acid:
         self.nsteps         = nsteps
         self.order          = order
         self.pix_chunk      = pix_chunk
+        self.sampler_type   = sampler_type
         self.dev_perc       = dev_perc
         self.n_sig          = n_sig
         self.return_result  = return_result
@@ -356,48 +367,57 @@ class Acid:
         self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 
-        ### starting values of walkers with independent variation
-        sigma = 0.8 * 0.005
-        initial_state = []
-        for i in range(0, self.ndim):
-            if i < self.ndim - self.poly_ord - 2:
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
-            else:
-                x1 = self.model_inputs[i]
-                rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
-                sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
-            initial_state.append(pos)
+        if self.sampler_type == 'emcee':
+            ### starting values of walkers with independent variation
+            sigma = 0.8 * 0.005
+            initial_state = []
+            for i in range(0, self.ndim):
+                if i < self.ndim - self.poly_ord - 2:
+                    pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                else:
+                    x1 = self.model_inputs[i]
+                    rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
+                    sigma = abs(rounded_sigma) / 10
+                    pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                initial_state.append(pos)
 
-        if self.fit_profile is False:
-            self.ndim = self.poly_ord + 2
-            self.nwalkers = self.ndim * factor
-            initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
+            if self.fit_profile is False:
+                self.ndim = self.poly_ord + 2
+                self.nwalkers = self.ndim * factor
+                initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
 
-        # Transpose initial state to have shape (nwalkers, ndim) for emcee
-        initial_state = np.transpose(np.array(initial_state))
-        self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
+            # Transpose initial state to have shape (nwalkers, ndim) for emcee
+            initial_state = np.transpose(np.array(initial_state))
+            self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
         # Setting global data for mcmc_utils initialisation
         self.mcmc_global_data = {
-            "x"          : self.wavelengths["masked"],
-            "y"          : self.flux["masked"],
-            "yerr"       : self.errors["masked"],
-            "alpha"      : self.alpha,
-            "velocities" : self.velocities,
-            "seed"       : self.seed,
-            "fit_profile": self.fit_profile,
-            "c_factor"   : self.c_factor,
+            "x"            : self.wavelengths["masked"],
+            "y"            : self.flux["masked"],
+            "yerr"         : self.errors["masked"],
+            "alpha"        : self.alpha,
+            "velocities"   : self.velocities,
+            "seed"         : self.seed,
+            "fit_profile"  : self.fit_profile,
+            "c_factor"     : self.c_factor,
+            "model_inputs" : self.model_inputs,
+            "poly_ord"     : self.poly_ord,
             }
+        
+        if self.sampler_type == 'dynesty':
+            self.initial_state = None # not used for dynesty
+            mcmc_class = mcmc.MCMC(**self.mcmc_global_data)
+            self.log_like = mcmc_class.dynesty_logprob
+            self.ptform = mcmc_class.ptform
+            self.ndim = self.poly_ord + 2 + (len(self.velocities) if self.fit_profile else 0)
 
         if self.verbose>1:
             t5 = time.time()
             print('Initialised in %ss'%round((t5-t0), 2))
-            print('Fitting the continuum using emcee...')
 
         _input_data = _input_data if _input_data is not None else {}
         if "sampler" not in _input_data:
-            self._run_mcmc(initial_state, self.nsteps)
+            self._run_mcmc(self.initial_state, self.nsteps)
 
         else: # Only for testing
             self.sampler = _input_data.get("sampler")
@@ -851,9 +871,9 @@ class Acid:
 
         sampler_verbosity = True if self.verbose>1 else False
         backend = None
-        if state is None:
+        if state is None and self.sampler_type == 'emcee':
             if not hasattr(self, 'sampler'):
-                raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
+                raise ValueError("No existing emcee sampler found. Please run 'ACID' first or provide a state.")
             backend = self.sampler.backend # This includes previous seed
 
         if self.cores is None:
@@ -880,30 +900,69 @@ class Acid:
             "store"        : True,
         }
 
-        if self.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            if self.verbose>1:
-                print(f"Using {self.cores} cores for MCMC")
+        if self.sampler_type == 'emcee':
+            if self.parallel:
+                os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+                if self.verbose>1:
+                    print(f"Using {self.cores} cores for MCMC")
 
-            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
-            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
-            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
-            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
-            if sys.platform != "win32":
-                ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
-                    self.sampler.run_mcmc(**mcmc_kwargs)
+                # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
+                # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
+                # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
+                # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
+                if sys.platform != "win32":
+                    ctx = mp.get_context("fork")
+                    with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                        self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
+                        self.sampler.run_mcmc(**mcmc_kwargs)
 
-            else: # This doesn't work, needs serious modifications to make work
-                raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
+                else: # This doesn't work, needs serious modifications to make work
+                    raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
 
-            os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
+                os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
 
-        else:
-            MCMC = mcmc.MCMC(**self.mcmc_global_data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
-            self.sampler.run_mcmc(**mcmc_kwargs)
+            else:
+                MCMC = mcmc.MCMC(**self.mcmc_global_data)
+                self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+                self.sampler.run_mcmc(**mcmc_kwargs)
+        
+        else: # dynesty
+            print("Running dynesty nested sampling...")
+            if self.parallel:
+                if self.verbose>1:
+                    print(f"Using {self.cores} cores for Dynesty")
+
+                ctx = mp.get_context("fork") if sys.platform != "win32" else mp.get_context("spawn")
+                with ctx.Pool(self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                    self.sampler = dynesty.DynamicNestedSampler(
+                        loglikelihood = mcmc._mp_log_likelihood,
+                        prior_transform = mcmc._mp_ptform,
+                        nlive = self.nsteps,
+                        ndim = self.ndim,
+                        pool = pool,
+                        queue_size = self.cores,
+                    )
+                    self.sampler.run_nested(print_progress=sampler_verbosity)
+
+            else:
+                MCMC = mcmc.MCMC(**self.mcmc_global_data)
+                self.sampler = dynesty.DynamicNestedSampler(
+                    loglikelihood = MCMC.dynesty_logprob,
+                    prior_transform = MCMC.ptform,
+                    ndim = self.ndim,
+                    nlive = self.nsteps,
+                )
+                self.sampler.run_nested(print_progress=sampler_verbosity)
+
+            results = self.sampler.results
+            weights = np.exp(results.logwt - results.logz[-1])
+            posterior_samples = resample_equal(results.samples, weights,
+                                               # n_samples = self.nsteps * self.nwalkers)
+            )
+            self.lnZ = results.logz[-1]
+            self.lnZerr = results.logzerr[-1]
+            if sampler_verbosity:
+                print(self.sampler.summary())
 
     def process_results(
         self,
@@ -914,7 +973,10 @@ class Acid:
         dis_no = self.nsteps-1000
 
         # Obtain flattened samples
-        flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
+        if self.sampler_type == 'dynesty':
+            flat_samples = self.sampler.results.samples
+        else:
+            flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
         self.profile      = []

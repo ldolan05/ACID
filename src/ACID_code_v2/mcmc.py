@@ -2,8 +2,11 @@ import numpy as np
 from .lsd import LSD
 from . import utils
 from beartype import beartype
-from numpy import integer as npint
+from numpy import diff, integer as npint
 from numpy.polynomial import polynomial as P
+from scipy.stats import norm
+from math import log10, floor
+import sys
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -18,19 +21,30 @@ def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
     return _MCMC(theta)
 
+def _mp_log_likelihood(theta):
+    """Wrapper for log likelihood function for multiprocessing."""
+    return _MCMC.dynesty_logprob(theta)
+
+def _mp_ptform(u):
+    """Wrapper for log prior function for multiprocessing."""
+    return _MCMC.ptform(u)
+
 class MCMC:
 
     @beartype
     def __init__(
             self,
-            x           : np.ndarray,
-            y           : np.ndarray,
-            yerr        : np.ndarray,
-            alpha       : np.ndarray,
-            velocities  : np.ndarray|None = None,
-            c_factor                      = None,
-            fit_profile : bool            = True,
-            seed        : int|npint|None  = None,
+            x            : np.ndarray,
+            y            : np.ndarray,
+            yerr         : np.ndarray,
+            alpha        : np.ndarray,
+            velocities   : np.ndarray|None = None,
+            c_factor                       = None,
+            fit_profile  : bool            = True,
+            seed         : int|npint|None  = None,
+            sampler_type : str             = 'emcee',
+            model_inputs                   = None,
+            poly_ord                       = None,
         ):
         """Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
@@ -54,6 +68,10 @@ class MCMC:
             Whether to fit the full profile (True) or use the fast model (False), by default True.
         seed : int|npint|None, optional
             Random seed for reproducibility, by default None.
+        sampler_type : str, optional
+            Type of sampler being used ('emcee' or 'dynesty'), by default 'emcee'.
+        model_inputs : optional
+            Model inputs for prior transformation in dynesty, by default None.
         """
         
         # No checks are performed here - assume data is valid from ACID class checks,
@@ -67,6 +85,9 @@ class MCMC:
         self.c_factor = c_factor
         self.fit_profile = fit_profile
         self.seed = seed
+        self.sampler_type = sampler_type
+        self.poly_ord = poly_ord
+        self.model_inputs = model_inputs
 
         # Configure whether to use full or fast model
         if self.fit_profile:
@@ -218,3 +239,22 @@ class MCMC:
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))
         return lp + ll
+    
+    def dynesty_logprob(self, theta):
+
+        forward, _ = self.model_function(theta)
+        diff = self.y - forward
+        return -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))
+
+    def ptform(self, u):
+        for n in range(self.poly_ord + 2):
+            n = -n-1
+            x1 = self.model_inputs[n]
+            rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
+            sigma = abs(rounded_sigma) / 10
+            u[n] = norm.ppf(u[n], loc=self.model_inputs[n], scale=sigma)
+        if self.fit_profile:
+            for n in range(self.k_max):
+                u[n] = norm.ppf(u[n], loc=self.model_inputs[n], scale=0.8*0.005)
+        return u
+
