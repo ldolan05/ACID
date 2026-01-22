@@ -405,13 +405,13 @@ class Acid:
 
             # simple: relative jitter with a floor so zeros don't collapse
             rel = 1e-2
-            floor = 1e-6
-            sigma = rel * np.maximum(np.abs(theta0), floor)
+            lower_floor = 1e-6
+            sigma = rel * np.maximum(np.abs(theta0), lower_floor)
 
             initial_state = theta0 + rng.normal(0.0, sigma, size=(self.nwalkers, self.ndim))
 
             # optional: keep the final scale positive (recommended)
-            initial_state[:, -1] = np.abs(initial_state[:, -1]) + floor
+            initial_state[:, -1] = np.abs(initial_state[:, -1]) + lower_floor
 
             if self.fit_profile is False:
                 self.ndim = self.poly_ord + 2
