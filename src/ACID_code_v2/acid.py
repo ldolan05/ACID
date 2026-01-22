@@ -1033,7 +1033,7 @@ class Acid:
             # Need to check whats going on here with the -1
             p = np.exp(profile_OD)-1
             profile_f = np.exp(profile_OD)
-            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+            profile_errors_f = profile_errors/profile_f
             profile_f = profile_f-1
 
             all_frames[counter, self.order]=[profile_f, profile_errors_f]
