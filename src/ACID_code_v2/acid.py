@@ -147,6 +147,7 @@ class Acid:
         dev_perc       :int|npint      = 25,
         n_sig          :int|npint      = 1,
         order          :int|npint      = 0,
+        skips          :int|npint      = 1,
         parallel       :bool           = True,
         cores          :int|npint|None = None,
         nsteps         :int|npint      = 10000,
@@ -205,6 +206,9 @@ class Acid:
             Only applicable if an all_frames output array has been provided as this is the order position in that
             array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in
             all_frames[:, 5]., by default 0
+        skips : int, optional
+            An option to only select one in every n pixels, where n is the integer argument. This is only useful for
+            testing to get a quick result, by default 1
         parallel : bool, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, by default True
         cores : int, optional
@@ -270,6 +274,11 @@ class Acid:
         for key in init_keys:
             if key in kwargs and self.verbose > 0:
                 print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
+
+        # Apply skips
+        input_wavelengths = input_wavelengths[:, ::skips]
+        input_spectra = input_spectra[:, ::skips]
+        input_spectral_errors = input_spectral_errors[:, ::skips]       
 
         # Assign all inputs to class variables (except all frames, handled below)
         self.wavelengths    = {"input": input_wavelengths}
