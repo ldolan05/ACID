@@ -70,8 +70,7 @@ class Result:
 
         if Acid is None:
             self.verbose = verbose if verbose is not None else 2
-            if sampler is not None:
-                self.initiate_sampler(sampler)
+            self.initiate_sampler(sampler) # handles if sampler is None
             self.production_run = True # Forces True to activate @_require_all_results decorator
             self.Acid = None
             if self.verbose>0:
@@ -199,8 +198,7 @@ class Result:
             Whether to return the figure and axis objects instead of showing the plot, by default False
         """
 
-        if sampler is not None:
-            self.initiate_sampler(sampler)
+        self.initiate_sampler(sampler)
 
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
@@ -237,8 +235,7 @@ class Result:
             Additional keyword arguments to pass to corner.corner().
         """
 
-        if sampler is not None:
-            self.initiate_sampler(sampler)
+        self.initiate_sampler(sampler)
 
         naxes = min(8, self.ndim)
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
@@ -435,10 +432,13 @@ class Result:
         sampler : emcee.EnsembleSampler
             An emcee EnsembleSampler object to set as the sampler attribute.
         """
-        self.sampler = sampler
-        self.ndim = sampler.ndim
-        self.nwalkers = sampler.nwalkers
-        self.nsteps = sampler.get_chain().shape[0]
+        self.sampler = sampler if not self.sampler else self.sampler
+        if self.sampler is None:
+            raise ValueError("A sampler must be provided in initialisation or in method call")
+
+        self.ndim = self.sampler.ndim
+        self.nwalkers = self.sampler.nwalkers
+        self.nsteps = self.sampler.get_chain().shape[0]
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
