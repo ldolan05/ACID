@@ -1,4 +1,4 @@
-import sys, emcee, warnings, os, time, inspect
+import sys, emcee, warnings, os, time, inspect, contextlib
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
@@ -911,11 +911,27 @@ class Acid:
         return_result=True,
         ):
 
-        # Discarding all vales except the last 1000 steps.
-        dis_no = self.nsteps-1000
+        # # Discarding all vales except the last 1000 steps.
+        # dis_no = self.nsteps-1000
+
+        with open(os.devnull, "w") as devnull, \
+            contextlib.redirect_stdout(devnull), \
+            contextlib.redirect_stderr(devnull):
+            self.tau = self.sampler.get_autocorr_time(quiet=True)
+
+        try:
+            burnin = int(2 * np.max(self.tau))
+            thin = int(np.min(self.tau)/5)
+        except:
+            if self.verbose>0:
+                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
+                f" wrong. Setting burnin=0 and thin=1.")
+            burnin = 0
+            thin = 1
 
         # Obtain flattened samples
-        flat_samples = self.sampler.get_chain(discard=dis_no, flat=True)
+        flat_samples = self.sampler.get_chain(discard=burnin, thin=thin, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
         self.profile      = []
@@ -963,7 +979,8 @@ class Acid:
         #     mdl1_temp = mdl1_temp*sample[-1]
         #     conts1.append(mdl1_temp)
 
-        samples = flat_samples[inds]
+        # samples = flat_samples[inds]
+        samples = flat_samples
         coeffs = samples[:, nvel:-1]
         ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
         scales = samples[:, -1]
