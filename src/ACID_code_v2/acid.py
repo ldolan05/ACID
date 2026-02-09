@@ -260,9 +260,10 @@ class Acid:
             frame_sns = utils.guess_SNR(input_wavelengths, input_spectra, input_spectral_errors)
             assert frame_sns.ndim == input_spectra.ndim - 1, \
             "frame_sns.ndim and input_spectra.ndim-1 do not match"
-        if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
+        if np.asarray(frame_sns).shape[0] != np.asarray(input_spectra).shape[0]:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
-            "not an array of S/N values for each pixel.")
+            "not an array of S/N values for each pixel. " \
+            "The shape of the input frame_sns does not match the number of frames in input_spectra.")
         
         init_keys = ["velocities", "linelist_path", "linelist_wl", "linelist_depths", "verbose",
                      "telluric_lines", "name", "seed"]
