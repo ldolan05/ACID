@@ -984,10 +984,10 @@ class Acid:
         ):
 
         for counter in range(len(self.flux["input"])):
-            flux = self.flux["input"][counter]
-            error = self.errors["input"][counter]
-            wavelengths = self.wavelengths["input"][counter]
-            sn = self.sn["input"][counter]
+            flux = np.copy(self.flux["input"][counter])
+            error = np.copy(self.errors["input"][counter])
+            wavelengths = np.copy(self.wavelengths["input"][counter])
+            sn = np.copy(self.sn["input"][counter])
 
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
