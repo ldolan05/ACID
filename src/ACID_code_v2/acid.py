@@ -356,7 +356,7 @@ class Acid:
             print('Residual masking...')
 
         # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
-        # Sets: self.c_factor
+        # Sets: self.c_factor, self.residual_masks
         # Modifies: self.alpha, self.yerr
         self.residual_mask() # will eventually add options for this
 
