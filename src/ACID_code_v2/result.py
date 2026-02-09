@@ -313,7 +313,9 @@ class Result:
                 # TODO: Make Order a function of self.order_range, which needs to be configured in Acid
                 # so that order_range is done automatically if multiple orders are manually put (and not 
                 # just using ACID_HARPS)
-                ax.errorbar(x, y, yerr=yerr, label=f"Frame {f+1}, Order {o+1}", **errorbar_kwargs)
+                label_default = f"Frame {f+1}, Order {o+1}" if nframes > 1 and norders > 1 else None
+                errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, {"label": label_default})
+                ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
 
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
