@@ -51,7 +51,7 @@ def validate_args(x, i, allow_none=False, sn=False):
         if sn is False:
             raise TypeError(f"Argument in position {i} must be a list or numpy array with at least one dimension")
         else:
-            return np.array([x])
+            return np.array([x]) # ensure sn is always 1D
     elif x.ndim == 1:
         if sn:
             return x
