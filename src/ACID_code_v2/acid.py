@@ -928,7 +928,7 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.mcmc_global_data,)) as pool:
+                with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
@@ -938,7 +938,7 @@ class Acid:
             os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
 
         else:
-            MCMC = mcmc.MCMC(**self.mcmc_global_data)
+            MCMC = mcmc.MCMC(self.data)
             self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
             self.sampler.run_mcmc(**mcmc_kwargs)
 

@@ -1,6 +1,7 @@
 import numpy as np
 from .lsd import LSD
 from . import utils
+from .data import Data
 from beartype import beartype
 from numpy import integer as npint
 from numpy.polynomial import polynomial as P
@@ -23,10 +24,10 @@ class MCMC:
     @beartype
     def __init__(
             self,
-            x           : np.ndarray,
-            y           : np.ndarray,
-            yerr        : np.ndarray,
-            alpha       : np.ndarray,
+            x_or_data   : np.ndarray|Data,
+            y           : np.ndarray      = None,
+            yerr        : np.ndarray      = None,
+            alpha       : np.ndarray      = None,
             velocities  : np.ndarray|None = None,
             c_factor                      = None,
             fit_profile : bool            = True,
@@ -37,14 +38,16 @@ class MCMC:
 
         Parameters
         ----------
-        x : np.ndarray
-            Wavelength array.
-        y : np.ndarray
-            Observed flux array.
-        yerr : np.ndarray
-            Observed flux error array.
-        alpha : np.ndarray
-            Precomputed alpha matrix.
+        x_or_data : np.ndarray|Data
+            Wavelength array or Data object. If a Data object is provided, takes all 
+            the arguments below from there. If a Data object is provided, all other 
+            arguments are ignored.
+        y : np.ndarray, optional
+            Observed flux array, required if x_or_data is a np.ndarray.
+        yerr : np.ndarray, optional
+            Observed flux error array, required if x_or_data is a np.ndarray.
+        alpha : np.ndarray, optional
+            Precomputed alpha matrix, required if x_or_data is a np.ndarray.
         velocities : np.ndarray|None, optional
             Velocity grid for LSD profile, only needed when calling log-probability
             function, by default None.
@@ -58,25 +61,38 @@ class MCMC:
         
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
-        self.y = y
-        self.yerr = yerr
-        self.alpha = alpha
-        self.velocities = velocities
-        self.k_max = self.alpha.shape[1]
-        self.c_factor = c_factor
-        self.fit_profile = fit_profile
-        self.seed = seed
+        if isinstance(x_or_data, Data):
+            data = x_or_data
+            self.x = data.wavelengths["masked"]
+            self.y = data.spectrum["masked"]
+            self.yerr = data.error["masked"]
+            self.alpha = data.alpha
+            self.velocities = data.velocities
+            self.c_factor = data.c_factor
+            self.fit_profile = data.fit_profile
+            self.seed = data.seed
+        else:
+            self.x = x_or_data
+            self.y = y
+            self.yerr = yerr
+            self.alpha = alpha
+            self.velocities = velocities
+            self.c_factor = c_factor
+            self.fit_profile = fit_profile
+            self.seed = seed
+        
+        self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
         # Precompute normalization coefficients these are used to adjust the wavelengths to
         # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        a, b = utils.get_normalisation_coeffs(x)
-        self.u = (a * x) + b
+        a, b = utils.get_normalisation_coeffs(self.x)
+        self.u = (a * self.x) + b
 
         # Configure whether to use full or fast model
         if self.fit_profile:
-            self.model_function = self.full_func
+            self.model_function = self.full_func # include profile fitting
         else:
-            self.model_function = self.fast_func
+            self.model_function = self.fast_func # infer profile points from continuum
     
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
