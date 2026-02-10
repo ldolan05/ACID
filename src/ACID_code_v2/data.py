@@ -22,9 +22,17 @@ class Data:
     residual_masks        : Optional[np.ndarray] = None  # boolean 1D mask on "combined" grid
     initial_profile       : Optional[np.ndarray] = None
     initial_profile_errors: Optional[np.ndarray] = None
+    poly_inputs           : Optional[np.ndarray] = None
+    model_inputs          : Optional[np.ndarray] = None # the concatenated array of initial profile and poly coefficents, used as input to emcee
+    initial_state         : Optional[np.ndarray] = None # the initial state of the MCMC walkers, used for resuming and debugging
 
     # Required settings taken from initialisation for methods to run
     verbose: int = 2
+
+    # Other unchanged data specifically required for MCMC to run
+    velocities           : Optional[np.ndarray] = None
+    seed                 : Optional[int]        = None
+    fit_profile          : bool                 = True
 
     # # Continuum fit products used in get_profiles step
     # poly_inputs    : Optional[np.ndarray] = None

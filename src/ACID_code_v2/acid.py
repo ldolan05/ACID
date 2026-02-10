@@ -31,10 +31,11 @@ class Acid:
         linelist_path  :str|None             = None,
         linelist_wl    :np.ndarray|list|None = None,
         linelist_depths:np.ndarray|list|None = None,
-        verbose        :int|npint|bool       = 2,
+        verbose        :int|npint|bool|None  = 2,
         telluric_lines :np.ndarray|list|None = None,
         name           :str                  = 'ACID',
         seed           :int|npint|None       = None,
+        data           :Data|None            = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -54,11 +55,12 @@ class Acid:
         linelist_depths : np.ndarray | list | None, optional
             Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
-        verbose : bool | int, optional
+        verbose : bool | int | None, optional
             An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
             about any potential issues with the input data or autocorrelation warnings. If True, defaults to 2. If False, defaults to 0.
             If you want to ignore the warnings but still keep progress information, set verbose to 1. A verbosity of 3 will produce 
-            additional plots, such as the result of the continuum fit. By default 2
+            additional plots, such as the result of the continuum fit. By default None, which defaults to 2 (True). If set, overrides 
+            any verbose setting in the dataclass.
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
@@ -67,13 +69,37 @@ class Acid:
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
+        data : Data|None, optional
+            An optional backend Data object to use for storing data. Allows previously calculated results to be skipped.
+            If None, a new Data object is created, by default None
         """
+
+        # Initialise the data class to store calculations in ACID
+        if data is not None:
+            self.data = data
+        else:
+            self.data = Data()
+
+        # Make verbosity always an int regardless of input type, and check correct range
+        if verbose is True:
+            verbose = 2
+        elif verbose is False:
+            verbose = 0
+        elif isinstance(verbose, int):
+            if verbose < 0 or verbose > 3:
+                raise ValueError("verbose must be an integer between 0 and 3 (or True/False)")
+        if verbose is not None:
+            self.data.verbose = verbose
+        # Else if None, data class default is 2 and kept (or previous user defined verbosity persists)
 
         # Sets self.velocities, self.linelist_path, self.telluric_lines, self.name, given the inputs
         # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
         if velocities is not None:
             if velocities.ndim != 1:
                 raise ValueError("'velocities' must be a one-dimensional array or list")
+        else:
+            if self.data.velocities is not None:
+                velocities = self.data.velocities
 
         # Validate linelist inputs
         if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
@@ -103,15 +129,6 @@ class Acid:
         telluric_lines = np.array(telluric_lines)
         if telluric_lines.ndim != 1 or telluric_lines.size == 0:
             raise ValueError("telluric_lines must be a one-dimensional array or list")
-        
-        # Make verbosity always an int regardless of input type, and check correct range
-        if verbose is True:
-            verbose = 2
-        elif verbose is False:
-            verbose = 0
-        elif isinstance(verbose, int):
-            if verbose < 0 or verbose > 3:
-                raise ValueError("verbose must be an integer between 0 and 3 (or True/False)")
 
         # Set the above class attributes
         self.velocities     = velocities
@@ -132,11 +149,6 @@ class Acid:
 
         # Set a random seed
         np.random.seed(self.seed)
-
-        # Initialise the data class to store calculations in ACID
-        self.data = Data()
-        self.data.verbose = verbose
-        
         return
 
     # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
@@ -276,6 +288,15 @@ class Acid:
         self.cores          = cores
         self.fit_profile    = fit_profile
 
+        # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
+        # calculate a default velocity grid using the input wavelengths.
+        if self.velocities is None:
+            if self.verbose > 0:
+                print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s. " \
+                "It is recommended to input your own velocity grid, especially if you have a different wavelength range or resolution.")
+            self.velocities = utils.calc_deltav(self.data.wavelengths["input"][0])
+            self.data.velocities = self.velocities # Just point to the same array, otherwise self.velocities should be used
+
         # Initiates all_frames variable, which is used to store the results of the MCMC sampling.
         # If an all_frames array is provided, this is used, otherwise a new one is created with the correct shape.
         self.data.initiate_all_frames(all_frames)
@@ -289,42 +310,84 @@ class Acid:
         # To generate:
         # As of 1.0.4, this generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
         # As of 1.4.0, this now instead goes to the data class, so generates self.data.wavelengths["combined"], etc.
-        self.combine_spec(output=False)
+        # As of 1.4.0, this procedure is skipped if the outputs already exists in self.data to avoid recalculation
+        if all(
+            hasattr(self.data.wavelengths, "combined"),
+            hasattr(self.data.flux, "combined"),
+            hasattr(self.data.errors, "combined"),
+            hasattr(self.data.sn, "combined")
+        ):
+            if self.verbose > 2:
+                print("Combined spectra already exists, skipping combination step.")
+        else:
+            if self.verbose > 2:
+                print("Combining spectra...")
+            self.combine_spec(output=False)
 
         # Get the initial polynomial coefficents
-        a, b = utils.get_normalisation_coeffs(self.wavelengths["combined"])
-        self.wavelengths["combined_normalized"] = (self.wavelengths["combined"]*a)+b
+        if not hasattr(self.data.wavelengths, "combined_normalized"):
+            a, b = utils.get_normalisation_coeffs(self.data.wavelengths["combined"])
+            self.data.wavelengths["combined_normalized"] = (self.data.wavelengths["combined"]*a)+b
 
         # Compute an initial continuum fit
         # poly inputs has polynomial coefficients and scale at the end
-        self.poly_inputs, self.flux["fitted"], self.errors["fitted"] = self.continuumfit(
-            self.flux["combined"], self.wavelengths["combined_normalized"], self.errors["combined"])
-        self.wavelengths["fitted"] = np.copy(self.wavelengths["combined"]) # Just to keep track
-        self.sn["fitted"]      = np.copy(self.sn["combined"])      # SN is not changed here
+        if all(
+            hasattr(self.data.flux, "fitted"),
+            hasattr(self.data.errors, "fitted"),
+            self.data.poly_inputs is not None
+        ):
+            if self.verbose > 2:
+                print("Continuum fit already exists, skipping initial fit step.")
+        else:
+            if self.verbose > 2:
+                print("Performing initial continuum fit...")
+            self.data.poly_inputs, self.data.flux["fitted"], self.data.errors["fitted"] = self.continuumfit(
+                self.data.flux["combined"],
+                self.data.wavelengths["combined_normalized"],
+                self.data.errors["combined"]
+            )
+        self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
+        self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
 
-        # Get the initial LSD profile using the initial fit
-        initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes
-        initial_LSD.run_LSD(self.wavelengths["fitted"], self.flux["fitted"], self.errors["fitted"], self.sn["fitted"])
+        if all(
+            self.data.model_inputs is not None,
+            self.data.alpha is not None
+        ):
+            if self.verbose > 1:
+                print("Initial LSD profile already exists, skipping initial LSD step.")
+        else:
+            if self.verbose > 1:
+                print("Calculating initial LSD profile...")
+            # Get the initial LSD profile using the initial fit
+            initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes
+            initial_LSD.run_LSD(self.data.wavelengths["fitted"], self.data.flux["fitted"], self.data.errors["fitted"], self.data.sn["fitted"])
 
-        # Use alpha matrix and initial profile class variables from initial LSD run
-        self.initial_profile = initial_LSD.profile
-        self.initial_profile_errors = initial_LSD.profile_errors
-        self.alpha = initial_LSD.alpha
+            # Use alpha matrix and initial profile class variables from initial LSD run
+            self.data.initial_profile = initial_LSD.profile
+            self.data.initial_profile_errors = initial_LSD.profile_errors # Not used, saved for debugging
+            self.data.alpha = initial_LSD.alpha
 
-        # Set x, y, yerr, and model_inputs for emcee
-        self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
+            # Set x, y, yerr, and model_inputs for emcee
+            self.data.model_inputs = np.concatenate((self.data.initial_profile, self.data.poly_inputs))
 
         # Masking based off residuals
-        if self.verbose>1:
-            print('Residual masking...')
-
         # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
         # Sets: self.c_factor, self.residual_masks
         # Modifies: self.alpha, self.yerr
-        self.residual_mask() # will eventually add options for this
+        # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
+        if all(
+            self.data.residual_masks is not None,
+            self.data.c_factor is not None
+        ):
+            if self.verbose > 1:
+                print("Residual masks already exists, skipping residual masking step.")
+        else:
+            if self.verbose>1:
+                print('Residual masking...')
+            self.residual_mask() # will eventually add options for this
 
         ## Setting number of walkers and their start values(pos)
-        self.ndim = len(self.model_inputs)
+        self.ndim = len(self.data.model_inputs)
         factor = 3 # emcee recommendation
         self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
@@ -334,12 +397,12 @@ class Acid:
         initial_state = []
         for i in range(0, self.ndim):
             if i < self.ndim - self.poly_ord - 2:
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
             else:
-                x1 = self.model_inputs[i]
+                x1 = self.data.model_inputs[i]
                 rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
                 sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
+                pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
         if self.fit_profile is False:
@@ -349,19 +412,19 @@ class Acid:
 
         # Transpose initial state to have shape (nwalkers, ndim) for emcee
         initial_state = np.transpose(np.array(initial_state))
-        self.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
+        self.data.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
 
         # Setting global data for mcmc_utils initialisation
-        self.mcmc_global_data = {
-            "x"          : self.wavelengths["masked"],
-            "y"          : self.flux["masked"],
-            "yerr"       : self.errors["masked"],
-            "alpha"      : self.alpha,
-            "velocities" : self.velocities,
-            "seed"       : self.seed,
-            "fit_profile": self.fit_profile,
-            "c_factor"   : self.c_factor,
-            }
+        # self.mcmc_global_data = {
+        #     "x"          : self.data.wavelengths["masked"],
+        #     "y"          : self.data.flux["masked"],
+        #     "yerr"       : self.data.errors["masked"],
+        #     "alpha"      : self.data.alpha,
+        #     "velocities" : self.data.velocities,
+        #     "seed"       : self.data.seed,
+        #     "fit_profile": self.data.fit_profile,
+        #     "c_factor"   : self.data.c_factor,
+        #     }
 
         if self.verbose>1:
             t5 = time.time()
@@ -545,17 +608,17 @@ class Acid:
             self.sn["input"]          = np.copy(frame_sns)
 
         # Set simple names for variables (just used in this function)
-        wavelengths = np.copy(self.wavelengths["input"])
-        flux        = np.copy(self.flux["input"])
-        errors      = np.copy(self.errors["input"])
-        sn          = np.copy(self.sn["input"])
+        wavelengths = np.copy(self.data.wavelengths["input"])
+        flux        = np.copy(self.data.flux["input"])
+        errors      = np.copy(self.data.errors["input"])
+        sn          = np.copy(self.data.sn["input"])
 
         # Return as is if only one spectrum
-        if len(self.wavelengths["input"])==1:
-            self.wavelengths["combined"] = np.copy(self.wavelengths["input"][0])
-            self.flux["combined"]        = np.copy(self.flux["input"][0])
-            self.errors["combined"]      = np.copy(self.errors["input"][0])
-            self.sn["combined"]          = np.copy(self.sn["input"][0])
+        if len(self.data.wavelengths["input"])==1:
+            self.data.wavelengths["combined"] = np.copy(self.data.wavelengths["input"][0])
+            self.data.flux["combined"]        = np.copy(self.data.flux["input"][0])
+            self.data.errors["combined"]      = np.copy(self.data.errors["input"][0])
+            self.data.sn["combined"]          = np.copy(self.data.sn["input"][0])
 
         else:
             # Get wavelength grid with highest S/N
@@ -623,10 +686,10 @@ class Acid:
             # combined_flux = np.sum(weighted_flux, axis=0) / np.sum(invvars, axis=0)
             # combined_errors = 1 / np.sqrt(np.sum(invvars, axis=0))
 
-            self.wavelengths["combined"] = combined_wavelengths
-            self.flux["combined"]        = combined_flux
-            self.errors["combined"]      = combined_errors
-            self.sn["combined"]          = combined_sn
+            self.data.wavelengths["combined"] = combined_wavelengths
+            self.data.flux["combined"]        = combined_flux
+            self.data.errors["combined"]      = combined_errors
+            self.data.sn["combined"]          = combined_sn
 
         if output is True:
             # ie if called as a function rather than from ACID function
@@ -701,19 +764,19 @@ class Acid:
         ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
         # Set standard variables
-        x = self.wavelengths["combined"]
-        y = self.flux["combined"]
-        yerr = self.errors["combined"]
-        x_norm = self.wavelengths["combined_normalized"]
+        x = self.data.wavelengths["combined"]
+        y = self.data.flux["combined"]
+        yerr = self.data.errors["combined"]
+        x_norm = self.data.wavelengths["combined_normalized"]
 
-        forward, _ = mcmc.MCMC(x, y, yerr, self.alpha).full_func(self.model_inputs)
+        forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_func(self.data.model_inputs)
 
         mdl1 = 0
         nvel = len(self.velocities)
-        for i in range(nvel, len(self.model_inputs) - 1):
-            mdl1 = mdl1 + (self.model_inputs[i] * x_norm ** (i - nvel))
+        for i in range(nvel, len(self.data.model_inputs) - 1):
+            mdl1 = mdl1 + (self.data.model_inputs[i] * x_norm ** (i - nvel))
 
-        mdl1 = mdl1 * self.model_inputs[-1]
+        mdl1 = mdl1 * self.data.model_inputs[-1]
 
         data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
@@ -749,7 +812,7 @@ class Acid:
             yerr[idx] = 1e12
 
         # Note that this is used to keep track of the residual masks for later use in _get_profiles
-        self.residual_masks = tuple([yerr >= 1e12])
+        self.data.residual_masks = tuple([yerr >= 1e12])
 
         ###################################
         ###      sigma clip masking     ###
@@ -758,8 +821,8 @@ class Acid:
         m = np.median(residuals)
         sigma = np.std(residuals)
 
-        # TODO! : check what the hell is gong on here with a_old
-        a_old = 1
+        # # TODO! : check what the hell is gong on here with a_old
+        # a_old = 1
 
         upper_clip = m + self.n_sig * sigma
         lower_clip = m - self.n_sig * sigma
@@ -778,8 +841,8 @@ class Acid:
         LSD_masking = LSD(self)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
-        self.alpha = LSD_masking.alpha
-        self.c_factor = LSD_masking.c_factor
+        self.data.alpha = LSD_masking.alpha
+        self.data.c_factor = LSD_masking.c_factor
 
         if self.verbose > 2:
             nremoved = np.sum(idx1)+np.sum(idx2)
@@ -809,9 +872,10 @@ class Acid:
             plt.legend()
             plt.show()
 
-        self.wavelengths["masked"] = x
-        self.flux["masked"]        = y # x and y dont change in this func
-        self.errors["masked"]      = yerr # yerr is modified in this func
+        self.data.wavelengths["masked"] = x
+        self.data.flux["masked"]        = y # x and y dont change in this func
+        self.data.errors["masked"]      = yerr # yerr is modified in this func
+        self.data.sn["masked"]          = np.copy(self.data.sn["combined"]) # SN is not changed in this func
         # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
 
         return
