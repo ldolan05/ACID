@@ -1,4 +1,4 @@
-import sys, emcee, warnings, os, time, inspect, contextlib
+import sys, emcee, warnings, os, time, inspect, contextlib, inspect
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
@@ -134,6 +134,11 @@ class Acid:
         
         return
 
+    # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
+    # This is to avoid confusion for users who may accidentally input an argument that is meant for
+    # the class initialisation rather than the ACID function, which takes different arguments.
+    _INIT_KEYS = set(inspect.signature(__init__).parameters) - {"self"}
+
     def ACID(
         self,
         input_wavelengths,
@@ -267,12 +272,12 @@ class Acid:
         if np.asarray(frame_sns).shape[0] != np.asarray(input_spectra).shape[0]:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
             "not an array of S/N values for each pixel. " \
-            "The shape of the input frame_sns does not match the number of frames in input_spectra.")
-        
-        init_keys = ["velocities", "linelist_path", "linelist_wl", "linelist_depths", "verbose",
-                     "telluric_lines", "name", "seed"]
-        for key in init_keys:
-            if key in kwargs and self.verbose > 0:
+            "The shape of the input input_sn does not match the number of frames in input_flux.")
+
+        # Check for any potential conflicts in input arguments that are meant for the class initialisation.
+        overlap = self._INIT_KEYS & kwargs.keys()
+        if overlap and self.verbose > 0:
+            for key in sorted(overlap):
                 print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
 
         # Apply skips
