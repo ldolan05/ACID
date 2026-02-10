@@ -609,7 +609,7 @@ class Acid:
                 Signal-to-noise ratio for the combined spectrum
         """
 
-        if frame_wavelengths: # This should only be for testing
+        if frame_wavelengths is not None: # This should only be for testing
             self.wavelengths["input"] = np.copy(frame_wavelengths)
             self.flux["input"]        = np.copy(frame_flux)
             self.errors["input"]      = np.copy(frame_errors)
