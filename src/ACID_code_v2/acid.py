@@ -135,6 +135,7 @@ class Acid:
 
         # Initialise the data class to store calculations in ACID
         self.data = Data()
+        self.data.verbose = verbose
         
         return
 
@@ -245,56 +246,24 @@ class Acid:
         TypeError
             If the input types are not as expected.
         """
-        ### Setup, validation and input conversion
+        if self.verbose>1:
+            t0 = time.time()
+            print('Initialising...')
 
-        self.data.set_inputs(input_wavelengths, input_flux, input_errors, input_sn)
-
-        # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
-        # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
-        # inputs to numpy arrays.
-        input_wavelengths, input_flux, input_errors = [
-            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_flux, input_errors))]
-        input_sn = utils.validate_args(input_sn, 3, sn=True, allow_none=True)
-
-        # Check all inputs have the same shape
-        if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
-            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
-
-        # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
-        if np.any(input_flux <= 0):
-            if self.verbose > 1:
-                print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
-                f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
-                f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
-            input_flux, input_errors = utils.scale_spectra(input_flux, input_errors)
-        # Validated frame_sns input
-        # If frame_sns is not provided, estimate using specutils, this is a very rudimentary guess and get around for not
-        # providing a SNS which should normally come from fits files.
-        if input_sn is None:
-            input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
-            assert input_sn.ndim == input_flux.ndim - 1, \
-            "input_sn.ndim and input_flux.ndim-1 do not match"
-        if np.asarray(input_sn).shape[0] != np.asarray(input_flux).shape[0]:
-            raise ValueError("input_sn must be a single-valued list/array with the average S/N for each frame, " \
-            "not an array of S/N values for each pixel. " \
-            "The shape of the input input_sn does not match the number of frames in input_flux.")
+        # Setup and data validation done in data class and applies skips
+        self.data.set_inputs(input_wavelengths, input_flux, input_errors, input_sn, skips)
 
         # Check for any potential conflicts in input arguments that are meant for the class initialisation.
         overlap = self._INIT_KEYS & kwargs.keys()
         if overlap and self.verbose > 0:
             for key in sorted(overlap):
-                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
-
-        # Apply skips
-        input_wavelengths = input_wavelengths[:, ::skips]
-        input_flux = input_flux[:, ::skips]
-        input_errors = input_errors[:, ::skips]       
+                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")   
 
         # Assign all inputs to class variables (except all frames, handled below)
-        self.wavelengths    = {"input": input_wavelengths}
-        self.flux           = {"input": input_flux}
-        self.errors         = {"input": input_errors}
-        self.sn             = {"input": input_sn}
+        # self.wavelengths    = {"input": input_wavelengths}
+        # self.flux           = {"input": input_flux}
+        # self.errors         = {"input": input_errors}
+        # self.sn             = {"input": input_sn}
         self.poly_ord       = poly_ord
         self.nsteps         = nsteps
         self.order          = order
@@ -307,35 +276,19 @@ class Acid:
         self.cores          = cores
         self.fit_profile    = fit_profile
 
-        if isinstance(all_frames, str):
-            if all_frames == "default":
-                all_frames = None # legacy behaviour
-        if all_frames is None:
-            if self.all_frames is None:
-                # By default order_range is [1], so len(self.order_range) = 1, which is same as original
-                # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
-                self.all_frames = np.zeros((len(self.flux["input"]), len(self.order_range), 2, len(self.velocities)))
-        else:
-            self.all_frames = all_frames
-        if isinstance(self.all_frames, Result):
-            self.all_frames = self.all_frames.all_frames
-        if not isinstance(self.all_frames, np.ndarray):
-            raise TypeError("'all_frames' must be a numpy array")
-        if not self.all_frames.ndim == 4:
-            raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
+        # Initiates all_frames variable, which is used to store the results of the MCMC sampling.
+        # If an all_frames array is provided, this is used, otherwise a new one is created with the correct shape.
+        self.data.initiate_all_frames(all_frames)
 
         ### Begin ACID process
-
-        if self.verbose>1:
-            t0 = time.time()
-            print('Initialising...')
 
         # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra.
         # If only one frame, just uses that frame (handled in the function).
         # This function requires assigned values:
-        # self.wavelengths["input"], self.flux["input"], self.errors["input"], self.sn["input"]
+        # self.data.wavelengths["input"], self.data.flux["input"], self.data.errors["input"], self.data.sn["input"]
         # To generate:
         # As of 1.0.4, this generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
+        # As of 1.4.0, this now instead goes to the data class, so generates self.data.wavelengths["combined"], etc.
         self.combine_spec(output=False)
 
         # Get the initial polynomial coefficents
