@@ -12,6 +12,7 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
+from .data import Data
 
 warnings.filterwarnings("ignore")
 
@@ -131,6 +132,9 @@ class Acid:
 
         # Set a random seed
         np.random.seed(self.seed)
+
+        # Initialise the data class to store calculations in ACID
+        self.data = Data()
         
         return
 
@@ -142,9 +146,9 @@ class Acid:
     def ACID(
         self,
         input_wavelengths,
-        input_spectra,
-        input_spectral_errors,
-        frame_sns                      = None,
+        input_flux,
+        input_errors,
+        input_sn                      = None,
         all_frames                     = None,
         fit_profile    :bool           = True,
         poly_ord       :int|npint      = 3,
@@ -171,16 +175,16 @@ class Acid:
         input_wavelengths : np.ndarray | list
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
             input_wavelengths[i] corresponds to the wavelengths for the ith frame.
-        input_spectra : np.ndarray | list
+        input_flux : np.ndarray | list
             An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
-            input_spectra[i] corresponds to the spectral fluxes for the ith frame.
-        input_spectral_errors : np.ndarray | list
+            input_flux[i] corresponds to the spectral fluxes for the ith frame.
+        input_errors : np.ndarray | list
             Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
-            input_spectral_errors[i] corresponds to the spectral errors for the ith frame.
-        frame_sns : int | np.ndarray | list | None, optional
+            input_errors[i] corresponds to the spectral errors for the ith frame.
+        input_sn : int | np.ndarray | list | None, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
-            frame_sns[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
+            input_sn[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
             spectra, by default None
         all_frames : str | np.ndarray | None, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
@@ -243,34 +247,35 @@ class Acid:
         """
         ### Setup, validation and input conversion
 
+        self.data.set_inputs(input_wavelengths, input_flux, input_errors, input_sn)
+
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
         # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
         # inputs to numpy arrays.
-        input_wavelengths, input_spectra, input_spectral_errors = [
-            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_spectra, input_spectral_errors))]
-        frame_sns = utils.validate_args(frame_sns, 3, sn=True, allow_none=True)
+        input_wavelengths, input_flux, input_errors = [
+            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_flux, input_errors))]
+        input_sn = utils.validate_args(input_sn, 3, sn=True, allow_none=True)
 
         # Check all inputs have the same shape
-        if not input_wavelengths.shape == input_spectra.shape == input_spectral_errors.shape:
+        if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
         # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
-        if np.any(input_spectra <= 0):
+        if np.any(input_flux <= 0):
             if self.verbose > 1:
                 print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
                 f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
                 f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
-            input_spectra, input_spectral_errors = utils.scale_spectra(input_spectra, input_spectral_errors)
-
+            input_flux, input_errors = utils.scale_spectra(input_flux, input_errors)
         # Validated frame_sns input
         # If frame_sns is not provided, estimate using specutils, this is a very rudimentary guess and get around for not
         # providing a SNS which should normally come from fits files.
-        if frame_sns is None:
-            frame_sns = utils.guess_SNR(input_wavelengths, input_spectra, input_spectral_errors)
-            assert frame_sns.ndim == input_spectra.ndim - 1, \
-            "frame_sns.ndim and input_spectra.ndim-1 do not match"
-        if np.asarray(frame_sns).shape[0] != np.asarray(input_spectra).shape[0]:
-            raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
+        if input_sn is None:
+            input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
+            assert input_sn.ndim == input_flux.ndim - 1, \
+            "input_sn.ndim and input_flux.ndim-1 do not match"
+        if np.asarray(input_sn).shape[0] != np.asarray(input_flux).shape[0]:
+            raise ValueError("input_sn must be a single-valued list/array with the average S/N for each frame, " \
             "not an array of S/N values for each pixel. " \
             "The shape of the input input_sn does not match the number of frames in input_flux.")
 
@@ -282,14 +287,14 @@ class Acid:
 
         # Apply skips
         input_wavelengths = input_wavelengths[:, ::skips]
-        input_spectra = input_spectra[:, ::skips]
-        input_spectral_errors = input_spectral_errors[:, ::skips]       
+        input_flux = input_flux[:, ::skips]
+        input_errors = input_errors[:, ::skips]       
 
         # Assign all inputs to class variables (except all frames, handled below)
         self.wavelengths    = {"input": input_wavelengths}
-        self.flux           = {"input": input_spectra}
-        self.errors         = {"input": input_spectral_errors}
-        self.sn             = {"input": frame_sns}
+        self.flux           = {"input": input_flux}
+        self.errors         = {"input": input_errors}
+        self.sn             = {"input": input_sn}
         self.poly_ord       = poly_ord
         self.nsteps         = nsteps
         self.order          = order
