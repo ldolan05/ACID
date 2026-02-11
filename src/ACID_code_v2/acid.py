@@ -160,7 +160,7 @@ class Acid:
         correct_autocorrelation        = False,
         correct_error_combine          = False,
         fork                           = False,
-        moves                          = False,
+        moves                          = True, # now True after testing, will only v2 self compare
         cf_percentile                  = False,
         highsamples                    = False,
         no_sn100                       = False,
