@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools
 from emcee import EnsembleSampler
 from beartype import beartype
+from scipy.interpolate import interp1d
 from numpy import integer as npint
 from .lsd import LSD
 from . import mcmc
@@ -161,6 +162,96 @@ class Result:
         self.BJDs = getattr(Acid_or_Data_or_Sampler, 'BJDs', None)
         self.profiles = getattr(Acid_or_Data_or_Sampler, 'profiles', None)
         self.errors = getattr(Acid_or_Data_or_Sampler, 'errors', None)
+
+    def process_results(self):
+
+        with open(os.devnull, "w") as devnull, \
+            contextlib.redirect_stdout(devnull), \
+            contextlib.redirect_stderr(devnull):
+            self.tau = self.sampler.get_autocorr_time(quiet=True)
+
+        try:
+            burnin = int(2 * np.max(self.tau))
+            thin = int(np.min(self.tau)/5)
+        except:
+            if self.verbose>0:
+                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
+                f" wrong. Setting burnin=0 and thin=1.")
+            burnin = 0
+            thin = 1
+
+        # Obtain flattened samples
+        flat_samples = self.sampler.get_chain(discard=burnin, thin=thin, flat=True)
+
+        # Getting the final profile and continuum values - median of last 1000 steps
+        nvel = len(self.velocities) if self.fit_profile else 0
+        quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        errors = np.diff(quartiles, axis=0)
+        errors = np.max(errors, axis=0) # why?
+        self.profile       = quartiles[1, :nvel]
+        self.profile_err   = errors[:nvel]
+        self.poly_cos      = quartiles[1, nvel:]
+        self.poly_cos_err  = errors[nvel:]  
+
+        if self.verbose > 1:
+            print('Getting the final profiles...')
+
+        # Finding error for the continuum fit
+        norm_wl = self.wavelengths["combined_normalized"]
+        coeffs = flat_samples[:, nvel:-1]
+        ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+        scales = flat_samples[:, -1]
+        powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+        conts = (coeffs @ powers.T) * scales[:, None]
+
+        continuum_error = np.std(np.array(conts), axis=0)  
+
+        for counter in range(len(self.flux["input"])):
+            flux = np.copy(self.flux["input"][counter])
+            error = np.copy(self.errors["input"][counter])
+            wavelengths = np.copy(self.wavelengths["input"][counter])
+            sn = np.copy(self.sn["input"][counter])
+
+            a, b = utils.get_normalisation_coeffs(wavelengths)
+            norm_wavelengths = (a*wavelengths)+b
+            mdl1 =0
+            for i in np.arange(0, len(self.poly_cos)-1):
+                mdl1 = mdl1+self.poly_cos[i]*norm_wavelengths**(i)
+            mdl1 = mdl1*self.poly_cos[-1]
+
+            # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
+
+            # Masking based off residuals interpolated onto new wavelength grid
+            reference_wave = self.wavelengths["input"][np.argmax(self.sn["input"])]
+            mask_pos = np.ones(reference_wave.shape)
+            mask_pos[self.residual_masks]=1e12
+            f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
+            interp_mask_pos = f2(wavelengths)
+            interp_mask_idx = tuple([interp_mask_pos>=1e12])
+
+            error[interp_mask_idx]=1e12
+
+            # corrrecting continuum
+            error = np.sqrt((error/mdl1)**2 + (continuum_error/mdl1)**2) # Compare before after
+            flux /= mdl1
+
+            remove = tuple([flux<0])
+            flux[remove] = 1.
+            error[remove] = 1e12
+
+            LSD_profiles = LSD(self)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            profile_OD = LSD_profiles.profile
+            profile_errors = LSD_profiles.profile_errors
+
+            profile_f = np.exp(profile_OD)
+            profile_errors_f = profile_errors/profile_f
+            profile_f = profile_f-1
+
+            self.all_frames[counter, self.order]=[profile_f, profile_errors_f]
+
+        return
 
     @_require_all_frames
     def __getitem__(self, item):
@@ -520,6 +611,8 @@ class Result:
         self.data = data if data is not None else self.data
         if self.data is None:
             raise ValueError("A Data object must be provided in initialisation or in method call")
+
+        self.all_frames = self.data.all_frames
 
         # For convenience, let the user call the model without needing to input all required args
         MCMC_class = mcmc.MCMC(self.data)
