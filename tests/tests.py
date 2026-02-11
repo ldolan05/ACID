@@ -270,6 +270,25 @@ def no_profile_fit():
     result.plot_walkers()
     return result
 
+def skips_test():
+    spec_file = fits.open('example/sample_spec_1.fits')
+
+    wavelength = spec_file[0].data   # Wavelengths in Angstroms
+    spectrum = spec_file[1].data     # Spectral Flux
+    error = spec_file[2].data        # Spectral Flux Errors
+    sn = spec_file[3].data           # SN of Spectrum
+
+    linelist = 'example/example_linelist.txt' # Insert path to line list
+
+    # choose a velocity grid for the final profile(s)
+    deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
+    velocities = np.arange(-25, 25, deltav)
+
+    # run ACID function
+    result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000, skips=skips)
+
+    return result
+
 q_res = quickstart()
 mf_res = multiple_frames()
 mo_res = multiple_orders()
@@ -283,6 +302,7 @@ res_nv = no_verbosity()
 res_no_profile_fit = no_profile_fit()
 res = res_no_profile_fit
 acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=res[0,0,0]).plot_fit("all")
+res = skips_test()
 
 print("All tests passed!")
 print(f"Total time: {time() - start:.2f} seconds")

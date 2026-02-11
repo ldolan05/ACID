@@ -62,6 +62,7 @@ class Result:
         production_run : bool, optional
             Whether Acid was run in production mode, by default False
         """
+        self.sampler = None
 
         if verbose is True:
             verbose = 2
