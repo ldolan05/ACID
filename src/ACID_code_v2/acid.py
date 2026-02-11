@@ -1171,8 +1171,8 @@ class Acid:
 
             profile_f = np.exp(profile_OD)
 
-            if self.correct_get_profiles is True:
-                print("correct_get_profiles is enabled")
+            if self.correct_profile_error is True:
+                print("correct_profile_error is enabled")
                 profile_errors_f = profile_f * profile_errors
             else:
                 profile_errors_f = profile_errors/profile_f
