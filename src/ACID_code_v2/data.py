@@ -30,9 +30,20 @@ class Data:
     verbose: int = 2
 
     # Other unchanged data specifically required for MCMC to run
-    velocities           : Optional[np.ndarray] = None
-    seed                 : Optional[int]        = None
-    fit_profile          : bool                 = True
+    velocities  : Optional[np.ndarray] = None
+    seed        : Optional[int]        = None
+    fit_profile : bool                 = True
+
+    # Data required for results
+    nsteps      : Optional[int]        = None
+    all_frames  : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
+    order_range : Optional[np.ndarray] = None
+
+    # Other useful data:
+    initialisation_time : Optional[float] = None
+    mcmc_time           : Optional[float] = None
+    get_profiles_time   : Optional[float] = None
+    full_run_time       : Optional[float] = None
 
     # # Continuum fit products used in get_profiles step
     # poly_inputs    : Optional[np.ndarray] = None

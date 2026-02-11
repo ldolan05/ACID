@@ -177,7 +177,7 @@ class Acid:
         production_run :bool           = False,
 
         # Testing and internal kwargs
-        _input_data                    = None,
+        _sampler                       = None,
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -246,8 +246,12 @@ class Acid:
             faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
             If true, some methods in Result will be desabled, by default False
         **kwargs : dict, optional
-            Additional keyword arguments. For the moment, these are not used. They are included to allow for
-            future expansion of the function without breaking existing code.
+            Additional keyword arguments. kwargs are passed to the Result class when returning the Result object,
+            see Result class for more details on what kwargs can be passed. Note that any kwargs that are also 
+            in the class initialisation will be ignored, and the inputted value will not be used. This is to 
+            avoid confusion for users who may accidentally input an argument that is meant for the class 
+            initialisation rather than the ACID function, which takes different arguments. The ignored 
+            kwargs are checked for and printed at the start of the function.
         Returns
         -------
         Result
@@ -258,8 +262,8 @@ class Acid:
         TypeError
             If the input types are not as expected.
         """
+        init_t0 = time.time()
         if self.verbose>1:
-            t0 = time.time()
             print('Initialising...')
 
         # Setup and data validation done in data class and applies skips
@@ -269,8 +273,16 @@ class Acid:
         overlap = self._INIT_KEYS & kwargs.keys()
         if overlap and self.verbose > 0:
             for key in sorted(overlap):
-                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")   
-
+                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
+        
+        # Raise an error if the kwargs are not part of either the ACID init or the Result init, so that the error happens
+        # now rather than during the Result initialisation, which would waste the user's time
+        valid_result_keys = set(inspect.signature(Result.__init__).parameters) - {"self"}
+        invalid_keys = set(kwargs.keys()) - self._INIT_KEYS - valid_result_keys
+        if invalid_keys and self.verbose > 0:
+            raise ValueError(f"The following kwargs are not valid for either the ACID initialisation or the Result "
+                             f"initialisation: {', '.join(invalid_keys)}. Please check your input arguments.")
+        
         # Assign all inputs to class variables (except all frames, handled below)
         # self.wavelengths    = {"input": input_wavelengths}
         # self.flux           = {"input": input_flux}
@@ -426,24 +438,22 @@ class Acid:
         #     "c_factor"   : self.data.c_factor,
         #     }
 
+        ### ACID initialialised ###
+        self.data.initialisation_time = time.time() - init_t0
         if self.verbose>1:
-            t5 = time.time()
-            print('Initialised in %ss'%round((t5-t0), 2))
+            print('Initialised in %ss'%round((self.data.initialisation_time), 3))
             print('Fitting the continuum using emcee...')
 
-        _input_data = _input_data if _input_data is not None else {}
-        if "sampler" not in _input_data:
+        if _sampler is None:
             self._run_mcmc(initial_state, self.nsteps)
 
         else: # Only for testing
-            self.sampler = _input_data.get("sampler")
+            self.sampler = _sampler
 
         # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
         # when using ACID function, but if using class directly, user can choose to call this part separately.
-        if production_run is False:
-            return self.process_results()
-        else:
-            return Result(self, production_run=True)
+        process_results = kwargs.get()
+        return Result(self)
 
     def ACID_HARPS(
         self,
