@@ -156,6 +156,7 @@ class Acid:
 
         # Testing and internal kwargs
         correct_continuum              = False,
+        correct_profile_error          = False,
         correct_autocorrelation        = False,
         correct_error_combine          = False,
         fork                           = False,
@@ -319,6 +320,7 @@ class Acid:
         self.highsamples             = highsamples
         self.fit_profile             = fit_profile
         self.better_initial_state    = better_initial_state
+        self.correct_profile_error   = correct_profile_error
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -1168,7 +1170,12 @@ class Acid:
             profile_errors = LSD_profiles.profile_errors
 
             profile_f = np.exp(profile_OD)
-            profile_errors_f = profile_errors/profile_f
+
+            if self.correct_get_profiles is True:
+                print("correct_get_profiles is enabled")
+                profile_errors_f = profile_f * profile_errors
+            else:
+                profile_errors_f = profile_errors/profile_f
             profile_f = profile_f-1
 
             all_frames[counter, self.order]=[profile_f, profile_errors_f]
