@@ -70,8 +70,7 @@ class Result:
 
         if Acid is None:
             self.verbose = verbose if verbose is not None else 2
-            if sampler is not None:
-                self.initiate_sampler(sampler)
+            self.initiate_sampler(sampler) # handles if sampler is None
             self.production_run = True # Forces True to activate @_require_all_results decorator
             self.Acid = None
             if self.verbose>0:
@@ -117,6 +116,10 @@ class Result:
             self.all_frames = None
 
         self.nvel = len(Acid.velocities)
+
+        # For convenience, let the user call the model without needing to input all required args
+        MCMC_class = mcmc.MCMC(**self.mcmc_global_data)
+        self.model = MCMC_class.run_model_function
 
     @_require_all_results
     def __getitem__(self, item):
@@ -195,8 +198,7 @@ class Result:
             Whether to return the figure and axis objects instead of showing the plot, by default False
         """
 
-        if sampler is not None:
-            self.initiate_sampler(sampler)
+        self.initiate_sampler(sampler)
 
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
@@ -233,8 +235,7 @@ class Result:
             Additional keyword arguments to pass to corner.corner().
         """
 
-        if sampler is not None:
-            self.initiate_sampler(sampler)
+        self.initiate_sampler(sampler)
 
         naxes = min(8, self.ndim)
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
@@ -252,6 +253,8 @@ class Result:
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
         errorbar_kwargs :dict|None = None,
+        fig_ax                     = None,
+        **kwargs,
         ):
         """Plots the LSD profile result from Acid.
 
@@ -267,6 +270,8 @@ class Result:
             Keyword arguments to be passed to plt.subplots(), by default None
         errorbar_kwargs : dict | None, optional
             Keyword arguments to be passed to ax.errorbar(), by default None
+        fig_ax : tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | None, optional
+            Optionally provide an existing fig/axis tuple to plot on, by default None
         """
         # Set default errorbar kwargs
         errorbar_defaults = {
@@ -291,7 +296,10 @@ class Result:
         nframes = len(self.all_frames)
         norders = len(self.all_frames[0])
         frames = np.copy(self.all_frames)
-        fig, ax = plt.subplots(**subplot_kwargs)
+        if fig_ax is None:
+            fig, ax = plt.subplots(**subplot_kwargs)
+        else:
+            fig, ax = fig_ax
         if nframes > 1:
             if norders > 1:
                 print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
@@ -302,7 +310,9 @@ class Result:
                 # TODO: Make Order a function of self.order_range, which needs to be configured in Acid
                 # so that order_range is done automatically if multiple orders are manually put (and not 
                 # just using ACID_HARPS)
-                ax.errorbar(x, y, yerr=yerr, label=f"Frame {f+1}, Order {o+1}", **errorbar_kwargs)
+                label_default = f"Frame {f+1}, Order {o+1}" if nframes > 1 and norders > 1 else None
+                errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, {"label": label_default})
+                ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
 
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
@@ -370,8 +380,7 @@ class Result:
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
-        MCMC = mcmc.MCMC(input_wavelengths, input_flux, input_errors, self.alpha, self.fit_profile)
-        model_flux, _ = MCMC.run_model_funciton(theta_median)
+        model_flux, _ = self.model(theta_median)
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
@@ -423,10 +432,13 @@ class Result:
         sampler : emcee.EnsembleSampler
             An emcee EnsembleSampler object to set as the sampler attribute.
         """
-        self.sampler = sampler
-        self.ndim = sampler.ndim
-        self.nwalkers = sampler.nwalkers
-        self.nsteps = sampler.get_chain().shape[0]
+        self.sampler = sampler if not self.sampler else self.sampler
+        if self.sampler is None:
+            raise ValueError("A sampler must be provided in initialisation or in method call")
+
+        self.ndim = self.sampler.ndim
+        self.nwalkers = self.sampler.nwalkers
+        self.nsteps = self.sampler.get_chain().shape[0]
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call

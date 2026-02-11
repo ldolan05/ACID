@@ -1,4 +1,4 @@
-import sys, emcee, warnings, os, time, inspect
+import sys, emcee, warnings, os, time, inspect, contextlib
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
@@ -147,6 +147,7 @@ class Acid:
         dev_perc       :int|npint      = 25,
         n_sig          :int|npint      = 1,
         order          :int|npint      = 0,
+        skips          :int|npint      = 1,
         parallel       :bool           = True,
         cores          :int|npint|None = None,
         nsteps         :int|npint      = 10000,
@@ -215,6 +216,9 @@ class Acid:
             Only applicable if an all_frames output array has been provided as this is the order position in that
             array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in
             all_frames[:, 5]., by default 0
+        skips : int, optional
+            An option to only select one in every n pixels, where n is the integer argument. This is only useful for
+            testing to get a quick result, by default 1
         parallel : bool, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, by default True
         cores : int, optional
@@ -270,15 +274,21 @@ class Acid:
             frame_sns = utils.guess_SNR(input_wavelengths, input_spectra, input_spectral_errors)
             assert frame_sns.ndim == input_spectra.ndim - 1, \
             "frame_sns.ndim and input_spectra.ndim-1 do not match"
-        if np.asarray(frame_sns).shape == np.asarray(input_spectra).shape:
+        if np.asarray(frame_sns).shape[0] != np.asarray(input_spectra).shape[0]:
             raise ValueError("frame_sns must be a single-valued list/array with the average S/N for each frame, " \
-            "not an array of S/N values for each pixel.")
+            "not an array of S/N values for each pixel. " \
+            "The shape of the input frame_sns does not match the number of frames in input_spectra.")
         
         init_keys = ["velocities", "linelist_path", "linelist_wl", "linelist_depths", "verbose",
                      "telluric_lines", "name", "seed"]
         for key in init_keys:
             if key in kwargs and self.verbose > 0:
                 print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
+
+        # Apply skips
+        input_wavelengths = input_wavelengths[:, ::skips]
+        input_spectra = input_spectra[:, ::skips]
+        input_spectral_errors = input_spectral_errors[:, ::skips]       
 
         # Assign all inputs to class variables (except all frames, handled below)
         self.wavelengths    = {"input": input_wavelengths}
@@ -383,7 +393,7 @@ class Acid:
             print('Residual masking...')
 
         # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
-        # Sets: self.c_factor
+        # Sets: self.c_factor, self.residual_masks
         # Modifies: self.alpha, self.yerr
         self.residual_mask() # will eventually add options for this
 
@@ -628,7 +638,7 @@ class Acid:
                 Signal-to-noise ratio for the combined spectrum
         """
 
-        if frame_wavelengths: # This should only be for testing
+        if frame_wavelengths is not None: # This should only be for testing
             self.wavelengths["input"] = np.copy(frame_wavelengths)
             self.flux["input"]        = np.copy(frame_flux)
             self.errors["input"]      = np.copy(frame_errors)
@@ -1001,13 +1011,26 @@ class Acid:
         return_result=True,
         ):
 
-        # Discarding all vales except the last 1000 steps.
         if self.correct_autocorrelation is True:
             print("correct_autocorrelation is enabled")
-            tau = self.sampler.get_autocorr_time(quiet=True)
-            burnin = int(2 * np.max(tau))
-            thin = int(np.min(tau)/5)
+
+            with open(os.devnull, "w") as devnull, \
+            contextlib.redirect_stdout(devnull), \
+            contextlib.redirect_stderr(devnull):
+                self.tau = self.sampler.get_autocorr_time(quiet=True)
+
+            try:
+                burnin = int(2 * np.max(self.tau))
+                thin = int(np.min(self.tau)/5)
+            except:
+                if self.verbose>0:
+                    print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                    f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
+                    f" wrong. Setting burnin=0 and thin=1.")
+                burnin = 0
+                thin = 1
         else:
+            # Discarding all vales except the last 1000 steps.
             burnin = self.nsteps-1000
             thin = 1
 
@@ -1095,10 +1118,10 @@ class Acid:
         ):
 
         for counter in range(len(self.flux["input"])):
-            flux = self.flux["input"][counter]
-            error = self.errors["input"][counter]
-            wavelengths = self.wavelengths["input"][counter]
-            sn = self.sn["input"][counter]
+            flux = np.copy(self.flux["input"][counter])
+            error = np.copy(self.errors["input"][counter])
+            wavelengths = np.copy(self.wavelengths["input"][counter])
+            sn = np.copy(self.sn["input"][counter])
 
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
@@ -1144,10 +1167,8 @@ class Acid:
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
 
-            # Need to check whats going on here with the -1
-            p = np.exp(profile_OD)-1
             profile_f = np.exp(profile_OD)
-            profile_errors_f = np.sqrt(profile_errors**2/profile_f**2)
+            profile_errors_f = profile_errors/profile_f
             profile_f = profile_f-1
 
             all_frames[counter, self.order]=[profile_f, profile_errors_f]

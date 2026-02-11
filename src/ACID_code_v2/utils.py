@@ -37,21 +37,21 @@ def validate_args(x, i, allow_none=False, sn=False):
         if allow_none:
             return None
         else:
-            raise TypeError(f"Input in position {i} must be a list or numpy array, not None")
+            raise TypeError(f"Argument in position {i} must be a list or numpy array, not None")
     if not isinstance(x, (list, np.ndarray)):
         if sn is False:
-            raise TypeError(f"Input in position {i} must be a list or numpy array")
+            raise TypeError(f"Argument in position {i} must be a list or numpy array")
     if isinstance(x, list):
         if len(x) == 0:
-            raise TypeError(f"Input list in position {i} is empty")
+            raise TypeError(f"Argument list in position {i} is empty")
     x = np.array(x)
     if x.ndim > 2:
-        raise TypeError(f"Input in position {i} must be a list or numpy array with at most two dimensions")
+        raise TypeError(f"Argument in position {i} must be a list or numpy array with at most two dimensions")
     elif x.ndim == 0:
         if sn is False:
-            raise TypeError(f"Input in position {i} must be a list or numpy array with at least one dimension")
+            raise TypeError(f"Argument in position {i} must be a list or numpy array with at least one dimension")
         else:
-            return np.array([x])
+            return np.array([x]) # ensure sn is always 1D
     elif x.ndim == 1:
         if sn:
             return x
@@ -59,12 +59,12 @@ def validate_args(x, i, allow_none=False, sn=False):
     elif x.ndim == 2:
         if sn:
             if x.shape[0] != 1: # ie if 1, an extra [] was added to input to make 2D.
-                raise TypeError(f"Input for sn in position {i} must be a 1D numpy array or list (the input was 2D)")
+                raise TypeError(f"Argument for sn in position {i} must be a 1D numpy array or list (the input was 2D)")
             else:
                 return x[0]
         return x # 2D array, return as is, code later does np.array(x) so no change
     else: # should not reach here, somehow ndim is negative
-        raise ValueError(f"Input in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
+        raise ValueError(f"Argument in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
 def scale_spectra(spectrum, error):
     """Scales the input spectrum and error to be between 0 and 1, masking any non-positive values by making

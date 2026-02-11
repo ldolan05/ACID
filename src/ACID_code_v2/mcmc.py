@@ -58,7 +58,6 @@ class MCMC:
         
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
-        self.x = x
         self.y = y
         self.yerr = yerr
         self.alpha = alpha
@@ -68,15 +67,16 @@ class MCMC:
         self.fit_profile = fit_profile
         self.seed = seed
 
+        # Precompute normalization coefficients these are used to adjust the wavelengths to
+        # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
+        a, b = utils.get_normalisation_coeffs(x)
+        self.u = (a * x) + b
+
         # Configure whether to use full or fast model
         if self.fit_profile:
             self.model_function = self.full_func
         else:
             self.model_function = self.fast_func
-        
-        # Precompute normalization coefficients these are used to adjust the wavelengths to
-        # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        self.a, self.b = utils.get_normalisation_coeffs(self.x)
     
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
@@ -106,10 +106,9 @@ class MCMC:
         # Calculate continuum polynomial
         coefs = np.asarray(theta[self.k_max:-1], dtype=float)
         scale = theta[-1]
-        u = (self.a * self.x) + self.b
 
         # Build continuum model
-        mdl1 = P.polyval(u, coefs)
+        mdl1 = P.polyval(self.u, coefs)
         mdl *= mdl1 * scale
 
         return mdl, z
@@ -131,10 +130,9 @@ class MCMC:
 
         coefs = np.asarray(theta[:-1], dtype=float)
         scale = theta[-1]
-        u = (self.a * self.x) + self.b
 
         # Build continuum model
-        mdl = P.polyval(u, coefs)
+        mdl = P.polyval(self.u, coefs)
         mdl *= scale
 
         if np.any(mdl <= 0):
@@ -151,7 +149,7 @@ class MCMC:
 
         return forward, z
 
-    def run_model_funciton(self, *args, **kwargs):
+    def run_model_function(self, *args, **kwargs):
         """Runs the selected model function (full or fast) with given arguments.
 
         Returns
