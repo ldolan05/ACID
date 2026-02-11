@@ -2,126 +2,167 @@ from math import tau
 import numpy as np
 import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools
+from emcee import EnsembleSampler
 from beartype import beartype
 from numpy import integer as npint
-
 from .lsd import LSD
 from . import mcmc
 from . import utils
+from .data import Data
+from .acid import Acid
 
 warnings.filterwarnings("ignore")
 
 __all__ = ['Result']
 
-def _require_all_results(method):
+def _require_all_frames(method):
     # Make sure all results are processed before calling method
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if self.production_run:
+        if self.all_frames is None:
             name = method.__qualname__
-            if self.verbose>0:
-                print(f"Note: The Result object was in production_run mode. Running {name} " \
-                      "requires all results to be processed, so process_results() has been " \
-                      "called automatically.")
-            self.process_results()
+            if self.sampler is not None and self.data is not None:
+                if self.verbose>0:
+                    print(f"Note: The Result object was created without all_frames processed. " \
+                        f"Running {name} requires all results to be processed, " \
+                        "so process_results() will be called automatically...")
+                self.process_results()
+            else:
+                error = f"Cannot call {name}. The all_frames attribute is not available, and no " \
+                "sampler and data objects are available to process results. Please pass an Acid " \
+                "object after running ACID."
+                raise ValueError(error)
         return method(self, *args, **kwargs)
     return wrapper
 
-def _require_Acid(method):
-    # Make sure Acid object is available before calling method
+def _require_data(method):
+    # Make sure Data object is available before calling method
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if self.Acid is None:
-            error = f"Cannot call {method.__qualname__}. The Acid object is not available in this " \
-            "Result instance. This can occur if Acid was set to None to allow for pickling in the " \
+        if self.data is None:
+            name = method.__qualname__
+            error = f"Cannot call {name}. The Data object is not available in this " \
+            "Result instance. This can occur if Data was set to None to allow for pickling in the " \
             "case that multiple orders or frames were used."
+            raise ValueError(error)
+        return method(self, *args, **kwargs)
+    return wrapper
+
+def _require_sampler(method):
+    # Make sure sampler object is available before calling method
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if self.sampler is None:
+            name = method.__qualname__
+            error = f"Cannot call {name}. The sampler object is not available in this " \
+            "Result instance."
             raise ValueError(error)
         return method(self, *args, **kwargs)
     return wrapper
 
 @beartype
 class Result:
-    """Class to handle the results from the Acid MCMC sampling, and results processing."""
+    """Class to handle the results from the Acid MCMC sampling, and results processing. Fundamentally, this
+    class requires two objects to run, the Sampler object and the Data object, both of which can be obtained
+    from the Acid object. If one or the other is not provided, some methods will not work."""
 
-    def __init__(self, Acid=None, sampler=None, ACID_HARPS:bool=False, verbose:int|bool|None=None, production_run:bool=False):
+    def __init__(
+            self,
+            Acid_or_Data_or_Sampler,
+            sampler                        = None,
+            process_results: bool          = True,
+            ACID_HARPS     : bool          = False,
+            verbose        : int|bool|None = None,
+        ):
         """Initiate Result class
 
         Parameters
         ----------
-        Acid : object, optional
-            An Acid object after MCMC sampling has been performed. If not provided,
-            initialisation is skipped and will likely cause errors., by default None
+        Acid_or_Data_or_Sampler : Acid | Data | emcee.EnsembleSampler
+            An Acid object, Data object (contained in Acid class), or sampler object. If an Acid 
+            object is provided, all other arguments are taken from there. If a Data object is 
+            provided, a sampler can be provided in the second argument. If a sampler object 
+            is provided, it will be used as the sampler, but all other attributes will need 
+            to be set manually for the Result object to be fully functional.
         sampler : emcee.EnsembleSampler | None, optional
-            Optionally provide a different sampler to use instead of the one from the
-            Acid object, by default None
+            A sampler object to use if the Data object was provided. If an Acid object 
+            was provided, the sampler will be taken from there. If a sampler object was
+            provided in the first argument, this will be ignored (with a warning), by default None
+        process_results : bool, optional
+            Whether to process the results from the Acid object upon initialisation, by default True.
+            If False, the all_frames attribute will not be available until Result.process_results() is called.
+            The process_results functions does a LSD call, which can be skipped to save time and use
+            the Result object for methods that do not require the all_frames attribute, such as 
+            continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
+            and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
+            By default, None.
         ACID_HARPS : bool, optional
             Whether the ACID_HARPS function was used, by default False
         verbose : int|bool|None, optional
             Verbosity level, works exactly the same as Acid verbosity, if not provided
             defaults to provided Acid class verbosity otherwise defaults to 2.
-        production_run : bool, optional
-            Whether Acid was run in production mode, by default False
+        # production_run : bool, optional
+        #     Whether Acid was run in production mode, by default False
         """
+
+        self.sampler    = None
+        self.data       = None
+        self.all_frames = None
 
         if verbose is True:
             verbose = 2
         elif verbose is False:
             verbose = 0
+        elif verbose is None:
+            if hasattr(Acid_or_Data_or_Sampler, 'verbose'):
+                verbose = Acid_or_Data_or_Sampler.verbose
+            else:
+                verbose = 2 # the default
+        self.verbose = verbose
 
-        if Acid is None:
-            self.verbose = verbose if verbose is not None else 2
-            self.initiate_sampler(sampler) # handles if sampler is None
-            self.production_run = True # Forces True to activate @_require_all_results decorator
-            self.Acid = None
+        # if Acid is None:
+        #     self.verbose = verbose if verbose is not None else 2
+        #     self.initiate_sampler(sampler) # handles if sampler is None
+        #     self.production_run = True # Forces True to activate @_require_all_frames decorator
+        #     self.Acid = None
+        #     if self.verbose>0:
+        #         print("Warning: Acid object not provided. Result object will not be fully functional.")
+        #     return
+        if isinstance(Acid_or_Data_or_Sampler, Acid):
+            self.data = Acid_or_Data_or_Sampler.data
+            self.initiate_sampler(Acid_or_Data_or_Sampler.sampler)
+
+        if isinstance(Acid_or_Data_or_Sampler, Data):
+            self.data = Acid_or_Data_or_Sampler
+            if sampler is not None:
+                self.initiate_sampler(sampler)
+
+        if isinstance(Acid_or_Data_or_Sampler, EnsembleSampler):
+            self.initiate_sampler(Acid_or_Data_or_Sampler)
             if self.verbose>0:
-                print("Warning: Acid object not provided. Result object will not be fully functional.")
+                print("Warning: Data object not provided. Result object will not be fully functional.")
             return
-
-        # From here, Acid instance is provided
-
-        if verbose is None:
-            self.verbose = Acid.verbose
+        
+        # From this point, a Data instance is provided and can be drawn from, but sampler may or may not be provided.
+        # All frames must be available as a Result class variable due to legacy behaviour. Once created, we can point
+        # Data.all_frames to Result.all_frames to keep them in sync.
+        if process_results:
+            self.process_results() # this function needs to be moved here
+            Acid_or_Data_or_Sampler.all_frames = self.all_frames # all frames set in above func
         else:
-            self.verbose = verbose
+            if self.verbose>0:
+                print("Warning: Results not processed. all_frames attribute will not be available until " \
+                "Result.process_results() is called.")
 
-        if sampler is None:
-            self.initiate_sampler(Acid.sampler)
-        else:
-            self.initiate_sampler(sampler)
-
-        self.Acid = Acid
-
-        # Store different used wavelengths in ACID (later this may go into Acid itself):
-        self.wavelengths = Acid.wavelengths
-        self.flux = Acid.flux
-        self.errors = Acid.errors
-
+        # Store internal variables
         self.ACID_HARPS = ACID_HARPS
-        self.production_run = production_run
-        self.velocities = Acid.velocities
-        self.model_inputs = Acid.model_inputs
-        self.verbose = Acid.verbose
-        self.order_range = Acid.order_range
-        self.alpha = Acid.alpha
-        self.fit_profile = Acid.fit_profile
-        self.mcmc_global_data = Acid.mcmc_global_data
 
-        self.BJDs = getattr(Acid, 'BJDs', None)
-        self.profiles = getattr(Acid, 'profiles', None)
-        self.errors = getattr(Acid, 'errors', None)
+        # Only takes if ACID_HARPS was run, otherwise all None
+        self.BJDs = getattr(Acid_or_Data_or_Sampler, 'BJDs', None)
+        self.profiles = getattr(Acid_or_Data_or_Sampler, 'profiles', None)
+        self.errors = getattr(Acid_or_Data_or_Sampler, 'errors', None)
 
-        if not production_run:
-            self.all_frames = Acid.all_frames
-        else:
-            self.all_frames = None
-
-        self.nvel = len(Acid.velocities)
-
-        # For convenience, let the user call the model without needing to input all required args
-        MCMC_class = mcmc.MCMC(**self.mcmc_global_data)
-        self.model = MCMC_class.run_model_function
-
-    @_require_all_results
+    @_require_all_frames
     def __getitem__(self, item):
         """Allows indexing into the all_frames array directly from the Result object.
         """
@@ -131,7 +172,7 @@ class Result:
         else:
             return self.all_frames[item]
 
-    @_require_all_results
+    @_require_all_frames
     def __iter__(self):
         """Allows iteration over the BJDs, profiles, and errors if ACID_HARPS was used.
         """
@@ -140,7 +181,7 @@ class Result:
         # Acid is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
-    @_require_Acid
+    @_require_data
     def continue_sampling(self, nsteps:int|npint, production_run:bool|None=None):
         """Continue MCMC sampling for additional steps.
 
@@ -172,7 +213,7 @@ class Result:
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
     
-    @_require_Acid
+    @_require_data
     def process_results(self):
         """Processes the MCMC results to extract the LSD profiles and errors. Can be used
         to convert a production run Result object into one with all results processed.
@@ -245,7 +286,7 @@ class Result:
             return fig
         plt.show()
 
-    @_require_all_results
+    @_require_all_frames
     def plot_profiles(
         self,
         grid            :bool      = True,
@@ -325,7 +366,7 @@ class Result:
         else:
             plt.show()
 
-    @_require_all_results
+    @_require_all_frames
     def plot_forward_model(
         self,
         input_version   :str       = "masked",
@@ -432,7 +473,7 @@ class Result:
         sampler : emcee.EnsembleSampler
             An emcee EnsembleSampler object to set as the sampler attribute.
         """
-        self.sampler = sampler if not self.sampler else self.sampler
+        self.sampler = sampler if sampler is not None else self.sampler
         if self.sampler is None:
             raise ValueError("A sampler must be provided in initialisation or in method call")
 
@@ -467,6 +508,22 @@ class Result:
 
         # Samples if burnin and thin dont need inputs
         self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
+
+    def initiate_data(self, data):
+        """Initiates the data attribute from an external Data object.
+
+        Parameters
+        ----------
+        data : Data
+            A Data object to set as the data attribute.
+        """
+        self.data = data if data is not None else self.data
+        if self.data is None:
+            raise ValueError("A Data object must be provided in initialisation or in method call")
+
+        # For convenience, let the user call the model without needing to input all required args
+        MCMC_class = mcmc.MCMC(self.data)
+        self.model = MCMC_class.run_model_function
 
     @classmethod
     def load_result(cls, result_object:str|object="result.pkl"):
