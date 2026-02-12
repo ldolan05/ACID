@@ -1,4 +1,6 @@
-import sys, emcee, warnings, os, time, inspect, contextlib, inspect
+import warnings
+warnings.filterwarnings("ignore")
+import sys, emcee, os, time, inspect, contextlib, inspect
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
@@ -12,9 +14,7 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
-from .data import Data
-
-warnings.filterwarnings("ignore")
+from .data import Data, Config
 
 c_kms = float(const.c/1e3)
 
@@ -74,12 +74,6 @@ class Acid:
             If None, a new Data object is created, by default None
         """
 
-        # Initialise the data class to store calculations in ACID
-        if data is not None:
-            self.data = data
-        else:
-            self.data = Data()
-
         # Make verbosity always an int regardless of input type, and check correct range
         if verbose is True:
             verbose = 2
@@ -87,19 +81,7 @@ class Acid:
             verbose = 0
         elif isinstance(verbose, int):
             if verbose < 0 or verbose > 3:
-                raise ValueError("verbose must be an integer between 0 and 3 (or True/False)")
-        if verbose is not None:
-            self.data.verbose = verbose
-        # Else if None, data class default is 2 and kept (or previous user defined verbosity persists)
-
-        # Sets self.velocities, self.linelist_path, self.telluric_lines, self.name, given the inputs
-        # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
-        if velocities is not None:
-            if velocities.ndim != 1:
-                raise ValueError("'velocities' must be a one-dimensional array or list")
-        else:
-            if self.data.velocities is not None:
-                velocities = self.data.velocities
+                raise ValueError("verbose must be an integer between 0 and 3")
 
         # Validate linelist inputs
         if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
@@ -130,25 +112,45 @@ class Acid:
         if telluric_lines.ndim != 1 or telluric_lines.size == 0:
             raise ValueError("telluric_lines must be a one-dimensional array or list")
 
-        # Set the above class attributes
-        self.velocities     = velocities
-        self.linelist_path  = linelist_path
-        self.telluric_lines = telluric_lines
-        self.name           = name
-        self.verbose        = verbose
-        self.seed           = seed
-
         # Define default order range, can be overwritten in ACID_HARPS
         self.order_range = [1]
-
-        # Set an initial all_frames to None, which is smartly handled in ACID (by input or defaults) and ACID_HARPS
-        self.all_frames = None
 
         # Determine if running in SLURM environment
         self.slurm = "SLURM_JOB_ID" in os.environ
 
         # Set a random seed
         np.random.seed(self.seed)
+
+        # Set the above class attributes
+        self.linelist_path  = linelist_path
+        self.telluric_lines = telluric_lines
+        self.name           = name
+        self.verbose        = verbose
+        self.seed           = seed
+
+        self.init_config = {
+            "velocities"     : self.velocities,
+            "linelist_path"  : self.linelist_path,
+            "telluric_lines" : self.telluric_lines,
+            "name"           : self.name,
+            "verbose"        : self.verbose,
+            "seed"           : self.seed,
+            "order_range"    : self.order_range,
+            "slurm"          : self.slurm,
+        }
+
+        # Initialise the data class to store calculations in ACID
+        if data is not None:
+            self.data = data
+        else:
+            self.data = Data()
+
+        # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
+        if velocities is not None:
+            if velocities.ndim != 1:
+                raise ValueError("'velocities' must be a one-dimensional array")
+        self.data.velocities = velocities if velocities is not None else self.data.velocities
+
         return
 
     # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
@@ -161,23 +163,19 @@ class Acid:
         input_wavelengths,
         input_flux,
         input_errors,
-        input_sn                      = None,
-        all_frames                     = None,
-        fit_profile    :bool           = True,
-        poly_ord       :int|npint      = 3,
-        pix_chunk      :int|npint      = 20,
-        dev_perc       :int|npint      = 25,
-        n_sig          :int|npint      = 1,
-        order          :int|npint      = 0,
-        skips          :int|npint      = 1,
-        parallel       :bool           = True,
-        cores          :int|npint|None = None,
-        nsteps         :int|npint      = 10000,
-        return_result  :bool           = True,
-        production_run :bool           = False,
-
-        # Testing and internal kwargs
-        _sampler                       = None,
+        input_sn                              = None,
+        all_frames                            = None,
+        deterministic_profile :bool           = True,
+        poly_ord              :int|npint      = 3,
+        pix_chunk             :int|npint      = 20,
+        dev_perc              :int|npint      = 25,
+        n_sig                 :int|npint      = 1,
+        order                 :int|npint      = 0,
+        skips                 :int|npint      = 1,
+        parallel              :bool           = True,
+        cores                 :int|npint|None = None,
+        nsteps                :int|npint      = 10000,
+        sampler                               = None,
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -204,7 +202,7 @@ class Acid:
             regions or order (in the case of echelle spectra). General shape needs to be
             (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape.
              The only allowed string is "default" due to legacy behaviour, which now acts the same as None, by default None
-        fit_profile : bool, optional
+        deterministic_profile : bool, optional
             If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
             profile is inferred from the continuum fit. Setting this to False can significantly speed up compution time, 
             depending on the machine used as it is not as easy to parallelise. It may decrease accuracy, and is not fully tested
@@ -238,13 +236,6 @@ class Acid:
         nsteps : int, optional
             nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge,
             by default 10000
-        return_result : bool, optional
-            If True, returns the Result object with the resulting profiles. Otherwise, you will need to handle
-            the output manually from acid.all_frames and acid.sampler, by default True
-        production_run : bool, optional
-            If True, skips the final process_results step and returns a Result object directly. This allows for
-            faster chain analysis and want to increase the number of steps with result.continue_sampling(steps).
-            If true, some methods in Result will be desabled, by default False
         **kwargs : dict, optional
             Additional keyword arguments. kwargs are passed to the Result class when returning the Result object,
             see Result class for more details on what kwargs can be passed. Note that any kwargs that are also 
@@ -254,8 +245,10 @@ class Acid:
             kwargs are checked for and printed at the start of the function.
         Returns
         -------
-        Result
-            Result object containing the LSD profiles and associated data. See Result class for methods and attributes.
+        Result | None
+            Result object containing the LSD profiles and associated data, or None if a sampler was provided. 
+            If you want to process the results after inputting a sampler, pass the object to the Result class
+            manually. See Result class for methods and attributes.
 
         Raises
         ------
@@ -282,23 +275,42 @@ class Acid:
         if invalid_keys and self.verbose > 0:
             raise ValueError(f"The following kwargs are not valid for either the ACID initialisation or the Result "
                              f"initialisation: {', '.join(invalid_keys)}. Please check your input arguments.")
-        
-        # Assign all inputs to class variables (except all frames, handled below)
-        # self.wavelengths    = {"input": input_wavelengths}
-        # self.flux           = {"input": input_flux}
-        # self.errors         = {"input": input_errors}
-        # self.sn             = {"input": input_sn}
-        self.poly_ord       = poly_ord
-        self.nsteps         = nsteps
-        self.order          = order
-        self.pix_chunk      = pix_chunk
-        self.dev_perc       = dev_perc
-        self.n_sig          = n_sig
-        self.return_result  = return_result
-        self.parallel       = parallel
-        self.production_run = production_run
-        self.cores          = cores
-        self.fit_profile    = fit_profile
+
+        # Assign all inputs to class variables (except all frames and velocities, handled below)
+        self.poly_ord              = poly_ord
+        self.data.nsteps           = nsteps
+        self.order                 = order
+        self.pix_chunk             = pix_chunk
+        self.dev_perc              = dev_perc
+        self.n_sig                 = n_sig
+        self.parallel              = parallel
+        self.cores                 = cores
+        self.deterministic_profile = deterministic_profile
+        self.sampler               = sampler
+
+        # Assign inputted configuration to config dictionary plus or minus a few variables
+        self.ACID_config = {
+            "poly_ord"              : self.poly_ord,
+            "order"                 : self.order,
+            "pix_chunk"             : self.pix_chunk,
+            "dev_perc"              : self.dev_perc,
+            "n_sig"                 : self.n_sig,
+            "parallel"              : self.parallel,
+            "cores"                 : self.cores,
+            "deterministic_profile" : self.deterministic_profile,
+        }
+
+        # If data already had a config, load that
+        old_config = self.data.config # could be empty dict if no config was set
+
+        # Save the full config
+        new_config = {**self.init_config, **self.ACID_config}
+        self.config = {**new_config, **old_config} # old config overwrites new
+
+        # Since the config is very light, we can copy to the data class for convenience
+        self.data.config = self.config.to_dict()
+
+        # TODO: Make all calls for config use it correctly rather than just self
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -417,7 +429,7 @@ class Acid:
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
-        if self.fit_profile is False:
+        if self.deterministic_profile is False:
             self.ndim = self.poly_ord + 2
             self.nwalkers = self.ndim * factor
             initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
@@ -434,7 +446,7 @@ class Acid:
         #     "alpha"      : self.data.alpha,
         #     "velocities" : self.data.velocities,
         #     "seed"       : self.data.seed,
-        #     "fit_profile": self.data.fit_profile,
+        #     "deterministic_profile": self.data.deterministic_profile,
         #     "c_factor"   : self.data.c_factor,
         #     }
 
@@ -444,16 +456,11 @@ class Acid:
             print('Initialised in %ss'%round((self.data.initialisation_time), 3))
             print('Fitting the continuum using emcee...')
 
-        if _sampler is None:
+        if sampler is None:
             self._run_mcmc(initial_state, self.nsteps)
-
-        else: # Only for testing
-            self.sampler = _sampler
-
-        # At this point, MCMC has been run, and results need to be processed. This is normally done automatically
-        # when using ACID function, but if using class directly, user can choose to call this part separately.
-        process_results = kwargs.get()
-        return Result(self)
+            return Result(self)
+        else:
+            return
 
     def ACID_HARPS(
         self,
@@ -535,7 +542,6 @@ class Acid:
                 frame_errors,
                 sns,
                 order         = order-min(self.order_range),
-                return_result = False,
                 **kwargs
             )
 
@@ -1082,29 +1088,34 @@ class Acid:
 
         return spectrum, spec_errors
 
-    def continue_sampling(
+    def _continue_sampling(
         self,
+        sampler,
         nsteps        : int|npint,
-        production_run: bool = False,
         ):
-        """Continue MCMC sampling for additional steps.
+        """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
+        This necessarily requires a Data instance to have been put into the ACID init.
 
         Parameters
         ----------
+        sampler : emcee.EnsembleSampler
+            The existing MCMC sampler to continue sampling from.
         nsteps : int
             Number of additional steps to run the MCMC for.
+        
+        Returns
+        -------
+        emcee.EnsembleSampler
+            The MCMC sampler after running for the additional steps.
         """
-        # Check that sampler exists
-        if not hasattr(self, 'sampler'):
-            raise AttributeError("No existing sampler found. Please run 'ACID' before continuing.")
+        assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
 
+        self.sampler = sampler
+        self.config = Config(**self.data.config)
         self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
-        self.nsteps += nsteps
+        self.data.nsteps += nsteps
 
-        if production_run is False:
-            return self.process_results()
-        else:
-            return Result(self, production_run=True)
+        return self.sampler
 
     def get_result(
         self=None,

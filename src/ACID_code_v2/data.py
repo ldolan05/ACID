@@ -5,6 +5,17 @@ import numpy as np
 from . import utils
 from .result import Result
 
+class Config:
+    """A simple class to store the configuration of the ACID run."""
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def update(self, **kwargs) -> None:
+        self.__dict__.update(kwargs)
+
+    def to_dict(self) -> dict[str]:
+        return dict(self.__dict__)
+
 @dataclass(slots=True)
 class Data:
     """Stores necessary data for the Acid class which can be conveniently updated and saved.
@@ -20,24 +31,17 @@ class Data:
     alpha                  : Optional[np.ndarray] = None
     c_factor               : Optional[float]      = None
     residual_masks         : Optional[np.ndarray] = None  # boolean 1D mask on "combined" grid
+    velocities             : Optional[np.ndarray] = None
     initial_profile        : Optional[np.ndarray] = None
     initial_profile_errors : Optional[np.ndarray] = None
     poly_inputs            : Optional[np.ndarray] = None
     model_inputs           : Optional[np.ndarray] = None  # the concatenated array of initial profile and poly coefficents, used as input to emcee
     initial_state          : Optional[np.ndarray] = None  # the initial state of the MCMC walkers, used for resuming and debugging
-
-    # Required settings taken from initialisation for methods to run
-    verbose: int = 2
-
-    # Other unchanged data specifically required for MCMC to run
-    velocities  : Optional[np.ndarray] = None
-    seed        : Optional[int]        = None
-    fit_profile : bool                 = True
+    nwalkers               : Optional[int]        = None
 
     # Data required for results
     nsteps      : Optional[int]        = None
     all_frames  : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
-    order_range : Optional[np.ndarray] = None
 
     # Other useful data:
     initialisation_time : Optional[float] = None
@@ -45,10 +49,8 @@ class Data:
     get_profiles_time   : Optional[float] = None
     full_run_time       : Optional[float] = None
 
-    # # Continuum fit products used in get_profiles step
-    # poly_inputs    : Optional[np.ndarray] = None
-    # poly_cos       : Optional[np.ndarray] = None
-    # continuum_error: Optional[np.ndarray] = None
+    # Config data for convenience
+    config: Dict[str, Any] = field(default_factory=dict)
 
     def set_inputs(
         self,

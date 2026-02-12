@@ -1,7 +1,6 @@
-from math import tau
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings, contextlib, functools
+import corner, sys, os, pickle, warnings, contextlib, functools, inspect
 from emcee import EnsembleSampler
 from beartype import beartype
 from scipy.interpolate import interp1d
@@ -11,10 +10,9 @@ from . import mcmc
 from . import utils
 from .data import Data
 from .acid import Acid
+from .data import Config
 
 warnings.filterwarnings("ignore")
-
-__all__ = ['Result']
 
 def _require_all_frames(method):
     # Make sure all results are processed before calling method
@@ -31,7 +29,7 @@ def _require_all_frames(method):
             else:
                 error = f"Cannot call {name}. The all_frames attribute is not available, and no " \
                 "sampler and data objects are available to process results. Please pass an Acid " \
-                "object after running ACID."
+                "object after running ACID to the results init."
                 raise ValueError(error)
         return method(self, *args, **kwargs)
     return wrapper
@@ -51,13 +49,15 @@ def _require_data(method):
 
 def _require_sampler(method):
     # Make sure sampler object is available before calling method
+    sig = inspect.signature(method)
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if self.sampler is None:
-            name = method.__qualname__
-            error = f"Cannot call {name}. The sampler object is not available in this " \
-            "Result instance."
-            raise ValueError(error)
+        bound = sig.bind_partial(self, *args, **kwargs)
+        sampler_in_args = "sampler" in sig.parameters
+        inputted_sampler = bound.arguments.get("sampler", None)
+
+        self.initiate_sampler(inputted_sampler if sampler_in_args else None)
+
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -121,20 +121,16 @@ class Result:
                 verbose = 2 # the default
         self.verbose = verbose
 
-        # if Acid is None:
-        #     self.verbose = verbose if verbose is not None else 2
-        #     self.initiate_sampler(sampler) # handles if sampler is None
-        #     self.production_run = True # Forces True to activate @_require_all_frames decorator
-        #     self.Acid = None
-        #     if self.verbose>0:
-        #         print("Warning: Acid object not provided. Result object will not be fully functional.")
-        #     return
         if isinstance(Acid_or_Data_or_Sampler, Acid):
-            self.data = Acid_or_Data_or_Sampler.data
-            self.initiate_sampler(Acid_or_Data_or_Sampler.sampler)
+            acid = Acid_or_Data_or_Sampler
+            self.data = acid.data
+            self.config = acid.config
+            self.initiate_sampler(acid.sampler)
 
         if isinstance(Acid_or_Data_or_Sampler, Data):
-            self.data = Acid_or_Data_or_Sampler
+            data = Acid_or_Data_or_Sampler
+            self.data = data
+            self.config = Config(**data.config) # config is stored as dict in Data instance
             if sampler is not None:
                 self.initiate_sampler(sampler)
 
@@ -148,8 +144,7 @@ class Result:
         # All frames must be available as a Result class variable due to legacy behaviour. Once created, we can point
         # Data.all_frames to Result.all_frames to keep them in sync.
         if process_results:
-            self.process_results() # this function needs to be moved here
-            Acid_or_Data_or_Sampler.all_frames = self.all_frames # all frames set in above func
+            self.process_results() # sets self.data.all_frames, and points self.all_frames to self.data.all_frames
         else:
             if self.verbose>0:
                 print("Warning: Results not processed. all_frames attribute will not be available until " \
@@ -163,6 +158,8 @@ class Result:
         self.profiles = getattr(Acid_or_Data_or_Sampler, 'profiles', None)
         self.errors = getattr(Acid_or_Data_or_Sampler, 'errors', None)
 
+    @_require_data
+    @_require_sampler
     def process_results(self):
 
         with open(os.devnull, "w") as devnull, \
@@ -232,7 +229,7 @@ class Result:
 
             error[interp_mask_idx]=1e12
 
-            # corrrecting continuum
+            # correcting continuum
             error = np.sqrt((error/mdl1)**2 + (continuum_error/mdl1)**2) # Compare before after
             flux /= mdl1
 
@@ -251,6 +248,8 @@ class Result:
 
             self.all_frames[counter, self.order]=[profile_f, profile_errors_f]
 
+        self.data.all_frames = np.copy(self.all_frames)
+        self.all_frames = self.data.all_frames # Pointing to the same memory location to keep in sync
         return
 
     @_require_all_frames
@@ -273,46 +272,45 @@ class Result:
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
     @_require_data
-    def continue_sampling(self, nsteps:int|npint, production_run:bool|None=None):
+    @_require_sampler
+    def continue_sampling(self, nsteps:int|npint, process_results:bool|None=True, sampler=None):
         """Continue MCMC sampling for additional steps.
 
         Parameters
         ----------
         nsteps : int
             Number of additional MCMC steps to run.
-        production_run : bool, optional
-            Whether to set the run as a production run, by default None, keeping the current setting.
-            The default is False from Acid.
+        process_results : bool, optional
+            Whether to process the results after continuing sampling, by default True.
+            If False, the all_frames attribute will not be updated until Result.process_results() is called.
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to continue sampling from, otherwise,
+            takes the sampler from the Result object, by default None
         """
-        if production_run is not None:
-            self.production_run = production_run
-
-        self.Acid.continue_sampling(nsteps)
+        from .acid import Acid
+        acid = Acid(data=self.data) # includes config data
+        self.sampler = acid.continue_sampling(self.sampler, nsteps)
 
         # Update attributes from Acid object
-        self.nsteps = self.Acid.nsteps
-        self.sampler = self.Acid.sampler
-        if not self.production_run:
-            self.all_frames = self.Acid.all_frames
+        self.nsteps = acid.nsteps
+        self.sampler = acid.sampler
+        if process_results:
+            self.process_results() # update all_frames
+        else:
+            if self.verbose>0:
+                print("Warning: Results not processed. all_frames attribute will not be available until " \
+                "Result.process_results() is called.")
 
         # Recalculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
         with open(os.devnull, "w") as devnull, \
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
-            self.tau = self.Acid.sampler.get_autocorr_time(quiet=True)
+            self.tau = self.sampler.get_autocorr_time(quiet=True)
         self.burnin = int(2 * np.max(self.tau))
         self.thin = int(np.min(self.tau)/5)
-    
-    @_require_data
-    def process_results(self):
-        """Processes the MCMC results to extract the LSD profiles and errors. Can be used
-        to convert a production run Result object into one with all results processed.
-        """
-        self.Acid.process_results(return_result=False)
-        self.production_run = False
-        self.all_frames = self.Acid.all_frames
 
+    @_require_sampler
     def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None, return_fig:bool=False):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
@@ -330,20 +328,26 @@ class Result:
             Whether to return the figure and axis objects instead of showing the plot, by default False
         """
 
-        self.initiate_sampler(sampler)
-
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
-
-        naxes = min(10, self.ndim)
-        fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin + burnin
-        for i in range(naxes):
-            ax_i = ax[i]
-            ax_i.plot(steps, samples[:, :, i], "k", alpha=0.3)
-            ax_i.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
+        nparams = samples.shape[2]
 
+        indices_to_plot = [-1,-2,-3,-4,-5]
+        labels = ["Scale", "a", "b", "c", "d"]
+        if nparams>5:
+            max_profile_idx = np.argmax(samples[:,:,:-1].mean(axis=(0,1)))
+            indices_to_plot.append([-6, max_profile_idx, 1])
+            labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
+
+        naxes = len(indices_to_plot)
+
+        fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
+        for i in range(naxes):
+            ax[i].plot(steps, samples[:, :, indices_to_plot[i]], "k", alpha=0.3)
+            # ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
+            ax[i].set_ylabel(labels[i])
         ax[-1].legend()
         ax[-1].set_xlabel("Step number")
         ax[-1].set_xlim(0, self.nsteps)
@@ -353,6 +357,7 @@ class Result:
             return fig, ax
         plt.show()
 
+    @_require_sampler
     def plot_corner(self, sampler=None, return_fig:bool=False, **kwargs):
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
         
@@ -367,10 +372,19 @@ class Result:
             Additional keyword arguments to pass to corner.corner().
         """
 
-        self.initiate_sampler(sampler)
+        samples = self.sampler.get_chain()
+        nparams = samples.shape[2]
 
-        naxes = min(8, self.ndim)
-        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
+        indices_to_plot = [-1,-2,-3,-4,-5]
+        labels = ["Scale", "a", "b", "c", "d"]
+        if nparams>5:
+            max_profile_idx = np.argmax(samples[:,:,:-1].mean(axis=(0,1)))
+            indices_to_plot.append([-6, max_profile_idx, 1])
+            labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
+
+
+        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, indices_to_plot]
+
         fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
