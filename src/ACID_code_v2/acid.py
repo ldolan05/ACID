@@ -165,7 +165,8 @@ class Acid:
         highsamples                    = False,
         no_sn100                       = False,
         no_a_old                       = False,
-        better_initial_state           = False,
+        tighter_initial_state          = False,
+        dynamic_initial_state          = False,
         _input_data                    = None,
         **kwargs,
         ):
@@ -319,8 +320,9 @@ class Acid:
         self.cf_percentile           = cf_percentile
         self.highsamples             = highsamples
         self.fit_profile             = fit_profile
-        self.better_initial_state    = better_initial_state
+        self.tighter_initial_state   = tighter_initial_state
         self.correct_profile_error   = correct_profile_error
+        self.dynamic_initial_state   = dynamic_initial_state
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -389,6 +391,7 @@ class Acid:
 
         # Set x, y, yerr, and model_inputs for emcee
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
+        self.model_input_errors = np.concatenate((self.initial_profile_errors, self.poly_errors, [np.std(self.flux["combined"])])) 
 
         # Masking based off residuals
         if self.verbose>1:
@@ -405,7 +408,7 @@ class Acid:
         self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 
-        if self.better_initial_state:
+        if self.tighter_initial_state or self.dynamic_initial_state:
             print("Using better initial state for walkers")
 
             self.ndim = len(self.model_inputs)
@@ -418,7 +421,10 @@ class Acid:
             # simple: relative jitter with a floor so zeros don't collapse
             rel = 1e-2
             lower_floor = 1e-6
-            sigma = rel * np.maximum(np.abs(theta0), lower_floor)
+            if self.tighter_initial_state:
+                sigma = rel * np.maximum(np.abs(theta0), lower_floor)
+            else:
+                sigma = self.model_input_errors * 1
 
             initial_state = theta0 + rng.normal(0.0, sigma, size=(self.nwalkers, self.ndim))
 
@@ -788,7 +794,8 @@ class Acid:
             waves = waves[indicies]
             clipped_flux.append(flux[len(flux)-1])
             clipped_waves.append(waves[len(waves)-1])
-        coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        coeffs, V = np.polyfit(clipped_waves, clipped_flux, poly_ord, cov=True)
+        self.poly_errors = np.flip(np.sqrt(np.diag(V))) # a quick test
         poly = np.poly1d(coeffs)
         fit = poly(wavelengths) * cont_factor
         flux_obs = fluxes / fit
