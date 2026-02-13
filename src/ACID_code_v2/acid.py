@@ -167,6 +167,7 @@ class Acid:
         no_a_old                       = False,
         tighter_initial_state          = False,
         dynamic_initial_state          = False,
+        no_scale                       = True,
         _input_data                    = None,
         **kwargs,
         ):
@@ -323,6 +324,7 @@ class Acid:
         self.tighter_initial_state   = tighter_initial_state
         self.correct_profile_error   = correct_profile_error
         self.dynamic_initial_state   = dynamic_initial_state
+        self.no_scale                = no_scale
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -391,7 +393,10 @@ class Acid:
 
         # Set x, y, yerr, and model_inputs for emcee
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
-        self.model_input_errors = np.concatenate((5*self.initial_profile_errors, 5*self.poly_errors, [5*np.std(self.flux["combined"])])) 
+        if self.no_scale is False:
+            self.model_input_errors = np.concatenate((5*self.initial_profile_errors, 5*self.poly_errors, [5*np.std(self.flux["combined"])]))
+        else:
+            self.model_input_errors = np.concatenate((5*self.initial_profile_errors, 5*self.poly_errors))
 
         # Masking based off residuals
         if self.verbose>1:
@@ -404,17 +409,12 @@ class Acid:
 
         ## Setting number of walkers and their start values(pos)
         self.ndim = len(self.model_inputs)
-        factor = 3 # emcee recommendation
+        factor = 3 if self.fit_profile else 10
         self.nwalkers = self.ndim * factor
         rng = np.random.default_rng(self.seed)
 
         if self.tighter_initial_state or self.dynamic_initial_state:
             print("Using better initial state for walkers")
-
-            self.ndim = len(self.model_inputs)
-            factor = 3 if self.fit_profile else 5
-            self.nwalkers = self.ndim * factor
-            rng = np.random.default_rng(self.seed)
 
             theta0 = np.asarray(self.model_inputs, float)
 
@@ -471,6 +471,7 @@ class Acid:
             "seed"       : self.seed,
             "fit_profile": self.fit_profile,
             "c_factor"   : self.c_factor,
+            "no_scale"   : self.no_scale,
             }
 
         if self.verbose>1:
@@ -776,6 +777,9 @@ class Acid:
         if self.cf_percentile is True:
             print("cf_percentile is enabled")
             cont_factor = np.percentile(fluxes, 95)
+        elif self.no_scale is True:
+            print("no_scale is enabled")
+            cont_factor = 1
         else:
             cont_factor = fluxes[0]
             if cont_factor == 0: 
@@ -800,7 +804,11 @@ class Acid:
         fit = poly(wavelengths) * cont_factor
         flux_obs = fluxes / fit
         new_errors = errors / fit
-        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+
+        if self.no_scale is False:
+            poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+        else:
+            poly_coeffs = np.flip(coeffs)
 
         if self.verbose > 2 or plot_result is True:
             plt.figure(figsize=(10, 6))
@@ -1097,7 +1105,9 @@ class Acid:
             samples = flat_samples
         else:
             samples = flat_samples[inds]
-        coeffs = samples[:, nvel:-1]
+
+        end_coeff = -1 if self.no_scale is False else None
+        coeffs = samples[:, nvel:end_coeff]
         ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
         scales = samples[:, -1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
@@ -1132,12 +1142,14 @@ class Acid:
             wavelengths = np.copy(self.wavelengths["input"][counter])
             sn = np.copy(self.sn["input"][counter])
 
+            end_coeff = 1 if self.no_scale is False else 0
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl1 =0
-            for i in np.arange(0, len(self.poly_cos)-1):
+            mdl1 = 0
+            for i in np.arange(0, len(self.poly_cos)-end_coeff):
                 mdl1 = mdl1+self.poly_cos[i]*norm_wavelengths**(i)
-            mdl1 = mdl1*self.poly_cos[-1]
+            scale = self.poly_cos[-1] if self.no_scale is False else 1
+            mdl1 = mdl1*scale
 
             # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
 
