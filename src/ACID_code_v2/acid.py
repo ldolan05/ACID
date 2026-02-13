@@ -153,7 +153,6 @@ class Acid:
         nsteps         :int|npint      = 10000,
         return_result  :bool           = True,
         production_run :bool           = False,
-        moves_input    :bool           = False,
 
         # Testing and internal kwargs
         _input_data                    = None,
@@ -994,6 +993,15 @@ class Acid:
         samples = flat_samples
         coeffs = samples[:, nvel:-1]
         ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+        if self.highsamples is True:
+            print("highsamples is True")
+            samples = flat_samples
+        else:
+            samples = flat_samples[inds]
+
+        end_coeff = -1 if self.no_scale is False else None
+        coeffs = samples[:, nvel:end_coeff]
+        ncoeffs = coeffs.shape[1]
         scales = samples[:, -1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
         if self.no_scale is False:
