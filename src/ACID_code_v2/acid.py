@@ -175,7 +175,6 @@ class Acid:
         parallel              :bool           = True,
         cores                 :int|npint|None = None,
         nsteps                :int|npint      = 10000,
-        sampler                               = None,
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -245,10 +244,8 @@ class Acid:
             kwargs are checked for and printed at the start of the function.
         Returns
         -------
-        Result | None
-            Result object containing the LSD profiles and associated data, or None if a sampler was provided. 
-            If you want to process the results after inputting a sampler, pass the object to the Result class
-            manually. See Result class for methods and attributes.
+        Result
+            Result object containing the LSD profiles and associated data. See Result class for methods and attributes.
 
         Raises
         ------
@@ -286,7 +283,6 @@ class Acid:
         self.parallel              = parallel
         self.cores                 = cores
         self.deterministic_profile = deterministic_profile
-        self.sampler               = sampler
 
         # Assign inputted configuration to config dictionary plus or minus a few variables
         self.ACID_config = {
@@ -456,11 +452,11 @@ class Acid:
             print('Initialised in %ss'%round((self.data.initialisation_time), 3))
             print('Fitting the continuum using emcee...')
 
-        if sampler is None:
-            self._run_mcmc(initial_state, self.nsteps)
-            return Result(self)
-        else:
-            return
+        # Run MCMC
+        self._run_mcmc(initial_state, self.nsteps)
+
+        # Result class handles the results
+        return Result(self)
 
     def ACID_HARPS(
         self,
@@ -1113,7 +1109,6 @@ class Acid:
         self.sampler = sampler
         self.config = Config(**self.data.config)
         self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
-        self.data.nsteps += nsteps
 
         return self.sampler
 

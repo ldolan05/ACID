@@ -123,18 +123,16 @@ class Result:
 
         if isinstance(Acid_or_Data_or_Sampler, Acid):
             acid = Acid_or_Data_or_Sampler
-            self.data = acid.data
+            self.initiate_data(acid.data)
             self.config = acid.config
             self.initiate_sampler(acid.sampler)
-
-        if isinstance(Acid_or_Data_or_Sampler, Data):
+        elif isinstance(Acid_or_Data_or_Sampler, Data):
             data = Acid_or_Data_or_Sampler
-            self.data = data
+            self.initiate_data(data)
             self.config = Config(**data.config) # config is stored as dict in Data instance
             if sampler is not None:
                 self.initiate_sampler(sampler)
-
-        if isinstance(Acid_or_Data_or_Sampler, EnsembleSampler):
+        elif isinstance(Acid_or_Data_or_Sampler, EnsembleSampler):
             self.initiate_sampler(Acid_or_Data_or_Sampler)
             if self.verbose>0:
                 print("Warning: Data object not provided. Result object will not be fully functional.")
@@ -248,8 +246,7 @@ class Result:
 
             self.all_frames[counter, self.order]=[profile_f, profile_errors_f]
 
-        self.data.all_frames = np.copy(self.all_frames)
-        self.all_frames = self.data.all_frames # Pointing to the same memory location to keep in sync
+        self.data.all_frames = self.all_frames # point Data.all_frames to Result.all_frames to keep them in sync
         return
 
     @_require_all_frames
@@ -291,24 +288,14 @@ class Result:
         acid = Acid(data=self.data) # includes config data
         self.sampler = acid.continue_sampling(self.sampler, nsteps)
 
-        # Update attributes from Acid object
-        self.nsteps = acid.nsteps
-        self.sampler = acid.sampler
+        self.initiate_sampler(self.sampler) # update internal variables to match new sampler
+
         if process_results:
             self.process_results() # update all_frames
         else:
             if self.verbose>0:
                 print("Warning: Results not processed. all_frames attribute will not be available until " \
                 "Result.process_results() is called.")
-
-        # Recalculate autocorr time, burnin, thin
-        # Suppress output from get_autocorr_time call
-        with open(os.devnull, "w") as devnull, \
-            contextlib.redirect_stdout(devnull), \
-            contextlib.redirect_stderr(devnull):
-            self.tau = self.sampler.get_autocorr_time(quiet=True)
-        self.burnin = int(2 * np.max(self.tau))
-        self.thin = int(np.min(self.tau)/5)
 
     @_require_sampler
     def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None, return_fig:bool=False):
@@ -332,11 +319,10 @@ class Result:
         thin = thin if thin is not None else self.thin
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin + burnin
-        nparams = samples.shape[2]
 
         indices_to_plot = [-1,-2,-3,-4,-5]
         labels = ["Scale", "a", "b", "c", "d"]
-        if nparams>5:
+        if self.ndim>5:
             max_profile_idx = np.argmax(samples[:,:,:-1].mean(axis=(0,1)))
             indices_to_plot.append([-6, max_profile_idx, 1])
             labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
@@ -373,19 +359,17 @@ class Result:
         """
 
         samples = self.sampler.get_chain()
-        nparams = samples.shape[2]
 
         indices_to_plot = [-1,-2,-3,-4,-5]
         labels = ["Scale", "a", "b", "c", "d"]
-        if nparams>5:
-            max_profile_idx = np.argmax(samples[:,:,:-1].mean(axis=(0,1)))
-            indices_to_plot.append([-6, max_profile_idx, 1])
-            labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
-
+        if self.ndim>5:
+            max_profile_idx = np.argmax(np.abs(samples[:,:,:-6].mean(axis=(0,1))))
+            indices_to_plot.extend([-6, max_profile_idx, 1])
+            labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
 
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, indices_to_plot]
 
-        fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
+        fig = corner.corner(samples, labels=labels, show_title=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
@@ -452,7 +436,7 @@ class Result:
                 frames = frames[:1, :, :, :]  # Take first frame only
         for f, frame in enumerate(frames):
             for o, order in enumerate(frame):
-                x, y, yerr = self.velocities, order[0], order[1]
+                x, y, yerr = self.data.velocities, order[0], order[1]
                 # TODO: Make Order a function of self.order_range, which needs to be configured in Acid
                 # so that order_range is done automatically if multiple orders are manually put (and not 
                 # just using ACID_HARPS)
@@ -499,8 +483,8 @@ class Result:
 
         # Validate all inputs and set defaults
         input_version = input_version.lower()
-        if input_version not in self.wavelengths.keys():
-            raise ValueError(f"input_version must be one of {list(self.wavelengths.keys())}")
+        if input_version not in self.data.wavelengths.keys():
+            raise ValueError(f"input_version must be one of {list(self.data.wavelengths.keys())}")
         
         # Set default labels
         default_labels = {
@@ -520,9 +504,9 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
 
         # Get input data
-        input_wavelengths = self.wavelengths[input_version]
-        input_flux = self.flux[input_version]
-        input_errors = self.errors[input_version]
+        input_wavelengths = self.data.wavelengths[input_version]
+        input_flux = self.data.flux[input_version]
+        input_errors = self.data.errors[input_version]
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
@@ -614,6 +598,8 @@ class Result:
         # Samples if burnin and thin dont need inputs
         self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
+        self.data.nsteps = self.nsteps # Repoint data nsteps to sampler nsteps to keep in sync
+
     def initiate_data(self, data):
         """Initiates the data attribute from an external Data object.
 
@@ -622,7 +608,7 @@ class Result:
         data : Data
             A Data object to set as the data attribute.
         """
-        self.data = data if data is not None else self.data
+        self.data = data if data is not None else getattr(self, "data", None)
         if self.data is None:
             raise ValueError("A Data object must be provided in initialisation or in method call")
 
