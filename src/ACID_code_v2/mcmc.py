@@ -31,6 +31,7 @@ class MCMC:
             c_factor                      = None,
             fit_profile : bool            = True,
             seed        : int|npint|None  = None,
+            no_scale     : bool           = False,
         ):
         """Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
@@ -66,6 +67,7 @@ class MCMC:
         self.c_factor = c_factor
         self.fit_profile = fit_profile
         self.seed = seed
+        self.no_scale = no_scale
 
         # Precompute normalization coefficients these are used to adjust the wavelengths to
         # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
@@ -104,8 +106,9 @@ class MCMC:
         mdl = np.exp(mdl)
 
         # Calculate continuum polynomial
-        coefs = np.asarray(theta[self.k_max:-1], dtype=float)
-        scale = theta[-1]
+        end = -1 if self.no_scale is False else None
+        coefs = np.asarray(theta[self.k_max:end], dtype=float)
+        scale = theta[-1] if self.no_scale is False else 1
 
         # Build continuum model
         mdl1 = P.polyval(self.u, coefs)
@@ -128,8 +131,9 @@ class MCMC:
             Model spectrum and profile points (z).
         """
 
-        coefs = np.asarray(theta[:-1], dtype=float)
-        scale = theta[-1]
+        end = -1 if self.no_scale is False else None
+        coefs = np.asarray(theta[:end], dtype=float)
+        scale = theta[-1] if self.no_scale is False else 1
 
         # Build continuum model
         mdl = P.polyval(self.u, coefs)

@@ -153,6 +153,7 @@ class Acid:
         nsteps         :int|npint      = 10000,
         return_result  :bool           = True,
         production_run :bool           = False,
+        moves_input    :bool           = False,
 
         # Testing and internal kwargs
         correct_continuum              = False,
@@ -309,6 +310,7 @@ class Acid:
         self.production_run = production_run
         self.cores          = cores
         self._input_data    = _input_data if _input_data is not None else {}
+        self.moves_input    = moves_input
 
         # The tests
         self.no_a_old                = no_a_old
@@ -432,7 +434,8 @@ class Acid:
             initial_state[:, -1] = np.abs(initial_state[:, -1]) + lower_floor
 
             if self.fit_profile is False:
-                self.ndim = self.poly_ord + 2
+
+                self.ndim = self.poly_ord + 2 if self.no_scale is False else self.poly_ord + 1
                 self.nwalkers = self.ndim * factor
                 initial_state = initial_state[:, -self.ndim:][:self.nwalkers]
 
@@ -453,7 +456,7 @@ class Acid:
                 initial_state.append(pos)
 
             if self.fit_profile is False:
-                self.ndim = self.poly_ord + 2
+                self.ndim = self.poly_ord + 2 if self.no_scale is False else self.poly_ord + 1
                 self.nwalkers = self.ndim * factor
                 initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
 
@@ -978,6 +981,14 @@ class Acid:
                 (emcee.moves.DEMove(), 0.3),
                 (emcee.moves.DESnookerMove(), 0.1),
             ]
+            if self.moves_input is True:
+                print("Using custom moves input")
+                moves = [
+                    (emcee.moves.StretchMove(), 0.20),
+                    (emcee.moves.DESnookerMove(), 0.1),
+                    (emcee.moves.DEMove(), 0.6),
+                    (emcee.moves.DEMove(gamma0=1.0), 0.1)
+                ]
         else:
             moves = None
         sampler_kwargs = {
@@ -1108,10 +1119,13 @@ class Acid:
 
         end_coeff = -1 if self.no_scale is False else None
         coeffs = samples[:, nvel:end_coeff]
-        ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+        ncoeffs = coeffs.shape[1]
         scales = samples[:, -1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
-        conts = (coeffs @ powers.T) * scales[:, None]
+        if self.no_scale is False:
+            conts = (coeffs @ powers.T) * scales[:, None]
+        else:
+            conts = coeffs @ powers.T
 
         self.continuum_error = np.std(np.array(conts), axis=0)
 
