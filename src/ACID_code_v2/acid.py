@@ -391,7 +391,7 @@ class Acid:
 
         # Set x, y, yerr, and model_inputs for emcee
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
-        self.model_input_errors = np.concatenate((self.initial_profile_errors, self.poly_errors, [np.std(self.flux["combined"])])) 
+        self.model_input_errors = np.concatenate((5*self.initial_profile_errors, 5*self.poly_errors, [5*np.std(self.flux["combined"])])) 
 
         # Masking based off residuals
         if self.verbose>1:
