@@ -153,6 +153,7 @@ class Acid:
         nsteps         :int|npint      = 10000,
         return_result  :bool           = True,
         production_run :bool           = False,
+        no_scale       :bool           = False,
 
         # Testing and internal kwargs
         _input_data                    = None,
@@ -296,6 +297,7 @@ class Acid:
         self.production_run = production_run
         self.cores          = cores
         self.fit_profile    = fit_profile
+        self.no_scale       = no_scale
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -993,11 +995,8 @@ class Acid:
         samples = flat_samples
         coeffs = samples[:, nvel:-1]
         ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
-        if self.highsamples is True:
-            print("highsamples is True")
-            samples = flat_samples
-        else:
-            samples = flat_samples[inds]
+
+        samples = flat_samples
 
         end_coeff = -1 if self.no_scale is False else None
         coeffs = samples[:, nvel:end_coeff]
