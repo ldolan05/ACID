@@ -207,11 +207,11 @@ class Result:
 
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
 
-        indices_to_plot = [-1,-2,-3,-4,-5]
-        labels = ["Scale", "a", "b", "c", "d"]
+        indices_to_plot = [-1,-2,-3,-4,-5] if not self.no_scale else [-1,-2,-3,-4]
+        labels = ["Scale", "a", "b", "c", "d"] if not self.no_scale else ["a", "b", "c", "d"]
         if self.ndim>5:
             max_profile_idx = np.argmax(np.abs(samples[:,:,:-6].mean(axis=(0,1))))
-            indices_to_plot.extend([-6, max_profile_idx, 1])
+            indices_to_plot.extend([indices_to_plot[-1]-1, max_profile_idx, 1])
             labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
         naxes = len(indices_to_plot)
 
@@ -252,7 +252,7 @@ class Result:
         labels = ["Scale", "a", "b", "c", "d"]
         if self.ndim>5:
             max_profile_idx = np.argmax(np.abs(samples[:,:,:-6].mean(axis=(0,1))))
-            indices_to_plot.extend([-6, max_profile_idx, 1])
+            indices_to_plot.extend([indices_to_plot[-1]-1, max_profile_idx, 1])
             labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
 
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, indices_to_plot]
