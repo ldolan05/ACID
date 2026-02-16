@@ -153,6 +153,7 @@ class Acid:
         nsteps         :int|npint      = 10000,
         return_result  :bool           = True,
         production_run :bool           = False,
+        no_scale       :bool           = False,
 
         # Testing and internal kwargs
         _input_data                    = None,
@@ -296,6 +297,7 @@ class Acid:
         self.production_run = production_run
         self.cores          = cores
         self.fit_profile    = fit_profile
+        self.no_scale       = no_scale
 
         if isinstance(all_frames, str):
             if all_frames == "default":
@@ -380,7 +382,7 @@ class Acid:
             initial_state.append(pos)
 
         if self.fit_profile is False:
-            self.ndim = self.poly_ord + 2
+            self.ndim = self.poly_ord + 2 if self.no_scale is False else self.poly_ord + 1
             self.nwalkers = self.ndim * factor
             initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
 
@@ -872,10 +874,11 @@ class Acid:
             else:
                 self.cores = os.cpu_count()
         
-        moves=[ # Use the new moves option in emcee v3 for faster convergence
-            (emcee.moves.StretchMove(), 0.6),
-            (emcee.moves.DEMove(), 0.3),
+        moves = [
+            (emcee.moves.StretchMove(), 0.20),
             (emcee.moves.DESnookerMove(), 0.1),
+            (emcee.moves.DEMove(), 0.6),
+            (emcee.moves.DEMove(gamma0=1.0), 0.1)
         ]
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
@@ -993,9 +996,18 @@ class Acid:
         samples = flat_samples
         coeffs = samples[:, nvel:-1]
         ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+
+        samples = flat_samples
+
+        end_coeff = -1 if self.no_scale is False else None
+        coeffs = samples[:, nvel:end_coeff]
+        ncoeffs = coeffs.shape[1]
         scales = samples[:, -1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
-        conts = (coeffs @ powers.T) * scales[:, None]
+        if self.no_scale is False:
+            conts = (coeffs @ powers.T) * scales[:, None]
+        else:
+            conts = coeffs @ powers.T
 
         self.continuum_error = np.std(np.array(conts), axis=0)
 
