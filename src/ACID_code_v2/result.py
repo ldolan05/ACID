@@ -106,6 +106,7 @@ class Result:
         self.alpha = Acid.alpha
         self.fit_profile = Acid.fit_profile
         self.mcmc_global_data = Acid.mcmc_global_data
+        self.no_scale = Acid.no_scale
 
         self.BJDs = getattr(Acid, 'BJDs', None)
         self.profiles = getattr(Acid, 'profiles', None)
