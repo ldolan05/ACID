@@ -839,7 +839,7 @@ class Acid:
             plt.show()
 
             plt.figure(figsize=(10, 6))
-            plt.plot(self.velocities, LSD_masking.profile, label='LSD Profile after Masking and before sampling', color='red')
+            plt.plot(self.velocities, np.exp(LSD_masking.profile)-1, label='LSD Profile after Masking and before sampling', color='red')
             plt.title('LSD Profile after Residual Masking')
             plt.xlabel('Velocity (km/s)')
             plt.ylabel('LSD Profile')
