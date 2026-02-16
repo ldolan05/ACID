@@ -204,13 +204,22 @@ class Result:
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
 
-        naxes = min(10, self.ndim)
-        fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
+
+        indices_to_plot = [-1,-2,-3,-4,-5]
+        labels = ["Scale", "a", "b", "c", "d"]
+        if self.ndim>5:
+            max_profile_idx = np.argmax(np.abs(samples[:,:,:-6].mean(axis=(0,1))))
+            indices_to_plot.extend([-6, max_profile_idx, 1])
+            labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
+        naxes = len(indices_to_plot)
+
+        fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         steps = np.arange(samples.shape[0]) * thin + burnin
         for i in range(naxes):
             ax_i = ax[i]
-            ax_i.plot(steps, samples[:, :, i], "k", alpha=0.3)
+            ax_i.plot(steps, samples[:, :, indices_to_plot[i]], "k", alpha=0.3)
+            ax_i.set_ylabel(labels[i])
             ax_i.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
 
         ax[-1].legend()
@@ -236,11 +245,18 @@ class Result:
             Additional keyword arguments to pass to corner.corner().
         """
 
-        self.initiate_sampler(sampler)
+        samples = self.sampler.get_chain()
 
-        naxes = min(8, self.ndim)
-        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, -naxes:]
-        fig = corner.corner(samples, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
+        indices_to_plot = [-1,-2,-3,-4,-5]
+        labels = ["Scale", "a", "b", "c", "d"]
+        if self.ndim>5:
+            max_profile_idx = np.argmax(np.abs(samples[:,:,:-6].mean(axis=(0,1))))
+            indices_to_plot.extend([-6, max_profile_idx, 1])
+            labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
+
+        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, indices_to_plot]
+
+        fig = corner.corner(samples, labels=labels, show_title=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
@@ -397,6 +413,7 @@ class Result:
         ax[1].legend()
         ax[0].grid(grid)
         ax[1].grid(grid)
+        ax[0].set_xlim(np.min(input_wavelengths), np.max(input_wavelengths)-1)
         plt.subplots_adjust(hspace=0.05)
 
         if return_fig:

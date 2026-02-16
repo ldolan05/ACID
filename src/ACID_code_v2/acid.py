@@ -930,6 +930,7 @@ class Acid:
 
         try:
             burnin = int(2 * np.max(self.tau))
+            burnin = self.nsteps-1000 # (temp)
             thin = int(np.min(self.tau)/5)
         except:
             if self.verbose>0:

@@ -111,6 +111,20 @@ def calc_deltav(wavelengths):
     resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
     return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * c_kms
 
+def calc_deltav_full(wavelengths):
+    """Calculates velocity pixel size
+
+    Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
+
+    Args:
+        wavelengths (array): Wavelengths for Acid input spectrum (in Angstroms).
+    
+    Returns:
+        float: Velocity pixel size in km/s
+    """
+    return c_kms * np.mean(np.diff(np.log(wavelengths)))
+
+
 def guess_SNR(
         frame_wavelengths : np.ndarray | list,
         frame_flux        : np.ndarray | list,
