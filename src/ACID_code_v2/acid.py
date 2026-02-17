@@ -722,7 +722,7 @@ class Acid:
         new_errors = errors / fit
         poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
 
-        if self.verbose > 2 or plot_result is True:
+        if (self.verbose > 2 and not hasattr(self, 'alpha')) or plot_result is True:
             plt.figure(figsize=(10, 6))
             plt.plot(wavelengths, fluxes, label='Original Spectrum')
             plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
@@ -1071,7 +1071,7 @@ class Acid:
             profile_errors = LSD_profiles.profile_errors
 
             profile_f = np.exp(profile_OD)
-            profile_errors_f = profile_errors/profile_f
+            profile_errors_f = profile_errors*profile_f
             profile_f = profile_f-1
 
             all_frames[counter, self.order]=[profile_f, profile_errors_f]
