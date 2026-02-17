@@ -88,8 +88,8 @@ class LSD:
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         errors = errors / flux
-        flux = np.log(flux)
-        depths_linelist = -np.log(1-depths_linelist)
+        flux = - np.log(flux) # add -
+        depths_linelist = - np.log(1-depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)

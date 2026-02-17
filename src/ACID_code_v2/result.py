@@ -392,9 +392,13 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
 
         # Get input data
-        input_wavelengths = self.wavelengths[input_version]
-        input_flux = self.flux[input_version]
-        input_errors = self.errors[input_version]
+        if input_version == "input":
+            splice = 0
+        else:
+            splice = slice(None)
+        input_wavelengths = self.wavelengths[input_version][splice]
+        input_flux = self.flux[input_version][splice]
+        input_errors = self.errors[input_version][splice]
 
         # Get model flux
         theta_median = np.median(self.samples, axis=0)
@@ -414,7 +418,7 @@ class Result:
         ax[1].legend()
         ax[0].grid(grid)
         ax[1].grid(grid)
-        ax[0].set_xlim(np.min(input_wavelengths), np.max(input_wavelengths)-1)
+        # ax[0].set_xlim(np.min(input_wavelengths), np.max(input_wavelengths)-1)
         plt.subplots_adjust(hspace=0.05)
 
         if return_fig:

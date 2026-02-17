@@ -103,7 +103,7 @@ class MCMC:
         mdl = np.dot(self.alpha, z)
 
         # Converting model from optical depth to flux
-        mdl = np.exp(mdl)
+        mdl = np.exp(-mdl)
 
         # Calculate continuum polynomial
         end = -1 if self.no_scale is False else None
@@ -111,8 +111,8 @@ class MCMC:
         scale = theta[-1] if self.no_scale is False else 1
 
         # Build continuum model
-        mdl1 = P.polyval(self.u, coefs)
-        mdl *= mdl1 * scale
+        continuum = P.polyval(self.u, coefs) * scale
+        mdl *= continuum
 
         return mdl, z
 
@@ -136,20 +136,19 @@ class MCMC:
         scale = theta[-1] if self.no_scale is False else 1
 
         # Build continuum model
-        mdl = P.polyval(self.u, coefs)
-        mdl *= scale
+        mdl = P.polyval(self.u, coefs) * scale
 
-        if np.any(mdl <= 0):
-            return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
+        # if np.any(mdl <= 0):
+        #     return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
 
         fitted_flux = self.y/mdl
         fitted_err = self.yerr/mdl
         err_od = fitted_err / fitted_flux
-        flux_od = np.log(fitted_flux)
+        flux_od = - np.log(fitted_flux)
 
         z = LSD.solve_z(self.alpha, flux_od, err_od, self.c_factor, return_error=False)
 
-        forward = np.exp(self.alpha @ z) * mdl
+        forward = np.exp(- (self.alpha @ z)) * mdl
 
         return forward, z
 
@@ -177,10 +176,14 @@ class MCMC:
         float
             Log prior probability.
         """
+        # convert z to flux for sanity
+        z = np.exp(-z)-1
 
         # Hard box prior on each z[i]
-        if np.any((z < -10.0) | (z > 0.5)):
+        if np.any((z <= -1.0) | (z > 0.5)):
             return -np.inf
+
+        return 0
 
         # excluding the continuum points in the profile (in flux)
         z_cont = []
@@ -216,6 +219,7 @@ class MCMC:
         lp = self.log_prior(z)
         if not np.isfinite(lp):
             return -np.inf
+        lp = 0
 
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))

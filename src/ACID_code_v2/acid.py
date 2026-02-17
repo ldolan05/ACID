@@ -8,6 +8,7 @@ from beartype import beartype
 from numpy import integer as npint
 import matplotlib.pyplot as plt
 import scipy.constants as const
+from numpy.polynomial import polynomial as P
 from . import utils
 from .lsd import LSD
 from . import mcmc
@@ -339,7 +340,7 @@ class Acid:
         self.poly_inputs, self.flux["fitted"], self.errors["fitted"] = self.continuumfit(
             self.flux["combined"], self.wavelengths["combined_normalized"], self.errors["combined"])
         self.wavelengths["fitted"] = np.copy(self.wavelengths["combined"]) # Just to keep track
-        self.sn["fitted"]      = np.copy(self.sn["combined"])      # SN is not changed here
+        self.sn["fitted"]          = np.copy(self.sn["combined"])      # SN is not changed here
 
         # Get the initial LSD profile using the initial fit
         initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes
@@ -372,7 +373,8 @@ class Acid:
         sigma = 0.8 * 0.005
         initial_state = []
         for i in range(0, self.ndim):
-            if i < self.ndim - self.poly_ord - 2:
+            end = len(self.velocities)
+            if i < end:
                 pos = rng.normal(self.model_inputs[i], sigma, (self.nwalkers, ))
             else:
                 x1 = self.model_inputs[i]
@@ -400,6 +402,7 @@ class Acid:
             "seed"       : self.seed,
             "fit_profile": self.fit_profile,
             "c_factor"   : self.c_factor,
+            "no_scale"   : self.no_scale,
             }
 
         if self.verbose>1:
@@ -700,7 +703,7 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
 
-        cont_factor = np.percentile(fluxes, 95)
+        cont_factor = np.percentile(fluxes, 95) if self.no_scale is False else 1
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
         fluxe = fluxes[idx] / cont_factor
@@ -720,14 +723,17 @@ class Acid:
         fit = poly(wavelengths) * cont_factor
         flux_obs = fluxes / fit
         new_errors = errors / fit
-        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
 
-        if (self.verbose > 2 and not hasattr(self, 'alpha')) or plot_result is True:
+        coeffs = np.flip(coeffs)
+        poly_coeffs = np.concatenate((coeffs, [cont_factor])) if self.no_scale is False else coeffs
+
+        if (self.verbose > 2 and hasattr(self, 'alpha')) or plot_result is True:
             plt.figure(figsize=(10, 6))
             plt.plot(wavelengths, fluxes, label='Original Spectrum')
             plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
             plt.title('Continuum Fit')
             plt.legend()
+            plt.grid(True)
             plt.show()
         return poly_coeffs, flux_obs, new_errors
 
@@ -745,14 +751,13 @@ class Acid:
         yerr = self.errors["combined"]
         x_norm = self.wavelengths["combined_normalized"]
 
-        forward, _ = mcmc.MCMC(x, y, yerr, self.alpha).full_func(self.model_inputs)
+        forward, _ = mcmc.MCMC(x, y, yerr, self.alpha, no_scale=self.no_scale).full_func(self.model_inputs)
 
-        mdl1 = 0
-        nvel = len(self.velocities)
-        for i in range(nvel, len(self.model_inputs) - 1):
-            mdl1 = mdl1 + (self.model_inputs[i] * x_norm ** (i - nvel))
-
-        mdl1 = mdl1 * self.model_inputs[-1]
+        # mdl1 = 0
+        # nvel = len(self.velocities)
+        # for i in range(nvel, len(self.model_inputs) - 1):
+        #     mdl1 = mdl1 + (self.model_inputs[i] * x_norm ** (i - nvel))
+        # mdl1 = mdl1 * self.model_inputs[-1] if self.no_scale is False else mdl1 # Apply scale factor if no_scale is False
 
         data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
@@ -815,7 +820,7 @@ class Acid:
         poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.poly_ord, plot_result=False)
 
         LSD_masking = LSD(self)
-        LSD_masking.run_LSD(x, _bin, bye, sn=100)
+        LSD_masking.run_LSD(x, _bin, bye, sn=self.sn["combined"])
         # profile = LSD_masking.profile
         self.alpha = LSD_masking.alpha
         self.c_factor = LSD_masking.c_factor
@@ -841,7 +846,7 @@ class Acid:
             plt.show()
 
             plt.figure(figsize=(10, 6))
-            plt.plot(self.velocities, np.exp(LSD_masking.profile)-1, label='LSD Profile after Masking and before sampling', color='red')
+            plt.plot(self.velocities, np.exp(-LSD_masking.profile)-1, label='LSD Profile after Masking and before sampling', color='red')
             plt.title('LSD Profile after Residual Masking')
             plt.xlabel('Velocity (km/s)')
             plt.ylabel('LSD Profile')
@@ -993,9 +998,8 @@ class Acid:
         #     conts1.append(mdl1_temp)
 
         # samples = flat_samples[inds]
-        samples = flat_samples
-        coeffs = samples[:, nvel:-1]
-        ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
+        # samples = flat_samples
+        # coeffs = samples[:, nvel:-1] if self.no_scale is False else samples[:, nvel:]
 
         samples = flat_samples
 
@@ -1030,12 +1034,16 @@ class Acid:
 
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl1 =0
-            for i in np.arange(0, len(self.poly_cos)-1):
-                mdl1 = mdl1+self.poly_cos[i]*norm_wavelengths**(i)
-            mdl1 = mdl1*self.poly_cos[-1]
+            # mdl1 =0
+            # end = len(self.poly_cos)-1 if self.no_scale is False else len(self.poly_cos)
+            # for i in np.arange(0, end):
+            #     mdl1 = mdl1+self.poly_cos[i]*norm_wavelengths**(i)
+            # mdl1 = mdl1*self.poly_cos[-1] if self.no_scale is False else mdl1
 
-            # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
+            if self.no_scale is False:
+                mdl1 = P.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
+            else:
+                mdl1 = P.polyval(norm_wavelengths, self.poly_cos)
 
             # Masking based off residuals interpolated onto new wavelength grid
             reference_wave = self.wavelengths["input"][np.argmax(self.sn["input"])]
@@ -1056,7 +1064,7 @@ class Acid:
             # error *= flux
 
             remove = tuple([flux<0])
-            flux[remove] = 1.
+            flux[remove] = 1. # problematic if continuum is not at 1?
             error[remove] = 1e12
 
             # idx = tuple([flux>0])
@@ -1066,11 +1074,11 @@ class Acid:
             # else:
 
             LSD_profiles = LSD(self)
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn) # can remove??? only care about combined?
             profile_OD = LSD_profiles.profile
             profile_errors = LSD_profiles.profile_errors
 
-            profile_f = np.exp(profile_OD)
+            profile_f = np.exp(-profile_OD)
             profile_errors_f = profile_errors*profile_f
             profile_f = profile_f-1
 
