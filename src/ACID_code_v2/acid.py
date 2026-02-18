@@ -351,6 +351,8 @@ class Acid:
         self.initial_profile_errors = initial_LSD.profile_errors
         self.alpha = initial_LSD.alpha
 
+        # sys.exit()
+
         # Set x, y, yerr, and model_inputs for emcee
         self.model_inputs = np.concatenate((self.initial_profile, self.poly_inputs))
 
