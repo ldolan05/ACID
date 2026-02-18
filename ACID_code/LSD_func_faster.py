@@ -16,14 +16,18 @@ def LSD(wavelengths, flux_obs, rms, linelist, adjust_continuum, poly_ord, sn, or
     #idx = tuple([flux_obs>0])
     # in optical depth space
     rms = rms/flux_obs
-    flux_obs = np.log(flux_obs)
+    flux_obs = -np.log(flux_obs)
    
     deltav = velocities[1]-velocities[0]
 
     #### This is the EXPECTED linelist (for a slow rotator of the same spectral type) ####
-    linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
-    wavelengths_expected1 =np.array(linelist_expected[:,0])
-    depths_expected1 = np.array(linelist_expected[:,1])
+    if not isinstance(linelist, dict):
+        linelist_expected = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
+        wavelengths_expected1 =np.array(linelist_expected[:,0])
+        depths_expected1 = np.array(linelist_expected[:,1])
+    else:
+        wavelengths_expected1 = linelist["wavelengths"]
+        depths_expected1 = linelist["depths"]
 
     wavelength_min = np.min(wavelengths)
     wavelength_max = np.max(wavelengths)
