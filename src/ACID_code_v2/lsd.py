@@ -86,6 +86,7 @@ class LSD:
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
+        depths_linelist_flux = np.copy(depths_linelist)
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         if od is True:
@@ -101,6 +102,13 @@ class LSD:
 
         # Solve for profile and profile errors using Cholesky factors
         self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
+        tau0 = -np.log(1 - np.mean(depths_linelist_flux))
+
+        self.profile *= tau0
+        self.profile_errors *= tau0
+        
+        self.profile_F = np.exp(-self.profile)
+        self.profile_errors_F = self.profile_F * self.profile_errors
 
         return
 

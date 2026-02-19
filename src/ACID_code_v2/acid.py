@@ -348,7 +348,7 @@ class Acid:
 
         # Use alpha matrix and initial profile class variables from initial LSD run
         self.initial_profile = initial_LSD.profile
-        self.initial_profile_errors = initial_LSD.profile_errors
+        # self.initial_profile_errors = initial_LSD.profile_errors
         self.alpha = initial_LSD.alpha
 
         # sys.exit()
@@ -848,7 +848,7 @@ class Acid:
             plt.show()
 
             plt.figure(figsize=(10, 6))
-            plt.plot(self.velocities, np.exp(-LSD_masking.profile)-1, label='LSD Profile after Masking and before sampling', color='red')
+            plt.errorbar(self.velocities, LSD_masking.profile_F, yerr=LSD_masking.profile_errors_F, label='LSD Profile after Masking and before sampling')
             plt.title('LSD Profile after Residual Masking')
             plt.xlabel('Velocity (km/s)')
             plt.ylabel('LSD Profile')
@@ -1077,12 +1077,20 @@ class Acid:
 
             LSD_profiles = LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn) # can remove??? only care about combined?
-            profile_OD = LSD_profiles.profile
-            profile_errors = LSD_profiles.profile_errors
 
-            profile_f = np.exp(-profile_OD)
-            profile_errors_f = profile_errors*profile_f
-            profile_f = profile_f-1
+            profile_f = LSD_profiles.profile_F
+            profile_errors_f = LSD_profiles.profile_errors_F
+
+            # tau0 = -np.log(1 - np.mean(linelist_depths))
+            # tau_profile = tau0 * profile_OD
+            # profiles = np.exp(-tau_profile)
+            # profile_errors *= tau0 * profiles
+            # profile_f = profiles - 1
+            # profile_errors_f = profile_errors
+
+            # profile_f = np.exp(-profile_OD)
+            # profile_errors_f = profile_errors*profile_f
+            # profile_f = profile_f-1
 
             all_frames[counter, self.order]=[profile_f, profile_errors_f]
         
