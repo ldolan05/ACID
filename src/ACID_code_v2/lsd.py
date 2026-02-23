@@ -10,6 +10,7 @@ from tqdm import tqdm
 from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
+from . import utils
 c_kms = float(const.c/1e3)  # speed of light in km/s
 
 @beartype
@@ -87,9 +88,7 @@ class LSD:
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
-        errors = errors / flux
-        flux = - np.log(flux)
-        depths_linelist = -np.log(1-depths_linelist)
+        flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
@@ -100,8 +99,8 @@ class LSD:
         # Solve for profile and profile errors using Cholesky factors
         self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
 
-        self.profile_F = np.exp(-self.profile)
-        self.profile_errors_F = self.profile_F * self.profile_errors
+        # Convert profile back to flux if needed
+        self.profile_F, self.profile_errors_f = utils.od_to_flux(self.profile, self.profile_errors)
 
         return
 

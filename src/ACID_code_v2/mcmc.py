@@ -161,6 +161,7 @@ class MCMC:
 
         z = LSD.solve_z(self.alpha, flux_od, err_od, self.c_factor, return_error=False)
         # TODO: See if I can try removing the exp+log and get profiles without those steps
+        # TODO: And see if the flux_to_od function is just as fast as below and 2 above
         forward = np.exp(- self.alpha @ z) * mdl
 
         return forward, z

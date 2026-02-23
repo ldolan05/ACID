@@ -232,10 +232,73 @@ def robust_mean(data:np.ndarray, nsig:int|float=1, axis:int=0) -> np.ndarray|flo
     robust_data = np.where(mask, data, np.nan)
     return np.nanmean(robust_data, axis=axis)
 
-def od2flux(x):
-    # WIP, not currently used
-    return np.exp(x)-1
+def flux_to_od(flux=None, errors=None, linelist=None):
+    """Converts flux, errors, and linelist to optical depth.
 
-def flux2od(x):
-    # WIP, not currently used
-    return np.log(x+1)
+    Parameters
+    ----------
+    flux : np.ndarray
+        Input flux array.
+    errors : np.ndarray, optional
+        Input errors array. Defaults to None.
+    linelist : np.ndarray, optional
+        Input linelist array. Defaults to None.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the flux in optical depth, errors in optical depth,
+        and linelist in optical depth. The tuple length depends on which inputs were provided.
+    """
+    out = []
+
+    if flux is not None:
+        flux_od = -np.log(flux)
+        out.append(flux_od)
+    else:
+        flux_od = None
+
+    if errors is not None:
+        if flux_od is None:
+            raise ValueError("'flux' must be provided if 'errors' is provided.")
+        out.append(errors / flux)
+
+    if linelist is not None:
+        out.append(-np.log(1 - linelist))
+
+    return tuple(out)
+
+def od_to_flux(od=None, errors=None, linelist=None):
+    """Converts optical depth to flux, errors, and linelist.
+
+    Parameters
+    ----------
+    od : np.ndarray
+        Input optical depth array.
+    errors : np.ndarray, optional
+        Input errors array. Defaults to None.
+    linelist : np.ndarray, optional
+        Input linelist array. Defaults to None.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the flux, errors, and linelist. The tuple length depends on which inputs were provided.
+    """
+    out = []
+
+    if od is not None:
+        flux = np.exp(-od)
+        out.append(flux)
+    else:
+        flux = None
+
+    if errors is not None:
+        if flux is None:
+            raise ValueError("'od' must be provided if 'errors' is provided.")
+        out.append(errors * flux)
+
+    if linelist is not None:
+        out.append(1-np.exp(-linelist))
+
+    return tuple(out)
