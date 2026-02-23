@@ -114,18 +114,16 @@ class MCMC:
             Model spectrum and profile points (z).
         """
         z = theta[:self.k_max]
-        mdl = np.dot(self.alpha, z)
+        mdl = self.alpha @ z
 
         # Converting model from optical depth to flux
         mdl = np.exp(-mdl)
 
         # Calculate continuum polynomial
-        coefs = np.asarray(theta[self.k_max:-1], dtype=float)
-        scale = theta[-1]
+        coefs = np.asarray(theta[self.k_max:], dtype=float)
 
-        # Build continuum model
-        mdl1 = P.polyval(self.u, coefs)
-        mdl *= mdl1 * scale
+        # Apply continuum model
+        mdl *= P.polyval(self.u, coefs)
 
         return mdl, z
 
@@ -144,12 +142,10 @@ class MCMC:
             Model spectrum and profile points (z).
         """
 
-        coefs = np.asarray(theta[:-1], dtype=float)
-        scale = theta[-1]
+        coefs = np.asarray(theta, dtype=float)
 
         # Build continuum model
         mdl = P.polyval(self.u, coefs)
-        mdl *= scale
 
         if np.any(mdl <= 0):
             return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
@@ -195,21 +191,21 @@ class MCMC:
         if np.any((z < -10.0) | (z > 0.5)):
             return -np.inf
 
-        # excluding the continuum points in the profile (in flux)
-        z_cont = []
-        v_cont = []
-        for i in range(0, 5):
-                z_cont.append(np.exp(z[len(z)-i-1])-1)
-                v_cont.append(self.velocities[len(self.velocities)-i-1])
-                z_cont.append(np.exp(z[i])-1)
-                v_cont.append(self.velocities[i])
+        # # excluding the continuum points in the profile (in flux)
+        # z_cont = []
+        # v_cont = []
+        # for i in range(0, 5):
+        #         z_cont.append(np.exp(z[len(z)-i-1])-1)
+        #         v_cont.append(self.velocities[len(self.velocities)-i-1])
+        #         z_cont.append(np.exp(z[i])-1)
+        #         v_cont.append(self.velocities[i])
 
-        z_cont = np.array(z_cont)
-        v_cont = np.array(v_cont)
+        # z_cont = np.array(z_cont)
+        # v_cont = np.array(v_cont)
 
-        p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
+        # p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
 
-        return p_pent
+        return 0
 
     def log_probability(self, theta):
         """Calculates log probability depending on which model (full or fast).
@@ -226,10 +222,9 @@ class MCMC:
         """
         forward, z = self.model_function(theta)
     
-        # lp = self.log_prior(z)
-        # if not np.isfinite(lp):
-        #     return -np.inf
-        lp = 0 # no prior information
+        lp = self.log_prior(z)
+        if not np.isfinite(lp):
+            return -np.inf
 
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))

@@ -378,7 +378,7 @@ class Acid:
             self.data.model_inputs = np.concatenate((self.data.initial_profile, self.data.poly_inputs))
 
         # Masking based off residuals
-        # Inputs: self.x, self.y, self.yerr, self.model_inputs, self.poly
+        # Inputs: self.x, self.y, self.yerr, self.data.model_inputs, self.poly
         # Sets: self.c_factor, self.residual_masks
         # Modifies: self.alpha, self.yerr
         # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
@@ -403,7 +403,7 @@ class Acid:
         sigma = 0.8 * 0.005
         initial_state = []
         for i in range(0, self.ndim):
-            if i < self.ndim - self.config.poly_ord - 2:
+            if i < self.ndim - self.config.poly_ord - 1:
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
             else:
                 x1 = self.data.model_inputs[i]
@@ -413,7 +413,7 @@ class Acid:
             initial_state.append(pos)
 
         if self.deterministic_profile is False:
-            self.ndim = self.config.poly_ord + 2
+            self.ndim = self.config.poly_ord + 1
             self.nwalkers = self.ndim * factor
             initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
 
@@ -712,10 +712,9 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
 
-        cont_factor = np.percentile(fluxes, 95)
         idx = wavelengths.argsort()
         wavelength = wavelengths[idx]
-        fluxe = fluxes[idx] / cont_factor
+        fluxe = fluxes[idx]
         clipped_flux = []
         clipped_waves = []
         binsize = 100
@@ -729,10 +728,10 @@ class Acid:
             clipped_waves.append(waves[len(waves)-1])
         coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
         poly = np.poly1d(coeffs)
-        fit = poly(wavelengths) * cont_factor
+        fit = poly(wavelengths)
         flux_obs = fluxes / fit
         new_errors = errors / fit
-        poly_coeffs = np.concatenate((np.flip(coeffs), [cont_factor]))
+        poly_coeffs = np.flip(coeffs)
 
         if self.config.verbose > 2 or plot_result is True:
             plt.figure(figsize=(10, 6))
@@ -758,13 +757,6 @@ class Acid:
         x_norm = self.data.wavelengths["combined_normalized"]
 
         forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_func(self.data.model_inputs)
-
-        mdl1 = 0
-        nvel = len(self.velocities)
-        for i in range(nvel, len(self.data.model_inputs) - 1):
-            mdl1 = mdl1 + (self.data.model_inputs[i] * x_norm ** (i - nvel))
-
-        mdl1 = mdl1 * self.data.model_inputs[-1]
 
         data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))

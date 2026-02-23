@@ -6,6 +6,7 @@ from emcee import EnsembleSampler
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy import integer as npint
+from numpy.polynomial import polynomial as P
 from .lsd import LSD
 from . import mcmc
 from . import utils
@@ -196,11 +197,10 @@ class Result:
 
         # Finding error for the continuum fit
         norm_wl = self.wavelengths["combined_normalized"]
-        coeffs = flat_samples[:, nvel:-1]
-        ncoeffs = self.poly_ord + 1 # is equivalent to coeffs.shape[1]
-        scales = flat_samples[:, -1]
+        coeffs = flat_samples[:, nvel:]
+        ncoeffs = coeffs.shape[1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
-        conts = (coeffs @ powers.T) * scales[:, None]
+        conts = (coeffs @ powers.T)
 
         continuum_error = np.std(np.array(conts), axis=0)  
 
@@ -210,14 +210,10 @@ class Result:
             wavelengths = np.copy(self.wavelengths["input"][counter])
             sn = np.copy(self.sn["input"][counter])
 
+            # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl1 =0
-            for i in np.arange(0, len(self.poly_cos)-1):
-                mdl1 = mdl1+self.poly_cos[i]*norm_wavelengths**(i)
-            mdl1 = mdl1*self.poly_cos[-1]
-
-            # mdl1 = np.polynomial.polynomial.polyval(norm_wavelengths, self.poly_cos[:-1]) * self.poly_inputs[-1]
+            mdl1 = P.polyval(norm_wavelengths, self.data.poly_cos)
 
             # Masking based off residuals interpolated onto new wavelength grid
             reference_wave = self.wavelengths["input"][np.argmax(self.sn["input"])]
@@ -230,7 +226,7 @@ class Result:
             error[interp_mask_idx]=1e12
 
             # correcting continuum
-            error = np.sqrt((error/mdl1)**2 + (continuum_error/mdl1)**2) # Compare before after
+            error = np.sqrt((error/mdl1)**2 + (continuum_error/mdl1)**2)
             flux /= mdl1
 
             remove = tuple([flux<0])
@@ -325,11 +321,11 @@ class Result:
         samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin + burnin
 
-        indices_to_plot = [-1,-2,-3,-4,-5]
-        labels = ["Scale", "a", "b", "c", "d"]
-        if self.ndim>5:
-            max_profile_idx = np.argmax(samples[:,:,:-1].mean(axis=(0,1)))
-            indices_to_plot.append([-6, max_profile_idx, 1])
+        indices_to_plot = [-1,-2,-3,-4]
+        labels = ["a", "b", "c", "d"]
+        if self.ndim>4:
+            max_profile_idx = np.argmax(samples[:,:,:-4].mean(axis=(0,1)))
+            indices_to_plot.append([-5, max_profile_idx, 1])
             labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
 
         naxes = len(indices_to_plot)
@@ -365,11 +361,11 @@ class Result:
 
         samples = self.sampler.get_chain()
 
-        indices_to_plot = [-1,-2,-3,-4,-5]
-        labels = ["Scale", "a", "b", "c", "d"]
-        if self.ndim>5:
-            max_profile_idx = np.argmax(np.abs(samples[:,:,:-6].mean(axis=(0,1))))
-            indices_to_plot.extend([-6, max_profile_idx, 1])
+        indices_to_plot = [-1,-2,-3,-4]
+        labels = ["a", "b", "c", "d"]
+        if self.ndim>4:
+            max_profile_idx = np.argmax(np.abs(samples[:,:,:-4].mean(axis=(0,1))))
+            indices_to_plot.extend([-5, max_profile_idx, 1])
             labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
 
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, indices_to_plot]
