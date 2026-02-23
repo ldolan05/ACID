@@ -35,6 +35,8 @@ class LSD:
         self.run_name         = getattr(Acid, 'name', None)
         self.adjust_continuum = None
 
+        self.alpha = None
+
     def run_LSD(
         self,
         wavelengths : np.ndarray,
@@ -45,6 +47,8 @@ class LSD:
         velocities  : np.ndarray      = None,
         verbose     : int|npint|None  = None,
         od          : bool            = True,
+        new_tau     : bool            = False,
+        reconvert_to_flux : bool            = True,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -86,13 +90,18 @@ class LSD:
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
-        depths_linelist_flux = np.copy(depths_linelist)
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
+        scale = np.median(depths_linelist)
+        depths_linelist = 1 - depths_linelist
         if od is True:
-            errors = errors / flux
-            flux = - np.log(flux) # add -
-            depths_linelist = - np.log(1-depths_linelist)
+            if new_tau:
+                errors /= flux
+                flux = np.log(flux) + 1
+            else:
+                errors /= flux
+                flux = - np.log(flux) # add -
+            depths_linelist = - np.log(depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
@@ -102,13 +111,17 @@ class LSD:
 
         # Solve for profile and profile errors using Cholesky factors
         self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
-        tau0 = -np.log(1 - np.mean(depths_linelist_flux))
 
-        self.profile *= tau0
-        self.profile_errors *= tau0
-        
-        self.profile_F = np.exp(-self.profile)
-        self.profile_errors_F = self.profile_F * self.profile_errors
+        if od is True and reconvert_to_flux is True:
+            if new_tau:
+                self.profile = np.exp(self.profile-1)
+                self.profile_errors *= self.profile
+            else:
+                # tau0 = -np.log(1 - scale)
+                # self.profile *= tau0
+                # self.profile_errors *= tau0
+                self.profile = np.exp(-self.profile)
+                self.profile_errors *= self.profile
 
         return
 
@@ -375,6 +388,47 @@ class LSD:
             return profile, profile_errors
         else:
             return profile
+
+    @classmethod
+    def convolve_profile(
+        cls,
+        velocities : np.ndarray,
+        profile : np.ndarray,
+        profile_errors : np.ndarray,
+        wavelengths : np.ndarray,
+        linelist_wavelengths : np.ndarray,
+        linelist_depths : np.ndarray,
+        alpha = None,
+        od = True,
+        new_tau = False,
+        ):
+
+        linelist_depths = 1 - linelist_depths
+        if od:
+            if new_tau:
+                profile_errors /= profile
+                profile = np.log(profile)+1
+                # linelist_depths = np.exp(-linelist_depths)
+            else:
+                profile_errors /= profile
+                profile = -np.log(profile)
+            linelist_depths = -np.log(linelist_depths)
+
+        if alpha is None:
+            cls.__init__(cls)
+            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities, verbose=2)
+
+        model_spectrum = alpha @ profile
+        model_errors = np.sqrt((alpha**2) @ (profile_errors**2))
+        if od:
+            if new_tau:
+                model_spectrum = np.exp(model_spectrum-1)
+                model_errors *= model_spectrum
+            else:
+                model_spectrum = np.exp(-model_spectrum)
+                model_errors *= model_spectrum
+
+        return model_spectrum, model_errors
 
     def get_wave(self, data, header):
 
