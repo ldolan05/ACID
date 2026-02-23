@@ -879,11 +879,13 @@ class Acid:
             else:
                 self.cores = os.cpu_count()
         
-        moves=[ # Use the new moves option in emcee v3 for faster convergence
-            (emcee.moves.StretchMove(), 0.6),
-            (emcee.moves.DEMove(), 0.3),
+        moves = [
+            (emcee.moves.StretchMove(), 0.20),
             (emcee.moves.DESnookerMove(), 0.1),
+            (emcee.moves.DEMove(), 0.6),
+            (emcee.moves.DEMove(gamma0=1.0), 0.1)
         ]
+
         sampler_kwargs = {
             "nwalkers"   : self.nwalkers,
             "ndim"       : self.ndim,
