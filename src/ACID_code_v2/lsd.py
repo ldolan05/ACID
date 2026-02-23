@@ -88,7 +88,7 @@ class LSD:
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         errors = errors / flux
-        flux = np.log(flux)
+        flux = - np.log(flux)
         depths_linelist = -np.log(1-depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
@@ -99,6 +99,9 @@ class LSD:
 
         # Solve for profile and profile errors using Cholesky factors
         self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
+
+        self.profile_F = np.exp(-self.profile)
+        self.profile_errors_F = self.profile_F * self.profile_errors
 
         return
 

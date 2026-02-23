@@ -379,12 +379,12 @@ class Acid:
             if self.verbose > 1:
                 print("Calculating initial LSD profile...")
             # Get the initial LSD profile using the initial fit
-            initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes
+            initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes (verbosity, linelist, velocities, etc)
             initial_LSD.run_LSD(self.data.wavelengths["fitted"], self.data.flux["fitted"], self.data.errors["fitted"], self.data.sn["fitted"])
 
             # Use alpha matrix and initial profile class variables from initial LSD run
-            self.data.initial_profile = initial_LSD.profile
-            self.data.initial_profile_errors = initial_LSD.profile_errors # Not used, saved for debugging
+            self.data.initial_profile = initial_LSD.profile_F
+            self.data.initial_profile_errors = initial_LSD.profile_errors_F # Not used, saved for debugging
             self.data.alpha = initial_LSD.alpha
 
             # Set x, y, yerr, and model_inputs for emcee
@@ -877,7 +877,7 @@ class Acid:
             plt.show()
 
             plt.figure(figsize=(10, 6))
-            plt.plot(self.velocities, LSD_masking.profile, label='LSD Profile after Masking and before sampling', color='red')
+            plt.plot(self.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
             plt.title('LSD Profile after Residual Masking')
             plt.xlabel('Velocity (km/s)')
             plt.ylabel('LSD Profile')

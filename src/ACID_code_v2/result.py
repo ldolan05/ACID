@@ -164,7 +164,7 @@ class Result:
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
             self.tau = self.sampler.get_autocorr_time(quiet=True)
-
+        # TODO: Convert to try except with quiet=False and otherwise use a much stricter steps-1000 burnin
         try:
             burnin = int(2 * np.max(self.tau))
             thin = int(np.min(self.tau)/5)
@@ -237,12 +237,12 @@ class Result:
 
             LSD_profiles = LSD(self)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
-            profile_OD = LSD_profiles.profile
-            profile_errors = LSD_profiles.profile_errors
+            # profile_OD = LSD_profiles.profile
+            # profile_errors_OD = LSD_profiles.profile_errors
 
-            profile_f = np.exp(profile_OD)
-            profile_errors_f = profile_errors*profile_f
-            profile_f = profile_f-1
+            profile_f = LSD_profiles.profile_F
+            profile_errors_f = LSD_profiles.profile_errors_F
+            # profile_f = profile_f-1
 
             self.all_frames[counter, self.order]=[profile_f, profile_errors_f]
 

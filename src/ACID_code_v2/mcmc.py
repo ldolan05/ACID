@@ -117,7 +117,7 @@ class MCMC:
         mdl = np.dot(self.alpha, z)
 
         # Converting model from optical depth to flux
-        mdl = np.exp(mdl)
+        mdl = np.exp(-mdl)
 
         # Calculate continuum polynomial
         coefs = np.asarray(theta[self.k_max:-1], dtype=float)
@@ -157,11 +157,11 @@ class MCMC:
         fitted_flux = self.y/mdl
         fitted_err = self.yerr/mdl
         err_od = fitted_err / fitted_flux
-        flux_od = np.log(fitted_flux)
+        flux_od = - np.log(fitted_flux)
 
         z = LSD.solve_z(self.alpha, flux_od, err_od, self.c_factor, return_error=False)
-
-        forward = np.exp(self.alpha @ z) * mdl
+        # TODO: See if I can try removing the exp+log and get profiles without those steps
+        forward = np.exp(- self.alpha @ z) * mdl
 
         return forward, z
 
@@ -225,9 +225,10 @@ class MCMC:
         """
         forward, z = self.model_function(theta)
     
-        lp = self.log_prior(z)
-        if not np.isfinite(lp):
-            return -np.inf
+        # lp = self.log_prior(z)
+        # if not np.isfinite(lp):
+        #     return -np.inf
+        lp = 0 # no prior information
 
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))
