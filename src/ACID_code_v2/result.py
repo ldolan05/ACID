@@ -1,3 +1,4 @@
+from time import time
 import numpy as np
 import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools, inspect
@@ -159,6 +160,7 @@ class Result:
     @_require_data
     @_require_sampler
     def process_results(self):
+        t0 = time()
 
         with open(os.devnull, "w") as devnull, \
             contextlib.redirect_stdout(devnull), \
@@ -247,6 +249,9 @@ class Result:
             self.all_frames[counter, self.order]=[profile_f, profile_errors_f]
 
         self.data.all_frames = self.all_frames # point Data.all_frames to Result.all_frames to keep them in sync
+        self.data.get_profiles_time = time() - t0
+        self.data.total_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
+
         return
 
     @_require_all_frames
