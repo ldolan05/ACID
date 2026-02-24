@@ -370,8 +370,8 @@ class Acid:
             initial_LSD.run_LSD(self.data.wavelengths["fitted"], self.data.flux["fitted"], self.data.errors["fitted"], self.data.sn["fitted"])
 
             # Use alpha matrix and initial profile class variables from initial LSD run
-            self.data.initial_profile = initial_LSD.profile_F
-            self.data.initial_profile_errors = initial_LSD.profile_errors_F # Not used, saved for debugging
+            self.data.initial_profile = initial_LSD.profile # in optical depth
+            self.data.initial_profile_errors = initial_LSD.profile_errors # Not used, saved for debugging
             self.data.alpha = initial_LSD.alpha
 
             # Set x, y, yerr, and model_inputs for emcee
@@ -1165,6 +1165,10 @@ def ACID(*args, **kwargs):
         "order",
     ]
     RENAMED_LEGACY_ARGS = {
+        "input_wavelengths": "input_wavelengths",
+        "input_spectra": "input_flux",
+        "input_spectral_errors": "input_errors",
+        "frame_sns": "input_sn",
         "vgrid": "velocities",
         "line": "linelist_path",
         "poly_or": "poly_ord",
