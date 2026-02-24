@@ -302,3 +302,72 @@ def od_to_flux(od=None, errors=None, linelist=None):
         out.append(1-np.exp(-linelist))
 
     return tuple(out)
+
+def next_pow_2(n):
+    """Calculates the next power of 2 greater than or equal to n.
+
+    Parameters
+    ----------
+    n : int
+        Input number. Must be real and non-negative.
+
+    Returns
+    -------
+    int
+        The next power of 2 greater than or equal to n.
+    """
+    if n < 0:
+        raise ValueError("Input must be a non-negative integer.")
+    return 1 if n == 0 else 2**(n - 1).bit_length()
+
+def auto_window(taus: np.ndarray, c: float = 5.0):
+    """
+    Automated windowing procedure following Sokal (1989) in emcee documentation.
+    Returns the window index to use in taus[window].
+    """
+    m = np.arange(len(taus)) < c * taus
+    if np.any(m):
+        return np.argmin(m)
+    return len(taus) - 1
+
+def autocorr_func_1d(x, norm=True):
+    """
+    Autocorrelation estimate using FFT from the emcee tutorial.
+    """
+    x = np.atleast_1d(x)
+    if len(x.shape) != 1:
+        raise ValueError("invalid dimensions for 1D autocorrelation function")
+    n = next_pow_2(len(x))
+
+    # Compute the FFT and then (from that) the auto-correlation function
+    f = np.fft.fft(x - np.mean(x), n=2 * n)
+    acf = np.fft.ifft(f * np.conjugate(f))[: len(x)].real
+    acf /= 4 * n
+
+    # Optionally normalize
+    if norm:
+        acf /= acf[0]
+
+    return acf
+
+def autocorr_gw2010(y, c=5.0):
+    # Goodman & Weare (2010) autocorrelation estimate from emcee documentation
+    f = autocorr_func_1d(np.mean(y, axis=0))
+    taus = 2.0 * np.cumsum(f) - 1.0
+    window = auto_window(taus, c)
+    return taus[window]
+
+def autocorr_new(y, c=5.0):
+    # "New" integrated autocorrelation time estimate from emcee documentation
+    # Average ACF across walkers
+    # Apply sokal windowing on cumulative sum
+    assert y.ndim == 2, "Expects y with shape (nwalkers, nsteps)"
+    nwalkers, nsteps = y.shape
+
+    f = np.zeros(nsteps)
+    for walker in range(nwalkers):
+        f += autocorr_func_1d(y[walker], norm=True)
+    f /= nwalkers
+    taus = 2.0 * np.cumsum(f) - 1.0
+    window = auto_window(taus, c)
+    return float(taus[window])

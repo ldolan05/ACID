@@ -269,6 +269,10 @@ class Result:
         # Acid is not subscriptable normally, only when ACID_HARPS was called 
         raise TypeError("Result is not iterable unless ACID_HARPS=True")
 
+    def __repr__(self):
+        # Only print out the sampler and data attributes, and whether all_frames is available, to avoid printing large arrays
+        return f"Result object with sampler={self.sampler}, data={self.data}, all_frames={'available' if self.all_frames is not None else 'not available'}"
+
     @_require_data
     @_require_sampler
     def continue_sampling(self, nsteps:int|npint, process_results:bool|None=True, sampler=None):
@@ -533,6 +537,146 @@ class Result:
             return fig, ax
         else:
             plt.show()
+
+    @_require_sampler
+    def plot_autocorrelation(
+        self,
+        sampler=None,
+        burnin: int | None = None,
+        thin: int | None = None,
+        n_grid: int = 12,
+        c: float = 5.0,
+        return_fig: bool = False,
+        subplot_kwargs: dict | None = None,
+        min_steps: int = 100
+    ):
+        """
+        Plot estimated integrated autocorrelation time as a function of chain length.
+
+        From the emcee docs:
+        - For several prefixes of the chain, estimate tau with Sokal windowing.
+        - Plot tau(N) and the reference line tau = N/50.
+
+        Parameters
+        ----------
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to plot from, otherwise,
+            takes the sampler from the Result object, by default None
+        burnin, thin : int | None, optional
+            Optional overrides. Defaults to self.burnin/self.thin from the sampler.
+        n_grid : int, optional
+            Number of N values (prefix lengths) to evaluate, by default 12.
+        c : float, optional
+            Sokal window constant (usually 5), by default 5.0.
+        return_fig : bool, optional
+            Whether to return the figure and axes objects, by default False
+        subplot_kwargs : dict | None, optional
+            Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
+        min_steps : int, optional
+            Minimum number of post-burnin samples required to attempt autocorrelation estimation, by default 100
+            If you decrease this, you may get unreliable estimates or errors from the autocorrelation time estimation.
+
+        Returns
+        ----------
+        If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing 
+        the plot. Otherwise, displays the plot and returns None.
+        """
+
+        burnin = self.burnin if burnin is None else int(burnin)
+        thin = self.thin if thin is None else int(thin)
+
+        # Use the same base chain access pattern as your other plotting
+        chain = self.sampler.get_chain(discard=burnin, thin=thin)  # (nsteps, nwalkers, ndim)
+        nsteps, nwalkers, ndim = chain.shape
+
+        if nsteps < min_steps:
+            raise ValueError("Not enough post-burnin samples to estimate autocorrelation reliably.")
+
+        indices_to_plot = [-1,-2,-3,-4]
+        labels = ["a", "b", "c", "d"]
+        if self.ndim>4:
+            max_profile_idx = np.argmax(np.abs(chain[:,:,:-4].mean(axis=(0,1))))
+            indices_to_plot.extend([-5, max_profile_idx, 1])
+            labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
+        
+        Ns = np.unique(np.exp(np.linspace(np.log(min_steps), np.log(nsteps), n_grid)).astype(int))
+        Ns = Ns[Ns >= min_steps]  # Ensure we only consider N >= min_steps
+
+        tau_estimates = {p: np.full(len(Ns), np.nan, dtype=float) for p in indices_to_plot}
+
+        # Estimate taus
+        for i, n in enumerate(Ns):
+            for p in indices_to_plot:
+                y = chain[:n, :, p].T
+                tau_estimates[p][i] = utils.autocorr_new(y, c=c)
+
+        subplot_kwargs = {} if subplot_kwargs is None else dict(subplot_kwargs)
+        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 6)})
+
+        fig, ax = plt.subplots(**subplot_kwargs)
+
+        for label, p in zip(labels, indices_to_plot):
+            ax.loglog(Ns, tau_estimates[p], "o-", label=f"{label}")
+
+        # Reference line tau = N/50
+        ax.loglog(Ns, Ns / 50.0, "--", label=r"$\tau = N/50$")
+
+        ax.set_xlabel("number of post-burnin samples per walker (N)")
+        ax.set_ylabel(r"estimated integrated autocorrelation time $\tau$")
+        ax.set_title("Autocorrelation time estimates vs chain length")
+        ax.legend()
+        ax.grid(True, which="both")
+
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+        return
+
+    @_require_sampler
+    def plot_acf(
+        self,
+        param: int = 0,
+        sampler=None,
+        burnin: int | None = None,
+        thin: int | None = None,
+        max_lag: int | None = None,
+        return_fig: bool = False,
+        subplot_kwargs: dict | None = None,
+    ):
+        burnin = self.burnin if burnin is None else int(burnin)
+        thin = self.thin if thin is None else int(thin)
+
+        chain = self.sampler.get_chain(discard=burnin, thin=thin)  # (nsteps, nwalkers, ndim)
+        nsteps, nwalkers, ndim = chain.shape
+        if not (0 <= param < ndim):
+            raise ValueError(f"param must be in [0, {ndim-1}]")
+
+        y = chain[:, :, param].T  # (nwalkers, nsteps)
+
+        # Mean ACF across walkers
+        f = np.zeros(nsteps)
+        for w in range(nwalkers):
+            f += utils.autocorr_func_1d(y[w], norm=True)
+        f /= nwalkers
+
+        if max_lag is None:
+            max_lag = min(5_000, nsteps - 1)
+        max_lag = int(max_lag)
+
+        subplot_kwargs = {} if subplot_kwargs is None else dict(subplot_kwargs)
+        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 5)})
+
+        fig, ax = plt.subplots(**subplot_kwargs)
+        ax.plot(np.arange(max_lag + 1), f[: max_lag + 1])
+        ax.set_xlabel("lag")
+        ax.set_ylabel("autocorrelation")
+        ax.set_title(f"Mean ACF across walkers (param {param})")
+        ax.grid(True)
+
+        if return_fig:
+            return fig, ax
+        plt.show()
 
     def save_result(self, filename:str="result.pkl"):
         """Saves the Result object to a pickle file.
