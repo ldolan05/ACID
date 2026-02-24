@@ -403,7 +403,7 @@ class Acid:
         sigma = 0.8 * 0.005
         initial_state = []
         for i in range(0, self.ndim):
-            if i < self.ndim - self.config.poly_ord - 1:
+            if i < len(self.velocities):
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
             else:
                 x1 = self.data.model_inputs[i]
@@ -917,8 +917,21 @@ class Acid:
             self.config.parallel = False
 
         if self.config.parallel:
-            # old_omp = os.environ.get("OMP_NUM_THREADS", None) # store old OMP_NUM_THREADS value to reset later
-            # os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+            # TODO: try the following for slurm:
+            # for k in ("OMP_NUM_THREADS","MKL_NUM_THREADS","OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS","BLIS_NUM_THREADS","VECLIB_MAXIMUM_THREADS"):
+            #     os.environ[k] = "1"
+            # ALSO MAKE SURE were using cpus per task not ntasks
+            # And try:
+            # export OMP_NUM_THREADS=1
+            # export MKL_NUM_THREADS=1
+            # export OPENBLAS_NUM_THREADS=1
+            # export BLIS_NUM_THREADS=1
+            # export VECLIB_MAXIMUM_THREADS=1
+            # export NUMEXPR_NUM_THREADS=1
+            # # Good practice for SLURM:
+            # export OMP_PROC_BIND=close
+            # export OMP_PLACES=cores
             
             if self.config.verbose>1:
                 print(f"Using {self.config.cores} cores for MCMC")
@@ -932,8 +945,6 @@ class Acid:
                 with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
-
-            # os.environ["OMP_NUM_THREADS"] = str(old_omp)
 
         else:
             MCMC = mcmc.MCMC(self.data)

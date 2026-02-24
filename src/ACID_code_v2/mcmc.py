@@ -3,7 +3,6 @@ from .lsd import LSD
 from . import utils
 from .data import Data
 from beartype import beartype
-from numpy import integer as npint
 from numpy.polynomial import polynomial as P
 
 # The following two wrapper functions are required for multiprocessing
@@ -31,7 +30,6 @@ class MCMC:
             velocities  : np.ndarray|None = None,
             c_factor                      = None,
             deterministic_profile : bool            = False,
-            seed        : int|npint|None  = None,
         ):
         """Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
@@ -55,10 +53,8 @@ class MCMC:
             Precomputed c_factor for LSD profile calculation, by default None.
         deterministic_profile : bool, optional
             Whether to fit the full profile (True) or use the fast model (False), by default True.
-        seed : int|npint|None, optional
-            Random seed for reproducibility, by default None.
         """
-        
+
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
         if isinstance(x_or_data, Data):
@@ -79,7 +75,7 @@ class MCMC:
             self.velocities = velocities
             self.c_factor = c_factor
             self.deterministic_profile = deterministic_profile
-        
+
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
         # Precompute normalization coefficients these are used to adjust the wavelengths to
@@ -92,7 +88,7 @@ class MCMC:
             self.model_function = self.full_model # include profile fitting
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
-    
+
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
         return self.log_probability(*args, **kwargs)
@@ -140,14 +136,13 @@ class MCMC:
         tuple
             Model spectrum and profile points (z).
         """
-
         coefs = np.asarray(theta, dtype=float)
 
         # Build continuum model
         mdl = P.polyval(self.u, coefs)
 
-        # if np.any(mdl <= 0): # force positive continuum at all points
-        #     return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
+        if np.any(mdl <= 0): # force positive continuum at all points
+            return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
 
         fitted_flux = self.y/mdl
         fitted_err = self.yerr/mdl

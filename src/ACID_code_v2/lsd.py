@@ -1,11 +1,10 @@
 import numpy as np
-from scipy import linalg
 from astropy.io import  fits
-import glob, time, warnings, sys, psutil, os, inspect
+import glob, psutil, os
 import scipy.constants as const
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
-from scipy.interpolate import interp1d, LSQUnivariateSpline
+from scipy.interpolate import LSQUnivariateSpline
 from tqdm import tqdm
 from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve

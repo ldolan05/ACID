@@ -332,11 +332,10 @@ class Result:
         labels = ["a", "b", "c", "d"]
         if self.ndim>4:
             max_profile_idx = np.argmax(samples[:,:,:-4].mean(axis=(0,1)))
-            indices_to_plot.append([-5, max_profile_idx, 1])
-            labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
+            indices_to_plot.extend([-5, max_profile_idx, 1])
+            labels.extend(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
 
         naxes = len(indices_to_plot)
-        print(naxes)
 
         fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         for i in range(naxes):
