@@ -409,13 +409,13 @@ class LSD:
         if file_type == 's1d':
             #### Finding min and max wavelength from e2ds for the specified order ######
             file_e2ds = file.replace('s1d', 'e2ds')
-            # print(file_e2ds)
+
             hdu=fits.open('%s'%file_e2ds)
             sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
             spec = hdu[0].data
             header = hdu[0].header
             brv = header['ESO DRS BERV']
-            # print('hi')
+
             spec_check = spec[spec<=0]
             # if len(spec_check)>0:
                 # print('WARNING NEGATIVE/ZERO FLUX - corrected')
@@ -535,9 +535,9 @@ class LSD:
                         masked_waves=[]
                         #print(masks)
                         for mask in masks:
-                            print(np.max(mask), np.min(mask))
+
                             idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
-                            #print(flux_error_order[idx])
+
                             flux_error_order[idx] = 10000000000000000000
 
                             if len(wavelengths[idx])>0:
@@ -546,20 +546,14 @@ class LSD:
                         plt.figure('telluric masking')
                         plt.title('Spectrum - after telluric masking')
                         plt.plot(wavelengths, fluxes)
-                        # print(masked_waves)
                         for masked_wave in masked_waves:
                             plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
-                        #print('new version')
                         plt.savefig('/home/lsd/Documents/LSD_Figures/masking_plots/order%s_masks_%s'%(order, run_name))
 
                         plt.figure('errors')
                         plt.plot(wavelengths, flux_error_order)
                         plt.close('all')
                         #plt.show()
-
-                    if response == 'n':
-                        print('yay!')
-
 
                 elif masking == 'unmasked':
                     masked_waves = []
@@ -575,7 +569,7 @@ class LSD:
             spec=hdu[0].data
             header=hdu[0].header
             sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
-            # print('S/N: %s'%sn)
+
             spec_check = spec[spec<=0]
             # if len(spec_check)>0:
             #     print('WARNING NEGATIVE/ZERO FLUX - corrected')

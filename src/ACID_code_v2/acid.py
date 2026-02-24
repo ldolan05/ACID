@@ -518,8 +518,8 @@ class Acid:
         self.filelist = filelist
 
         for order in self.config.order_range:
-
-            print('Running for order %s/%s...'%(order-min(self.config.order_range)+1, max(self.config.order_range)-min(self.config.order_range)+1))
+            if self.config.verbose > 1:
+                print('Running for order %s/%s...'%(order-min(self.config.order_range)+1, max(self.config.order_range)-min(self.config.order_range)+1))
 
             frame_wavelengths, frame_flux, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
 
@@ -791,7 +791,6 @@ class Acid:
                 flag_max = value
             elif idx[value] == False and flag_max - flag_min >= self.config.pix_chunk:
                 yerr[flag_min:flag_max] = 1e12
-                # print(f"Masking from {x[flag_min]} to {x[flag_max]} due to residuals.")
                 flag_min = value
                 flag_max = value
 
@@ -983,12 +982,12 @@ class Acid:
             file = filelist[i]
             frames[i], frame_wavelengths[i], errors[i], sns[i] = LSD().blaze_correct(
                 file_type, 'order', order, file, directory, 'unmasked', self.config.name, 'y')
-            # print(i, frames)
+
             return frames, frame_wavelengths, errors, sns
         
         ### reads in each frame and corrects for the blaze function, adds the spec, errors and sn to their subsequent lists
         for i in range(len(filelist[1:])+1):
-            # print(i)
+
             frames, frame_wavelengths, errors, sns = task_frames(frames, errors, frame_wavelengths, sns, i)
             
         ### finding highest S/N frame, saves this as reference frame

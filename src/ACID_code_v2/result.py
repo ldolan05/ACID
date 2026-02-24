@@ -440,7 +440,8 @@ class Result:
             fig, ax = fig_ax
         if nframes > 1:
             if norders > 1:
-                print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
+                if self.verbose > 0:
+                    print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
                 frames = frames[:1, :, :, :]  # Take first frame only
         for f, frame in enumerate(frames):
             for o, order in enumerate(frame):
@@ -585,11 +586,7 @@ class Result:
         the plot. Otherwise, displays the plot and returns None.
         """
 
-        burnin = self.burnin if burnin is None else int(burnin)
-        thin = self.thin if thin is None else int(thin)
-
-        # Use the same base chain access pattern as your other plotting
-        chain = self.sampler.get_chain(discard=burnin, thin=thin)  # (nsteps, nwalkers, ndim)
+        chain = self.sampler.get_chain()  # (nsteps, nwalkers, ndim)
         nsteps, nwalkers, ndim = chain.shape
 
         if nsteps < min_steps:
@@ -647,10 +644,8 @@ class Result:
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
     ):
-        burnin = self.burnin if burnin is None else int(burnin)
-        thin = self.thin if thin is None else int(thin)
 
-        chain = self.sampler.get_chain(discard=burnin, thin=thin)  # (nsteps, nwalkers, ndim)
+        chain = self.sampler.get_chain() 
         nsteps, nwalkers, ndim = chain.shape
         if not (0 <= param < ndim):
             raise ValueError(f"param must be in [0, {ndim-1}]")
@@ -720,9 +715,9 @@ class Result:
             contextlib.redirect_stderr(devnull):
             self.tau = self.sampler.get_autocorr_time(quiet=True)
         
-        converged = True
+        self.converged = True
         if self.nsteps < 50 * np.max(self.tau):
-            converged = False
+            self.converged = False
             if self.config.verbose>1:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
                 "time.\n The sampler may not have converged. Consider running more steps or checking " \
@@ -732,7 +727,7 @@ class Result:
 
         try:
             self.thin = int(np.min(self.tau)/5)
-            if converged:
+            if self.converged:
                 self.burnin = int(2 * np.max(self.tau))
             else:
                 self.burnin = self.nsteps - 1000 # just the last 1000 steps

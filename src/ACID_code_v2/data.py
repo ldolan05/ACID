@@ -98,7 +98,7 @@ class Data:
 
         # Attempt to convert input spectra to be above 0 if they are not already and warning if this is the case
         if np.any(input_flux <= 0):
-            if self.verbose > 1:
+            if self.config["verbose"] > 1:
                 print("Input spectra contain flux values <= 0. ACID will attempt to rescale inputs, and mask " \
                 f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
                 f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
