@@ -146,8 +146,8 @@ class MCMC:
         # Build continuum model
         mdl = P.polyval(self.u, coefs)
 
-        if np.any(mdl <= 0):
-            return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
+        # if np.any(mdl <= 0): # force positive continuum at all points
+        #     return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
 
         fitted_flux = self.y/mdl
         fitted_err = self.yerr/mdl
@@ -157,7 +157,7 @@ class MCMC:
         z = LSD.solve_z(self.alpha, flux_od, err_od, self.c_factor, return_error=False)
         # TODO: See if I can try removing the exp+log and get profiles without those steps
         # TODO: And see if the flux_to_od function is just as fast as below and 2 above
-        forward = np.exp(- self.alpha @ z) * mdl
+        forward = np.exp(- (self.alpha @ z)) * mdl
 
         return forward, z
 
