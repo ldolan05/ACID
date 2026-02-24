@@ -142,7 +142,7 @@ class MCMC:
         mdl = P.polyval(self.u, coefs)
 
         if np.any(mdl <= 0): # force positive continuum at all points
-            return mdl, np.full(self.k_max, 1) # return very low z to trigger prior rejection
+            return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
 
         fitted_flux = self.y/mdl
         fitted_err = self.yerr/mdl
@@ -168,7 +168,7 @@ class MCMC:
 
     def log_prior(self, z):
         """Calculates the log prior probability of the profile points (z) and imposes the prior
-        restrictions on the inputs - rejects if profile point is less than -10 or greater than 0.5.
+        restrictions on the inputs - rejects if profile point is less than -0.5 or greater than 1.5.
 
         Parameters
         ----------
@@ -182,7 +182,7 @@ class MCMC:
         """
 
         # Hard box prior on each z[i]
-        if np.any((z < -10.0) | (z > 0.5)):
+        if np.any((z < -0.5) | (z > 1.5)):
             return -np.inf
 
         # # excluding the continuum points in the profile (in flux)
@@ -199,7 +199,7 @@ class MCMC:
 
         # p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
 
-        return 0
+        return 0 
 
     def log_probability(self, theta):
         """Calculates log probability depending on which model (full or fast).

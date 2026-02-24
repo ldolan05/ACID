@@ -12,6 +12,7 @@ os.chdir(PROJECT_ROOT)
 from src import  ACID_code_v2 as acid
 acid._reload_all()
 start = time()
+skips = 4
 
 def test_run_e2ds():
 
@@ -23,7 +24,7 @@ def test_run_e2ds():
 
     # run ACID on e2ds files
     ACID_results_e2ds = acid.ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
-                                        order_range=np.arange(41, 43), nsteps=2000, skips=3)
+                                        order_range=np.arange(41, 43), nsteps=2000, skips=skips)
     return ACID_results_e2ds
 
 def test_run_s1d():
@@ -36,10 +37,8 @@ def test_run_s1d():
 
     # run ACID on s1d files
     ACID_results_s1d = acid.ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
-                                       order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000, skips=3)
+                                       order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000, skips=skips)
     return ACID_results_s1d
-
-skips = 5
 
 def quickstart():
     spec_file = fits.open('example/sample_spec_1.fits')
@@ -254,9 +253,9 @@ def no_profile_fit():
     for file in files:
         spec_file = fits.open('%s'%file)
 
-        wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
-        spectra.append(spec_file[1].data[::skips])        # Spectral Flux
-        errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
+        wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
+        spectra.append(spec_file[1].data)        # Spectral Flux
+        errors.append(spec_file[2].data)         # Spectral Flux Errors
         sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
     linelist_path = 'example/example_linelist.txt' # Insert path to line list
@@ -266,15 +265,15 @@ def no_profile_fit():
 
     # run ACID function
     Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
-    result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000, fit_profile=False)
+    result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000, parallel=True, deterministic_profile=True, skips=skips)
     result.plot_walkers()
     return result
 
-# q_res = quickstart()
-# mf_res = multiple_frames()
-# mo_res = multiple_orders()
-# res_e2ds = test_run_e2ds()
-# res_s1d = test_run_s1d()
+q_res = quickstart()
+mf_res = multiple_frames()
+mo_res = multiple_orders()
+res_e2ds = test_run_e2ds()
+res_s1d = test_run_s1d()
 classes_res = classes_test()
 classes_res.continue_sampling(nsteps=2000)
 classes_res.plot_walkers()
@@ -282,7 +281,7 @@ result_handling_res = result_handling_test()
 res_nv = no_verbosity()
 res_no_profile_fit = no_profile_fit()
 res = res_no_profile_fit
-acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=res[0,0,0]).plot_fit("all")
-
+# acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=res[0,0,0]).plot_fit("all")
+res.plot_profiles()
 print("All tests passed!")
 print(f"Total time: {time() - start:.2f} seconds")

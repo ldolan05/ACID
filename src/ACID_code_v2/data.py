@@ -44,6 +44,10 @@ class Data:
     model_inputs           : Optional[np.ndarray] = None  # the concatenated array of initial profile and poly coefficents, used as input to emcee
     initial_state          : Optional[np.ndarray] = None  # the initial state of the MCMC walkers, used for resuming and debugging
 
+    # Small cached products needed for MCMC if doing reruns
+    nwalkers               : Optional[int]        = None
+    ndim                   : Optional[int]        = None
+
     # Data required/calculated in results
     all_frames  : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
     nsteps      : Optional[int]        = None

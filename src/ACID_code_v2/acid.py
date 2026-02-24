@@ -75,78 +75,83 @@ class Acid:
             class, then those config values will overwrite the inputted values in initialisation or ACID method.
             
         """
-
-        # Make verbosity always an int regardless of input type, and check correct range
-        if verbose is True:
-            verbose = 2
-        elif verbose is False:
-            verbose = 0
-        elif isinstance(verbose, int):
-            if verbose < 0 or verbose > 3:
-                raise ValueError("verbose must be an integer between 0 and 3")
-
-        # Validate linelist inputs
-        if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
-            raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist_path' must be provided.")
-        if linelist_path is None and (linelist_wl is None or linelist_depths is None):
-            raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
-        if linelist_wl is not None:
-            # In this case both linelist_wl and linelist_depths were provided as checked in the two above statements
-            linelist_wl     = np.array(linelist_wl)
-            linelist_depths = np.array(linelist_depths)
-            if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
-                raise ValueError("'linelist_wl' and 'linelist_depths' must be a one-dimensional array or list")
-            if linelist_wl.shape != linelist_depths.shape:
-                raise ValueError("'linelist_wl' and 'linelist_depths' must have the same length and shape")
-        # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
-        # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
-        if linelist_path is None:
-            linelist_path = {"wavelengths": linelist_wl, "depths": linelist_depths}
-
-        # Define telluric_lines with defaults if not input, check type if it is
-        if telluric_lines is None:
-            telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                              5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
-        if not isinstance(telluric_lines, (list, np.ndarray)):
-            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
-            "mask in angstroms (could be empty or single-valued)")
-        telluric_lines = np.array(telluric_lines)
-        if telluric_lines.ndim != 1 or telluric_lines.size == 0:
-            raise ValueError("telluric_lines must be a one-dimensional array or list")
-
-        # Determine if running in SLURM environment
-        self.slurm = "SLURM_JOB_ID" in os.environ
-
         # Initialise the data class to store calculations in ACID
         if data is not None:
             self.data = data
         else:
             self.data = Data()
+        
+        # Set config if old one exists
+        old_config_dict = self.data.config # could be empty dict if no config was set
+        self.config = Config(**old_config_dict) # Make config the same as old config, or generates a new empty one
 
         # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
         if velocities is not None:
             if velocities.ndim != 1:
                 raise ValueError("'velocities' must be a one-dimensional array")
         # data.velocities defaults to None in Data class, can be set in ACID function
-        self.velocities = velocities if velocities is not None else self.data.velocities
+        self.data.velocities = self.data.velocities if self.data.velocities is not None else velocities
 
-        self.config_dict = {
-            "linelist_path"  : linelist_path,
-            "telluric_lines" : telluric_lines,
-            "name"           : name,
-            "verbose"        : verbose,
-            "seed"           : seed,
-            "order_range"    : [1], # Define default order range, can be overwritten in ACID_HARPS
-        }
-        self.config = Config(**self.config_dict)
+        # Make verbosity always an int regardless of input type, and check correct range
+        if getattr(self.config, "verbose", None) is None:
+            if verbose is True:
+                verbose = 2
+            elif verbose is False:
+                verbose = 0
+            elif isinstance(verbose, int):
+                if verbose < 0 or verbose > 3:
+                    raise ValueError("verbose must be an integer between 0 and 3")
+            self.config.verbose = verbose
 
-        # If data already had a config, load that. Includes ACID run settings as well. 
-        old_config_dict = self.data.config # could be empty dict if no config was set
-        self.config.update_hipri(**old_config_dict) # Save the full config, old config overwrites new
-        self.data.config = self.config.to_dict() # Save to dataclass, dataclass config is stored as dict
+        # Validate linelist inputs
+        if getattr(self.config, "linelist_path", None) is None:
+            if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
+                raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist_path' must be provided.")
+            if linelist_path is None and (linelist_wl is None or linelist_depths is None):
+                raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+            if linelist_wl is not None:
+                # In this case both linelist_wl and linelist_depths were provided as checked in the two above statements
+                linelist_wl     = np.array(linelist_wl)
+                linelist_depths = np.array(linelist_depths)
+                if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
+                    raise ValueError("'linelist_wl' and 'linelist_depths' must be a one-dimensional array or list")
+                if linelist_wl.shape != linelist_depths.shape:
+                    raise ValueError("'linelist_wl' and 'linelist_depths' must have the same length and shape")
+            # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
+            # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
+            if linelist_path is None:
+                linelist_path = {"wavelengths": linelist_wl, "depths": linelist_depths}
+            self.config.linelist_path = linelist_path
 
-        # Set the random seed
-        np.random.seed(self.config.seed)
+        # Define telluric_lines with defaults if not input, check type if it is
+        if getattr(self.config, "telluric_lines", None) is None:
+            if telluric_lines is None:
+                telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
+                                5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
+            if not isinstance(telluric_lines, (list, np.ndarray)):
+                raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
+                "mask in angstroms (could be empty or single-valued)")
+            telluric_lines = np.array(telluric_lines)
+            if telluric_lines.ndim != 1 or telluric_lines.size == 0:
+                raise ValueError("telluric_lines must be a one-dimensional array or list")
+            self.config.telluric_lines = telluric_lines
+
+        # Set seed if not already done in config, in this way, seed is only explicitly set once
+        if getattr(self.config, "seed", None) is None:
+            self.config.seed = seed
+            np.random.seed(seed)
+
+        # Name is also added to config
+        self.config.name = name if getattr(self.config, "name", None) is None else self.config.name
+
+        # Default order range for ACID, can be updated in ACID_HARPS. Eventually will add option to add this to inputs
+        self.config.order_range = [1]
+
+        # Save config to data class
+        self.data.config = self.config.to_dict()
+
+        # Determine if running in SLURM environment, independent of any previous configs
+        self.slurm = "SLURM_JOB_ID" in os.environ
 
         self.sampler = None # sampler is a uniquely ACID attribute, so set here as needed in Results class
 
@@ -297,12 +302,12 @@ class Acid:
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
-        if self.velocities is None:
+        if self.data.velocities is None:
             if self.config.verbose > 0:
                 print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s. " \
                 "It is recommended to input your own velocity grid, especially if you have a different wavelength range or resolution.")
-            self.velocities = utils.calc_deltav(self.data.wavelengths["input"][0])
-        self.data.velocities = self.velocities # Just point to the same array, otherwise self.velocities should be used
+            self.data.velocities = utils.calc_deltav(self.data.wavelengths["input"][0])
+        self.data.velocities = self.data.velocities # Just point to the same array, otherwise self.data.velocities should be used
 
         # Initiates all_frames variable, which is used to store the results of the MCMC sampling.
         # If an all_frames array is provided, this is used, otherwise a new one is created with the correct shape.
@@ -394,28 +399,28 @@ class Acid:
             self.residual_mask() # will eventually add options for this
 
         ## Setting number of walkers and their start values(pos)
-        self.ndim = len(self.data.model_inputs)
+        self.data.ndim = len(self.data.model_inputs)
         factor = 3 # emcee recommendation
-        self.nwalkers = self.ndim * factor
+        self.data.nwalkers = self.data.ndim * factor
         rng = np.random.default_rng(self.config.seed)
 
         ### starting values of walkers with independent variation
         sigma = 0.8 * 0.005
         initial_state = []
-        for i in range(0, self.ndim):
-            if i < len(self.velocities):
-                pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
+        for i in range(0, self.data.ndim):
+            if i < len(self.data.velocities):
+                pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
             else:
                 x1 = self.data.model_inputs[i]
                 rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
                 sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
+                pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
             initial_state.append(pos)
 
         if self.config.deterministic_profile is True:
-            self.ndim = self.config.poly_ord + 1
-            self.nwalkers = self.ndim * factor
-            initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
+            self.data.ndim = self.config.poly_ord + 1
+            self.data.nwalkers = self.data.ndim * factor
+            initial_state = np.array(initial_state)[-self.data.ndim:, :self.data.nwalkers]
 
         # Transpose initial state to have shape (nwalkers, ndim) for emcee
         initial_state = np.transpose(np.array(initial_state))
@@ -429,8 +434,8 @@ class Acid:
             print('ACID Configuration before MCMC run:')
             print(f"Polynomial order: {self.config.poly_ord}")
             print(f"Deterministic profile: {self.config.deterministic_profile}")
-            print(f"Number of walkers: {self.nwalkers}")
-            print(f"Number of dimensions: {self.ndim}")
+            print(f"Number of walkers: {self.data.nwalkers}")
+            print(f"Number of dimensions: {self.data.ndim}")
 
         # Run MCMC
         self._run_mcmc(initial_state, nsteps)
@@ -543,8 +548,8 @@ class Acid:
                 hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
                 if order == self.config.order_range[0]:
                     BJDs.append(fits_file[0].header['ESO DRS BJD'])
-                hdr['CRVAL1'] = np.min(self.velocities)
-                hdr['CDELT1'] = self.velocities[1] - self.velocities[0]
+                hdr['CRVAL1'] = np.min(self.data.velocities)
+                hdr['CDELT1'] = self.data.velocities[1] - self.data.velocities[0]
 
                 profile = self.data.all_frames[frame_no, order-min(self.config.order_range), 0]
                 profile_err = self.data.all_frames[frame_no, order-min(self.config.order_range), 1]
@@ -856,7 +861,7 @@ class Acid:
             plt.show()
 
             plt.figure(figsize=(10, 6))
-            plt.plot(self.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
+            plt.plot(self.data.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
             plt.title('LSD Profile after Residual Masking')
             plt.xlabel('Velocity (km/s)')
             plt.ylabel('LSD Profile')
@@ -898,8 +903,8 @@ class Acid:
         ]
 
         sampler_kwargs = {
-            "nwalkers"   : self.nwalkers,
-            "ndim"       : self.ndim,
+            "nwalkers"   : self.data.nwalkers,
+            "ndim"       : self.data.ndim,
             "moves"      : moves,
             "backend"    : backend,
         }
@@ -1081,7 +1086,7 @@ class Acid:
 
         return spectrum, spec_errors
 
-    def _continue_sampling(
+    def continue_sampling(
         self,
         sampler,
         nsteps        : int|npint,
