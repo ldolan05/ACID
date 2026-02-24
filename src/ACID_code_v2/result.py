@@ -325,8 +325,8 @@ class Result:
 
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
-        samples = self.sampler.get_chain(discard=burnin, thin=int(thin))
-        steps = np.arange(samples.shape[0]) * thin + burnin
+        samples = self.sampler.get_chain(thin=int(thin))
+        steps = np.arange(samples.shape[0]) * thin
 
         indices_to_plot = [-1,-2,-3,-4]
         labels = ["a", "b", "c", "d"]
@@ -340,7 +340,7 @@ class Result:
         fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         for i in range(naxes):
             ax[i].plot(steps, samples[:, :, indices_to_plot[i]], "k", alpha=0.3)
-            # ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
+            ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
             ax[i].set_ylabel(labels[i])
         ax[-1].legend()
         ax[-1].set_xlabel("Step number")
@@ -720,22 +720,28 @@ class Result:
             contextlib.redirect_stderr(devnull):
             self.tau = self.sampler.get_autocorr_time(quiet=True)
         
+        converged = True
         if self.nsteps < 50 * np.max(self.tau):
+            converged = False
             if self.config.verbose>1:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
                 "time.\n The sampler may not have converged. Consider running more steps or checking " \
                 f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
-                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.")
+                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}. Disabling burnin " \
+                f"from autocorrelation time, instead using burnin=steps-1000")
 
         try:
-            self.burnin = int(2 * np.max(self.tau))
             self.thin = int(np.min(self.tau)/5)
+            if converged:
+                self.burnin = int(2 * np.max(self.tau))
+            else:
+                self.burnin = self.nsteps - 1000 # just the last 1000 steps
         except:
             if self.config.verbose>0:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
                 f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
-                f" wrong. Setting burnin=0 and thin=1.")
-            self.burnin = 0
+                f" wrong. Setting burnin=nsteps-1000, and thin=1.")
+            self.burnin = self.nsteps - 1000 # just the last 1000 steps
             self.thin = 1
 
         # Samples if burnin and thin dont need inputs
