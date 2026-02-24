@@ -1,6 +1,6 @@
 import warnings
 warnings.filterwarnings("ignore")
-import sys, emcee, os, time, inspect, contextlib, inspect
+import sys, emcee, os, time, inspect, inspect
 import numpy as np
 from math import log10, floor
 from astropy.io import fits
@@ -425,6 +425,12 @@ class Acid:
         self.data.initialisation_time = time.time() - init_t0
         if self.config.verbose>1:
             print('Initialised in %ss'%round((self.data.initialisation_time), 3))
+        if self.config.verbose>2:
+            print('ACID Configuration before MCMC run:')
+            print(f"Polynomial order: {self.config.poly_ord}")
+            print(f"Deterministic profile: {self.config.deterministic_profile}")
+            print(f"Number of walkers: {self.nwalkers}")
+            print(f"Number of dimensions: {self.ndim}")
 
         # Run MCMC
         self._run_mcmc(initial_state, nsteps)
@@ -432,7 +438,7 @@ class Acid:
         self.data.mcmc_time = time.time() - init_t0 - self.data.initialisation_time
 
         # Result class handles the results
-        if self.config.run_mcmc:    
+        if self.config.run_mcmc:
             return Result(self)
         else:
             if self.config.verbose > 0:

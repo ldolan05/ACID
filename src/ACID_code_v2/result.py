@@ -336,6 +336,7 @@ class Result:
             labels.append(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
 
         naxes = len(indices_to_plot)
+        print(naxes)
 
         fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         for i in range(naxes):
@@ -689,13 +690,6 @@ class Result:
         filename : str, optional
             Name of the file to save the Result object to, by default "result.pkl"
         """
-        
-        nframes = len(self.all_frames) if self.all_frames is not None else 0
-        norders = len(self.all_frames[0]) if self.all_frames is not None else 0
-
-        if nframes > 1 or norders > 1:
-            print("Discarding Acid object to allow for pickling of multiple frames/orders.")
-            self.Acid = None
 
         with open(filename, "wb") as f:
             pickle.dump(self, f)
@@ -781,6 +775,6 @@ class Result:
         else:
             obj = result_object
         obj.__class__ = cls
-        if obj.verbose>0:
+        if obj.config.verbose>0:
             print("Result object loaded")
         return obj
