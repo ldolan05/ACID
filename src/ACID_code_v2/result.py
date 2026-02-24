@@ -706,6 +706,8 @@ class Result:
         self.sampler = sampler if sampler is not None else self.sampler
         if self.sampler is None:
             raise ValueError("A sampler must be provided in initialisation or in method call")
+        if sampler is None:
+            return # sampler already initiated from initialisation, so skip the rest of the method
 
         self.ndim = self.sampler.ndim
         self.nwalkers = self.sampler.nwalkers
@@ -752,6 +754,8 @@ class Result:
         self.data = data if data is not None else getattr(self, "data", None)
         if self.data is None:
             raise ValueError("A Data object must be provided in initialisation or in method call")
+        if data is None:
+            return # data already initiated from initialisation, so skip the rest of the method
 
         self.all_frames = self.data.all_frames
 

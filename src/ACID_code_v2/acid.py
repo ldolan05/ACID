@@ -506,7 +506,7 @@ class Acid:
         if order_range is None:
             # Be default, class is initialised with order_range = [1] for HARPS, this part forces
             # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
-            self.config.order_range = np.arange(10, 70)
+            order_range = np.arange(10, 70)
 
         self.config.order_range = np.array(order_range) # Makes sure order range is an array regardless of input type
         self.file_type = file_type
@@ -546,15 +546,15 @@ class Acid:
                 hdr['CRVAL1'] = np.min(self.velocities)
                 hdr['CDELT1'] = self.velocities[1] - self.velocities[0]
 
-                profile = self.all_frames[frame_no, order-min(self.config.order_range), 0]
-                profile_err = self.all_frames[frame_no, order-min(self.config.order_range), 1]
+                profile = self.data.all_frames[frame_no, order-min(self.config.order_range), 0]
+                profile_err = self.data.all_frames[frame_no, order-min(self.config.order_range), 1]
 
                 hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
                 if save_path != 'no save':
                     month = 'August2007'
                     hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.config.name), output_verify='fix', overwrite='True')
 
-            result1, result2 = self.combineprofiles(self.all_frames[frame_no, :, 0], self.all_frames[frame_no, :, 1])
+            result1, result2 = self.combineprofiles(self.data.all_frames[frame_no, :, 0], self.data.all_frames[frame_no, :, 1])
             profiles.append(result1)
             errors.append(result2)
 
@@ -960,7 +960,7 @@ class Acid:
         ):
         # read in first frame
         fluxes, wavelengths, flux_error_order, sn = LSD().blaze_correct(
-            file_type, 'order', order, filelist[0], directory, 'unmasked', self.name, 'y')
+            file_type, 'order', order, filelist[0], directory, 'unmasked', self.config.name, 'y')
         # fluxes, wavelengths, flux_error_order, sn, mid_wave_order, telluric_spec, overlap = LSD.blaze_correct(
         #     file_type, 'order', order, filelist[0], directory, 'unmasked', self.config.name, 'y')
 

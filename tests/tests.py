@@ -23,7 +23,7 @@ def test_run_e2ds():
 
     # run ACID on e2ds files
     ACID_results_e2ds = acid.ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
-                                        order_range=np.arange(41, 43), nsteps=2000)
+                                        order_range=np.arange(41, 43), nsteps=2000, skips=3)
     return ACID_results_e2ds
 
 def test_run_s1d():
@@ -36,7 +36,7 @@ def test_run_s1d():
 
     # run ACID on s1d files
     ACID_results_s1d = acid.ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
-                                       order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000)
+                                       order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000, skips=3)
     return ACID_results_s1d
 
 skips = 5
@@ -270,11 +270,11 @@ def no_profile_fit():
     result.plot_walkers()
     return result
 
-q_res = quickstart()
-mf_res = multiple_frames()
-mo_res = multiple_orders()
-res_e2ds = test_run_e2ds()
-res_s1d = test_run_s1d()
+# q_res = quickstart()
+# mf_res = multiple_frames()
+# mo_res = multiple_orders()
+# res_e2ds = test_run_e2ds()
+# res_s1d = test_run_s1d()
 classes_res = classes_test()
 classes_res.continue_sampling(nsteps=2000)
 classes_res.plot_walkers()
