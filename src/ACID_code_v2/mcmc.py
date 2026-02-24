@@ -10,10 +10,10 @@ from numpy.polynomial import polynomial as P
 # support, without it, the fork method would need to reserialize everything
 # which is very inefficient. See parallelization in the emcee documentation
 # for more details.
-def _mp_init_worker(global_data):
+def _mp_init_worker(data):
     """Initializes each worker process with global data."""
     global _MCMC
-    _MCMC = MCMC(**global_data)
+    _MCMC = MCMC(data)
 
 def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
@@ -30,7 +30,7 @@ class MCMC:
             alpha       : np.ndarray      = None,
             velocities  : np.ndarray|None = None,
             c_factor                      = None,
-            fit_profile : bool            = True,
+            deterministic_profile : bool            = False,
             seed        : int|npint|None  = None,
         ):
         """Initialise MCMC functions with necessary data.
@@ -53,7 +53,7 @@ class MCMC:
             function, by default None.
         c_factor : optional
             Precomputed c_factor for LSD profile calculation, by default None.
-        fit_profile : bool, optional
+        deterministic_profile : bool, optional
             Whether to fit the full profile (True) or use the fast model (False), by default True.
         seed : int|npint|None, optional
             Random seed for reproducibility, by default None.
@@ -64,13 +64,13 @@ class MCMC:
         if isinstance(x_or_data, Data):
             data = x_or_data
             self.x = data.wavelengths["masked"]
-            self.y = data.spectrum["masked"]
-            self.yerr = data.error["masked"]
+            self.y = data.flux["masked"]
+            self.yerr = data.errors["masked"]
             self.alpha = data.alpha
             self.velocities = data.velocities
             self.c_factor = data.c_factor
-            self.fit_profile = data.fit_profile
-            self.seed = data.seed
+            self.deterministic_profile = data.config["deterministic_profile"]
+
         else:
             self.x = x_or_data
             self.y = y
@@ -78,8 +78,7 @@ class MCMC:
             self.alpha = alpha
             self.velocities = velocities
             self.c_factor = c_factor
-            self.fit_profile = fit_profile
-            self.seed = seed
+            self.deterministic_profile = deterministic_profile
         
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
@@ -88,17 +87,17 @@ class MCMC:
         a, b = utils.get_normalisation_coeffs(self.x)
         self.u = (a * self.x) + b
 
-        # Configure whether to use full or fast model
-        if self.fit_profile:
-            self.model_function = self.full_func # include profile fitting
+        # Configure whether to use full or deterministic model
+        if self.deterministic_profile is False:
+            self.model_function = self.full_model # include profile fitting
         else:
-            self.model_function = self.fast_func # infer profile points from continuum
+            self.model_function = self.deterministic_model # infer profile points from continuum
     
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
         return self.log_probability(*args, **kwargs)
 
-    def full_func(self, theta):
+    def full_model(self, theta):
         """Full model for mcmc - takes all inputs (profile points + continuum coefficents)
         to create a model spectrum.
 
@@ -127,13 +126,13 @@ class MCMC:
 
         return mdl, z
 
-    def fast_func(self, theta):
-        """Fast model for mcmc - takes only continuum coefficents and scale factor
+    def deterministic_model(self, theta):
+        """Deterministic model for mcmc - takes only continuum coefficents and scale factor
         to create a model spectrum, solving for the profile points (z) directly.
 
         Parameters
         ----------
-        inputs : array-like
+        theta : array-like
             Model parameters: continuum polynomial coefficients followed by scale factor.
         
         Returns
@@ -222,9 +221,10 @@ class MCMC:
         """
         forward, z = self.model_function(theta)
     
-        lp = self.log_prior(z)
-        if not np.isfinite(lp):
-            return -np.inf
+        # lp = self.log_prior(z)
+        # if not np.isfinite(lp):
+        #     return -np.inf
+        lp = 0
 
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))

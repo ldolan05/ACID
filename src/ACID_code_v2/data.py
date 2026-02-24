@@ -3,17 +3,23 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 import numpy as np
 from . import utils
-from .result import Result
 
 class Config:
     """A simple class to store the configuration of the ACID run."""
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
-    def update(self, **kwargs) -> None:
+    def update_hipri(self, **kwargs) -> None:
+        # Update the config with new values, overwriting existing keys if they exist
         self.__dict__.update(kwargs)
 
-    def to_dict(self) -> dict[str]:
+    def update_lowpri(self, **kwargs) -> None:
+        # Update the config with new values, but do not overwrite existing keys if they exist
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
+    def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
 
 @dataclass(slots=True)
@@ -40,6 +46,7 @@ class Data:
 
     # Data required/calculated in results
     all_frames  : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
+    nsteps      : Optional[int]        = None
 
     # Other useful data:
     initialisation_time : Optional[float] = None
@@ -85,10 +92,10 @@ class Data:
         if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
-        # Attempt to convert input spectra to be within 0 and 1 if they are not already and warning if this is the case
+        # Attempt to convert input spectra to be above 0 if they are not already and warning if this is the case
         if np.any(input_flux <= 0):
             if self.verbose > 1:
-                print("Input spectra contain values <= 0. ACID will attempt to rescale inputs, and mask " \
+                print("Input spectra contain flux values <= 0. ACID will attempt to rescale inputs, and mask " \
                 f"negative values.\nHowever, it is recommended to input spectra that are already normalised and positive. " \
                 f"Please check your data.\nYou can check acid.scale_spectra for more information on how this is done.")
             input_flux, input_errors = utils.scale_spectra(input_flux, input_errors)
@@ -104,8 +111,11 @@ class Data:
             "not an array of S/N values for each pixel. " \
             "The shape of the input input_sn does not match the number of frames in input_flux.")
 
-        # Apply skips
-        self.apply_skips(skips)
+        # Apply skips and set inputs to class variables
+        self.wavelengths["input"] = input_wavelengths[:, ::skips]
+        self.flux["input"]        = input_flux[:, ::skips]
+        self.errors["input"]      = input_errors[:, ::skips]
+        self.sn["input"]          = input_sn
         
     def initiate_all_frames(self, all_frames: np.ndarray) -> None:
         """Initiates the all_frames variable, used in the ACID method, to eventually store the results of the MCMC sampling.
@@ -125,19 +135,14 @@ class Data:
             if self.all_frames is None:
                 # By default order_range is [1], so len(self.order_range) = 1, which is same as original
                 # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
-                self.all_frames = np.zeros((len(self.flux["input"]), len(self.order_range), 2, len(self.velocities)))
+                self.all_frames = np.zeros((len(self.flux["input"]), len(self.config["order_range"]), 2, len(self.velocities)))
         else:
             self.all_frames = all_frames
-        if isinstance(self.all_frames, Result):
-            self.all_frames = self.all_frames.all_frames
+        if isinstance(self.all_frames, object):
+            from .result import Result
+            if isinstance(self.all_frames, Result):
+                self.all_frames = self.all_frames.all_frames
         if not isinstance(self.all_frames, np.ndarray):
             raise TypeError("'all_frames' must be a numpy array")
         if not self.all_frames.ndim == 4:
             raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
-    
-    def apply_skips(self, skips: int) -> None:
-        if skips <= 1:
-            return
-        self.wavelengths["input"] = self.wavelengths["input"][:, ::skips]
-        self.flux["input"]        = self.flux["input"][:, ::skips]
-        self.errors["input"]      = self.errors["input"][:, ::skips]

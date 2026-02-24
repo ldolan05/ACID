@@ -20,21 +20,27 @@ class LSD:
     for the initial parameters of the ACID mcmc run and for obtaining final profiles. It 
     can also be used as a standalone LSD implementation.
     """
-    def __init__(self, Acid:object|None=None):
-        """Intilialises the LSD class, optionally with an ACID instance to take parameters from.
+    def __init__(self, Data:object|None=None):
+        """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
         Parameters
         ----------
-        Acid : object | None, optional
-            The Acid instanse to draw parameters from, by default None
+        Data : object | None, optional
+            A data instance to draw parameters and configs from, by default None
         """
-        self.verbose          = getattr(Acid, 'verbose', 2) # class default of 2
         self.slurm            = "SLURM_JOB_ID" in os.environ
-        self.velocities       = getattr(Acid, 'velocities', None)
-        self.linelist         = getattr(Acid, 'linelist_path', None)
-        self.order            = getattr(Acid, 'order', None)
-        self.run_name         = getattr(Acid, 'name', None)
-        self.adjust_continuum = None
+        self.velocities       = getattr(Data, 'velocities', None)
+        # Need a silent try-except loop in case None actually is passed
+        try:
+            self.linelist         = Data.config.get('linelist_path', None)
+            self.order            = Data.config.get('order', None)
+            self.run_name         = Data.config.get('name', None)
+            self.verbose          = Data.config.get('verbose', 2) # class default of 2
+        except:
+            self.linelist         = None
+            self.order            = None
+            self.run_name         = None
+            self.verbose          = 2 # class default of 2
 
     def run_LSD(
         self,
@@ -100,7 +106,7 @@ class LSD:
         self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
 
         # Convert profile back to flux if needed
-        self.profile_F, self.profile_errors_f = utils.od_to_flux(self.profile, self.profile_errors)
+        self.profile_F, self.profile_errors_F = utils.od_to_flux(self.profile, self.profile_errors)
 
         return
 

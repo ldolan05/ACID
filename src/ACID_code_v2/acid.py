@@ -114,17 +114,8 @@ class Acid:
         if telluric_lines.ndim != 1 or telluric_lines.size == 0:
             raise ValueError("telluric_lines must be a one-dimensional array or list")
 
-        # Define default order range, can be overwritten in ACID_HARPS
-        self.config.order_range = [1]
-
         # Determine if running in SLURM environment
         self.slurm = "SLURM_JOB_ID" in os.environ
-
-        # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
-        if velocities is not None:
-            if velocities.ndim != 1:
-                raise ValueError("'velocities' must be a one-dimensional array")
-        self.data.velocities = velocities if velocities is not None else self.data.velocities
 
         # Initialise the data class to store calculations in ACID
         if data is not None:
@@ -132,23 +123,32 @@ class Acid:
         else:
             self.data = Data()
 
-        self.config = {
-            "velocities"     : self.velocities,
-            "linelist_path"  : self.linelist_path,
-            "telluric_lines" : self.telluric_lines,
-            "name"           : self.name,
-            "verbose"        : self.verbose,
-            "seed"           : self.seed,
-            "order_range"    : self.order_range,
+        # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
+        if velocities is not None:
+            if velocities.ndim != 1:
+                raise ValueError("'velocities' must be a one-dimensional array")
+        # data.velocities defaults to None in Data class, can be set in ACID function
+        self.velocities = velocities if velocities is not None else self.data.velocities
+
+        self.config_dict = {
+            "linelist_path"  : linelist_path,
+            "telluric_lines" : telluric_lines,
+            "name"           : name,
+            "verbose"        : verbose,
+            "seed"           : seed,
+            "order_range"    : [1], # Define default order range, can be overwritten in ACID_HARPS
         }
+        self.config = Config(**self.config_dict)
 
         # If data already had a config, load that. Includes ACID run settings as well. 
-        old_config = self.data.config # could be empty dict if no config was set
-        self.config = {**self.config, **old_config} # Save the full config, old config overwrites new
-        self.data.config = self.config.to_dict() # Save to dataclass
+        old_config_dict = self.data.config # could be empty dict if no config was set
+        self.config.update_hipri(**old_config_dict) # Save the full config, old config overwrites new
+        self.data.config = self.config.to_dict() # Save to dataclass, dataclass config is stored as dict
 
         # Set the random seed
         np.random.seed(self.config.seed)
+
+        self.sampler = None # sampler is a uniquely ACID attribute, so set here as needed in Results class
 
         return
 
@@ -164,7 +164,7 @@ class Acid:
         input_errors,
         input_sn                              = None,
         all_frames                            = None,
-        deterministic_profile :bool           = True,
+        deterministic_profile :bool           = False,
         poly_ord              :int|npint      = 3,
         pix_chunk             :int|npint      = 20,
         dev_perc              :int|npint      = 25,
@@ -292,7 +292,7 @@ class Acid:
         }
 
         # Update config if any of the above config settings are new
-        self.config = {**ACID_config, **self.config} # self.config overwrites ACID if overlapped
+        self.config.update_lowpri(**ACID_config) # self.config overwrites ACID_config if overlapping
         self.data.config = self.config.to_dict() # update dataclass config as well
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
@@ -302,7 +302,7 @@ class Acid:
                 print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s. " \
                 "It is recommended to input your own velocity grid, especially if you have a different wavelength range or resolution.")
             self.velocities = utils.calc_deltav(self.data.wavelengths["input"][0])
-            self.data.velocities = self.velocities # Just point to the same array, otherwise self.velocities should be used
+        self.data.velocities = self.velocities # Just point to the same array, otherwise self.velocities should be used
 
         # Initiates all_frames variable, which is used to store the results of the MCMC sampling.
         # If an all_frames array is provided, this is used, otherwise a new one is created with the correct shape.
@@ -318,12 +318,12 @@ class Acid:
         # As of 1.0.4, this generates self.wavelengths["combined"], self.flux["combined"], self.errors["combined"]
         # As of 1.4.0, this now instead goes to the data class, so generates self.data.wavelengths["combined"], etc.
         # As of 1.4.0, this procedure is skipped if the outputs already exists in self.data to avoid recalculation
-        if all(
+        if all((
             hasattr(self.data.wavelengths, "combined"),
             hasattr(self.data.flux, "combined"),
             hasattr(self.data.errors, "combined"),
             hasattr(self.data.sn, "combined")
-        ):
+        )):
             if self.config.verbose > 2:
                 print("Combined spectra already exists, skipping combination step.")
         else:
@@ -338,11 +338,11 @@ class Acid:
 
         # Compute an initial continuum fit
         # poly inputs has polynomial coefficients and scale at the end
-        if all(
+        if all((
             hasattr(self.data.flux, "fitted"),
             hasattr(self.data.errors, "fitted"),
             self.data.poly_inputs is not None
-        ):
+        )):
             if self.config.verbose > 2:
                 print("Continuum fit already exists, skipping initial fit step.")
         else:
@@ -356,17 +356,17 @@ class Acid:
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
 
-        if all(
+        if all((
             self.data.model_inputs is not None,
             self.data.alpha is not None
-        ):
+        )):
             if self.config.verbose > 1:
                 print("Initial LSD profile already exists, skipping initial LSD step.")
         else:
             if self.config.verbose > 1:
                 print("Calculating initial LSD profile...")
             # Get the initial LSD profile using the initial fit
-            initial_LSD = LSD(self) # Initialise LSD class with standard Acid attributes (verbosity, linelist, velocities, etc)
+            initial_LSD = LSD(self.data) # Initialise LSD class with standard Acid attributes (verbosity, linelist, velocities, etc)
             initial_LSD.run_LSD(self.data.wavelengths["fitted"], self.data.flux["fitted"], self.data.errors["fitted"], self.data.sn["fitted"])
 
             # Use alpha matrix and initial profile class variables from initial LSD run
@@ -382,10 +382,10 @@ class Acid:
         # Sets: self.c_factor, self.residual_masks
         # Modifies: self.alpha, self.yerr
         # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
-        if all(
+        if all((
             self.data.residual_masks is not None,
             self.data.c_factor is not None
-        ):
+        )):
             if self.config.verbose > 1:
                 print("Residual masks already exists, skipping residual masking step.")
         else:
@@ -412,7 +412,7 @@ class Acid:
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.nwalkers, ))
             initial_state.append(pos)
 
-        if self.deterministic_profile is False:
+        if self.config.deterministic_profile is True:
             self.ndim = self.config.poly_ord + 1
             self.nwalkers = self.ndim * factor
             initial_state = np.array(initial_state)[-self.ndim:, :self.nwalkers]
@@ -432,7 +432,12 @@ class Acid:
         self.data.mcmc_time = time.time() - init_t0 - self.data.initialisation_time
 
         # Result class handles the results
-        return Result(self)
+        if self.config.run_mcmc:    
+            return Result(self)
+        else:
+            if self.config.verbose > 0:
+                print("MCMC not run, returning None. Class attributes have been updated.")
+            return None
 
     def ACID_HARPS(
         self,
@@ -756,14 +761,14 @@ class Acid:
         yerr = self.data.errors["combined"]
         x_norm = self.data.wavelengths["combined_normalized"]
 
-        forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_func(self.data.model_inputs)
+        forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
 
         data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
         residuals = data_normalised - forward_normalised
         
         ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
-        idx = (abs(residuals) > self.dev_perc / 100)
+        idx = (abs(residuals) > self.config.dev_perc / 100)
 
         flag_min = 0
         flag_max = 0
@@ -773,7 +778,7 @@ class Acid:
                 flag_max = value
             elif idx[value] == True and flag_max < value:
                 flag_max = value
-            elif idx[value] == False and flag_max - flag_min >= self.pix_chunk:
+            elif idx[value] == False and flag_max - flag_min >= self.config.pix_chunk:
                 yerr[flag_min:flag_max] = 1e12
                 # print(f"Masking from {x[flag_min]} to {x[flag_max]} due to residuals.")
                 flag_min = value
@@ -804,8 +809,8 @@ class Acid:
         # # TODO! : check what the hell is gong on here with a_old
         # a_old = 1
 
-        upper_clip = m + self.n_sig * sigma
-        lower_clip = m - self.n_sig * sigma
+        upper_clip = m + self.config.n_sig * sigma
+        lower_clip = m - self.config.n_sig * sigma
 
         rcopy = residuals.copy()
 
@@ -818,7 +823,7 @@ class Acid:
         a, b = utils.get_normalisation_coeffs(x)
         poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.config.poly_ord, plot_result=False)
 
-        LSD_masking = LSD(self)
+        LSD_masking = LSD(self.data)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
         # profile = LSD_masking.profile
         self.data.alpha = LSD_masking.alpha
@@ -873,11 +878,11 @@ class Acid:
                 raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
             backend = self.sampler.backend # This includes previous seed
 
-        if self.cores is None:
+        if self.config.cores is None:
             if self.slurm:
-                self.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
+                self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
-                self.cores = os.cpu_count()
+                self.config.cores = os.cpu_count()
         
         moves = [
             (emcee.moves.StretchMove(), 0.20),
@@ -899,10 +904,18 @@ class Acid:
             "store"        : True,
         }
 
-        if self.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+        if self.config.parallel and sys.platform == "win32":
+            if self.config.verbose > 0:
+                # This doesn't work, needs serious modifications to make work, so just run serially for now
+                print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
+            self.config.parallel = False
+
+        if self.config.parallel:
+            # old_omp = os.environ.get("OMP_NUM_THREADS", None) # store old OMP_NUM_THREADS value to reset later
+            # os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+            
             if self.config.verbose>1:
-                print(f"Using {self.cores} cores for MCMC")
+                print(f"Using {self.config.cores} cores for MCMC")
 
             # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
             # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
@@ -910,14 +923,11 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             if sys.platform != "win32":
                 ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
+                with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
                     self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                     self.sampler.run_mcmc(**mcmc_kwargs)
 
-            else: # This doesn't work, needs serious modifications to make work
-                raise NotImplementedError("Parallel MCMC on Windows is not currently supported.")
-
-            os.environ["OMP_NUM_THREADS"] = "None" # reset OMP threads 
+            # os.environ["OMP_NUM_THREADS"] = str(old_omp)
 
         else:
             MCMC = mcmc.MCMC(self.data)

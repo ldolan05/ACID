@@ -11,7 +11,6 @@ from .lsd import LSD
 from . import mcmc
 from . import utils
 from .data import Data
-from .acid import Acid
 from .data import Config
 
 warnings.filterwarnings("ignore")
@@ -23,7 +22,7 @@ def _require_all_frames(method):
         if self.all_frames is None:
             name = method.__qualname__
             if self.sampler is not None and self.data is not None:
-                if self.verbose>0:
+                if self.config.verbose>0:
                     print(f"Note: The Result object was created without all_frames processed. " \
                         f"Running {name} requires all results to be processed, " \
                         "so process_results() will be called automatically...")
@@ -107,10 +106,11 @@ class Result:
         # production_run : bool, optional
         #     Whether Acid was run in production mode, by default False
         """
-
+        obj = Acid_or_Data_or_Sampler
         self.sampler    = None
         self.data       = None
         self.all_frames = None
+        self.config     = Config() # default config, will be updated if Acid or Data object is provided
 
         if verbose is True:
             verbose = 2
@@ -121,32 +121,37 @@ class Result:
                 verbose = Acid_or_Data_or_Sampler.verbose
             else:
                 verbose = 2 # the default
-        self.verbose = verbose
+        self.config.verbose = verbose
 
-        if isinstance(Acid_or_Data_or_Sampler, Acid):
-            acid = Acid_or_Data_or_Sampler
+        if hasattr(obj, "data") and hasattr(obj, "config") and hasattr(obj, "sampler"):
+            # The above line is only all true if an Acid object (as they are set in initialisation), 
+            # the sampler and data classes do not store all 3
+            acid = obj
             self.initiate_data(acid.data)
             self.config = acid.config
             self.initiate_sampler(acid.sampler)
-        elif isinstance(Acid_or_Data_or_Sampler, Data):
-            data = Acid_or_Data_or_Sampler
+        elif isinstance(obj, Data):
+            data = obj
             self.initiate_data(data)
             self.config = Config(**data.config) # config is stored as dict in Data instance
             if sampler is not None:
                 self.initiate_sampler(sampler)
-        elif isinstance(Acid_or_Data_or_Sampler, EnsembleSampler):
-            self.initiate_sampler(Acid_or_Data_or_Sampler)
-            if self.verbose>0:
+        elif isinstance(obj, EnsembleSampler):
+            self.initiate_sampler(obj)
+            if self.config.verbose>0:
                 print("Warning: Data object not provided. Result object will not be fully functional.")
             return
-        
+        else:
+            raise ValueError("First argument must be an Acid object, Data object, or emcee.EnsembleSampler object. "
+                             f"Got {type(obj)} instead.")
+
         # From this point, a Data instance is provided and can be drawn from, but sampler may or may not be provided.
         # All frames must be available as a Result class variable due to legacy behaviour. Once created, we can point
         # Data.all_frames to Result.all_frames to keep them in sync.
         if process_results:
             self.process_results() # sets self.data.all_frames, and points self.all_frames to self.data.all_frames
         else:
-            if self.verbose>0:
+            if self.config.verbose>0:
                 print("Warning: Results not processed. all_frames attribute will not be available until " \
                 "Result.process_results() is called.")
 
@@ -154,9 +159,9 @@ class Result:
         self.ACID_HARPS = ACID_HARPS
 
         # Only takes if ACID_HARPS was run, otherwise all None
-        self.BJDs = getattr(Acid_or_Data_or_Sampler, 'BJDs', None)
-        self.profiles = getattr(Acid_or_Data_or_Sampler, 'profiles', None)
-        self.errors = getattr(Acid_or_Data_or_Sampler, 'errors', None)
+        self.BJDs = getattr(obj, 'BJDs', None)
+        self.profiles = getattr(obj, 'profiles', None)
+        self.errors = getattr(obj, 'errors', None)
 
     @_require_data
     @_require_sampler
@@ -172,7 +177,7 @@ class Result:
             burnin = int(2 * np.max(self.tau))
             thin = int(np.min(self.tau)/5)
         except:
-            if self.verbose>0:
+            if self.config.verbose>0:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
                 f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
                 f" wrong. Setting burnin=0 and thin=1.")
@@ -183,7 +188,7 @@ class Result:
         flat_samples = self.sampler.get_chain(discard=burnin, thin=thin, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
-        nvel = len(self.velocities) if self.fit_profile else 0
+        nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
         errors = np.max(errors, axis=0) # why?
@@ -192,11 +197,11 @@ class Result:
         self.poly_cos      = quartiles[1, nvel:]
         self.poly_cos_err  = errors[nvel:]  
 
-        if self.verbose > 1:
+        if self.config.verbose > 1:
             print('Getting the final profiles...')
 
         # Finding error for the continuum fit
-        norm_wl = self.wavelengths["combined_normalized"]
+        norm_wl = self.data.wavelengths["combined_normalized"]
         coeffs = flat_samples[:, nvel:]
         ncoeffs = coeffs.shape[1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
@@ -204,21 +209,21 @@ class Result:
 
         continuum_error = np.std(np.array(conts), axis=0)  
 
-        for counter in range(len(self.flux["input"])):
-            flux = np.copy(self.flux["input"][counter])
-            error = np.copy(self.errors["input"][counter])
-            wavelengths = np.copy(self.wavelengths["input"][counter])
-            sn = np.copy(self.sn["input"][counter])
+        for counter in range(len(self.data.flux["input"])):
+            flux = np.copy(self.data.flux["input"][counter])
+            error = np.copy(self.data.errors["input"][counter])
+            wavelengths = np.copy(self.data.wavelengths["input"][counter])
+            sn = np.copy(self.data.sn["input"][counter])
 
             # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl1 = P.polyval(norm_wavelengths, self.data.poly_cos)
+            mdl1 = P.polyval(norm_wavelengths, self.poly_cos)
 
             # Masking based off residuals interpolated onto new wavelength grid
-            reference_wave = self.wavelengths["input"][np.argmax(self.sn["input"])]
+            reference_wave = self.data.wavelengths["input"][np.argmax(self.data.sn["input"])]
             mask_pos = np.ones(reference_wave.shape)
-            mask_pos[self.residual_masks]=1e12
+            mask_pos[self.data.residual_masks]=1e12
             f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
             interp_mask_pos = f2(wavelengths)
             interp_mask_idx = tuple([interp_mask_pos>=1e12])
@@ -233,20 +238,18 @@ class Result:
             flux[remove] = 1.
             error[remove] = 1e12
 
-            LSD_profiles = LSD(self)
+            LSD_profiles = LSD(self.data)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
-            # profile_OD = LSD_profiles.profile
-            # profile_errors_OD = LSD_profiles.profile_errors
 
             profile_f = LSD_profiles.profile_F
             profile_errors_f = LSD_profiles.profile_errors_F
             # profile_f = profile_f-1
 
-            self.all_frames[counter, self.order]=[profile_f, profile_errors_f]
+            self.all_frames[counter, self.config.order]=[profile_f, profile_errors_f]
 
         self.data.all_frames = self.all_frames # point Data.all_frames to Result.all_frames to keep them in sync
         self.data.get_profiles_time = time() - t0
-        self.data.total_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
+        self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
 
         return
 
@@ -298,7 +301,7 @@ class Result:
         if process_results:
             self.process_results() # update all_frames
         else:
-            if self.verbose>0:
+            if self.config.verbose>0:
                 print("Warning: Results not processed. all_frames attribute will not be available until " \
                 "Result.process_results() is called.")
 
@@ -696,7 +699,7 @@ class Result:
 
         with open(filename, "wb") as f:
             pickle.dump(self, f)
-        if self.verbose>0:
+        if self.config.verbose>0:
             print(f"Result object saved to {filename}")
 
     def initiate_sampler(self, sampler):
@@ -723,7 +726,7 @@ class Result:
             self.tau = self.sampler.get_autocorr_time(quiet=True)
         
         if self.nsteps < 50 * np.max(self.tau):
-            if self.verbose>1:
+            if self.config.verbose>1:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
                 "time.\n The sampler may not have converged. Consider running more steps or checking " \
                 f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
@@ -733,7 +736,7 @@ class Result:
             self.burnin = int(2 * np.max(self.tau))
             self.thin = int(np.min(self.tau)/5)
         except:
-            if self.verbose>0:
+            if self.config.verbose>0:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
                 f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
                 f" wrong. Setting burnin=0 and thin=1.")
