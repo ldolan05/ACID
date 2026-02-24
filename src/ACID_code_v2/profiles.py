@@ -268,7 +268,7 @@ class Profiles:
         """
         z = ((x - centre) + 1j*gamma) / (sigma * np.sqrt(2))
         voigt_profile = amplitude * np.real(wofz(z)) / (sigma * np.sqrt(2*np.pi))
-        return voigt_profile
+        return voigt_profile + 1
 
     @staticmethod
     def gaussian_func(x, amplitude, mean, stddev):
@@ -290,7 +290,7 @@ class Profiles:
         array_like
             The Gaussian profile evaluated at the input x values.
         """
-        return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2))
+        return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + 1
     
     @staticmethod
     def lorentzian_func(x, amplitude, centre, gamma):
@@ -312,4 +312,4 @@ class Profiles:
         array_like
             The Lorentzian profile evaluated at the input x values.
         """
-        return (amplitude * (gamma**2)) / ((x - centre)**2 + gamma**2)
+        return (amplitude * (gamma**2)) / ((x - centre)**2 + gamma**2) + 1

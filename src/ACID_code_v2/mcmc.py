@@ -182,7 +182,7 @@ class MCMC:
         """
 
         # Hard box prior on each z[i]
-        if np.any((z < -0.5) | (z > 1.5)):
+        if np.any((z < -0.3) | (z > 1.5)):
             return -np.inf
 
         # # excluding the continuum points in the profile (in flux)
@@ -216,10 +216,9 @@ class MCMC:
         """
         forward, z = self.model_function(theta)
     
-        # lp = self.log_prior(z)
-        # if not np.isfinite(lp):
-        #     return -np.inf
-        lp = 0
+        lp = self.log_prior(z)
+        if not np.isfinite(lp):
+            return -np.inf
 
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))

@@ -1220,6 +1220,10 @@ def ACID_HARPS(*args, **kwargs):
         "telluric_lines",
     ]
     RENAMED_LEGACY_ARGS = {
+        "input_wavelengths": "input_wavelengths",
+        "input_spectra": "input_flux",
+        "input_spectral_errors": "input_errors",
+        "frame_sns": "input_sn",
         "vgrid": "velocities",
         "line": "linelist_path",
         "poly_or": "poly_ord",
