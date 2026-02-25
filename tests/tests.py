@@ -309,6 +309,8 @@ def test_edge_cases():
     # to be done later
     pass
 
+print("Starting tests, this will take a 3-5 minutes to run, and a bunch of output will be printed.")
+
 # The first five tests use legacy ACID inputs and calls
 legacy_test()
 
