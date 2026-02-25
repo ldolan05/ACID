@@ -92,16 +92,8 @@ class Acid:
         # data.velocities defaults to None in Data class, can be set in ACID function
         self.data.velocities = self.data.velocities if self.data.velocities is not None else velocities
 
-        # Make verbosity always an int regardless of input type, and check correct range
-        if getattr(self.config, "verbose", None) is None:
-            if verbose is True:
-                verbose = 2
-            elif verbose is False:
-                verbose = 0
-            elif isinstance(verbose, int):
-                if verbose < 0 or verbose > 3:
-                    raise ValueError("verbose must be an integer between 0 and 3")
-            self.config.verbose = verbose
+        # Verbosity validation handled in config property setter
+        self.config.verbose = verbose
 
         # Validate linelist inputs
         if getattr(self.config, "linelist_path", None) is None:
