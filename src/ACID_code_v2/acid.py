@@ -629,36 +629,22 @@ class Acid:
                 where_are_zeros = np.where(interpolated_errors[n] == 0)[0]
                 interpolated_errors[n][where_are_zeros] = 1e12
 
-            combined_flux = np.zeros_like(combined_wavelengths)
-            combined_errors = np.zeros_like(combined_wavelengths)
+            invvars = 1 / interpolated_errors**2
+            invvars[interpolated_errors >= 1e12] = 0
 
-            for n in range(len(combined_wavelengths)):
-                temp_spec_f = interpolated_flux[:, n]
-                temp_err_f = interpolated_errors[:, n]
+            weights = np.sum(invvars, axis=0)
+            non_zero = weights > 0
+            
+            weighted_flux   = np.sum(interpolated_flux * invvars, axis=0)
+            
+            combined_flux = np.full_like(weights, 1.0)      # or np.nan
+            combined_errors = np.full_like(weights, 1e12)
 
-                weights_f = (1/temp_err_f**2)
+            combined_flux[non_zero] = weighted_flux[non_zero] / weights[non_zero]
+            combined_errors[non_zero] = 1 / np.sqrt(weights[non_zero])
 
-                idx = tuple([temp_err_f>=1e12])
-                weights_f[idx] = 0.
-
-                if sum(weights_f) > 0:
-                    weights_f = weights_f / np.sum(weights_f)
-
-                    combined_flux[n] = sum(weights_f * temp_spec_f)
-                    combined_sn = sum(weights_f * sn) / sum(weights_f)
-
-                    combined_errors[n] = 1 / (sum(weights_f ** 2)) # TODO! CHECK this is the right calculation with the square
-
-                else:
-                    combined_flux[n] = np.mean(temp_spec_f)
-                    combined_errors[n] = 1e12
-
-            # Faster and hopefully correct method once checked with Ernst
-            # invvars = 1 / interpolated_errors**2
-            # invvars[interpolated_errors >= 1e12] = 0
-            # weighted_flux = interpolated_flux * invvars
-            # combined_flux = np.sum(weighted_flux, axis=0) / np.sum(invvars, axis=0)
-            # combined_errors = 1 / np.sqrt(np.sum(invvars, axis=0))
+            frame_weights = np.sum(invvars, axis=1)
+            combined_sn   = np.sum(frame_weights * sn) / np.sum(frame_weights)
 
             self.wavelengths["combined"] = combined_wavelengths
             self.flux["combined"]        = combined_flux
