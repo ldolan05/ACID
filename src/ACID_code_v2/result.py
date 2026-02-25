@@ -638,8 +638,6 @@ class Result:
         self,
         param: int = 0,
         sampler=None,
-        burnin: int | None = None,
-        thin: int | None = None,
         max_lag: int | None = None,
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
@@ -668,9 +666,10 @@ class Result:
 
         fig, ax = plt.subplots(**subplot_kwargs)
         ax.plot(np.arange(max_lag + 1), f[: max_lag + 1])
-        ax.set_xlabel("lag")
-        ax.set_ylabel("autocorrelation")
+        ax.set_xlabel("Lag (steps)")
+        ax.set_ylabel("Autocorrelation")
         ax.set_title(f"Mean ACF across walkers (param {param})")
+        ax.set_xscale("log")
         ax.grid(True)
 
         if return_fig:
