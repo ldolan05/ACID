@@ -1,6 +1,19 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.4.0] - 2026-02-25
+
+### Notes
+- A wave of improvements, bug fixes, corrections, and speed-ups for just under two months of testing.
+
+### Added
+- A new Data class and Config class, which handles the internal calculations stored in Acid, as well as the configuration settings set in each Acid run. These allow reuse of Acid without needing to recompute variables such as the alpha matrix before running MCMC. 
+
+### Fixed
+
+### Changed
+- Moved code containing the input validation checks to the new Data class.
+
 ## [1.3.0] - 2026-01-05
 
 ### Changed
