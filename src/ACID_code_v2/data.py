@@ -1,26 +1,105 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+from unicodedata import name
 import numpy as np
 from . import utils
 
 class Config:
     """A simple class to store the configuration of the ACID run."""
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
+    defaults = {
+        "verbose": 2,
+        "order_range": [1],
+    }
+    def __init__(self, **kwargs) -> None:
+        # Initialize all properties to None, so that we can check if they 
+        # have been set or not in the update methods
+        self.property_names = self.get_property_names()
+        for k in self.property_names:
+            setattr(self, f"_{k}", None)
 
-    def update_hipri(self, **kwargs) -> None:
-        # Update the config with new values, overwriting existing keys if they exist
-        self.__dict__.update(kwargs)
+        self.update_hipri(**kwargs) # Set initial values, allowing overwriting of properties
 
-    def update_lowpri(self, **kwargs) -> None:
-        # Update the config with new values, but do not overwrite existing keys if they exist
-        for key, value in kwargs.items():
-            if not hasattr(self, key):
-                setattr(self, key, value)
+        # self.update_lowpri(**self.defaults) # Could do later if moving all defaults to this class
+
+    # --- Update methods ---
+    def update_hipri(self, **kwargs: Any) -> None:
+        # Update and overwrite existing keys
+        for k, v in kwargs.items():
+            if self.is_property(k):
+                old = getattr(self, f"_{k}", None)
+                try:
+                    setattr(self, f"_{k}", None)
+                    setattr(self, k, v)
+                except Exception:
+                    setattr(self, f"_{k}", old)
+                    raise
+            else:
+                setattr(self, k, v)
+
+    def update_lowpri(self, **kwargs: Any) -> None:
+        # Update but do not overwrite existing keys
+        for k, v in kwargs.items():
+            # Property setters automaticall only set if previous value was None
+            if self.is_property(k):
+                setattr(self, k, v) # setter already implements "only if None"
+            else:
+                if not hasattr(self, k):
+                    setattr(self, k, v)
 
     def to_dict(self) -> dict[str, Any]:
-        return dict(self.__dict__)
+        d = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        for k in self.property_names:
+            d[k] = getattr(self, k)
+        return d
+
+    @classmethod
+    def get_property_names(cls) -> set[str]:
+        # Collect @property names from the class and its bases
+        names: set[str] = set()
+        for c in cls.mro():
+            for name, attr in c.__dict__.items():
+                if isinstance(attr, property):
+                    names.add(name)
+        return names
+
+    def is_property(self, name: str) -> bool:
+        return name in self.property_names
+
+    # --- Properties ---
+    @property
+    def verbose(self) -> int:
+        return self._verbose
+    
+    @verbose.setter
+    def verbose(self, value) -> None:
+        # Make verbosity always an int regardless of input type, and check correct range
+        if self._verbose is None:
+            if value is True:
+                value = 2
+            elif value is False:
+                value = 0
+            elif isinstance(value, int):
+                if value < 0 or value > 3:
+                    raise ValueError("verbose must be an integer between 0 and 3")
+            elif isinstance(value, str):
+                value = value.lower()
+                if value in ["none", "no", "false"]:
+                    value = 0
+                elif value in ["low", "1"]:
+                    value = 1
+                elif value in ["medium", "med", "2"]:
+                    value = 2
+                elif value in ["high", "3"]:
+                    value = 3
+                else:
+                    raise ValueError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high' or their common variants")
+            elif value is None:
+                value = self.defaults["verbose"]
+            else:
+                raise ValueError("verbose must be an integer between 0 and 3, a boolean, or a string indicating the verbosity level")
+
+            self._verbose = value # Only updates if it was previously None
 
 @dataclass(slots=True)
 class Data:
