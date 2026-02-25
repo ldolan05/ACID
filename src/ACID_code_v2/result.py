@@ -644,7 +644,8 @@ class Result:
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
     ):
-
+        # TODO: Make a standard params to plot variable after initialising sampler that tries to get the ndims from data if available
+        # then use that default. Update this function to plot a list of those params by default or a user input list of indices
         chain = self.sampler.get_chain() 
         nsteps, nwalkers, ndim = chain.shape
         if not (0 <= param < ndim):

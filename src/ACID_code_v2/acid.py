@@ -139,7 +139,11 @@ class Acid:
         # Set seed if not already done in config, in this way, seed is only explicitly set once
         if getattr(self.config, "seed", None) is None:
             self.config.seed = seed
-            np.random.seed(seed)
+            if self.config.seed is not None:
+                np.random.seed(self.config.seed) # In principle this is only ever called once
+            # else: user may define a seed at the top of their seed, so can use that
+        # else: seed already in config, so seed would already have been set when put in
+        # I may make seed a property of the config class in the future
 
         # Name is also added to config
         self.config.name = name if getattr(self.config, "name", None) is None else self.config.name
@@ -815,9 +819,6 @@ class Acid:
 
         m = np.median(residuals)
         sigma = np.std(residuals)
-
-        # # TODO! : check what the hell is gong on here with a_old
-        # a_old = 1
 
         upper_clip = m + self.config.n_sig * sigma
         lower_clip = m - self.config.n_sig * sigma
