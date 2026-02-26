@@ -120,6 +120,7 @@ class Config:
     
     @telluric_lines.setter
     def telluric_lines(self, lines) -> None:
+        telluric_lines = lines
         # Define telluric_lines with defaults if not input, check type if it is
         if getattr(self, "telluric_lines", None) is not None:
             return

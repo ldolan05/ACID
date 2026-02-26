@@ -29,7 +29,7 @@ class MCMC:
             alpha       : np.ndarray      = None,
             velocities  : np.ndarray|None = None,
             c_factor                      = None,
-            deterministic_profile : bool            = False,
+            deterministic_profile : bool  = False,
         ):
         """Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
@@ -65,7 +65,7 @@ class MCMC:
             self.alpha = data.alpha
             self.velocities = data.velocities
             self.c_factor = data.c_factor
-            self.deterministic_profile = data.config["deterministic_profile"]
+            self.deterministic_profile = data.config.deterministic_profile
 
         else:
             self.x = x_or_data
