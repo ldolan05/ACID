@@ -616,8 +616,6 @@ class Result:
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
     ):
-        # TODO: Make a standard params to plot variable after initialising sampler that tries to get the ndims from data if available
-        # then use that default. Update this function to plot a list of those params by default or a user input list of indices
         chain = self.sampler.get_chain() 
         nsteps, nwalkers, ndim = chain.shape
 
@@ -641,11 +639,14 @@ class Result:
             max_lag = int(max_lag)
 
             ax.plot(np.arange(max_lag + 1), f[: max_lag + 1], label=f"{label}")
-            ax.set_xlabel("Lag (steps)")
-            ax.set_ylabel("Autocorrelation")
-            ax.set_title(f"Mean ACF across walkers")
-            ax.set_xscale("log")
-            ax.grid(True)
+        
+        ax.set_xlabel("Lag (steps)")
+        ax.set_ylabel("Autocorrelation")
+        ax.set_title(f"Mean ACF across walkers")
+        ax.set_xscale("log")
+        ax.grid(True)
+        ax.axhline(0, color="black", linestyle="--", linewidth=1)
+        ax.legend()
 
         if return_fig:
             return fig, ax
