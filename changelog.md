@@ -5,14 +5,23 @@ All notable future changes to this project are documented here.
 
 ### Notes
 - A wave of improvements, bug fixes, corrections, and speed-ups for just under two months of testing.
+- ACID_HARPS is going to be moved to be depracated. While it still currently works, it is not recommended to use this function for now. Its functionality is going to be folded into the main ACID function with added options to account for the fact that the data will need to be pulled with a standard format from e2ds or s1d fits files.
 
 ### Added
-- A new Data class and Config class, which handles the internal calculations stored in Acid, as well as the configuration settings set in each Acid run. These allow reuse of Acid without needing to recompute variables such as the alpha matrix before running MCMC. 
+- A new Data class and Config class, which handles the internal calculations stored in Acid, as well as the configuration settings set in each Acid run. These allow reuse of Acid without needing to recompute variables such as the alpha matrix before running MCMC.
+- A linelist class can also be used to validate your inputs and pass into ACID.
+- Additional analysis methods in the Result class, including: plot_autocorrelation and plot_acf. To view the autocorrelation of the sampler for different parameters.
 
 ### Fixed
+- Corrected error propagation calculations in the final profiles, converting from optical depth to flux.
+- Corrected error propagation calculations in combining multiple frames.
+- Corrected SN propagation in combining multiple frames. Previously behaviour took final weighted SN of last flux bin. Now ACID takes a weighted SN of all frames.
 
 ### Changed
 - Moved code containing the input validation checks to the new Data class.
+- Changed the default moves list to a much faster converging set given our problem.
+- Added more functions to utils which the user may or may not wish to use. The most likely one added that may want to be used are the flux to OD conversions.
+- A huge number of other small or backend changes to the code.
 
 ## [1.3.0] - 2026-01-05
 
