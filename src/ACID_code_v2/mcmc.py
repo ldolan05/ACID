@@ -223,3 +223,47 @@ class MCMC:
         diff = self.y - forward
         ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))
         return lp + ll
+
+    @staticmethod
+    def get_mcmc_stopping_criterion(tau_list, step_number, min_checks, min_tau_factor, tau_rel_tol):
+        # --- always try to compute a tolerance metric as early as possible ---
+        tol_metric = np.nan  # show NaN until computable
+        tol_converged = False
+        n_eff = 0
+
+        if len(tau_list) >= 2:
+            # compute a "most recent" change metric from the last two tau estimates
+            a, b = tau_list[-2], tau_list[-1]
+            if np.all(np.isfinite(a)) and np.all(np.isfinite(b)):
+                den = np.maximum(b, 1e-12)
+                tol_metric = float(np.percentile(np.abs(b - a) / den, 90))
+            n_eff = int(step_number / np.max(tau_list))
+            if np.isnan(tol_metric):
+                False, np.inf, n_eff
+
+        # --- now decide if we should STOP (stricter) ---
+        # Need enough tau estimates to do min_checks consecutive deltas
+        if len(tau_list) < (min_checks + 1):
+            return False, tol_metric, n_eff
+
+        tau = tau_list[-1]
+        if not np.all(np.isfinite(tau)):
+            return False, tol_metric, n_eff
+        if np.max(tau) <= 1:
+            return False, tol_metric, n_eff
+
+        tau_ref = np.max(tau)
+        if step_number < 10 * tau_ref:
+            return False, tol_metric, n_eff
+        if not (step_number > min_tau_factor * tau_ref):
+            return False, tol_metric, n_eff
+
+        # Stability over last min_checks deltas
+        recent_tau = tau_list[-(min_checks + 1):]
+        rel_changes = []
+        for a, b in zip(recent_tau[:-1], recent_tau[1:]):
+            den = np.maximum(b, 1e-12)
+            rel_changes.append(np.percentile(np.abs(b - a) / den, 90))
+
+        tol_metric = float(np.max(rel_changes))  # overwrite with the stricter metric
+        return (tol_metric < tau_rel_tol), tol_metric, n_eff

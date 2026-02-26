@@ -147,6 +147,11 @@ class Acid:
         parallel              :bool           = True,
         cores                 :int|npint|None = None,
         nsteps                :int|npint      = 10000,
+        max_steps             :int|npint|None = None,
+        check_interval        :int|npint      = 1000,
+        min_checks            :int|npint      = 1,
+        min_tau_factor        :int|npint      = 50,
+        tau_tol               :float          = 0.05,
         run_mcmc              :bool           = True,
         **kwargs,
         ):
@@ -208,6 +213,22 @@ class Acid:
         nsteps : int, optional
             nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge,
             by default 10000
+        max_steps : int | None, optional
+            If set, the sampler will run until max_steps or convergence is reached by estimation using the emcee autocorrelation 
+            time (tau). The sampler will check for convergence every 'check_interval' steps, and will require a minimum number 
+            of checks ('min_checks') and a minimum tau factor ('min_tau_factor') before it can stop. The stopping criterion 
+            is met when the change in tau is less than 'tau_tol' for all parameters. By default None, which means no maximum. 
+            If a value is inputted, the nsteps parameter is ignored. The continue_sampling method in Result or Acid can still
+            be used normally to continue after either stopping criterion is reached.
+        check_interval : int, optional
+            Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 100. 
+            Only used if max_steps is set.
+        min_checks : int, optional
+            Minimum number of checks before MCMC can be stopped, by default 3. Only used if max_steps is set.
+        min_tau_factor : int, optional
+            Minimum tau factor for MCMC stopping criterion, by default 50. Only used if max_steps is set.
+        tau_tol : float, optional
+            Tolerance for tau convergence in MCMC stopping criterion, by default 0.01. Only used if max_steps is set.
         run_mcmc : bool, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
@@ -261,12 +282,23 @@ class Acid:
             "parallel"              : parallel,
             "cores"                 : cores,
             "deterministic_profile" : deterministic_profile,
+            "max_steps"             : max_steps,
+            "check_interval"        : check_interval,
+            "min_checks"            : min_checks,
+            "min_tau_factor"        : min_tau_factor,
+            "tau_tol"               : tau_tol,
             "run_mcmc"              : run_mcmc,
         }
 
         # Update config if any of the above config settings are new
         self.config.update_lowpri(**ACID_config) # self.config overwrites ACID_config if overlapping
         self.data.config = self.config # update dataclass config as well
+
+        if self.config.parallel and sys.platform == "win32":
+            if self.config.verbose > 0:
+                # This doesn't work, needs serious modifications to make work, so just run serially for now
+                print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
+            self.config.parallel = False
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -406,13 +438,21 @@ class Acid:
             print(f"Number of dimensions: {self.data.ndim}")
 
         # Run MCMC
-        self._run_mcmc(initial_state, nsteps)
-        self.data.nsteps = nsteps
-        self.data.mcmc_time = time.time() - init_t0 - self.data.initialisation_time
+        if self.config.run_mcmc is True:
+            if self.config.max_steps is None:
+                if self.config.verbose > 1:
+                    print("Running MCMC for %s steps..."%nsteps)
+                self.run_mcmc(nsteps, initial_state)
+                self.data.nsteps = nsteps
+            else:
+                if self.config.verbose > 1:
+                    print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
+                self.run_mcmc_until_converged(self.config.max_steps, initial_state)
 
-        # Result class handles the results
-        if self.config.run_mcmc:
+                self.data.nsteps = self.step_number
+            self.data.mcmc_time = time.time() - init_t0 - self.data.initialisation_time
             return Result(self)
+
         else:
             if self.config.verbose > 0:
                 print("MCMC not run, returning None. Class attributes have been updated.")
@@ -826,11 +866,112 @@ class Acid:
 
         return
 
-    def _run_mcmc(
+    def run_mcmc(
         self,
-        state,
         nsteps,
+        state = None,        
         ):
+
+        sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
+
+        if self.config.parallel:
+            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+
+            if self.config.verbose>1:
+                print(f"Using {self.config.cores} cores for MCMC")
+
+            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
+            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
+            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
+            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
+            ctx = mp.get_context("fork")
+            with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
+                self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
+                self.sampler.run_mcmc(**mcmc_kwargs)
+
+        else:
+            MCMC = mcmc.MCMC(self.data)
+            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+            self.sampler.run_mcmc(**mcmc_kwargs)
+
+    def run_mcmc_until_converged(
+        self,
+        max_steps      : int|npint,
+        state=None,
+        ):
+
+        sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
+        stopping_criterion_args = (self.config.min_checks, self.config.min_tau_factor, self.config.tau_tol)
+
+        step_number = 0
+        tau_list = []
+        max_samples = max_steps // self.config.check_interval
+        last_tolerance = np.inf
+        last_neff = 0
+
+        if self.config.parallel:
+            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+            ctx = mp.get_context("fork")
+            with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
+                self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
+                for i in range(max_samples):
+                    tol_str = "<" if last_tolerance < self.config.tau_tol else ">"
+                    tol_str = f"{last_tolerance:.4f}{tol_str}{self.config.tau_tol}"
+                    neff_str = ">" if last_neff > self.config.min_tau_factor else "<"
+                    neff_str = f"{last_neff:.2f}{neff_str}{self.config.min_tau_factor}"
+                    desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
+                    mcmc_kwargs["progress_kwargs"] = desc_dict
+                    self.sampler.run_mcmc(**mcmc_kwargs)
+                    
+                    mcmc_kwargs["initial_state"] = None # only use initial state for first run
+                    step_number += self.config.check_interval
+
+                    try:
+                        tau = self.sampler.get_autocorr_time(tol=0)
+                    except emcee.autocorr.AutocorrError:
+                        continue
+
+                    tau_list.append(tau)
+                    condition, last_tolerance, last_neff = mcmc.MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
+                    if condition is True:
+                        if self.config.verbose > 1:
+                            print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
+                        break
+        else:
+            MCMC = mcmc.MCMC(self.data)
+            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+
+            for i in range(max_samples):
+                tol_str = "<" if last_tolerance < self.config.tau_tol else ">"
+                tol_str = f"{last_tolerance:.4f}{tol_str}{self.config.tau_tol}"
+                neff_str = ">" if last_neff > self.config.min_tau_factor else "<"
+                neff_str = f"{last_neff:.2f}{neff_str}{self.config.min_tau_factor}"
+                desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
+                mcmc_kwargs["progress_kwargs"] = desc_dict
+                self.sampler.run_mcmc(**mcmc_kwargs)
+                mcmc_kwargs["initial_state"] = None # only use initial state for first run
+                step_number += self.config.check_interval
+
+                try:
+                    tau = self.sampler.get_autocorr_time(tol=0)
+                except emcee.autocorr.AutocorrError:
+                    continue
+
+                tau_list.append(tau)
+                condition, last_tolerance, last_neff = MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
+                if condition is True:
+                    if self.config.verbose > 1:
+                        print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
+                    break
+
+        self.step_number = step_number
+
+    def _get_sampler_kwargs(self, nsteps, state=None):
+
+        state = self.data.initial_state if state is None else state
+        if state is None:
+            raise ValueError("No initial state provided and no initial state found in data. " \
+            "Please provide an initial state or run 'ACID' first to generate one.")
 
         sampler_verbosity = True if self.config.verbose>1 else False
         backend = None
@@ -844,7 +985,7 @@ class Acid:
                 self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.config.cores = os.cpu_count()
-        
+        # TODO Make moves a ACID input
         moves = [
             (emcee.moves.StretchMove(), 0.20),
             (emcee.moves.DESnookerMove(), 0.1),
@@ -863,48 +1004,56 @@ class Acid:
             "nsteps"       : nsteps,
             "progress"     : sampler_verbosity,
             "store"        : True,
+            "tune"         : True
         }
+        return sampler_kwargs, mcmc_kwargs
 
-        if self.config.parallel and sys.platform == "win32":
-            if self.config.verbose > 0:
-                # This doesn't work, needs serious modifications to make work, so just run serially for now
-                print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
-            self.config.parallel = False
+    def continue_sampling(
+        self,
+        sampler,
+        nsteps        : int|npint,
+        ):
+        """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
+        This necessarily requires a Data instance to have been put into the ACID init.
 
-        if self.config.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
-            # TODO: try the following for slurm:
-            # for k in ("OMP_NUM_THREADS","MKL_NUM_THREADS","OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS","BLIS_NUM_THREADS","VECLIB_MAXIMUM_THREADS"):
-            #     os.environ[k] = "1"
-            # ALSO MAKE SURE were using cpus per task not ntasks
-            # And try:
-            # export OMP_NUM_THREADS=1
-            # export MKL_NUM_THREADS=1
-            # export OPENBLAS_NUM_THREADS=1
-            # export BLIS_NUM_THREADS=1
-            # export VECLIB_MAXIMUM_THREADS=1
-            # export NUMEXPR_NUM_THREADS=1
-            # # Good practice for SLURM:
-            # export OMP_PROC_BIND=close
-            # export OMP_PLACES=cores
-            
-            if self.config.verbose>1:
-                print(f"Using {self.config.cores} cores for MCMC")
+        Parameters
+        ----------
+        sampler : emcee.EnsembleSampler
+            The existing MCMC sampler to continue sampling from.
+        nsteps : int
+            Number of additional steps to run the MCMC for.
+        
+        Returns
+        -------
+        emcee.EnsembleSampler
+            The MCMC sampler after running for the additional steps.
+        """
+        assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
 
-            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
-            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
-            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
-            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
-            if sys.platform != "win32":
-                ctx = mp.get_context("fork")
-                with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
-                    self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
-                    self.sampler.run_mcmc(**mcmc_kwargs)
+        self.sampler = sampler
+        self.config = self.data.config
+        self.run_mcmc(nsteps, state=None) # continue from current state
 
-        else:
-            MCMC = mcmc.MCMC(self.data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
-            self.sampler.run_mcmc(**mcmc_kwargs)
+        return self.sampler
+
+    def get_result(
+        self=None,
+        ):
+        """Return a Result object for this instance or one passed explicitly.
+        
+        Parameters
+        ----------
+        self : Acid instance, optional
+            The Acid instance to get the Result for. If None, must be called on an instance of Acid.
+        
+        Returns
+        -------
+        Result
+            The Result object for the given Acid instance.
+        """
+        if self is None:
+            raise ValueError("Must be called on an instance or passed an instance explicitly")
+        return Result(self)
 
     def read_in_frames(
         self,
@@ -1035,54 +1184,6 @@ class Acid:
         spec_errors = list(np.reshape(spec_errors, (width,)))
 
         return spectrum, spec_errors
-
-    def continue_sampling(
-        self,
-        sampler,
-        nsteps        : int|npint,
-        ):
-        """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
-        This necessarily requires a Data instance to have been put into the ACID init.
-
-        Parameters
-        ----------
-        sampler : emcee.EnsembleSampler
-            The existing MCMC sampler to continue sampling from.
-        nsteps : int
-            Number of additional steps to run the MCMC for.
-        
-        Returns
-        -------
-        emcee.EnsembleSampler
-            The MCMC sampler after running for the additional steps.
-        """
-        assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
-
-        self.sampler = sampler
-        self.config = self.data.config
-        self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
-
-        return self.sampler
-
-    def get_result(
-        self=None,
-        ):
-        """Return a Result object for this instance or one passed explicitly.
-        
-        Parameters
-        ----------
-        self : Acid instance, optional
-            The Acid instance to get the Result for. If None, must be called on an instance of Acid.
-        
-        Returns
-        -------
-        Result
-            The Result object for the given Acid instance.
-        """
-        if self is None:
-            raise ValueError("Must be called on an instance or passed an instance explicitly")
-        return Result(self)
-
 
 def ACID(*args, **kwargs):
     """Legacy ACID function

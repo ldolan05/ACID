@@ -329,6 +329,8 @@ input_data_test()
 # Test edge cases
 test_edge_cases()
 
+# No parallel test, stopping criterion test
+
 print("All tests passed!")
 print(f"Total time: {time() - start:.2f} seconds")
 

@@ -167,7 +167,8 @@ class Data:
 
     # Data required/calculated in results/after MCMC sampling
     all_frames : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
-    nsteps     : Optional[int]        = None
+    nsteps     : Optional[int]        = 0
+    max_steps  : Optional[int]        = None
 
     # Other useful data:
     initialisation_time : Optional[float] = None  # time taken for initialization
