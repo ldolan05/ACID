@@ -10,6 +10,7 @@ from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
+from .data import Config
 c_kms = float(const.c/1e3)  # speed of light in km/s
 
 @beartype
@@ -28,18 +29,13 @@ class LSD:
             A data instance to draw parameters and configs from, by default None
         """
         self.slurm            = "SLURM_JOB_ID" in os.environ
-        self.velocities       = getattr(Data, 'velocities', None)
-        # Need a silent try-except loop in case None actually is passed
+        self.data             = Data if Data is not None else None
+        self.linelist         = Data.linelist if Data is not None else None
+
         try:
-            self.linelist         = Data.config.get('linelist_path', None)
-            self.order            = Data.config.get('order', None)
-            self.run_name         = Data.config.get('name', None)
-            self.verbose          = Data.config.get('verbose', 2) # class default of 2
+            self.config = Data.config
         except:
-            self.linelist         = None
-            self.order            = None
-            self.run_name         = None
-            self.verbose          = 2 # class default of 2
+            self.config = Config() # uses defaults
 
     def run_LSD(
         self,
@@ -79,12 +75,11 @@ class LSD:
         if wavelengths.ndim != 1:
             raise ValueError("Input wavelengths, flux, and errors must be 1D arrays.")        
 
-        self.velocities = velocities if velocities is not None else self.velocities
-        self.verbose    = verbose    if verbose    is not None else self.verbose # not from self.Acid
-        self.linelist   = linelist   if linelist   is not None else self.linelist
+        self.data.velocities = velocities if velocities is not None else self.data.velocities
+        self.config.update_hipri(verbose=verbose, linelist=linelist) # Update config with new values, if not None, otherwise keep old values
 
-        #### Read the EXPECTED linelist (for a slow rotator of the same spectral type) ####
-        wavelengths_linelist, depths_linelist = self.read_linelist(self.linelist)
+        # Unpack the linelist stored in data
+        wavelengths_linelist, depths_linelist = self.data.linelist
 
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
@@ -108,40 +103,6 @@ class LSD:
         self.profile_F, self.profile_errors_F = utils.od_to_flux(self.profile, self.profile_errors)
 
         return
-
-    def read_linelist(
-        self,
-        linelist : str|dict):
-        """Reads in the linelist from a file or dictionary.
-
-        Parameters
-        ----------
-        linelist : str or dict
-            Path to the linelist file or a dictionary containing 'wavelengths' and 'depths'
-        
-        Returns
-        ----------
-        wavelengths_linelist : np.ndarray
-            Wavelengths from the linelist
-        depths_linelist : np.ndarray
-            Fluxes from the linelist
-        """
-        # Reading the linelist file or dictionary
-        if isinstance(linelist, str):
-            full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9))
-            wavelengths_linelist = np.array(full_linelist[:,0])
-            depths_linelist = np.array(full_linelist[:,1])
-
-        # If user input linelist_wl and linelist_depths in Acid
-        else:
-            wavelengths_linelist = np.array(linelist["wavelengths"])
-            depths_linelist = np.array(linelist["depths"])
-
-        # Save for debugging
-        self._input_linelist_wavelengths = wavelengths_linelist
-        self._input_linelist_depths = depths_linelist
-
-        return wavelengths_linelist, depths_linelist
 
     @staticmethod
     def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
@@ -190,13 +151,13 @@ class LSD:
         idx = (depths_linelist >= 1/(3*sn))
         wavelengths_linelist = wavelengths_linelist[idx]
         depths_linelist = depths_linelist[idx]
-        if self.verbose > 0:
+        if self.config.verbose > 0:
             ncut = np.sum(~idx)
             nrest = np.sum(idx)
             perc = 100 * nrest / (nrest + ncut)
             if perc < 5:
                 print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-            if self.verbose > 2 or perc < 5:
+            if self.config.verbose > 2 or perc < 5:
                 print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist
 
@@ -226,11 +187,11 @@ class LSD:
             Verbosity level, uses the class default of 2 if None, by default None
         """
 
-        self.velocities = velocities if velocities is not None else self.velocities
-        self.verbose    = verbose    if verbose    is not None else self.verbose
+        self.data.velocities = velocities if velocities is not None else self.data.velocities
+        self.config.update_hipri(verbose=verbose) # Update config with new values, if not None, otherwise keep old values
 
         # Calculate velocity pixel size
-        deltav = self.velocities[1] - self.velocities[0]
+        deltav = self.data.velocities[1] - self.data.velocities[0]
 
         # Clip linelist to wavelength range of spectrum (again just in case this is called without run_LSD)
         wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
@@ -246,29 +207,29 @@ class LSD:
         else:
             available_memory = psutil.virtual_memory().available
 
-        mat_size = len(wavelengths_linelist) * len(self.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
+        mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
         m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
 
         # We can calculate the alpha matrix in one pass if the number of wavelengths is small enough
         if mat_size < m_available:
             # Calculating entire alpha matrix at once
-            x = (vel[:, :, np.newaxis] - self.velocities) / deltav
+            x = (vel[:, :, np.newaxis] - self.data.velocities) / deltav
             delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
             alpha = (depths_linelist[:, None] * delta).sum(axis=1)  # (nb, n_vel)
 
         # Else, calculate in blocks to save memory
         else:
             n_blank = len(blankwaves)
-            n_vel   = len(self.velocities)
+            n_vel   = len(self.data.velocities)
             mem_size = available_memory // 2
             bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
             max_block = max(1, mem_size // bytes_per_row)
             block = int(min(max_block, len(wavelengths_linelist)))
             # Set initial alpha matrix to np.zeros
-            alpha  = np.zeros((len(blankwaves), len(self.velocities)), dtype=np.float64)
+            alpha  = np.zeros((len(blankwaves), len(self.data.velocities)), dtype=np.float64)
 
             # Use tqdm progress bar if verbose
-            if self.verbose>1:
+            if self.config.verbose>1:
                 iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
             else:
                 iterable = range(0, len(wavelengths_linelist), block)
@@ -281,7 +242,7 @@ class LSD:
 
                 # Perform calculations for this block
                 vel_blk = c_kms * (blankwaves[:, None] - wl) / wl
-                x_blk   = (vel_blk[:, :, None] - self.velocities) / deltav
+                x_blk   = (vel_blk[:, :, None] - self.data.velocities) / deltav
                 delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
 
                 alpha += (dep[:, None] * delta).sum(axis=1)

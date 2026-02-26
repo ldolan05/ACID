@@ -28,7 +28,7 @@ class Acid:
     def __init__(
         self,
         velocities     :np.ndarray|None      = None,
-        linelist_path  :str|None             = None,
+        linelist_path                        = None,
         linelist_wl    :np.ndarray|list|None = None,
         linelist_depths:np.ndarray|list|None = None,
         verbose        :int|npint|bool|None  = 2,
@@ -44,11 +44,12 @@ class Acid:
         ----------
         velocities : np.ndarray | None, optional
             Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
-            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, by default None
+            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, 
+            by default None
         linelist_path : str | None, optional
-            Path to linelist. Takes VALD linelist in long or short format as input. Minimum line depth input into VALD must
-            be less than 1/(3*SN) where SN is the highest signal-to-noise ratio of the spectra. If None, you can directly provide linelist_wl
-            and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided., by default None
+            Can be a path to linelist in string format, a dictionary with keys "wavelengths" and "depths", a Linelist class, or a 
+            list/array indexed such that 0 is the wavelengths and 1 is the depths. If None, you can directly provide linelist_wl
+            and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided. By default None.
         linelist_wl : np.ndarray | list | None, optional
             Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
@@ -63,7 +64,7 @@ class Acid:
             any verbose setting in the dataclass.
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
-            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked., by default None
+            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked. By default None
         name : str, optional
             Name to call any saved files, by default 'ACID'
         seed : int | None, optional
@@ -82,8 +83,7 @@ class Acid:
             self.data = Data()
         
         # Set config if old one exists
-        old_config_dict = self.data.config # could be empty dict if no config was set
-        self.config = Config(**old_config_dict) # Make config the same as old config, or generates a new empty one
+        self.config = self.data.config # Make config the same as old config, or generates a new empty one (handled in Data)
 
         # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
         if velocities is not None:
@@ -95,38 +95,10 @@ class Acid:
         # Verbosity validation handled in config property setter
         self.config.verbose = verbose
 
-        # Validate linelist inputs
-        if getattr(self.config, "linelist_path", None) is None:
-            if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
-                raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist_path' must be provided.")
-            if linelist_path is None and (linelist_wl is None or linelist_depths is None):
-                raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
-            if linelist_wl is not None:
-                # In this case both linelist_wl and linelist_depths were provided as checked in the two above statements
-                linelist_wl     = np.array(linelist_wl)
-                linelist_depths = np.array(linelist_depths)
-                if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
-                    raise ValueError("'linelist_wl' and 'linelist_depths' must be a one-dimensional array or list")
-                if linelist_wl.shape != linelist_depths.shape:
-                    raise ValueError("'linelist_wl' and 'linelist_depths' must have the same length and shape")
-            # To keep linelist_path as the main input to LSD, if linelist_wl and linelist_depths are provided,
-            # make linelist_path a dictionary to pass to LSD, which contains wavelengths and depths to be read by LSD
-            if linelist_path is None:
-                linelist_path = {"wavelengths": linelist_wl, "depths": linelist_depths}
-            self.config.linelist_path = linelist_path
+        # Set linelist in the Data class, the property setter handles input validation
+        self.data.set_linelist(linelist_path, linelist_wl, linelist_depths)
 
-        # Define telluric_lines with defaults if not input, check type if it is
-        if getattr(self.config, "telluric_lines", None) is None:
-            if telluric_lines is None:
-                telluric_lines = [3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-                                5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96]
-            if not isinstance(telluric_lines, (list, np.ndarray)):
-                raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
-                "mask in angstroms (could be empty or single-valued)")
-            telluric_lines = np.array(telluric_lines)
-            if telluric_lines.ndim != 1 or telluric_lines.size == 0:
-                raise ValueError("telluric_lines must be a one-dimensional array or list")
-            self.config.telluric_lines = telluric_lines
+        self.config.telluric_lines = telluric_lines
 
         # Set seed if not already done in config, in this way, seed is only explicitly set once
         if getattr(self.config, "seed", None) is None:
@@ -144,7 +116,7 @@ class Acid:
         self.config.order_range = [1]
 
         # Save config to data class
-        self.data.config = self.config.to_dict()
+        self.data.config = self.config
 
         # Determine if running in SLURM environment, independent of any previous configs
         self.slurm = "SLURM_JOB_ID" in os.environ
@@ -294,7 +266,7 @@ class Acid:
 
         # Update config if any of the above config settings are new
         self.config.update_lowpri(**ACID_config) # self.config overwrites ACID_config if overlapping
-        self.data.config = self.config.to_dict() # update dataclass config as well
+        self.data.config = self.config # update dataclass config as well
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -302,8 +274,8 @@ class Acid:
             if self.config.verbose > 0:
                 print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s. " \
                 "It is recommended to input your own velocity grid, especially if you have a different wavelength range or resolution.")
-            self.data.velocities = utils.calc_deltav(self.data.wavelengths["input"][0])
-        self.data.velocities = self.data.velocities # Just point to the same array, otherwise self.data.velocities should be used
+            deltav = utils.calc_deltav(self.data.wavelengths["input"][0])
+            self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
 
         # Initiates all_frames variable, which is used to store the results of the MCMC sampling.
         # If an all_frames array is provided, this is used, otherwise a new one is created with the correct shape.
@@ -1087,7 +1059,7 @@ class Acid:
         assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
 
         self.sampler = sampler
-        self.config = Config(**self.data.config)
+        self.config = self.data.config
         self._run_mcmc(state=None, nsteps=nsteps) # continue from current state
 
         return self.sampler
