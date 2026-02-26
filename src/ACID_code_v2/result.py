@@ -112,15 +112,6 @@ class Result:
         self.all_frames = None
         self.config     = Config() # default config, will be updated if Acid or Data object is provided
 
-        if verbose is True:
-            verbose = 2
-        elif verbose is False:
-            verbose = 0
-        elif verbose is None:
-            if hasattr(Acid_or_Data_or_Sampler, 'verbose'):
-                verbose = Acid_or_Data_or_Sampler.verbose
-            else:
-                verbose = 2 # the default
         self.config.verbose = verbose
 
         if hasattr(obj, "data") and hasattr(obj, "config") and hasattr(obj, "sampler"):
@@ -133,7 +124,7 @@ class Result:
         elif isinstance(obj, Data):
             data = obj
             self.initiate_data(data)
-            self.config = Config(**data.config) # config is stored as dict in Data instance
+            self.config = data.config
             if sampler is not None:
                 self.initiate_sampler(sampler)
         elif isinstance(obj, EnsembleSampler):
@@ -297,6 +288,10 @@ class Result:
         self.sampler = acid.continue_sampling(self.sampler, nsteps)
 
         self.initiate_sampler(self.sampler) # update internal variables to match new sampler
+        
+        # Data nsteps should always match the nsteps chain length, but they can mismatch if the chain at
+        # some point was discarded or thinned. We assume data.nsteps to be the most accurate
+        self.data.nsteps += nsteps
 
         if process_results:
             self.process_results() # update all_frames
@@ -328,20 +323,13 @@ class Result:
         samples = self.sampler.get_chain(thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin
 
-        indices_to_plot = [-1,-2,-3,-4]
-        labels = ["a", "b", "c", "d"]
-        if self.ndim>4:
-            max_profile_idx = np.argmax(samples[:,:,:-4].mean(axis=(0,1)))
-            indices_to_plot.extend([-5, max_profile_idx, 1])
-            labels.extend(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
-
-        naxes = len(indices_to_plot)
+        naxes = len(self.default_params)
 
         fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         for i in range(naxes):
-            ax[i].plot(steps, samples[:, :, indices_to_plot[i]], "k", alpha=0.3)
+            ax[i].plot(steps, samples[:, :, self.default_params[i]], "k", alpha=0.3)
             ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
-            ax[i].set_ylabel(labels[i])
+            ax[i].set_ylabel(self.default_param_labels[i])
         ax[-1].legend()
         ax[-1].set_xlabel("Step number")
         ax[-1].set_xlim(0, self.nsteps)
@@ -368,16 +356,9 @@ class Result:
 
         samples = self.sampler.get_chain()
 
-        indices_to_plot = [-1,-2,-3,-4]
-        labels = ["a", "b", "c", "d"]
-        if self.ndim>4:
-            max_profile_idx = np.argmax(np.abs(samples[:,:,:-4].mean(axis=(0,1))))
-            indices_to_plot.extend([-5, max_profile_idx, 1])
-            labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
+        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, self.default_params]
 
-        samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, indices_to_plot]
-
-        fig = corner.corner(samples, labels=labels, show_title=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
+        fig = corner.corner(samples, labels=self.default_param_labels, show_title=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
@@ -451,7 +432,7 @@ class Result:
                 # just using ACID_HARPS)
                 label_default = f"Frame {f+1}, Order {o+1}" if nframes > 1 and norders > 1 else None
                 errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, {"label": label_default})
-                ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
+                ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
 
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
@@ -518,7 +499,8 @@ class Result:
         input_errors = self.data.errors[input_version]
 
         # Get model flux
-        theta_median = np.median(self.samples, axis=0)
+        samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
+        theta_median = np.median(samples, axis=0)
         model_flux, _ = self.model(theta_median)
 
         # Plotting
@@ -591,22 +573,15 @@ class Result:
 
         if nsteps < min_steps:
             raise ValueError("Not enough post-burnin samples to estimate autocorrelation reliably.")
-
-        indices_to_plot = [-1,-2,-3,-4]
-        labels = ["a", "b", "c", "d"]
-        if self.ndim>4:
-            max_profile_idx = np.argmax(np.abs(chain[:,:,:-4].mean(axis=(0,1))))
-            indices_to_plot.extend([-5, max_profile_idx, 1])
-            labels.extend([r"$Z_{-1}$", r"$Z_{\max}$", r"$Z_0$"])
         
         Ns = np.unique(np.exp(np.linspace(np.log(min_steps), np.log(nsteps), n_grid)).astype(int))
         Ns = Ns[Ns >= min_steps]  # Ensure we only consider N >= min_steps
 
-        tau_estimates = {p: np.full(len(Ns), np.nan, dtype=float) for p in indices_to_plot}
+        tau_estimates = {p: np.full(len(Ns), np.nan, dtype=float) for p in self.default_params}
 
         # Estimate taus
         for i, n in enumerate(Ns):
-            for p in indices_to_plot:
+            for p in self.default_params:
                 y = chain[:n, :, p].T
                 tau_estimates[p][i] = utils.autocorr_new(y, c=c)
 
@@ -615,7 +590,7 @@ class Result:
 
         fig, ax = plt.subplots(**subplot_kwargs)
 
-        for label, p in zip(labels, indices_to_plot):
+        for label, p in zip(self.default_param_labels, self.default_params):
             ax.loglog(Ns, tau_estimates[p], "o-", label=f"{label}")
 
         # Reference line tau = N/50
@@ -636,7 +611,6 @@ class Result:
     @_require_sampler
     def plot_acf(
         self,
-        param: int = 0,
         sampler=None,
         max_lag: int | None = None,
         return_fig: bool = False,
@@ -646,31 +620,32 @@ class Result:
         # then use that default. Update this function to plot a list of those params by default or a user input list of indices
         chain = self.sampler.get_chain() 
         nsteps, nwalkers, ndim = chain.shape
-        if not (0 <= param < ndim):
-            raise ValueError(f"param must be in [0, {ndim-1}]")
-
-        y = chain[:, :, param].T  # (nwalkers, nsteps)
-
-        # Mean ACF across walkers
-        f = np.zeros(nsteps)
-        for w in range(nwalkers):
-            f += utils.autocorr_func_1d(y[w], norm=True)
-        f /= nwalkers
-
-        if max_lag is None:
-            max_lag = min(5_000, nsteps - 1)
-        max_lag = int(max_lag)
 
         subplot_kwargs = {} if subplot_kwargs is None else dict(subplot_kwargs)
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 5)})
 
         fig, ax = plt.subplots(**subplot_kwargs)
-        ax.plot(np.arange(max_lag + 1), f[: max_lag + 1])
-        ax.set_xlabel("Lag (steps)")
-        ax.set_ylabel("Autocorrelation")
-        ax.set_title(f"Mean ACF across walkers (param {param})")
-        ax.set_xscale("log")
-        ax.grid(True)
+
+        for param, label in zip(self.default_params, self.default_param_labels):
+
+            y = chain[:, :, param].T  # (nwalkers, nsteps)
+
+            # Mean ACF across walkers
+            f = np.zeros(nsteps)
+            for w in range(nwalkers):
+                f += utils.autocorr_func_1d(y[w], norm=True)
+            f /= nwalkers
+
+            if max_lag is None:
+                max_lag = min(5_000, nsteps - 1)
+            max_lag = int(max_lag)
+
+            ax.plot(np.arange(max_lag + 1), f[: max_lag + 1], label=f"{label}")
+            ax.set_xlabel("Lag (steps)")
+            ax.set_ylabel("Autocorrelation")
+            ax.set_title(f"Mean ACF across walkers")
+            ax.set_xscale("log")
+            ax.grid(True)
 
         if return_fig:
             return fig, ax
@@ -722,7 +697,7 @@ class Result:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
                 "time.\n The sampler may not have converged. Consider running more steps or checking " \
                 f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
-                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}. Disabling burnin " \
+                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.\n Disabling burnin " \
                 f"from autocorrelation time, instead using burnin=steps-1000")
 
         try:
@@ -739,10 +714,30 @@ class Result:
             self.burnin = self.nsteps - 1000 # just the last 1000 steps
             self.thin = 1
 
-        # Samples if burnin and thin dont need inputs
-        self.samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
+        if self.config is not None:
+            deterministic = self.config.deterministic_profile
+            n_poly_params = self.data.config.poly_ord + 1
+        else: # Make a best guess
+            if len(self.ndim) > 6: # ie we assume a poly order of 5 is the highest anyone would ever want to go
+                deterministic = False
+                n_poly_params = 4
+            else:
+                deterministic = True
+                n_poly_params = self.ndim
 
-        self.data.nsteps = self.nsteps # Repoint data nsteps to sampler nsteps to keep in sync
+        poly_params = np.arange(-1, -n_poly_params-1, -1).tolist()
+        a=ord('a')
+        alph=[chr(i) for i in range(a,a+26)]
+        poly_labels = [alph[i] for i in range(n_poly_params)]
+        
+        samples = self.sampler.get_chain(thin=int(self.thin), discard=int(self.burnin))
+        if not deterministic:
+            max_profile_idx = np.argmax(samples[:,:,:-n_poly_params].mean(axis=(0,1)))
+            poly_params.extend([-5, max_profile_idx, 1])
+            poly_labels.extend(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
+        
+        self.default_params = poly_params
+        self.default_param_labels = poly_labels
 
     def initiate_data(self, data):
         """Initiates the data attribute from an external Data object.
@@ -759,6 +754,7 @@ class Result:
             return # data already initiated from initialisation, so skip the rest of the method
 
         self.all_frames = self.data.all_frames
+        self.nsteps     = self.data.nsteps
 
         # For convenience, let the user call the model without needing to input all required args
         MCMC_class = mcmc.MCMC(self.data)

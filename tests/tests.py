@@ -331,3 +331,5 @@ test_edge_cases()
 
 print("All tests passed!")
 print(f"Total time: {time() - start:.2f} seconds")
+
+# %%
