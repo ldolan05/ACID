@@ -303,6 +303,25 @@ def od_to_flux(od=None, errors=None, linelist=None):
 
     return tuple(out)
 
+def configure_mp_environ(os):
+    """Configures the multiprocessing environment variables for optimal performance.
+
+    Parameters
+    ----------
+    os : module
+        The os module to use for setting environment variables.
+    """
+    slurm = "SLURM_JOB_ID" in os.environ
+    if slurm:
+        if os.getenv("OMP_NUM_THREADS") != "1" or os.getenv("MKL_NUM_THREADS") != "1":
+            raise ValueError(f"In a SLURM environment, OMP_NUM_THREADS and MKL_NUM_THREADS must be set to 1 before any imports for parallel MCMC. \n" \
+            "Please set this in your SLURM job script or at the top of your python script before any other imports.\n" \
+            "See https://acid-v2.readthedocs.io/en/latest/using_ACID.html#multiprocessing for more information.")
+    else:
+        # Emcee recommendation, after testing this is absolutely a requirement
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["MKL_NUM_THREADS"] = "1"
+
 def next_pow_2(n):
     """Calculates the next power of 2 greater than or equal to n.
 

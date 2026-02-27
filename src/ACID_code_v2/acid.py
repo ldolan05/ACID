@@ -879,7 +879,7 @@ class Acid:
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
 
         if self.config.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+            utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
 
             if self.config.verbose>1:
                 print(f"Using {self.config.cores} cores for MCMC")
@@ -914,7 +914,9 @@ class Acid:
         last_neff = 0
 
         if self.config.parallel:
-            os.environ["OMP_NUM_THREADS"] = "1" # emcee recommendation for multiprocessing
+
+            utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
+            
             ctx = mp.get_context("fork")
             with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
                 self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
