@@ -11,6 +11,7 @@ All notable future changes to this project are documented here.
 - A new Data class and Config class, which handles the internal calculations stored in Acid, as well as the configuration settings set in each Acid run. These allow reuse of Acid without needing to recompute variables such as the alpha matrix before running MCMC.
 - A linelist class can also be used to validate your inputs and pass into ACID.
 - Additional analysis methods in the Result class, including: plot_autocorrelation and plot_acf. To view the autocorrelation of the sampler for different parameters.
+- A max_steps option to ACID which turns on automatic convergence checking. The sampler runs until convergence is estimated to be reached or until max_steps is reached.
 
 ### Fixed
 - Corrected error propagation calculations in the final profiles, converting from optical depth to flux.
