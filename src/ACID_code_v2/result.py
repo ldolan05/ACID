@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import corner, sys, os, pickle, warnings, contextlib, functools, inspect
 from emcee import EnsembleSampler
+import emcee.backends.backend as emceebackend
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy import integer as npint
@@ -652,20 +653,6 @@ class Result:
             return fig, ax
         plt.show()
 
-    def save_result(self, filename:str="result.pkl"):
-        """Saves the Result object to a pickle file.
-
-        Parameters
-        ----------
-        filename : str, optional
-            Name of the file to save the Result object to, by default "result.pkl"
-        """
-
-        with open(filename, "wb") as f:
-            pickle.dump(self, f)
-        if self.config.verbose>0:
-            print(f"Result object saved to {filename}")
-
     def initiate_sampler(self, sampler):
         """Initiates the sampler attribute from an external sampler.
 
@@ -719,7 +706,7 @@ class Result:
             deterministic = self.config.deterministic_profile
             n_poly_params = self.data.config.poly_ord + 1
         else: # Make a best guess
-            if len(self.ndim) > 6: # ie we assume a poly order of 5 is the highest anyone would ever want to go
+            if self.ndim > 6: # ie we assume a poly order of 5 is the highest anyone would ever want to go
                 deterministic = False
                 n_poly_params = 4
             else:
@@ -761,21 +748,61 @@ class Result:
         MCMC_class = mcmc.MCMC(self.data)
         self.model = MCMC_class.run_model_function
 
-    @classmethod
-    def load_result(cls, result_object:str|object="result.pkl"):
-        """Loads a Result object from a pickle file.
+    @_require_data
+    @_require_sampler
+    def save_result(self, filename:str="result.pkl"):
+        """Saves the Result object to a pickle file.
 
         Parameters
         ----------
-        filename : str | object, optional
-            Name of the file to load the Result object from, or a Result object, by default "result.pkl"
+        filename : str, optional
+            Name of the file to save the Result object to, by default "result.pkl"
         """
+        state = dict(self.__dict__)
+
+        state["data"] = self.data.to_dict()
+        state["backend"] = dict(self.sampler.backend.__dict__)
+        state["model"] = None
+
+        with open(filename, "wb") as f:
+            pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        if getattr(self, "config", None) is not None and self.config.verbose > 1:
+            print(f"Result object saved to {filename}")
+
+    @classmethod
+    def load_result(cls, result_object: str | object = "result.pkl"):
         if isinstance(result_object, str):
             with open(result_object, "rb") as f:
                 obj = pickle.load(f)
         else:
-            obj = result_object
-        obj.__class__ = cls
-        if obj.config.verbose>0:
+            obj = dict(result_object.__dict__)
+
+        res = cls.__new__(cls) 
+        res.__dict__.update(obj)
+
+        # reconstruct data
+        data = Data()
+        data.from_dict(res.data)
+        res.data = data
+
+        # reconstruct backend
+        backend = emceebackend.Backend(dtype=np.float64)
+        backend.__dict__.update(res.backend)
+
+        # reconstruct sampler from backend
+        shape = backend.shape
+        log_prob = mcmc.MCMC(res.data)
+        res.sampler = EnsembleSampler(*shape, log_prob, backend=backend) # dummy sampler to hold the backend
+
+        # rebuild convenience things that shouldn’t be pickled
+        cls.initiate_data(res, res.data) # sets all_frames and nsteps
+        cls.initiate_sampler(res, res.sampler) # sets burnin, thin, and default params/labels
+        
+        if getattr(res, "config", None) is None:
+            res.config = Config()
+        
+        if res.config.verbose > 1:
             print("Result object loaded")
-        return obj
+
+        return res

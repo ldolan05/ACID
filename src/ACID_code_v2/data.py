@@ -287,15 +287,7 @@ class Data:
         filename : str
             The name of the file to save the data object to. This should be a .pkl file.
         """
-        payload: dict[str, Any] = {}
-        for f in fields(self):
-            name = f.name
-            val = getattr(self, name)
-
-            if name == "_config":
-                payload["config"] = val.to_dict()
-            else:
-                payload[name] = val
+        payload = self.to_dict() # generates a dictionary of the data object for easy pickling
 
         with open(filename, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -307,18 +299,32 @@ class Data:
         
         obj = cls()
 
-        # restore regular fields
-        for f in fields(obj):
-            name = f.name
-            if name == "_config":
-                continue
-            if name in payload:
-                setattr(obj, name, payload[name])
-
-        # restore config dict into _config
-        cfg_dict = payload.get("config", {})
-        setattr(obj, "_config", Config(**cfg_dict))
+        obj.from_dict(payload)
         return obj
+
+    def to_dict(self) -> dict[str, Any]:
+        """Converts the data object to a dictionary payload for saving. This is used internally in the save method, but can also be used for debugging or other purposes."""
+        payload: dict[str, Any] = {}
+        for f in fields(self):
+            name = f.name
+            val = getattr(self, name)
+
+            if name == "_config":
+                payload["config"] = val.to_dict() # store as dict in payload, but store as class in Data
+            else:
+                payload[name] = val
+        return payload
+    
+    def from_dict(self, payload: dict[str, Any]) -> None:
+        """Updates the data object from a dictionary payload. This is used internally in the load method, but can also be used for debugging or other purposes."""
+        for f in fields(self):
+            name = f.name
+            if name == "_config": # config stored as a dict in payload, but stored here as class
+                cfg_dict = payload.get("config", {})
+                setattr(self, "_config", Config(**cfg_dict))
+            else:
+                if name in payload:
+                    setattr(self, name, payload[name])
 
     @property
     def config(self) -> Config:
