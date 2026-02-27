@@ -267,3 +267,11 @@ class MCMC:
 
         tol_metric = float(np.max(rel_changes))  # overwrite with the stricter metric
         return (tol_metric < tau_rel_tol), tol_metric, n_eff
+
+    @staticmethod
+    def get_tqdm_desc(last_tolerance, last_neff, config):
+        tol_str = "<" if last_tolerance < config.tau_tol else ">"
+        tol_str = f"{last_tolerance:.4f}{tol_str}{config.tau_tol}"
+        neff_str = ">" if last_neff > config.min_tau_factor else "<"
+        neff_str = f"{last_neff:.2f}{neff_str}{config.min_tau_factor}"
+        return tol_str, neff_str

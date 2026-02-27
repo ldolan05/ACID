@@ -14,7 +14,7 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
-from .data import Data, Config
+from .data import Data
 
 c_kms = float(const.c/1e3)
 
@@ -35,7 +35,7 @@ class Acid:
         telluric_lines :np.ndarray|list|None = None,
         name           :str                  = 'ACID',
         seed           :int|npint|None       = None,
-        data           :Data|None            = None,
+        data                                 = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -132,9 +132,9 @@ class Acid:
 
     def ACID(
         self,
-        input_wavelengths,
-        input_flux,
-        input_errors,
+        input_wavelengths                     = None,
+        input_flux                            = None,
+        input_errors                          = None,
         input_sn                              = None,
         all_frames                            = None,
         deterministic_profile :bool           = False,
@@ -160,15 +160,18 @@ class Acid:
 
         Parameters
         ----------
-        input_wavelengths : np.ndarray | list
+        input_wavelengths : np.ndarray | list | None, optional
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
-            input_wavelengths[i] corresponds to the wavelengths for the ith frame.
-        input_flux : np.ndarray | list
+            input_wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
+            provided in initialisation.
+        input_flux : np.ndarray | list | None, optional
             An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
-            input_flux[i] corresponds to the spectral fluxes for the ith frame.
-        input_errors : np.ndarray | list
+            input_flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
+            provided in initialisation., by default None
+        input_errors : np.ndarray | list | None, optional
             Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
-            input_errors[i] corresponds to the spectral errors for the ith frame.
+            input_errors[i] corresponds to the spectral errors for the ith frame. Can only be None if a data instance was 
+            provided in initialisation., by default None
         input_sn : int | np.ndarray | list | None, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
@@ -289,6 +292,7 @@ class Acid:
             "tau_tol"               : tau_tol,
             "run_mcmc"              : run_mcmc,
         }
+        # TODO: make all input defaults None and overwrite config if input, with config handling problems caused therein
 
         # Update config if any of the above config settings are new
         self.config.update_lowpri(**ACID_config) # self.config overwrites ACID_config if overlapping
@@ -443,7 +447,7 @@ class Acid:
                 if self.config.verbose > 1:
                     print("Running MCMC for %s steps..."%nsteps)
                 self.run_mcmc(nsteps, initial_state)
-                self.data.nsteps = nsteps
+                self.data.nsteps += nsteps
             else:
                 if self.config.verbose > 1:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
@@ -915,10 +919,7 @@ class Acid:
             with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
                 self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                 for i in range(max_samples):
-                    tol_str = "<" if last_tolerance < self.config.tau_tol else ">"
-                    tol_str = f"{last_tolerance:.4f}{tol_str}{self.config.tau_tol}"
-                    neff_str = ">" if last_neff > self.config.min_tau_factor else "<"
-                    neff_str = f"{last_neff:.2f}{neff_str}{self.config.min_tau_factor}"
+                    tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
                     desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                     mcmc_kwargs["progress_kwargs"] = desc_dict
                     self.sampler.run_mcmc(**mcmc_kwargs)
@@ -933,19 +934,18 @@ class Acid:
 
                     tau_list.append(tau)
                     condition, last_tolerance, last_neff = mcmc.MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
-                    if condition is True:
-                        if self.config.verbose > 1:
-                            print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
+                    if condition is True and self.config.verbose > 1:
+                        print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
                         break
+                if self.config.verbose > 1 and condition is False:
+                    print(f"Not converged after reaching max steps of {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.\n"
+                          f"Consider increasing max_steps.")
         else:
             MCMC = mcmc.MCMC(self.data)
             self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
 
             for i in range(max_samples):
-                tol_str = "<" if last_tolerance < self.config.tau_tol else ">"
-                tol_str = f"{last_tolerance:.4f}{tol_str}{self.config.tau_tol}"
-                neff_str = ">" if last_neff > self.config.min_tau_factor else "<"
-                neff_str = f"{last_neff:.2f}{neff_str}{self.config.min_tau_factor}"
+                tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
                 desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                 mcmc_kwargs["progress_kwargs"] = desc_dict
                 self.sampler.run_mcmc(**mcmc_kwargs)
@@ -959,11 +959,13 @@ class Acid:
 
                 tau_list.append(tau)
                 condition, last_tolerance, last_neff = MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
-                if condition is True:
-                    if self.config.verbose > 1:
-                        print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
+                if condition is True and self.config.verbose > 1:
+                    print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
                     break
-
+            if self.config.verbose > 1 and condition is False:
+                    print(f"Not converged after reaching max steps of {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.\n"
+                          f"Consider increasing max_steps.")
+        
         self.step_number = step_number
 
     def _get_sampler_kwargs(self, nsteps, state=None):

@@ -52,11 +52,11 @@ class Config:
     def update_lowpri(self, **kwargs: Any) -> None:
         # Update but do not overwrite existing keys
         for k, v in kwargs.items():
-            # Property setters automaticall only set if previous value was None
+            # Property setters automatically only set if previous value was None
             if self.is_property(k):
                 setattr(self, k, v) # setter already implements "only if None"
             else:
-                if not hasattr(self, k):
+                if getattr(self, k, None) is None:
                     setattr(self, k, v)
 
     def to_dict(self) -> dict[str, Any]:
@@ -208,6 +208,13 @@ class Data:
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
         # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
         # inputs to numpy arrays.
+        if input_wavelengths is None or input_flux is None or input_errors is None:
+            if "input" in self.wavelengths and "input" in self.flux and "input" in self.errors:
+                return # if wavelengths already set, do not overwrite
+            else:
+                raise ValueError("input_wavelengths, input_flux, and input_errors must be provided either as arguments " \
+                "to this function or in a Data object.")
+
         input_wavelengths, input_flux, input_errors = [
             utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_flux, input_errors))]
         input_sn = utils.validate_args(input_sn, 3, sn=True, allow_none=True)

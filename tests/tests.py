@@ -301,12 +301,62 @@ def deterministic_test():
     res.plot_autocorrelation()
     res.plot_acf()
 
-def input_data_test():
+def data_and_convergence_test():
+    spec_file = fits.open('example/sample_spec_1.fits')
+
+    wavelength = spec_file[0].data   # Wavelengths in Angstroms
+    spectrum = spec_file[1].data     # Spectral Flux
+    error = spec_file[2].data        # Spectral Flux Errors
+    sn = spec_file[3].data           # SN of Spectrum
+
+    linelist = 'example/example_linelist.txt' # Insert path to line list
+
+    # choose a velocity grid for the final profile(s)
+    velocities = np.arange(-25, 25, 0.82)
+
+    # run ACID function
+    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, skips=skips)
+
+    data = result.data
+
+    Acid = acid.Acid(data=data) # data does not store the sampler
+    result2 = Acid.ACID(nsteps=1000, parallel=True)
+
+    assert result2.data.nsteps == 3000, "Continue sampling did not add the correct" \
+    " number of steps to the chain when using data class."
+
+    Acid.ACID(max_steps=5000) # test new convergence function
+
+    # test convergence check interval
+    Acid = acid.Acid(data=data)
+    data.config.deterministic_profile = True
+    Acid.ACID(max_steps=5000)
+
     return
 
 def test_edge_cases():
-    # Test edge cases such as empty inputs, mismatched input shapes, invalid file paths, etc.
-    # to be done later
+    spec_file = fits.open('example/sample_spec_1.fits')
+
+    wavelength = spec_file[0].data   # Wavelengths in Angstroms
+    spectrum = spec_file[1].data     # Spectral Flux
+    error = spec_file[2].data        # Spectral Flux Errors
+    sn = spec_file[3].data           # SN of Spectrum
+
+    linelist = 'example/example_linelist.txt' # Insert path to line list
+
+    # choose a velocity grid for the final profile(s)
+    velocities = np.arange(-25, 25, 0.82)
+
+    # run ACID function
+    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, 
+                       skips=skips, parallel=False, deterministic_profile=True)
+    data = result.data
+
+    Acid = acid.Acid(data=data)
+    Acid.ACID(max_steps=5000) # test continue sampling with no parallelisation
+
     pass
 
 print("Starting tests, this will take a 3-5 minutes to run, and a bunch of output will be printed.")
@@ -324,12 +374,11 @@ verbosity_test()
 deterministic_test()
 
 # Add a skipping calculations using the data class test
-input_data_test()
+data_and_convergence_test()
 
-# Test edge cases
+# Test edge cases, including no parallelization
 test_edge_cases()
 
-# No parallel test, stopping criterion test
 
 print("All tests passed!")
 print(f"Total time: {time() - start:.2f} seconds")
