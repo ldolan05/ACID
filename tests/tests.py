@@ -208,7 +208,8 @@ def class_test():
     result.plot_forward_model()
     result.continue_sampling(nsteps2)
     assert result.sampler.get_chain().shape[0] == nsteps1 + nsteps2 and result.data.nsteps == nsteps1 + nsteps2, \
-    "Continue sampling did not add the correct number of steps to the chain."
+    f"Continue sampling did not add the correct number of steps to the chain.\n" \
+    f"Expected {nsteps1 + nsteps2}, got {result.sampler.get_chain().shape[0]} for sampler and {result.data.nsteps} for data."  
     result.plot_walkers()
     result.plot_autocorrelation()
     result.plot_acf()
@@ -359,7 +360,7 @@ def test_edge_cases():
 
     pass
 
-print("Starting tests, this will take a 3-5 minutes to run, and a bunch of output will be printed.")
+print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")
 
 # The first five tests use legacy ACID inputs and calls
 legacy_test()

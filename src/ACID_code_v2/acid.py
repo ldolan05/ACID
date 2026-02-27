@@ -970,11 +970,6 @@ class Acid:
 
     def _get_sampler_kwargs(self, nsteps, state=None):
 
-        state = self.data.initial_state if state is None else state
-        if state is None:
-            raise ValueError("No initial state provided and no initial state found in data. " \
-            "Please provide an initial state or run 'ACID' first to generate one.")
-
         sampler_verbosity = True if self.config.verbose>1 else False
         backend = None
         if state is None:
