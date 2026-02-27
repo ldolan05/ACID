@@ -55,6 +55,13 @@ def _require_sampler(method):
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         bound = sig.bind_partial(self, *args, **kwargs)
+
+        # A specific carvout for the save function
+        store_sampler_in_args = "store_sampler" in sig.parameters
+        if store_sampler_in_args is True:
+            if bound.arguments.get("store_sampler", True) is False:
+                return method(self, *args, **kwargs)
+
         sampler_in_args = "sampler" in sig.parameters
         inputted_sampler = bound.arguments.get("sampler", None)
 
@@ -750,7 +757,7 @@ class Result:
 
     @_require_data
     @_require_sampler
-    def save_result(self, filename:str="result.pkl"):
+    def save_result(self, filename:str="result.pkl", store_sampler:bool=True):
         """Saves the Result object to a pickle file.
 
         Parameters
@@ -761,8 +768,9 @@ class Result:
         state = dict(self.__dict__)
 
         state["data"] = self.data.to_dict()
-        state["backend"] = dict(self.sampler.backend.__dict__)
+        state["backend"] = dict(self.sampler.backend.__dict__) if store_sampler else None
         state["model"] = None
+        state["sampler"] = None
 
         with open(filename, "wb") as f:
             pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -787,17 +795,21 @@ class Result:
         res.data = data
 
         # reconstruct backend
-        backend = emceebackend.Backend(dtype=np.float64)
-        backend.__dict__.update(res.backend)
+        if res.backend is not None:
+            backend = emceebackend.Backend(dtype=np.float64)
+            backend.__dict__.update(res.backend)
 
-        # reconstruct sampler from backend
-        shape = backend.shape
-        log_prob = mcmc.MCMC(res.data)
-        res.sampler = EnsembleSampler(*shape, log_prob, backend=backend) # dummy sampler to hold the backend
+            # reconstruct sampler from backend
+            shape = backend.shape
+            log_prob = mcmc.MCMC(res.data)
+            res.sampler = EnsembleSampler(*shape, log_prob, backend=backend) # dummy sampler to hold the backend
+            res.backend = None # backend is now stored in the sampler, so remove it from the Result object to avoid confusion
 
         # rebuild convenience things that shouldn’t be pickled
         cls.initiate_data(res, res.data) # sets all_frames and nsteps
-        cls.initiate_sampler(res, res.sampler) # sets burnin, thin, and default params/labels
+
+        if getattr(res, "sampler", None) is not None:
+            cls.initiate_sampler(res, res.sampler) # sets burnin, thin, and default params/labels
         
         if getattr(res, "config", None) is None:
             res.config = Config()
