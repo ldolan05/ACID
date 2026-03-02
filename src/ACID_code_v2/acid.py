@@ -726,20 +726,26 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
 
-        idx = wavelengths.argsort()
-        wavelength = wavelengths[idx]
-        fluxe = fluxes[idx]
-        clipped_flux = []
-        clipped_waves = []
+        import numpy as np
+
+        m = np.isfinite(wavelengths) & np.isfinite(fluxes)
+        w0 = wavelengths[m]
+        f0 = fluxes[m]
+
+        idx = np.argsort(w0)
+        w = w0[idx]
+        f = f0[idx]
+
         binsize = 100
-        for i in range(0, len(wavelength), binsize):
-            waves = wavelength[i:i+binsize]
-            flux = fluxe[i:i+binsize]
-            indicies = flux.argsort()
-            flux = flux[indicies]
-            waves = waves[indicies]
-            clipped_flux.append(flux[len(flux)-1])
-            clipped_waves.append(waves[len(waves)-1])
+        n = len(w) // binsize  # full bins only
+
+        w2 = w[:n*binsize].reshape(n, binsize)
+        f2 = f[:n*binsize].reshape(n, binsize)
+
+        j = np.argmax(f2, axis=1)
+        clipped_flux = f2[np.arange(n), j]
+        clipped_waves = w2[np.arange(n), j]
+
         coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
         poly = np.poly1d(coeffs)
         fit = poly(wavelengths)
@@ -751,6 +757,7 @@ class Acid:
             plt.figure(figsize=(10, 6))
             plt.plot(wavelengths, fluxes, label='Original Spectrum')
             plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
+            plt.plot(clipped_waves, clipped_flux, 'o', label='Continuum Normalized Spectrum', color='green')
             plt.title('Continuum Fit')
             plt.legend()
             plt.show()
