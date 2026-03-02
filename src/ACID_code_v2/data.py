@@ -26,9 +26,11 @@ class Config:
 
         self.update_hipri(**kwargs) # Set initial values, allowing overwriting and validation of properties
 
-        for k, v in self.defaults.items():
-            if getattr(self, k, None) is None:
-                setattr(self, k, v)
+        # for k, v in self.defaults.items():
+        #     if getattr(self, k, None) is None:
+        #         setattr(self, k, v)
+
+        self.order_range = self.defaults["order_range"] 
 
         # self.update_lowpri(**self.defaults) # Could do later if moving all defaults to this class
 
@@ -81,6 +83,8 @@ class Config:
     # --- Properties ---
     @property
     def verbose(self) -> int:
+        if self._verbose is None:
+            return self.defaults["verbose"]
         return self._verbose
     
     @verbose.setter
@@ -116,6 +120,8 @@ class Config:
 
     @property
     def telluric_lines(self) -> int:
+        if self._telluric_lines is None:
+            return self.defaults["telluric_lines"]
         return self._telluric_lines
     
     @telluric_lines.setter
