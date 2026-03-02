@@ -726,8 +726,6 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
 
-        import numpy as np
-
         m = np.isfinite(wavelengths) & np.isfinite(fluxes)
         w0 = wavelengths[m]
         f0 = fluxes[m]
@@ -743,8 +741,9 @@ class Acid:
         f2 = f[:n*binsize].reshape(n, binsize)
 
         j = np.argmax(f2, axis=1)
-        clipped_flux = f2[np.arange(n), j]
-        clipped_waves = w2[np.arange(n), j]
+        bins = np.arange(n)
+        clipped_flux = f2[bins, j]
+        clipped_waves = w2[bins, j]
 
         coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
         poly = np.poly1d(coeffs)
