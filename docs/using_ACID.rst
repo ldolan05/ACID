@@ -232,50 +232,6 @@ These inputs can be input into the HARPS function of ACID (ACID_HARPS):
 
 ACID computes and returns the Barycentric Julian Date, average profile and errors for each frame. The average profile is computed using a weighted mean across all orders.
 
-Performing LSD
-------------
-The ACID package can perform traditional LSD on its own via the LSD class. This can be useful for comparison to ACID results or for quick-look analysis.
-The LSD class can be used as follows:
-
-.. code-block:: python
-
-   import ACID_code_v2 as acid
-   import numpy as np
-   from astropy.io import fits
-   import matplotlib.pyplot as plt
-
-   spec_file = fits.open('example/sample_spec_1.fits')
-
-   wavelength = spec_file[0].data   # Wavelengths in Angstroms
-   spectrum = spec_file[1].data     # Spectral Flux
-   error = spec_file[2].data        # Spectral Flux Errors
-   sn = spec_file[3].data           # SN of Spectrum
-
-   linelist = 'example/example_linelist.txt' # Insert path to line list
-
-   # choose a velocity grid for the final profile(s)
-   deltav = acid.calc_deltav(wavelength)  
-   velocities = np.arange(-25, 25, deltav)  
-
-   # Initiate LSD class
-   LSD = acid.LSD() # Can be initiated with an instance of Acid 
-
-   # Perform LSD
-   LSD.run_LSD(wavelength, spectrum, error, sn, linelist, velocities)
-
-   # Extract useful attributes
-   profile = LSD.profile
-   profile_errors = LSD.profile_errors
-
-   # Example plot
-   plt.errorbar(velocities, LSD.profile, yerr=LSD.profile_errors, ecolor='red')
-   plt.title('LSD Profile')
-   plt.xlabel('Velocity (km/s)')
-   plt.ylabel('LSD Profile Value')
-   plt.show()
-
-See the LSD API for more information on available methods and attributes.
-
 Multiprocessing
 ------------
 
@@ -338,7 +294,7 @@ The sampler will then run either until convergence is reached or the maximum num
    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
 
-.. output:: console
+. output:: console
 
    Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 227.45it/s]
    Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 234.49it/s]
@@ -348,10 +304,10 @@ The sampler will then run either until convergence is reached or the maximum num
    Not converged after reaching max steps of 5000. Final effective sample size: 7.00, final tolerance: 0.3184.
    Consider increasing max_steps.
 
-The above code will still have a fully working sampler, which can plot the profiles as per normal (see the Results class for possible plotting options).
+The above code will still have a fully working sampler, which can plot the profiles as per normal (see the Results class, or the Other functions page for possible plotting options).
 The sampler will give the following warning however:
 
-.. output:: console
+. output:: console
    The number of MCMC steps is less than 50 times the maximum autocorrelation time.
    The sampler may not have converged. Consider running more steps or checking the walker plots.
    The max autocorrelation time is 651.30, therefore the minimum number of steps should be roughly 32565.
@@ -366,7 +322,7 @@ If we turn on the deterministic profile feature, we see a significant improvemen
    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000, deterministic_profile=True)
 
-.. output:: console
+. output:: console
    Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 282.63it/s]
    Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 284.76it/s]
    Iteration 3/5, last tolerance: 0.0793>0.05, neff: 26.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 286.68it/s]

@@ -57,6 +57,12 @@ The Result class contains a number of plotting methods to visualise the results 
 
 - plot_corner(): Plots a corner plot of the posterior distributions of the continuum fit parameters.
 
+- plot_forward_model(): Plots the forward model fit to the data.
+
+- plot_autocorrelation(): Plots the autocorrelation of the MCMC chains for the continuum fit parameters.
+
+- plot_acf(): Plots the autocorrelation function for each parameter, averaged across walkers.
+
 These plotting functions have a number of keyword arguments to tailor the plots to your needs. See the documentation for more information on these.
 
 Currently, plot_walkers plots the last 10 parameters to include continuum parameters and the last few velocity profile points.
@@ -71,6 +77,9 @@ Similarly, plot_corner only plots the last 10 parameters. Future versions may in
     result.plot_profiles()
     result.plot_walkers()
     result.plot_corner()
+    result.plot_forward_model()
+    result.plot_autocorrelation()
+    result.plot_acf()
 
 These functions can be called directly from the Result object returned by ACID, or from a Result object loaded from a saved .pkl file.
 Note however that if multiple orders or frames were calculated with ACID,
@@ -99,3 +108,47 @@ This method takes the same keyword arguments as the nsteps argument in ACID, all
 This allows you to extend the MCMC sampling if you feel that the initial number of steps was insufficient for convergence.
 Note again that if multiple orders or frames were calculated, this method must be called from the Result object returned by ACID,
 not from a saved .pkl file.
+
+Performing LSD
+------------
+The ACID package can perform traditional LSD on its own via the LSD class. This can be useful for comparison to ACID results or for quick-look analysis.
+The LSD class can be used as follows:
+
+.. code-block:: python
+
+   import ACID_code_v2 as acid
+   import numpy as np
+   from astropy.io import fits
+   import matplotlib.pyplot as plt
+
+   spec_file = fits.open('example/sample_spec_1.fits')
+
+   wavelength = spec_file[0].data   # Wavelengths in Angstroms
+   spectrum = spec_file[1].data     # Spectral Flux
+   error = spec_file[2].data        # Spectral Flux Errors
+   sn = spec_file[3].data           # SN of Spectrum
+
+   linelist = 'example/example_linelist.txt' # Insert path to line list
+
+   # choose a velocity grid for the final profile(s)
+   deltav = acid.calc_deltav(wavelength)  
+   velocities = np.arange(-25, 25, deltav)  
+
+   # Initiate LSD class
+   LSD = acid.LSD() # Can be initiated with an instance of Acid 
+
+   # Perform LSD
+   LSD.run_LSD(wavelength, spectrum, error, sn, linelist, velocities)
+
+   # Extract useful attributes
+   profile = LSD.profile
+   profile_errors = LSD.profile_errors
+
+   # Example plot
+   plt.errorbar(velocities, LSD.profile, yerr=LSD.profile_errors, ecolor='red')
+   plt.title('LSD Profile')
+   plt.xlabel('Velocity (km/s)')
+   plt.ylabel('LSD Profile Value')
+   plt.show()
+
+See the LSD API for more information on available methods and attributes.
