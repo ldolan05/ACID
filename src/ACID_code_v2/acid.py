@@ -368,7 +368,8 @@ class Acid:
             self.data.poly_inputs, self.data.flux["fitted"], self.data.errors["fitted"] = self.continuumfit(
                 self.data.flux["combined"],
                 self.data.wavelengths["combined_normalized"],
-                self.data.errors["combined"]
+                self.data.errors["combined"],
+                poly_ord = self.config.poly_ord,
             )
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here

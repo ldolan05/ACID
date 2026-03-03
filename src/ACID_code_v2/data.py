@@ -355,7 +355,7 @@ class Data:
             raise ValueError("If 'linelist_path' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
         elif isinstance(linelist_path, str):
             # VALD linelist code, will add more linelist formats in the future or if requested
-            full_linelist = np.genfromtxt('%s'%linelist_path, skip_header=4, delimiter=',', usecols=(1,9))
+            full_linelist = np.genfromtxt('%s'%linelist_path, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
             linelist_wl = full_linelist[:,0]
             linelist_depths = full_linelist[:,1]
         elif isinstance(linelist_path, Linelist):

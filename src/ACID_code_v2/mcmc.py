@@ -237,7 +237,12 @@ class MCMC:
             if np.all(np.isfinite(a)) and np.all(np.isfinite(b)):
                 den = np.maximum(b, 1e-12)
                 tol_metric = float(np.percentile(np.abs(b - a) / den, 90))
-            n_eff = int(step_number / np.max(tau_list))
+            
+            n_eff = step_number / np.max(tau_list)
+            try:
+                n_eff = int(n_eff)
+            except:
+                pass
             if np.isnan(tol_metric):
                 return False, np.inf, n_eff
 

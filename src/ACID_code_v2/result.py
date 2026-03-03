@@ -171,20 +171,9 @@ class Result:
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
             self.tau = self.sampler.get_autocorr_time(quiet=True)
-        # TODO: Convert to try except with quiet=False and otherwise use a much stricter steps-1000 burnin
-        try:
-            burnin = int(2 * np.max(self.tau))
-            thin = int(np.min(self.tau)/5)
-        except:
-            if self.config.verbose>0:
-                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
-                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
-                f" wrong. Setting burnin=0 and thin=1.")
-            burnin = 0
-            thin = 1
 
         # Obtain flattened samples
-        flat_samples = self.sampler.get_chain(discard=burnin, thin=thin, flat=True)
+        flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
         # Getting the final profile and continuum values - median of last 1000 steps
         nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
