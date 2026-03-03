@@ -618,7 +618,27 @@ class Result:
         max_lag: int | None = None,
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
-    ):
+        ):
+        """
+        Plot the autocorrelation function (ACF) for each parameter, averaged across walkers.
+        
+        Parameters
+        ----------
+        sampler : emcee.EnsembleSampler | None, optional
+            Optionally provide a different sampler to plot from, otherwise,
+            takes the sampler from the Result object, by default None
+        max_lag : int | None, optional
+            Maximum lag to plot, by default None (plots up to min(5000, nsteps-1))
+        return_fig : bool, optional
+            Whether to return the figure and axes objects, by default False
+        subplot_kwargs : dict | None, optional
+            Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
+
+        Returns
+        -------
+        If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing 
+        the plot. Otherwise, displays the plot and returns None.
+        """
         chain = self.sampler.get_chain() 
         nsteps, nwalkers, ndim = chain.shape
 
