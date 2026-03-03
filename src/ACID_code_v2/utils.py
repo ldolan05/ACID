@@ -148,6 +148,7 @@ def calc_deltav(wavelengths:np.ndarray) -> float:
         raise ValueError("Input wavelengths must be a 1D array.")
     if np.any(wavelengths <= 0):
         raise ValueError("Wavelengths must be positive.")
+    wavelengths = np.sort(wavelengths)
     return c_kms * np.nanmean(np.diff(np.log(wavelengths)))
 
 def guess_SNR(
