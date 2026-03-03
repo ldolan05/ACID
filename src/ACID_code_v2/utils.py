@@ -2,6 +2,7 @@
 Utility functions for the ACID package. Some functions may not be useful to the user.
 """
 
+from beartype import beartype
 import numpy as np
 import glob
 import scipy.constants as const
@@ -131,19 +132,23 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False):
         return w, f, e, mask
     return w, f, e
 
-def calc_deltav(wavelengths):
+@beartype
+def calc_deltav(wavelengths:np.ndarray) -> float:
     """Calculates velocity pixel size
 
     Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
 
     Args:
-        wavelengths (array): Wavelengths for Acid input spectrum (in Angstroms).
-        
+        wavelengths (np.ndarray): Wavelengths for Acid input spectrum (in Angstroms), must be a 1D array of positive values.
+
     Returns:
         float: Velocity pixel size in km/s
     """
-    resol = (wavelengths[-1]-wavelengths[0])/len(wavelengths)
-    return resol / (wavelengths[0]+((wavelengths[-1]-wavelengths[0])/2)) * c_kms
+    if wavelengths.ndim != 1:
+        raise ValueError("Input wavelengths must be a 1D array.")
+    if np.any(wavelengths <= 0):
+        raise ValueError("Wavelengths must be positive.")
+    return c_kms * np.nanmean(np.diff(np.log(wavelengths)))
 
 def guess_SNR(
         frame_wavelengths : np.ndarray | list,
