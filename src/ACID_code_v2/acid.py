@@ -224,7 +224,7 @@ class Acid:
             If a value is inputted, the nsteps parameter is ignored. The continue_sampling method in Result or Acid can still
             be used normally to continue after either stopping criterion is reached.
         check_interval : int, optional
-            Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 100. 
+            Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 1000. 
             Only used if max_steps is set.
         min_checks : int, optional
             Minimum number of checks before MCMC can be stopped, by default 3. Only used if max_steps is set.
