@@ -132,27 +132,27 @@ class Acid:
 
     def ACID(
         self,
-        input_wavelengths                     = None,
-        input_flux                            = None,
-        input_errors                          = None,
-        input_sn                              = None,
-        all_frames                            = None,
-        deterministic_profile :bool           = False,
-        poly_ord              :int|npint      = 3,
-        pix_chunk             :int|npint      = 20,
-        dev_perc              :int|npint      = 25,
-        n_sig                 :int|npint      = 1,
-        order                 :int|npint      = 0,
-        skips                 :int|npint      = 1,
-        parallel              :bool           = True,
-        cores                 :int|npint|None = None,
-        nsteps                :int|npint      = 10000,
-        max_steps             :int|npint|None = None,
-        check_interval        :int|npint      = 1000,
-        min_checks            :int|npint      = 1,
-        min_tau_factor        :int|npint      = 50,
-        tau_tol               :float          = 0.05,
-        run_mcmc              :bool           = True,
+        wavelengths           :list|np.ndarray|None     = None,
+        flux                  :list|np.ndarray|None     = None,
+        errors                :list|np.ndarray|None     = None,
+        sn                    :int|np.ndarray|list|None = None,
+        all_frames            :str|np.ndarray|None      = None,
+        deterministic_profile :bool                     = False,
+        poly_ord              :int|npint                = 3,
+        pix_chunk             :int|npint                = 20,
+        dev_perc              :int|npint                = 25,
+        n_sig                 :int|npint                = 1,
+        order                 :int|npint                = 0,
+        skips                 :int|npint                = 1,
+        parallel              :bool                     = True,
+        cores                 :int|npint|None           = None,
+        nsteps                :int|npint                = 10000,
+        max_steps             :int|npint|None           = None,
+        check_interval        :int|npint                = 1000,
+        min_checks            :int|npint                = 1,
+        min_tau_factor        :int|npint                = 50,
+        tau_tol               :float                    = 0.05,
+        run_mcmc              :bool                     = True,
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -160,22 +160,22 @@ class Acid:
 
         Parameters
         ----------
-        input_wavelengths : np.ndarray | list | None, optional
+        wavelengths : np.ndarray | list | None, optional
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
-            input_wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
+            wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
             provided in initialisation.
-        input_flux : np.ndarray | list | None, optional
+        flux : np.ndarray | list | None, optional
             An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
-            input_flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
+            flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
             provided in initialisation., by default None
-        input_errors : np.ndarray | list | None, optional
+        errors : np.ndarray | list | None, optional
             Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
-            input_errors[i] corresponds to the spectral errors for the ith frame. Can only be None if a data instance was 
+            errors[i] corresponds to the spectral errors for the ith frame. Can only be None if a data instance was 
             provided in initialisation., by default None
-        input_sn : int | np.ndarray | list | None, optional
+        sn : int | np.ndarray | list | None, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
-            input_sn[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
+            sn[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
             spectra, by default None
         all_frames : str | np.ndarray | None, optional
             Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
@@ -259,7 +259,7 @@ class Acid:
             print('Initialising...')
 
         # Setup and data validation done in data class and applies skips
-        self.data.set_inputs(input_wavelengths, input_flux, input_errors, input_sn, skips)
+        self.data.set_inputs(wavelengths, flux, errors, sn, skips)
 
         # Check for any potential conflicts in input arguments that are meant for the class initialisation.
         overlap = self._INIT_KEYS & kwargs.keys()
@@ -1226,10 +1226,10 @@ def ACID(*args, **kwargs):
         "order",
     ]
     RENAMED_LEGACY_ARGS = {
-        "input_wavelengths": "input_wavelengths",
-        "input_spectra": "input_flux",
-        "input_spectral_errors": "input_errors",
-        "frame_sns": "input_sn",
+        "input_wavelengths": "wavelengths",
+        "input_spectra": "flux",
+        "input_spectral_errors": "errors",
+        "frame_sns": "sn",
         "vgrid": "velocities",
         "line": "linelist_path",
         "poly_or": "poly_ord",
@@ -1276,10 +1276,10 @@ def ACID_HARPS(*args, **kwargs):
         "telluric_lines",
     ]
     RENAMED_LEGACY_ARGS = {
-        "input_wavelengths": "input_wavelengths",
-        "input_spectra": "input_flux",
-        "input_spectral_errors": "input_errors",
-        "frame_sns": "input_sn",
+        "input_wavelengths": "wavelengths",
+        "input_spectra": "flux",
+        "input_spectral_errors": "errors",
+        "frame_sns": "sn",
         "vgrid": "velocities",
         "line": "linelist_path",
         "poly_or": "poly_ord",
