@@ -779,6 +779,10 @@ class Result:
         ----------
         filename : str, optional
             Name of the file to save the Result object to, by default "result.pkl"
+        store_sampler : bool, optional
+            Whether to store the sampler backend in the pickle file. If False, 
+            the sampler will not be stored, and the Result object will not be able to 
+            continue sampling or plot walkers/corner plots
         """
         state = dict(self.__dict__)
 
@@ -795,6 +799,18 @@ class Result:
 
     @classmethod
     def load_result(cls, result_object: str | object = "result.pkl"):
+        """Loads a Result object from a pickle file or from an object with the same attributes as a saved Result object.
+
+        Parameters
+        ----------
+        result_object : str | object, optional
+            A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
+
+        Returns
+        ----------
+        Result
+            A Result object loaded from the pickle file or from the provided object.
+        """
         if isinstance(result_object, str):
             with open(result_object, "rb") as f:
                 obj = pickle.load(f)
