@@ -936,7 +936,7 @@ class Acid:
                     tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
                     desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                     mcmc_kwargs["progress_kwargs"] = desc_dict
-                    self.sampler.run_mcmc(**mcmc_kwargs)
+                    self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
                     
                     mcmc_kwargs["initial_state"] = None # only use initial state for first run
                     step_number += self.config.check_interval
@@ -962,7 +962,7 @@ class Acid:
                 tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
                 desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                 mcmc_kwargs["progress_kwargs"] = desc_dict
-                self.sampler.run_mcmc(**mcmc_kwargs)
+                self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
                 mcmc_kwargs["initial_state"] = None # only use initial state for first run
                 step_number += self.config.check_interval
 
