@@ -17,13 +17,6 @@ Core Classes
    LSD
    Profiles
    Data
-
-Helper Classes
--------------
-
-.. autosummary::
-   :toctree: _api
-   :nosignatures:
    MCMC
    Config
    Linelist
