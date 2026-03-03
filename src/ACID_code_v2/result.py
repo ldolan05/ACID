@@ -214,13 +214,18 @@ class Result:
             wavelengths = np.copy(self.data.wavelengths["input"][counter])
             sn = np.copy(self.data.sn["input"][counter])
 
+            flux = flux[self.data.nanmask]
+            error = error[self.data.nanmask]
+            wavelengths = wavelengths[self.data.nanmask]
+
             # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
             mdl1 = P.polyval(norm_wavelengths, self.poly_cos)
 
             # Masking based off residuals interpolated onto new wavelength grid
-            reference_wave = self.data.wavelengths["input"][np.argmax(self.data.sn["input"])]
+            reference_wave = self.data.wavelengths["input"][np.nanargmax(self.data.sn["input"])]
+            reference_wave = reference_wave[self.data.nanmask]
             mask_pos = np.ones(reference_wave.shape)
             mask_pos[self.data.residual_masks]=1e12
             f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)

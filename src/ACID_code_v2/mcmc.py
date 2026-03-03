@@ -239,12 +239,11 @@ class MCMC:
                 tol_metric = float(np.percentile(np.abs(b - a) / den, 90))
             n_eff = int(step_number / np.max(tau_list))
             if np.isnan(tol_metric):
-                False, np.inf, n_eff
+                return False, np.inf, n_eff
 
-        # --- now decide if we should STOP (stricter) ---
         # Need enough tau estimates to do min_checks consecutive deltas
         if len(tau_list) < (min_checks + 1):
-            return False, tol_metric, n_eff
+            return False, np.inf, n_eff
 
         tau = tau_list[-1]
         if not np.all(np.isfinite(tau)):

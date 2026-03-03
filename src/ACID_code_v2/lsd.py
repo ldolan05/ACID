@@ -81,11 +81,18 @@ class LSD:
         # Unpack the linelist stored in data
         wavelengths_linelist, depths_linelist = self.data.linelist
 
+        # Since wl,depths,errors are 1d, now drop any NaNs for a clean alpha matrix
+        wavelengths, flux, errors = utils.drop_invalid(wavelengths, flux, errors)
+
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+        if len(wavelengths_linelist) == 0:
+            raise ValueError(f"No lines in linelist are within the wavelength range of the observed spectrum. "\
+                             f"Please check your linelist and input spectrum. You may have mismatched wavelengths "\
+                             f"units between linelist and spectrum or an empty linelist.")
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
+        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)        
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
@@ -124,7 +131,7 @@ class LSD:
         depths_linelist : np.ndarray
             Clipped depths from the linelist
         """
-        lower, upper = wavelengths.min(), wavelengths.max()
+        lower, upper = np.nanmin(wavelengths), np.nanmax(wavelengths)
         idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
         return wavelengths_linelist[idx], depths_linelist[idx]
 
@@ -276,6 +283,14 @@ class LSD:
 
         # M = αT V α,  b = αT V R
         AVA = alpha.T @ (V[:, None] * alpha)
+
+        # Diangostics for common 1-th leading order linalg error
+        # M = alpha.T @ (V[:, None] * alpha)
+        # print("finite M:", np.all(np.isfinite(M)))
+        # print("min diag:", np.min(np.diag(M)))
+        # print("rank:", np.linalg.matrix_rank(M), " / ", M.shape[0])
+        # col_norm = np.linalg.norm(np.sqrt(V)[:, None] * alpha, axis=0)
+        # print("zero columns:", np.sum(col_norm == 0))
 
         # Cholesky factorisation of M
         c_factor = cho_factor(AVA, overwrite_a=False, **kwargs)

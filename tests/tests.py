@@ -358,6 +358,8 @@ def test_edge_cases():
     Acid = acid.Acid(data=data)
     Acid.ACID(max_steps=5000) # test continue sampling with no parallelisation
 
+    # Guess SNR, run_acid=False
+
     pass
 
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")

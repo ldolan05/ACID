@@ -66,36 +66,70 @@ def validate_args(x, i, allow_none=False, sn=False):
     else: # should not reach here, somehow ndim is negative
         raise ValueError(f"Argument in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
-def scale_spectra(spectrum, error):
-    """Scales the input spectrum and error to be between 0 and 1, masking any non-positive values by making
-    their flux equal to 1 and their error very large (1e12). This is done so that the alpha matrix calculation
-    maintains even spacing between wavelength pixels. The flux must be positive regardless as Acid works in
-    optical depth.
+def mask_invalid(wavelengths, flux, errors, return_mask=False):
+    """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
+    Replaces bad pixels with NaN, which ACID can handle.
 
     Parameters
     ----------
-    spectrum : array_like
+    wavelengths : array_like
+        The wavelength values of the spectrum.
+    flux : array_like
         The flux values of the spectrum.
-    error : array_like
+    errors : array_like
         The error values associated with the spectrum.
 
     Returns
     -------
     tuple
-        A tuple containing the scaled spectrum, and error arrays.
+        A tuple containing the cleaned wavelength, flux, and error arrays.
     """
+    mask = (
+        np.isfinite(wavelengths) &
+        np.isfinite(flux) &
+        np.isfinite(errors) &
+        (flux > 0) &
+        (errors > 0)
+    )
+    fill_value = np.nan
 
-    # Rescale spectrum and error
-    fmax = np.max(spectrum)
-    scaled_spec = (spectrum) / (fmax)
-    scaled_error = error / (fmax)
+    w = np.where(mask, wavelengths, fill_value)
+    f = np.where(mask, flux, fill_value)
+    e = np.where(mask, errors, fill_value)
+    if return_mask:
+        return w, f, e, mask
+    return w, f, e
 
-    # Mask non-positive flux values by setting their flux to 1 and error to a very large number
-    mask_idx = scaled_spec <= 0
-    scaled_spec[mask_idx] = 1
-    scaled_error[mask_idx] = int(1e12)
+def drop_invalid(wavelengths, flux, errors, return_mask=False):
+    """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
-    return scaled_spec, scaled_error
+    Parameters
+    ----------
+    wavelengths : array_like
+        The wavelength values of the spectrum.
+    flux : array_like
+        The flux values of the spectrum.
+    errors : array_like
+        The error values associated with the spectrum.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the cleaned wavelength, flux, and error arrays.
+    """
+    mask = (
+        np.isfinite(wavelengths) &
+        np.isfinite(flux) &
+        np.isfinite(errors) &
+        (flux > 0) &
+        (errors > 0)
+    )
+    w = wavelengths[mask]
+    f = flux[mask]
+    e = errors[mask]
+    if return_mask:
+        return w, f, e, mask
+    return w, f, e
 
 def calc_deltav(wavelengths):
     """Calculates velocity pixel size
@@ -139,8 +173,8 @@ def guess_SNR(
         validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
 
     # Calculate S/N in central third of wavelength range
-    wavelength_upper = np.max(frame_wavelengths, axis=-1)
-    wavelength_lower = np.min(frame_wavelengths, axis=-1)
+    wavelength_upper = np.nanmax(frame_wavelengths, axis=-1)
+    wavelength_lower = np.nanmin(frame_wavelengths, axis=-1)
     delta_wavelength = wavelength_upper - wavelength_lower
     upper_cut = wavelength_lower + delta_wavelength * (2/3)
     lower_cut = wavelength_lower + delta_wavelength * (1/3)
@@ -170,8 +204,8 @@ def get_normalisation_coeffs(wl):
     tuple
         A tuple containing the normalization coefficients (a, b).
     """
-    a = 2 / (np.max(wl)-np.min(wl))
-    b = 1 - a * np.max(wl)
+    a = 2 / (np.nanmax(wl)-np.nanmin(wl))
+    b = 1 - a * np.nanmax(wl)
     return a, b
 
 def set_dict_defaults(input_dict, default_dict):

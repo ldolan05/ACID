@@ -308,8 +308,8 @@ class Acid:
         # calculate a default velocity grid using the input wavelengths.
         if self.data.velocities is None:
             if self.config.verbose > 0:
-                print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s. " \
-                "It is recommended to input your own velocity grid, especially if you have a different wavelength range or resolution.")
+                print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
+                "It is highly recommended to input your own velocity grid, especially if you need a different wavelength range.")
             deltav = utils.calc_deltav(self.data.wavelengths["input"][0])
             self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
 
@@ -339,6 +339,14 @@ class Acid:
             if self.config.verbose > 2:
                 print("Combining spectra...")
             self.combine_spec(output=False)
+
+        # Clean combined spectra of NaNs
+        wavelengths, flux, errors, nanmask = utils.drop_invalid(self.data.wavelengths["combined"], self.data.flux["combined"],
+                                                                self.data.errors["combined"], return_mask=True)
+        self.data.wavelengths["combined"] = wavelengths
+        self.data.flux["combined"] = flux
+        self.data.errors["combined"] = errors
+        self.data.nanmask = nanmask
 
         # Get the initial polynomial coefficents
         if not hasattr(self.data.wavelengths, "combined_normalized"):
@@ -774,8 +782,6 @@ class Acid:
         x = self.data.wavelengths["combined"]
         y = self.data.flux["combined"]
         yerr = self.data.errors["combined"]
-        x_norm = self.data.wavelengths["combined_normalized"]
-
         forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
 
         data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
@@ -836,7 +842,6 @@ class Acid:
 
         LSD_masking = LSD(self.data)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
-        # profile = LSD_masking.profile
         self.data.alpha = LSD_masking.alpha
         self.data.c_factor = LSD_masking.c_factor
 
