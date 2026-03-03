@@ -1,6 +1,24 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.4.1] - 2026-03-03
+
+### Fixed
+- Fixed save and load bugs on the Result class not pickling the dictionaries correctly.
+- Verbosity inputting not correctly overriding the default
+- Fixed poly_ord input not correctly overriding the default
+
+### Added
+- Explicit slurm environment check to raise error if certain environment variables are not properly configured. Parallel processing page in readthedocs will eventually be updated to explain this change.
+- Better warnings and overall much better handling of NaN and inf inputs of data.
+
+### Changed
+- Sped up the continuum fit binning process, now fully vectorised.
+- Renamed default input variables; removed "input" in their names previously
+- Skip initial state check for run_until_converged.
+- Improved calc_deltav to better account for wavelengths in velocity space, and thus taking their average. More robust to NaNs.
+
+
 ## [1.4.0] - 2026-02-25
 
 ### Notes

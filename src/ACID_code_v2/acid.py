@@ -136,7 +136,7 @@ class Acid:
         flux                  :list|np.ndarray|None     = None,
         errors                :list|np.ndarray|None     = None,
         sn                    :int|np.ndarray|list|None = None,
-        all_frames            :str|np.ndarray|None      = None,
+        all_frames                                      = None,
         deterministic_profile :bool                     = False,
         poly_ord              :int|npint                = 3,
         pix_chunk             :int|npint                = 20,
@@ -949,10 +949,10 @@ class Acid:
                     tau_list.append(tau)
                     condition, last_tolerance, last_neff = mcmc.MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
                     if condition is True and self.config.verbose > 1:
-                        print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
+                        print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                         break
                 if self.config.verbose > 1 and condition is False:
-                    print(f"Not converged after reaching max steps of {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.\n"
+                    print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
                           f"Consider increasing max_steps.")
         else:
             MCMC = mcmc.MCMC(self.data)
@@ -974,10 +974,10 @@ class Acid:
                 tau_list.append(tau)
                 condition, last_tolerance, last_neff = MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
                 if condition is True and self.config.verbose > 1:
-                    print(f"Converged at step {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.")
+                    print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                     break
             if self.config.verbose > 1 and condition is False:
-                    print(f"Not converged after reaching max steps of {step_number}. Effective sample size: {last_neff:.2f}, tolerance: {last_tolerance:.4f}.\n"
+                    print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
                           f"Consider increasing max_steps.")
         
         self.step_number = step_number
@@ -1022,7 +1022,9 @@ class Acid:
     def continue_sampling(
         self,
         sampler,
-        nsteps        : int|npint,
+        nsteps           : int|npint|None = None,
+        max_steps        : int|npint|None = None,
+        max_steps_kwards : dict|None = None
         ):
         """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
         This necessarily requires a Data instance to have been put into the ACID init.
@@ -1033,7 +1035,15 @@ class Acid:
             The existing MCMC sampler to continue sampling from.
         nsteps : int
             Number of additional steps to run the MCMC for.
-        
+        max_steps : int, optional
+            Maximum number of steps to run the MCMC for in total (including previous steps).
+            If specified, the MCMC will stop if this number of steps is reached even if convergence has not been reached, by default None.
+            If input, nsteps is ignored.
+        max_steps_kwards : dict, optional
+            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
+            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
+            ignored.
+
         Returns
         -------
         emcee.EnsembleSampler
@@ -1043,7 +1053,15 @@ class Acid:
 
         self.sampler = sampler
         self.config = self.data.config
-        self.run_mcmc(nsteps, state=None) # continue from current state
+
+        if max_steps is not None:
+            if max_steps_kwards is not None:
+                self.config.update_hipri(**max_steps_kwards)
+            self.run_mcmc_until_converged(max_steps, state=None) # continue from current state
+            self.data.nsteps += self.step_number
+        else:
+            self.run_mcmc(nsteps, state=None) # continue from current state
+            self.data.nsteps += nsteps
 
         return self.sampler
 

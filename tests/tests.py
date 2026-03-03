@@ -206,7 +206,7 @@ def class_test():
     result.plot_profiles()
     result.plot_walkers()
     result.plot_forward_model()
-    result.continue_sampling(nsteps2)
+    result.continue_sampling(nsteps=nsteps2)
     assert result.sampler.get_chain().shape[0] == nsteps1 + nsteps2 and result.data.nsteps == nsteps1 + nsteps2, \
     f"Continue sampling did not add the correct number of steps to the chain.\n" \
     f"Expected {nsteps1 + nsteps2}, got {result.sampler.get_chain().shape[0]} for sampler and {result.data.nsteps} for data."  
@@ -342,21 +342,34 @@ def test_edge_cases():
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
-    sn = spec_file[3].data           # SN of Spectrum
+    # sn = spec_file[3].data         # SN of Spectrum
 
     linelist = 'example/example_linelist.txt' # Insert path to line list
+    full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
+    wl = full_linelist[:,0]
+    depths = full_linelist[:,1]
+    wl[199] = np.nan # introduce a nan value to test handling of nans in linelist
+    depths[200] = np.nan # introduce a nan value to test handling of nans in linelist
+    spectrum[201] = np.nan # introduce a nan value to test handling of nans in spectrum
+    error[190] = np.nan # introduce a nan value to test handling of nans in error array
 
     # choose a velocity grid for the final profile(s)
-    velocities = np.arange(-25, 25, 0.82)
+    # velocities = np.arange(-25, 25, 0.82)
 
     # run ACID function
-    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
-    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, 
+    Acid = acid.Acid(linelist_path=linelist)
+    result = Acid.ACID(wavelength, spectrum, error, nsteps=2000, 
                        skips=skips, parallel=False, deterministic_profile=True)
-    data = result.data
 
+    data = result.data
+    # continue sampling
     Acid = acid.Acid(data=data)
-    Acid.ACID(max_steps=5000) # test continue sampling with no parallelisation
+    result = Acid.ACID(max_steps=5000) # test continue sampling with no parallelisation
+
+    result.continue_sampling(max_steps=5000)
+    result.plot_profiles()
+    result.plot_walkers()
+    result.plot_autocorrelation()
 
     # Guess SNR, run_acid=False
 

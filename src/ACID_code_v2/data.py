@@ -229,14 +229,7 @@ class Data:
         if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
-        has_invalid = (
-            np.any(~np.isfinite(input_wavelengths)) or
-            np.any(~np.isfinite(input_flux)) or
-            np.any(~np.isfinite(input_errors))
-        )
-        if has_invalid and self.config.verbose > 0:
-            print("Input spectra contains either non-finite values, or flux/errors <= 0. ACID will automatically drop these values.")
-        input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors)
+        input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
 
         if input_sn is None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
@@ -408,7 +401,13 @@ class Linelist:
             raise ValueError("'wavelengths' and 'depths' must have the same length and shape")
 
     @staticmethod
-    def drop_NaNs(wavelengths, depths):
+    def drop_NaNs(wavelengths, depths, return_mask=False, verbose=0):
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
+        count_dropped = np.count_nonzero(~mask)
         mask &= (wavelengths > 0) & (depths > 0)
+        if verbose > 0 and count_dropped > 0:
+            print(f"Your linelist includes {count_dropped} non-finite/nan values, these will be removed, but it is still recommended to check your linelist.")
+
+        if return_mask:
+            return wavelengths[mask], depths[mask], mask
         return wavelengths[mask], depths[mask]

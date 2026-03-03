@@ -67,7 +67,7 @@ def validate_args(x, i, allow_none=False, sn=False):
     else: # should not reach here, somehow ndim is negative
         raise ValueError(f"Argument in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
 
-def mask_invalid(wavelengths, flux, errors, return_mask=False):
+def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
 
@@ -97,11 +97,18 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False):
     w = np.where(mask, wavelengths, fill_value)
     f = np.where(mask, flux, fill_value)
     e = np.where(mask, errors, fill_value)
+
+    if verbose > 0:
+        num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
+        if num_invalid > 0:
+            print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-finite/nan values, these will be replaced with NaN and dropped when necessary, \n"
+                  f"but it is still recommended to check your wavelength, spectrum and error arrays for bad pixels and make sure this is intentional.")
+
     if return_mask:
         return w, f, e, mask
     return w, f, e
 
-def drop_invalid(wavelengths, flux, errors, return_mask=False):
+def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
     Parameters
@@ -128,6 +135,12 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False):
     w = wavelengths[mask]
     f = flux[mask]
     e = errors[mask]
+
+    if verbose > 0:
+        num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
+        if num_invalid > 0:
+            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0).")
+
     if return_mask:
         return w, f, e, mask
     return w, f, e

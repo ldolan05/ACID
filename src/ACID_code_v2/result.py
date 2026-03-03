@@ -167,11 +167,6 @@ class Result:
     def process_results(self):
         t0 = time()
 
-        with open(os.devnull, "w") as devnull, \
-            contextlib.redirect_stdout(devnull), \
-            contextlib.redirect_stderr(devnull):
-            self.tau = self.sampler.get_autocorr_time(quiet=True)
-
         # Obtain flattened samples
         flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
@@ -271,13 +266,20 @@ class Result:
 
     @_require_data
     @_require_sampler
-    def continue_sampling(self, nsteps:int|npint, process_results:bool|None=True, sampler=None):
-        """Continue MCMC sampling for additional steps.
+    def continue_sampling(self, process_results:bool=True, sampler=None, **kwargs):
+        """Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
+        Acid.continue_sampling() for more details on the parameters that can be passed.
 
         Parameters
         ----------
-        nsteps : int
-            Number of additional MCMC steps to run.
+        nsteps : int | None, optional
+            Number of additional MCMC steps to run. Passed to Acid.continue_sampling with the stored sampler.
+        max_steps : int | None, optional
+            Maximum number of MCMC steps to run, by default None. Passed to Acid.continue_sampling with the stored sampler.
+        max_steps_kwards : dict, optional
+            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
+            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
+            ignored. Passed to Acid.continue_sampling with the stored sampler.
         process_results : bool, optional
             Whether to process the results after continuing sampling, by default True.
             If False, the all_frames attribute will not be updated until Result.process_results() is called.
@@ -285,15 +287,14 @@ class Result:
             Optionally provide a different sampler to continue sampling from, otherwise,
             takes the sampler from the Result object, by default None
         """
+        if type(process_results) is int:
+            raise ValueError("The process_results attribute must be a boolean, not an integer. Did you mean to set nsteps? If so, specificy nsteps=nsteps.")
+
         from .acid import Acid
         acid = Acid(data=self.data) # includes config data
-        self.sampler = acid.continue_sampling(self.sampler, nsteps)
+        self.sampler = acid.continue_sampling(self.sampler, **kwargs)
 
         self.initiate_sampler(self.sampler) # update internal variables to match new sampler
-        
-        # Data nsteps should always match the nsteps chain length, but they can mismatch if the chain at
-        # some point was discarded or thinned. We assume data.nsteps to be the most accurate
-        self.data.nsteps += nsteps
 
         if process_results:
             self.process_results() # update all_frames
