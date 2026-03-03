@@ -286,8 +286,8 @@ Running ACID Until Convergence
 As of 1.4, ACID can also detect if the sampler has converged based on the computed autocorrelation time of the sampler. You can configure the following parameters
 by passing them to the ACID function:
 
-.. code-block:: python
-   """"
+.. code-block:: text
+
    check_interval : int, optional
       Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 1000. 
       Only used if max_steps is set.
@@ -299,7 +299,7 @@ by passing them to the ACID function:
       Tolerance for tau convergence in MCMC stopping criterion, by default 0.01. Only used if max_steps is set.
       If the sampler has not converged, it will print a warning. You can configure this by setting the max_steps parameter to your choosing when calling ACID.
       The sampler will then run either until convergence is reached or the maximum number of steps is reached. 
-   """
+
 
 .. code-block:: python
 
@@ -308,8 +308,7 @@ by passing them to the ACID function:
    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
 
-.. code-block:: python
-   """
+.. code-block:: text
    Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 227.45it/s]
    Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 234.49it/s]
    Iteration 3/5, last tolerance: 0.5674>0.05, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 219.90it/s]
@@ -317,18 +316,18 @@ by passing them to the ACID function:
    Iteration 5/5, last tolerance: 0.2756>0.05, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 222.20it/s]
    Not converged after reaching max steps of 5000. Final effective sample size: 7.00, final tolerance: 0.3184.
    Consider increasing max_steps.
-   """
+
 
 The above code will still have a fully working sampler, which can plot the profiles as per normal (see the Results class, or the Other functions page for possible plotting options).
 The sampler will give the following warning however:
 
-.. code-block:: python
-   """
+.. code-block:: text
+
    The number of MCMC steps is less than 50 times the maximum autocorrelation time.
    The sampler may not have converged. Consider running more steps or checking the walker plots.
    The max autocorrelation time is 651.30, therefore the minimum number of steps should be roughly 32565.
    Disabling burnin from autocorrelation time, instead using burnin=steps-1000
-   """
+
 
 If we turn on the deterministic profile feature, we see a significant improvement in convergence:
 
@@ -339,11 +338,10 @@ If we turn on the deterministic profile feature, we see a significant improvemen
    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000, deterministic_profile=True)
 
-.. code-block:: python
-   """
+.. code-block:: text
+
    Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:03<00:00, 282.63it/s]
    Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:03<00:00, 284.76it/s]
    Iteration 3/5, last tolerance: 0.0793>0.05, neff: 26.00<50: 100% 1000/1000 [00:03<00:00, 286.68it/s]
    Iteration 4/5, last tolerance: 0.0181<0.05, neff: 38.00<50: 100% 1000/1000 [00:03<00:00, 286.20it/s]
    Converged at step 4000. Final tolerance: 0.0066, final effective sample size: 51.00.
-   """
