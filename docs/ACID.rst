@@ -16,7 +16,17 @@ Core Classes
    Result
    LSD
    Profiles
+   Data
+
+Helper Classes
+-------------
+
+.. autosummary::
+   :toctree: _api
+   :nosignatures:
    MCMC
+   Config
+   Linelist
 
 Utility Functions
 ------------------

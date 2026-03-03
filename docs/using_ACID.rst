@@ -275,3 +275,100 @@ The LSD class can be used as follows:
    plt.show()
 
 See the LSD API for more information on available methods and attributes.
+
+Multiprocessing
+------------
+
+The default multiprocessing setting is True for ACID, which means that ACID will automatically use all available CPU cores to run the MCMC sampler in parallel.
+According to emcee documentation, they recommend setting the environment variable: OMP_NUM_THREADS=1. With some testing, this is also absolutely necessary for
+ACID to avoid massive transfer overheads. We also recommend setting the environment variable: MKL_NUM_THREADS=1 to avoid similar issues. 
+
+For unknown reasons, on most standard machines, you can set these two variables to false just before the start of multiprocessing (which ACID does), but in some
+environments, eg. some HPC environments, they must be set either in the terminal with:
+
+.. code-block:: bash
+   export OMP_NUM_THREADS=1
+   export MKL_NUM_THREADS=1
+
+or right at the top of the page before ALL other imports:
+
+.. code-block:: python
+   import os
+   os.environ["OMP_NUM_THREADS"] = "1"
+   os.environ["MKL_NUM_THREADS"] = "1"
+   ... import numpy as np ... etc.
+
+We simply just recommend for all users to make sure these are set correctly before ACID is run. ACID will raise an exception in SLURM environments if they are not
+set when multiprocessing is True, but in other environments, if they are not set, ACID will run but will be extremely slow. You have been warned!
+
+Reminder: you can always turn off multiprocessing in ACID by setting parallel=False.
+
+Deterministic profile in MCMC fitting
+------------
+As of 1.4.0, ACID can infer the profile points at each MCMC step from the continuum parameters. This means the sampler does not fit the profile points, 
+but instead fits only the continuum parameters and calculates the profile from the alpha matrix and the continuum model. The end result is the same, given
+enough steps.
+
+Basic testing with this feature enabled shows a slight speedup in the time per iteration, but a significant reduction in the number of iterations to convergence.
+This is because of the cumbersome nature of fitting every profile point as a free parameter in the MCMC. Convergence takes a long time. This is most obvious
+when we try ACID when running until convergence (see next section).
+
+The feature can be enabled simply by setting deterministic_profile=True when calling ACID. By default, this is set to False to maintain the same behaviour as 
+previous versions of ACID. In general we recommend this to be set to True for most applications.
+
+.. code-block:: python
+
+   # ... same code as before to set up data and run ACID ...
+
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, deterministic_profile=True)
+   # Now runs ACID with deterministic profile points inferred from the continuum parameters.
+
+Running ACID Until Convergence
+------------
+
+As of 1.4, ACID can also detect if the sampler has converged based on the computed autocorrelation time of the sampler.
+If the sampler has not converged, it will print a warning. You can configure this by setting the max_steps parameter to your choosing when calling ACID.
+The sampler will then run either until convergence is reached or the maximum number of steps is reached. 
+
+.. code-block:: python
+
+   # ... same code as before to set up data and run ACID ...
+
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+   result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
+
+.. output:: console
+
+   Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 227.45it/s]
+   Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 234.49it/s]
+   Iteration 3/5, last tolerance: 0.5674>0.05, neff: 7.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 219.90it/s]
+   Iteration 4/5, last tolerance: 0.3913>0.05, neff: 7.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 228.78it/s]
+   Iteration 5/5, last tolerance: 0.2756>0.05, neff: 7.00<50: 100%|██████████| 1000/1000 [00:04<00:00, 222.20it/s]
+   Not converged after reaching max steps of 5000. Final effective sample size: 7.00, final tolerance: 0.3184.
+   Consider increasing max_steps.
+
+The above code will still have a fully working sampler, which can plot the profiles as per normal (see the Results class for possible plotting options).
+The sampler will give the following warning however:
+
+.. output:: console
+   The number of MCMC steps is less than 50 times the maximum autocorrelation time.
+   The sampler may not have converged. Consider running more steps or checking the walker plots.
+   The max autocorrelation time is 651.30, therefore the minimum number of steps should be roughly 32565.
+   Disabling burnin from autocorrelation time, instead using burnin=steps-1000
+
+If we turn on the deterministic profile feature, we see a significant improvement in convergence:
+
+.. code-block:: python
+
+   # ... same code as before to set up data and run ACID ...
+
+   Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+   result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000, deterministic_profile=True)
+
+.. output:: console
+   Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 282.63it/s]
+   Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 284.76it/s]
+   Iteration 3/5, last tolerance: 0.0793>0.05, neff: 26.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 286.68it/s]
+   Iteration 4/5, last tolerance: 0.0181<0.05, neff: 38.00<50: 100%|██████████| 1000/1000 [00:03<00:00, 286.20it/s]
+   Converged at step 4000. Final tolerance: 0.0066, final effective sample size: 51.00.

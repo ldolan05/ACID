@@ -5,9 +5,10 @@ from . import utils
 from .profiles import Profiles
 from .mcmc import MCMC
 from .utils import calc_deltav # for legacy reasons
+from .data import Data, Config, Linelist
 
 __all__ = ['ACID', 'ACID_HARPS', 'Acid', 'LSD', 'MCMC', 'Result', 'Profiles',
-           'utils', 'calc_deltav',]
+           'utils', 'calc_deltav', 'Data', 'Config', 'Linelist']
 
 def _reload_all():
     # Reloads all submodules of the ACID_code_v2 package. 
