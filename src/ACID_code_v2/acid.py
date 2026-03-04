@@ -785,22 +785,25 @@ class Acid:
             ll_wl = ll_wl[-20:]
             ll_depths = ll_depths[-20:]
 
-            cmap = plt.cm.viridis_r
-            norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
-            for i, (wl, depth) in enumerate(zip(ll_wl, ll_depths)):
-                ax.axvline(
-                    wl,
-                    color=cmap(norm(depth)),
-                    linestyle="--",
-                    alpha=1,
-                    label="Line List (20 strongest lines in region)" if i == 0 else None,
-                )
-
-            # Create colorbar for depth
-            sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-            sm.set_array([])  # needed for some matplotlib versions
-            cbar = fig.colorbar(sm, ax=ax)
-            cbar.set_label("Line depth")
+            try:
+                cmap = plt.cm.viridis_r
+                norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
+                for i, (wl, depth) in enumerate(zip(ll_wl, ll_depths)):
+                    ax.axvline(
+                        wl,
+                        color=cmap(norm(depth)),
+                        linestyle="--",
+                        alpha=1,
+                        label="Line List (20 strongest lines in region)" if i == 0 else None,
+                    )
+                # Create colorbar for depth
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])  # needed for some matplotlib versions
+                cbar = fig.colorbar(sm, ax=ax)
+                cbar.set_label("Line depth")
+            except:
+                print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
+                pass
             ax.set_title('Continuum Fit')
             ax.legend()
             plt.show()
