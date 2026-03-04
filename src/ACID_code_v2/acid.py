@@ -9,6 +9,7 @@ import multiprocessing as mp
 from beartype import beartype
 import matplotlib.pyplot as plt
 import scipy.constants as const
+import matplotlib as mpl
 from . import utils
 from .lsd import LSD
 from . import mcmc
@@ -365,9 +366,10 @@ class Acid:
                 print("Performing initial continuum fit...")
             self.data.poly_inputs, self.data.flux["fitted"], self.data.errors["fitted"] = self.continuumfit(
                 self.data.flux["combined"],
-                self.data.wavelengths["combined_normalized"],
+                self.data.wavelengths["combined"],
                 self.data.errors["combined"],
                 poly_ord = self.config.poly_ord,
+                plot_result = self.config.verbose > 2
             )
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
@@ -732,6 +734,9 @@ class Acid:
         tuple
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
+        a, b = utils.get_normalisation_coeffs(wavelengths)
+        unnormalised_wavelengths = np.copy(wavelengths) # copy if needed for plot
+        wavelengths = (wavelengths*a)+b
 
         m = np.isfinite(wavelengths) & np.isfinite(fluxes)
         w0 = wavelengths[m]
@@ -759,14 +764,44 @@ class Acid:
         new_errors = errors / fit
         poly_coeffs = np.flip(coeffs)
 
-        if self.config.verbose > 2 or plot_result is True:
-            plt.figure(figsize=(10, 6))
-            plt.plot(wavelengths, fluxes, label='Original Spectrum')
-            plt.plot(wavelengths, fit, label='Fitted Continuum', color='orange')
-            plt.plot(clipped_waves, clipped_flux, 'o', label='Continuum Normalized Spectrum', color='green')
-            plt.title('Continuum Fit')
-            plt.legend()
+        if plot_result is True:
+
+            fig, ax = plt.subplots(figsize=(15, 9))
+            ax.plot(unnormalised_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
+            ax.plot(unnormalised_wavelengths, fit, label='Fitted Continuum', color='red')
+            ax.plot((clipped_waves-b)/a, clipped_flux, 'o', label='Continuum Normalized Spectrum', color='green')
+
+            ll_wl = self.data.linelist["wavelengths"]
+            ll_depths = self.data.linelist["depths"]
+
+            ll_wl, ll_depths = LSD.clip_wavelengths(unnormalised_wavelengths, ll_wl, ll_depths)
+
+            idx = np.argsort(ll_depths)
+            ll_wl = ll_wl[idx]
+            ll_depths = ll_depths[idx]
+            ll_wl = ll_wl[-20:]
+            ll_depths = ll_depths[-20:]
+
+            cmap = plt.cm.viridis_r
+            norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
+            for i, (wl, depth) in enumerate(zip(ll_wl, ll_depths)):
+                ax.axvline(
+                    wl,
+                    color=cmap(norm(depth)),
+                    linestyle="--",
+                    alpha=1,
+                    label="Line List (20 strongest lines in region)" if i == 0 else None,
+                )
+
+            # Create colorbar for depth
+            sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+            sm.set_array([])  # needed for some matplotlib versions
+            cbar = fig.colorbar(sm, ax=ax)
+            cbar.set_label("Line depth")
+            ax.set_title('Continuum Fit')
+            ax.legend()
             plt.show()
+
         return poly_coeffs, flux_obs, new_errors
 
     def residual_mask(
@@ -837,7 +872,7 @@ class Acid:
         yerr[idx2] = 1e12
 
         a, b = utils.get_normalisation_coeffs(x)
-        poly_inputs, _bin, bye = self.continuumfit(y, (x*a)+b, yerr, self.config.poly_ord, plot_result=False)
+        poly_inputs, _bin, bye = self.continuumfit(y, x, yerr, self.config.poly_ord, plot_result=False)
 
         LSD_masking = LSD(self.data)
         LSD_masking.run_LSD(x, _bin, bye, sn=100)
