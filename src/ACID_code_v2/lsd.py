@@ -82,7 +82,7 @@ class LSD:
         wavelengths_linelist, depths_linelist = self.data.linelist
 
         # Since wl,depths,errors are 1d, now drop any NaNs for a clean alpha matrix
-        wavelengths, flux, errors = utils.drop_invalid(wavelengths, flux, errors, verbose=self.config.verbose)
+        wavelengths, flux, errors = utils.drop_invalid(wavelengths, flux, errors)
 
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
