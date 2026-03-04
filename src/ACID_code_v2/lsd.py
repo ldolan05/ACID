@@ -11,7 +11,7 @@ from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
 from .data import Config
-c_kms = float(const.c/1e3)  # speed of light in km/s
+from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
 @beartype
 class LSD:
@@ -39,13 +39,13 @@ class LSD:
 
     def run_LSD(
         self,
-        wavelengths : np.ndarray,
-        flux        : np.ndarray,
-        errors      : np.ndarray,
-        sn          : float|int|npint|np.ndarray,
-        linelist    : str|dict        = None,
-        velocities  : np.ndarray      = None,
-        verbose     : int|npint|None  = None,
+        wavelengths : Array1D,
+        flux        : Array1D,
+        errors      : Array1D,
+        sn          : Scalar|Array1D,
+        linelist                   = None,
+        velocities  : Array1D      = None,
+        verbose     : IntLike|None = None,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -170,11 +170,11 @@ class LSD:
 
     def calc_alpha(
         self,
-        wavelengths         : np.ndarray,
-        wavelengths_linelist: np.ndarray,
-        depths_linelist     : np.ndarray,
-        velocities          : np.ndarray     = None,
-        verbose             : int|npint|None = None,
+        wavelengths          : Array1D,
+        wavelengths_linelist : Array1D,
+        depths_linelist      : Array1D,
+        velocities           : Array1D      = None,
+        verbose              : IntLike|None = None,
         ):
         """Calculates the alpha matrix given flux and errors in OD space, and a line_list in OD space.
         Note that if this function is called without using run_LSD, there is no selection of lines deeper than 1/(3*sn).
@@ -257,8 +257,8 @@ class LSD:
 
     @staticmethod
     def calc_cholesky(
-        alpha : np.ndarray,
-        error : np.ndarray,
+        alpha : Array2D,
+        error : Array1D,
         **kwargs,
         ):
         """Calculates the LHS Cholesky factorisation matrix given the alpha matrix and flux errors (in optical depth space)

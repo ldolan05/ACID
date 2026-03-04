@@ -7,7 +7,6 @@ from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
-from numpy import integer as npint
 import matplotlib.pyplot as plt
 import scipy.constants as const
 from . import utils
@@ -15,8 +14,7 @@ from .lsd import LSD
 from . import mcmc
 from .result import Result
 from .data import Data
-
-c_kms = float(const.c/1e3)
+from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
 @beartype
 class Acid:
@@ -27,14 +25,14 @@ class Acid:
 
     def __init__(
         self,
-        velocities     :np.ndarray|None      = None,
+        velocities     :Array1D|None         = None,
         linelist_path                        = None,
-        linelist_wl    :np.ndarray|list|None = None,
-        linelist_depths:np.ndarray|list|None = None,
-        verbose        :int|npint|bool|None  = 2,
-        telluric_lines :np.ndarray|list|None = None,
+        linelist_wl    :Array1D|None         = None,
+        linelist_depths:Array1D|None         = None,
+        verbose        :IntLike|bool|None  = 2,
+        telluric_lines :Array1D|None         = None,
         name           :str                  = 'ACID',
-        seed           :int|npint|None       = None,
+        seed           :IntLike|None       = None,
         data                                 = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
@@ -132,27 +130,27 @@ class Acid:
 
     def ACID(
         self,
-        wavelengths           :list|np.ndarray|None                            = None,
-        flux                  :list|np.ndarray|None                            = None,
-        errors                :list|np.ndarray|None                            = None,
-        sn                    :int|float|np.ndarray|list|npint|np.float64|None = None,
-        all_frames                                                             = None,
-        deterministic_profile :bool                                            = False,
-        poly_ord              :int|npint                                       = 3,
-        pix_chunk             :int|npint                                       = 20,
-        dev_perc              :int|npint                                       = 25,
-        n_sig                 :int|npint                                       = 1,
-        order                 :int|npint                                       = 0,
-        skips                 :int|npint                                       = 1,
-        parallel              :bool                                            = True,
-        cores                 :int|npint|None                                  = None,
-        nsteps                :int|npint                                       = 10000,
-        max_steps             :int|npint|None                                  = None,
-        check_interval        :int|npint                                       = 1000,
-        min_checks            :int|npint                                       = 1,
-        min_tau_factor        :int|npint                                       = 50,
-        tau_tol               :float                                           = 0.05,
-        run_mcmc              :bool                                            = True,
+        wavelengths           :Array1D|Array2D|None        = None,
+        flux                  :Array1D|Array2D|None        = None,
+        errors                :Array1D|Array2D|None        = None,
+        sn                    :Array1D|Array2D|Scalar|None = None,
+        all_frames                                         = None,
+        deterministic_profile :bool                        = False,
+        poly_ord              :IntLike                     = 3,
+        pix_chunk             :IntLike                     = 20,
+        dev_perc              :IntLike                     = 25,
+        n_sig                 :IntLike                     = 1,
+        order                 :IntLike                     = 0,
+        skips                 :IntLike                     = 1,
+        parallel              :bool                        = True,
+        cores                 :IntLike|None                = None,
+        nsteps                :IntLike                     = 10000,
+        max_steps             :IntLike|None                = None,
+        check_interval        :IntLike                     = 1000,
+        min_checks            :IntLike                     = 1,
+        min_tau_factor        :IntLike                     = 50,
+        tau_tol               :float                       = 0.05,
+        run_mcmc              :bool                        = True,
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -474,9 +472,9 @@ class Acid:
     def ACID_HARPS(
         self,
         filelist    : list,
-        order_range : list|np.ndarray|None = None,
-        save_path   : str                  = './',
-        file_type   : str                  = 'e2ds',
+        order_range : Array1D|None = None,
+        save_path   : str          = './',
+        file_type   : str          = 'e2ds',
         **kwargs,
         ):
         """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
@@ -592,11 +590,11 @@ class Acid:
 
     def combine_spec(
         self,
-        frame_wavelengths: np.ndarray | None = None,
-        frame_flux:        np.ndarray | None = None,
-        frame_errors:      np.ndarray | None = None,
-        frame_sns:         np.ndarray | None = None,
-        output:            bool              = True
+        frame_wavelengths: Array1D|Array2D|None = None,
+        frame_flux:        Array1D|Array2D|None = None,
+        frame_errors:      Array1D|Array2D|None = None,
+        frame_sns:         Array1D|Array2D|None = None,
+        output:            bool                 = True
         ):
         """Combines multiple spectral frames into one spectrum
 
@@ -708,11 +706,11 @@ class Acid:
 
     def continuumfit(
         self,
-        fluxes     : np.ndarray,
-        wavelengths: np.ndarray,
-        errors     : np.ndarray,
-        poly_ord   : int|npint = 3,
-        plot_result: bool      = False
+        fluxes     : Array1D,
+        wavelengths: Array1D,
+        errors     : Array1D,
+        poly_ord   : IntLike = 3,
+        plot_result: bool    = False
         ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -912,7 +910,7 @@ class Acid:
 
     def run_mcmc_until_converged(
         self,
-        max_steps      : int|npint,
+        max_steps      : IntLike,
         state=None,
         ):
 
@@ -1022,8 +1020,8 @@ class Acid:
     def continue_sampling(
         self,
         sampler,
-        nsteps           : int|npint|None = None,
-        max_steps        : int|npint|None = None,
+        nsteps           : IntLike|None = None,
+        max_steps        : IntLike|None = None,
         max_steps_kwards : dict|None = None
         ):
         """Continue MCMC sampling for additional steps. This should be called in Result class by the user.

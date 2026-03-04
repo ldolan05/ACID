@@ -8,7 +8,16 @@ import glob
 import scipy.constants as const
 import astropy.units as u
 from astropy.nddata import StdDevUncertainty
+from typing import TypeAlias
+from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
+FloatLike: TypeAlias = float | np.floating
+IntLike: TypeAlias = int | np.integer
+Scalar: TypeAlias = FloatLike | IntLike
+NumericArray: TypeAlias = NDArray[np.number]
+Array1D: TypeAlias = NumericArray | list[Scalar]
+Array2D: TypeAlias = NumericArray | list[Array1D]
+ArrayAnyD: TypeAlias = NumericArray | list
 
 def validate_args(x, i, allow_none=False, sn=False):
     """Validates the input arguments. This function can be used to ensure inputs to Acid
@@ -146,7 +155,7 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     return w, f, e
 
 @beartype
-def calc_deltav(wavelengths:np.ndarray) -> float:
+def calc_deltav(wavelengths:Array1D) -> float:
     """Calculates velocity pixel size
 
     Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.

@@ -13,6 +13,7 @@ from . import mcmc
 from . import utils
 from .data import Data
 from .data import Config
+from .utils import FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
 warnings.filterwarnings("ignore")
 
@@ -82,7 +83,7 @@ class Result:
             sampler                        = None,
             process_results: bool          = True,
             ACID_HARPS     : bool          = False,
-            verbose        : int|bool|None = None,
+            verbose        : IntLike|None = None,
         ):
         """Initiate Result class
 
@@ -325,7 +326,7 @@ class Result:
                 "Result.process_results() is called.")
 
     @_require_sampler
-    def plot_walkers(self, sampler=None, burnin:int|npint|None=None, thin:int|npint|None=None, return_fig:bool=False):
+    def plot_walkers(self, sampler=None, burnin:IntLike|None=None, thin:IntLike|None=None, return_fig:bool=False):
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
 
@@ -552,13 +553,13 @@ class Result:
     def plot_autocorrelation(
         self,
         sampler=None,
-        burnin: int | None = None,
-        thin: int | None = None,
-        n_grid: int = 12,
+        burnin: IntLike | None = None,
+        thin: IntLike | None = None,
+        n_grid: IntLike = 12,
         c: float = 5.0,
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
-        min_steps: int = 100
+        min_steps: IntLike = 100
     ):
         """
         Plot estimated integrated autocorrelation time as a function of chain length.
@@ -636,7 +637,7 @@ class Result:
     def plot_acf(
         self,
         sampler=None,
-        max_lag: int | None = None,
+        max_lag: IntLike | None = None,
         return_fig: bool = False,
         subplot_kwargs: dict | None = None,
         ):
