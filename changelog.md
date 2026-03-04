@@ -1,6 +1,11 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.4.4] - 2026-03-04
+
+### Changed
+- For verbose=3, the continuum_fit plot now only plots once and shows the linelist positions colour-coded by depth.
+
 ## [1.4.3] - 2026-03-04
 
 ### Changed
