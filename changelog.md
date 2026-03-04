@@ -1,6 +1,12 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.4.5] - 2026-03-04
+
+### Fixed
+- The run_mcmc now updates the config with high priority to allow for separating runs
+- The continuum_fit plot on verbose=3 now is in a try except loop in case linelist wavelengths lie outside range.
+
 ## [1.4.4] - 2026-03-04
 
 ### Changed
