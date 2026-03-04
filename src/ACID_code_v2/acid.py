@@ -297,6 +297,9 @@ class Acid:
         self.config.update_lowpri(**ACID_config) # self.config overwrites ACID_config if overlapping
         self.data.config = self.config # update dataclass config as well
 
+        # Exceptions that should be hipri:
+        self.config.update_hipri(**{"run_mcmc": run_mcmc})
+
         if self.config.parallel and sys.platform == "win32":
             if self.config.verbose > 0:
                 # This doesn't work, needs serious modifications to make work, so just run serially for now
