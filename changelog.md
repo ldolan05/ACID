@@ -1,6 +1,14 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.4.3] - 2026-03-04
+
+### Changed
+- Improved typing/input checks across beartype input validations.
+
+### Fixed
+- Removed unintended print at process_result reprinting multiple times if dropping multiple values due to NaN.
+
 ## [1.4.2] - 2026-03-04
 
 ### Added
