@@ -1,6 +1,11 @@
 # Changelog
 All notable future changes to this project are documented here.
 
+## [1.4.2] - 2026-03-04
+
+### Added
+- A check for the final memory requirements for the calculation of the continuum error. If exceeded, fallback to choosing a max of 1000 random samples.
+
 ## [1.4.1] - 2026-03-03
 
 ### Fixed
