@@ -1,7 +1,7 @@
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings, contextlib, functools, inspect
+import corner, sys, os, pickle, warnings, contextlib, functools, inspect, psutil
 from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 from beartype import beartype
@@ -119,6 +119,7 @@ class Result:
         self.data       = None
         self.all_frames = None
         self.config     = Config() # default config, will be updated if Acid or Data object is provided
+        self.slurm      = "SLURM_JOB_ID" in os.environ
 
         self.config.verbose = verbose
 
@@ -188,9 +189,29 @@ class Result:
         coeffs = flat_samples[:, nvel:]
         ncoeffs = coeffs.shape[1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
-        conts = (coeffs @ powers.T)
 
-        continuum_error = np.std(np.array(conts), axis=0)  
+        # First check memory to see if all samples can be used
+        if self.slurm:
+            available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
+            available_memory *= 1e6  # Convert to bytes as in the else statement below
+        else:
+            available_memory = psutil.virtual_memory().available
+        m_available = available_memory * 1e-9 * 0.8 # in GB, with 0.8 factor safety gap
+        n_samples, ncoeffs = coeffs.shape
+        npix = powers.shape[0]
+        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 * 1e-9
+
+        # If memory exceeded, fallback to using 1000 random samples
+        if matrix_size_gb > m_available:
+            if self.config.verbose > 0:
+                print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
+                "Calculating with a max of 1000 random samples instead.")
+            indices_size = min(1000, n_samples)
+            random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
+            coeffs = coeffs[random_indices, :]
+
+        conts = (coeffs @ powers.T)
+        continuum_error = np.std(conts, axis=0)
 
         for counter in range(len(self.data.flux["input"])):
             flux = np.copy(self.data.flux["input"][counter])
