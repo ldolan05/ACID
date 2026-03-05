@@ -981,7 +981,8 @@ class Acid:
                     step_number += self.config.check_interval
 
                     try:
-                        tau = self.sampler.get_autocorr_time(tol=0)
+                        # We want to keep the time for get_autocorr_time to run constant, so thin accordingly 
+                        tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
                     except emcee.autocorr.AutocorrError:
                         continue
 
