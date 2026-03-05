@@ -290,7 +290,7 @@ class Data:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, filename: str) -> Data:
+    def load(cls, filename: str):
         with open(filename, "rb") as f:
             payload = pickle.load(f)
         
