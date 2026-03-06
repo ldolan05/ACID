@@ -830,20 +830,28 @@ class Acid:
         residuals = data_normalised - forward_normalised
         
         ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
-        idx = (abs(residuals) > self.config.dev_perc / 100)
+        # idx = (abs(residuals) > self.config.dev_perc / 100)
+        # flag_min = 0
+        # flag_max = 0
+        # for value in range(len(idx)):
+        #     if idx[value] == True and flag_min <= value:
+        #         flag_min = value
+        #         flag_max = value
+        #     elif idx[value] == True and flag_max < value:
+        #         flag_max = value
+        #     elif idx[value] == False and flag_max - flag_min >= self.config.pix_chunk:
+        #         yerr[flag_min:flag_max] = 1e12
+        #         flag_min = value
+        #         flag_max = value
+        bad_idx = np.abs(residuals) > (self.config.dev_perc / 100)
 
-        flag_min = 0
-        flag_max = 0
-        for value in range(len(idx)):
-            if idx[value] == True and flag_min <= value:
-                flag_min = value
-                flag_max = value
-            elif idx[value] == True and flag_max < value:
-                flag_max = value
-            elif idx[value] == False and flag_max - flag_min >= self.config.pix_chunk:
-                yerr[flag_min:flag_max] = 1e12
-                flag_min = value
-                flag_max = value
+        padded = np.concatenate(([False], bad_idx, [False]))
+        starts = np.flatnonzero(~padded[:-1] & padded[1:])
+        ends = np.flatnonzero(padded[:-1] & ~padded[1:])
+
+        for start, end in zip(starts, ends):
+            if (end - start) >= self.config.pix_chunk:
+                yerr[start:end] = 1e12
 
         ##############################################
         #                  TELLURICS                 #   
@@ -853,7 +861,7 @@ class Acid:
 
         ## masking tellurics
         for line in self.config.telluric_lines:
-            limit = (21/c_kms)*line +3
+            limit = (21/c_kms)*line + 3
             idx = np.logical_and((line-limit) <= x, x <= (limit+line))
             yerr[idx] = 1e12
 
