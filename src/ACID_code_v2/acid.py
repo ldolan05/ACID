@@ -138,6 +138,8 @@ class Acid:
         all_frames                                         = None,
         deterministic_profile :bool                        = False,
         poly_ord              :IntLike                     = 3,
+        continuum_percentile  :IntLike                     = 90,
+        bin_size              :IntLike                     = 100,
         pix_chunk             :IntLike                     = 20,
         dev_perc              :IntLike                     = 25,
         n_sig                 :IntLike                     = 1,
@@ -188,6 +190,12 @@ class Acid:
             as of yet, by default True.
         poly_ord : int, optional
             Order of polynomial to fit as the continuum, by default 3
+        continuum_percentile : int, optional
+            The percentile to use when fitting the continuum, by default 90. For example, if 90, the continuum fit will be performed
+            on the points in the spectra that are above the 90th percentile in flux.
+        bin_size : int, optional
+            The size of bins to use when performing the continuum fit. The spectra are split into bins of this size, and the continuum
+            is fit to the median wavelength and the specified percentile of flux in each bin. By default 100 pixels.
         pix_chunk : int, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
             and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels,
@@ -277,6 +285,8 @@ class Acid:
         # Assign inputted configuration to config dictionary plus or minus a few variables
         ACID_config = {
             "poly_ord"              : poly_ord,
+            "continuum_percentile"  : continuum_percentile,
+            "bin_size"              : bin_size,
             "order"                 : order,
             "pix_chunk"             : pix_chunk,
             "dev_perc"              : dev_perc,
@@ -372,7 +382,8 @@ class Acid:
                 self.data.wavelengths["combined"],
                 self.data.errors["combined"],
                 poly_ord = self.config.poly_ord,
-                plot_result = self.config.verbose > 2
+                plot_result = self.config.verbose > 2,
+                plot_title = "Initial Continuum Fit"
             )
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
@@ -716,7 +727,7 @@ class Acid:
         errors     : Array1D,
         poly_ord   : IntLike = 3,
         plot_result: bool    = False,
-        telluric_lines       = None,
+        plot_title : str     = "Continuum Fit"
         ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -742,26 +753,39 @@ class Acid:
         unnormalised_wavelengths = np.copy(wavelengths) # copy if needed for plot
         wavelengths = (wavelengths*a)+b
 
-        m = np.isfinite(wavelengths) & np.isfinite(fluxes)
-        w0 = wavelengths[m]
-        f0 = fluxes[m]
+        # m = np.isfinite(wavelengths) & np.isfinite(fluxes) & np.isfinite(errors)
+        # w0 = wavelengths[m]
+        # f0 = fluxes[m]
+        # e0 = errors[m]
+        w0 = wavelengths
+        f0 = fluxes
+        e0 = errors # test
 
         idx = np.argsort(w0)
         w = w0[idx]
         f = f0[idx]
+        e = e0[idx]
 
-        binsize = 100
+        binsize = self.config.bin_size
         n = len(w) // binsize  # full bins only
 
         w2 = w[:n*binsize].reshape(n, binsize)
         f2 = f[:n*binsize].reshape(n, binsize)
+        e2 = e[:n*binsize].reshape(n, binsize)
 
-        j = np.argmax(f2, axis=1)
-        bins = np.arange(n)
-        clipped_flux = f2[bins, j]
-        clipped_waves = w2[bins, j]
+        clipped_flux = np.nanpercentile(f2, self.config.continuum_percentile, axis=1)
+        clipped_waves = np.nanmedian(w2, axis=1)
+        clipped_errs = np.nanmedian(e2, axis=1)
 
-        coeffs = np.polyfit(clipped_waves, clipped_flux, poly_ord)
+        good = (
+            np.isfinite(clipped_waves)
+            & np.isfinite(clipped_flux)
+            & np.isfinite(clipped_errs)
+            & (clipped_errs > 0)
+            & (clipped_errs < 1e11) # 1e12 is the default mask error value, which can be picked up in the median error binning
+        )
+
+        coeffs = np.polyfit(clipped_waves[good], clipped_flux[good], poly_ord, w=1/clipped_errs[good])
         poly = np.poly1d(coeffs)
         fit = poly(wavelengths)
         flux_obs = fluxes / fit
@@ -773,13 +797,21 @@ class Acid:
             fig, ax = plt.subplots(figsize=(15, 9))
             ax.plot(unnormalised_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
             ax.plot(unnormalised_wavelengths, fit, label='Fitted Continuum', color='red')
-            ax.plot((clipped_waves-b)/a, clipped_flux, 'o', label='Continuum Normalized Spectrum', color='green')
+            ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
+
+            # Plot bad regions:
+            masked = ~good
+            padded = np.concatenate(([False], masked, [False]))
+            starts = np.flatnonzero(~padded[:-1] & padded[1:])
+            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+            for i, (start, end) in enumerate(zip(starts, ends)):
+                ax.axvspan((clipped_waves[start]-b)/a, (clipped_waves[end-1]-b)/a,
+                           color='red', alpha=0.15, label="Bad regions" if i == 0 else None)
 
             ll_wl = self.data.linelist["wavelengths"]
             ll_depths = self.data.linelist["depths"]
 
             ll_wl, ll_depths = LSD.clip_wavelengths(unnormalised_wavelengths, ll_wl, ll_depths)
-
             idx = np.argsort(ll_depths)
             ll_wl = ll_wl[idx]
             ll_depths = ll_depths[idx]
@@ -805,7 +837,7 @@ class Acid:
             except:
                 print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
                 pass
-            ax.set_title('Continuum Fit')
+            ax.set_title(plot_title)
             ax.legend()
             plt.show()
 
@@ -828,7 +860,8 @@ class Acid:
         data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
         residuals = data_normalised - forward_normalised
-        
+        residuals -= np.median(residuals) # test
+
         ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
         # idx = (abs(residuals) > self.config.dev_perc / 100)
         # flag_min = 0
@@ -848,22 +881,24 @@ class Acid:
         padded = np.concatenate(([False], bad_idx, [False]))
         starts = np.flatnonzero(~padded[:-1] & padded[1:])
         ends = np.flatnonzero(padded[:-1] & ~padded[1:])
+        pix_mask = np.zeros_like(residuals, dtype=bool)
 
         for start, end in zip(starts, ends):
             if (end - start) >= self.config.pix_chunk:
                 yerr[start:end] = 1e12
+                pix_mask[start:end] = True
 
         ##############################################
         #                  TELLURICS                 #   
         ##############################################
 
-        # self.yerr_compare = self.yerr.copy()
-
         ## masking tellurics
+        telluric_mask = np.zeros_like(residuals, dtype=bool)
         for line in self.config.telluric_lines:
             limit = (21/c_kms)*line + 3
             idx = np.logical_and((line-limit) <= x, x <= (limit+line))
             yerr[idx] = 1e12
+            telluric_mask[idx] = True
 
         # Note that this is used to keep track of the residual masks for later use in _get_profiles
         self.data.residual_masks = tuple([yerr >= 1e12])
@@ -886,11 +921,14 @@ class Acid:
         yerr[idx1] = 1e12
         yerr[idx2] = 1e12
 
-        a, b = utils.get_normalisation_coeffs(x)
-        poly_inputs, _bin, bye = self.continuumfit(y, x, yerr, self.config.poly_ord, plot_result=False)
+        poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(y, x, yerr, self.config.poly_ord,
+                                                   plot_result=self.config.verbose > 2,
+                                                   plot_title="Continuum Fit after Residual Masking")
 
         LSD_masking = LSD(self.data)
-        LSD_masking.run_LSD(x, _bin, bye, sn=100)
+        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn=self.data.sn["combined"])
+        # a, b = utils.get_normalisation_coeffs(x)
+        # LSD_masking.run_LSD(x, y, yerr, sn=self.data.sn["combined"])
         self.data.alpha = LSD_masking.alpha
         self.data.c_factor = LSD_masking.c_factor
 
@@ -898,28 +936,40 @@ class Acid:
             nremoved = np.sum(idx1)+np.sum(idx2)
             print(f"Residal masking has removed {nremoved}/{len(residuals)} points.")
 
-            plt.figure(figsize=(10, 6))
-            plt.plot(x, residuals, label='Residuals', color='blue')
-            plt.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
-            plt.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
-            plt.fill_between(x, upper_clip, lower_clip, color='gray', alpha=0.3, label='Clipped Region')
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(x, residuals, label='Residuals', color='blue')
+            ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
+            ax.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
+            ax.fill_between(x, upper_clip, lower_clip, color='gray', alpha=0.3, label='Clipped Region')
             for i, line in enumerate(self.config.telluric_lines):
                 limit = (21/c_kms)*line + 3
                 label = 'Telluric Masking Region' if i==0 else None
-                plt.axvspan(line-limit, line+limit, color='orange', alpha=0.5, label=label)
-            plt.xlim(np.min(x), np.max(x))
-            plt.title('Residuals with Sigma Clipping Thresholds')
-            plt.xlabel('Wavelength')
-            plt.ylabel('Residuals')
-            plt.legend(loc="lower right")
+                ax.axvspan(line-limit, line+limit, color='orange', alpha=0.5, label=label)
+
+            # Show pix_chunk masked points:
+            masked = pix_mask
+            padded = np.concatenate(([False], masked, [False]))
+            starts = np.flatnonzero(~padded[:-1] & padded[1:])
+            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+            for i, (start, end) in enumerate(zip(starts, ends)):
+                ax.axvspan((x[start]), (x[end-1]),
+                           color='red', alpha=0.15, label="Masked region" if i == 0 else None)
+
+            ax.set_xlim(np.min(x), np.max(x))
+            ax.grid(True)
+            ax.set_title('Residuals with Sigma Clipping Thresholds')
+            ax.set_xlabel('Wavelength')
+            ax.set_ylabel('Residuals')
+            ax.legend(loc="lower right")
             plt.show()
 
-            plt.figure(figsize=(10, 6))
-            plt.plot(self.data.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
-            plt.title('LSD Profile after Residual Masking')
-            plt.xlabel('Velocity (km/s)')
-            plt.ylabel('LSD Profile')
-            plt.legend()
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(self.data.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
+            ax.set_title('LSD Profile after Residual Masking')
+            ax.set_xlabel('Velocity (km/s)')
+            ax.set_ylabel('LSD Profile')
+            ax.legend()
+            ax.grid(True)
             plt.show()
 
         self.data.wavelengths["masked"] = x
