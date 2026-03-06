@@ -11,8 +11,24 @@ class Config:
         "verbose" : 2,
         "order_range" : [1],
         "telluric_lines" : [
-        3820.33, 3933.66, 3968.47, 4327.74, 4307.90, 4383.55, 4861.34,
-        5183.62, 5270.39, 5889.95, 5895.92, 6562.81, 7593.70, 8226.96
+            3820.33, # metal?
+            3835.38, # H eta (new)
+            3889.05, # H zeta (new)
+            3933.66, # Ca II K
+            3968.47, # Ca II H
+            4101.74, # H delta (new)
+            4307.90, # metal?
+            4327.74, # metal?
+            4340.47, # H gamma (new)
+            4383.55, # Fe 1
+            4861.34, # H beta
+            5183.62, # Mg I b triplet
+            5270.39, # Fe 1
+            5889.95, # Na I D2
+            5895.92, # Na I D1
+            6562.81, # H alpha
+            7593.70, # O2 telluric
+            8226.96  # H2O telluric?
         ]
     }
 

@@ -715,7 +715,8 @@ class Acid:
         wavelengths: Array1D,
         errors     : Array1D,
         poly_ord   : IntLike = 3,
-        plot_result: bool    = False
+        plot_result: bool    = False,
+        telluric_lines       = None,
         ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
