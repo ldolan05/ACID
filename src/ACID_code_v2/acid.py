@@ -343,7 +343,7 @@ class Acid:
             hasattr(self.data.wavelengths, "combined"),
             hasattr(self.data.flux, "combined"),
             hasattr(self.data.errors, "combined"),
-            hasattr(self.data.sn, "combined")
+            hasattr(self.data.sn, "combined"),
         )):
             if self.config.verbose > 2:
                 print("Combined spectra already exists, skipping combination step.")
@@ -352,13 +352,13 @@ class Acid:
                 print("Combining spectra...")
             self.combine_spec(output=False)
 
-        # Clean combined spectra of NaNs
-        wavelengths, flux, errors, nanmask = utils.drop_invalid(self.data.wavelengths["combined"], self.data.flux["combined"],
-                                                                self.data.errors["combined"], return_mask=True)
-        self.data.wavelengths["combined"] = wavelengths
-        self.data.flux["combined"] = flux
-        self.data.errors["combined"] = errors
-        self.data.nanmask = nanmask
+            # Clean combined spectra of NaNs
+            wavelengths, flux, errors, nanmask = utils.drop_invalid(self.data.wavelengths["combined"], self.data.flux["combined"],
+                                                                    self.data.errors["combined"], return_mask=True)
+            self.data.wavelengths["combined"] = wavelengths
+            self.data.flux["combined"] = flux
+            self.data.errors["combined"] = errors
+            self.data.nanmask = nanmask
 
         # Get the initial polynomial coefficents
         if not hasattr(self.data.wavelengths, "combined_normalized"):
@@ -405,7 +405,6 @@ class Acid:
             self.data.initial_profile = initial_LSD.profile # in optical depth
             self.data.initial_profile_errors = initial_LSD.profile_errors # Not used, saved for debugging
             self.data.alpha = initial_LSD.alpha
-
             # Set x, y, yerr, and model_inputs for emcee
             self.data.model_inputs = np.concatenate((self.data.initial_profile, self.data.poly_inputs))
 
@@ -641,10 +640,10 @@ class Acid:
         """
 
         if frame_wavelengths is not None: # This should only be for testing
-            self.wavelengths["input"] = np.copy(frame_wavelengths)
-            self.flux["input"]        = np.copy(frame_flux)
-            self.errors["input"]      = np.copy(frame_errors)
-            self.sn["input"]          = np.copy(frame_sns)
+            self.data.wavelengths["input"] = np.copy(frame_wavelengths)
+            self.data.flux["input"]        = np.copy(frame_flux)
+            self.data.errors["input"]      = np.copy(frame_errors)
+            self.data.sn["input"]          = np.copy(frame_sns)
 
         # Set simple names for variables (just used in this function)
         wavelengths = np.copy(self.data.wavelengths["input"])
@@ -753,18 +752,10 @@ class Acid:
         unnormalised_wavelengths = np.copy(wavelengths) # copy if needed for plot
         wavelengths = (wavelengths*a)+b
 
-        # m = np.isfinite(wavelengths) & np.isfinite(fluxes) & np.isfinite(errors)
-        # w0 = wavelengths[m]
-        # f0 = fluxes[m]
-        # e0 = errors[m]
-        w0 = wavelengths
-        f0 = fluxes
-        e0 = errors # test
-
-        idx = np.argsort(w0)
-        w = w0[idx]
-        f = f0[idx]
-        e = e0[idx]
+        idx = np.argsort(wavelengths)
+        w = wavelengths[idx]
+        f = fluxes[idx]
+        e = errors[idx]
 
         binsize = self.config.bin_size
         n = len(w) // binsize  # full bins only
@@ -841,6 +832,11 @@ class Acid:
             ax.legend()
             plt.show()
 
+        if np.any(flux_obs <= 0) or np.any(new_errors <= 0):
+            raise ValueError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
+            "Consider adjusting the polynomial order or continuum percentile. Use verbose=3 to see the plot of the continuum fit.\n " \
+            "Note that this will only work for interactive terminals or displays which work with plt.show()")
+
         return poly_coeffs, flux_obs, new_errors
 
     def residual_mask(
@@ -856,11 +852,15 @@ class Acid:
         y = self.data.flux["combined"]
         yerr = self.data.errors["combined"]
         forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
+        # plt.plot(forward)
+        # plt.show()
+        # plt.plot(_)
+        # plt.show()
 
-        data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
-        forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
-        residuals = data_normalised - forward_normalised
-        residuals -= np.median(residuals) # test
+        # data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
+        # forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
+        # residuals = data_normalised - forward_normalised
+        residuals = (y - forward) / forward
 
         ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
         # idx = (abs(residuals) > self.config.dev_perc / 100)
@@ -932,19 +932,30 @@ class Acid:
         self.data.alpha = LSD_masking.alpha
         self.data.c_factor = LSD_masking.c_factor
 
+        self.data.wavelengths["masked"] = x
+        self.data.flux["masked"]        = y # x and y dont change in this func
+        self.data.errors["masked"]      = yerr # yerr is modified in this func
+        self.data.sn["masked"]          = np.copy(self.data.sn["combined"]) # SN is not changed in this func
+        # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
+
         if self.config.verbose > 2:
             nremoved = np.sum(idx1)+np.sum(idx2)
             print(f"Residal masking has removed {nremoved}/{len(residuals)} points.")
 
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plt.subplots(figsize=(15, 9))
             ax.plot(x, residuals, label='Residuals', color='blue')
             ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
             ax.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
-            ax.fill_between(x, upper_clip, lower_clip, color='gray', alpha=0.3, label='Clipped Region')
-            for i, line in enumerate(self.config.telluric_lines):
-                limit = (21/c_kms)*line + 3
-                label = 'Telluric Masking Region' if i==0 else None
-                ax.axvspan(line-limit, line+limit, color='orange', alpha=0.5, label=label)
+            ax.axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
+            
+            # Show telluric masking regions
+            masked = telluric_mask
+            padded = np.concatenate(([False], masked, [False]))
+            starts = np.flatnonzero(~padded[:-1] & padded[1:])
+            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+            for i, (start, end) in enumerate(zip(starts, ends)):
+                ax.axvspan((x[start]), (x[end-1]),
+                           color='orange', alpha=0.3, label="Telluric masking" if i == 0 else None)
 
             # Show pix_chunk masked points:
             masked = pix_mask
@@ -953,7 +964,10 @@ class Acid:
             ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
             for i, (start, end) in enumerate(zip(starts, ends)):
                 ax.axvspan((x[start]), (x[end-1]),
-                           color='red', alpha=0.15, label="Masked region" if i == 0 else None)
+                           color='red', alpha=0.15, label="Chunk deviation masking" if i == 0 else None)
+            # And show pix_chunk range
+            dev = self.config.dev_perc / 100
+            ax.axhspan(-dev, dev, color='green', alpha=0.1, label="Chunk deviation masking range")
 
             ax.set_xlim(np.min(x), np.max(x))
             ax.grid(True)
@@ -963,20 +977,35 @@ class Acid:
             ax.legend(loc="lower right")
             plt.show()
 
+            # Plot the profile
             fig, ax = plt.subplots(figsize=(10, 6))
             ax.plot(self.data.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
             ax.set_title('LSD Profile after Residual Masking')
             ax.set_xlabel('Velocity (km/s)')
             ax.set_ylabel('LSD Profile')
+            ax.axhline(1, color='black', linestyle='--')
             ax.legend()
             ax.grid(True)
             plt.show()
 
-        self.data.wavelengths["masked"] = x
-        self.data.flux["masked"]        = y # x and y dont change in this func
-        self.data.errors["masked"]      = yerr # yerr is modified in this func
-        self.data.sn["masked"]          = np.copy(self.data.sn["combined"]) # SN is not changed in this func
-        # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
+            # Finally plot the forward model
+            forward_masked, _ = mcmc.MCMC(self.data).deterministic_model(poly_inputs)
+            fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
+            ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
+            ax[0].plot(x, forward_masked, label='Forward model with masked residuals', color='C0', linewidth=1)
+            ax[0].set_title('Forward model with masked residuals')
+            ax[0].set_xlabel('Wavelength')
+            ax[0].set_ylabel('Flux')
+            ax[1].plot(x, (y-forward_masked)/forward_masked, label='Residuals', color='blue')
+            ax[1].axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
+            ax[1].axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
+            ax[1].axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
+            ax[1].set_title('Residuals of forward model with masked residuals')
+            ax[1].set_xlabel('Wavelength')
+            ax[1].set_ylabel('Residuals')
+            ax[0].legend()
+            ax[0].grid(True)
+            plt.show()
 
         return
 

@@ -92,7 +92,7 @@ class LSD:
                              f"units between linelist and spectrum or an empty linelist.")
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)        
+        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
