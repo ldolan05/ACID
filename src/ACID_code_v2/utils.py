@@ -155,7 +155,7 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     return w, f, e
 
 @beartype
-def calc_deltav(wavelengths:Array1D) -> float:
+def calc_deltav(wavelengths:Array1D):
     """Calculates velocity pixel size
 
     Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
