@@ -21,6 +21,8 @@ class Profiles:
             The errors associated with the flux values, by default None.
         """
 
+        flux -= 1
+
         self.velocities = velocities
         self.flux = flux
         self.flux_err = flux_err
@@ -76,7 +78,6 @@ class Profiles:
             y_fit_on_x = self.fit_on_x[model]
             y_err_lo, y_err_hi = self.fitted_yerr[model]
             ax[0].plot(self.fitted_x, y_fit, label=f'{model.capitalize()} Fit', color=f'C{i+1}')
-            ax[0].fill_between(self.fitted_x, y_fit - y_err_lo, y_fit + y_err_hi, color=f'C{i+1}', alpha=0.3)
             ax[1].plot(self.velocities, y_fit_on_x - self.flux, label=f'{model.capitalize()} Residuals', color=f'C{i+1}')
         ax[1].set_xlabel('Velocity')
         ax[0].set_title('Profile Fit(s)')
@@ -98,7 +99,7 @@ class Profiles:
         yerr : array_like, optional
             The y errors of the data. If None, uses self.flux_err.
         p0 : list, optional
-            Initial guess for the parameters [amplitude, centre, sigma, gamma], by default None.
+            Initial guess for the parameters [amplitude, centre, sigma, gamma, offset], by default None.
         **kwargs : dict
             Additional keyword arguments to pass to curve_fit.
 
@@ -114,7 +115,8 @@ class Profiles:
             centre_guess = x[np.argmin(y)]
             sigma0 = (x.max() - x.min()) / 10.0
             gamma0 = sigma0
-            p0 = [amplitude_guess, centre_guess, sigma0, gamma0]
+            offset = 0
+            p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
 
         popt, pcov = self._fit_model("voigt", x, y, yerr, p0, **kwargs)
         return popt, pcov
@@ -146,7 +148,8 @@ class Profiles:
             amplitude_guess = np.min(y)
             mean_guess = x[np.argmin(y)]
             stddev_guess = (x.max() - x.min()) / 10.0
-            p0 = [amplitude_guess, mean_guess, stddev_guess]
+            offset = 0
+            p0 = [amplitude_guess, mean_guess, stddev_guess, offset]
 
         popt, pcov = self._fit_model("gaussian", x, y, yerr, p0, **kwargs)
         return popt, pcov
@@ -163,7 +166,7 @@ class Profiles:
         yerr : array_like, optional
             The y errors of the data. If None, uses self.flux_err.
         p0 : list, optional
-            Initial guess for the parameters [amplitude, centre, gamma], by default None.
+            Initial guess for the parameters [amplitude, centre, gamma, offset], by default None.
         **kwargs : dict
             Additional keyword arguments to pass to curve_fit.
 
@@ -178,7 +181,8 @@ class Profiles:
             amplitude_guess = np.min(y)
             centre_guess = x[np.argmin(y)]
             gamma0 = (x.max() - x.min()) / 10.0
-            p0 = [amplitude_guess, centre_guess, gamma0]
+            offset = 0
+            p0 = [amplitude_guess, centre_guess, gamma0, offset]
 
         popt, pcov = self._fit_model("lorentzian", x, y, yerr, p0, **kwargs)
         return popt, pcov
@@ -245,7 +249,7 @@ class Profiles:
         return popt, pcov
 
     @staticmethod
-    def voigt_func(x, amplitude, centre, sigma, gamma):
+    def voigt_func(x, amplitude, centre, sigma, gamma, offset=0):
         """Calculates the Voigt profile at given x values.
 
         Parameters
@@ -260,6 +264,8 @@ class Profiles:
             The Gaussian standard deviation.
         gamma : float
             The Lorentzian half-width at half-maximum.
+        offset : float, optional
+            The continuum offset, by default 0.
 
         Returns
         -------
@@ -268,10 +274,10 @@ class Profiles:
         """
         z = ((x - centre) + 1j*gamma) / (sigma * np.sqrt(2))
         voigt_profile = amplitude * np.real(wofz(z)) / (sigma * np.sqrt(2*np.pi))
-        return voigt_profile + 1
+        return voigt_profile + offset
 
     @staticmethod
-    def gaussian_func(x, amplitude, mean, stddev):
+    def gaussian_func(x, amplitude, mean, stddev, offset=0):
         """Calculates the Gaussian profile at given x values.
 
         Parameters
@@ -284,16 +290,18 @@ class Profiles:
             The mean (center) of the Gaussian profile.
         stddev : float
             The standard deviation of the Gaussian profile.
+        offset : float, optional
+            The continuum offset, by default 0.
 
         Returns
         -------
         array_like
             The Gaussian profile evaluated at the input x values.
         """
-        return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + 1
+        return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + offset
     
     @staticmethod
-    def lorentzian_func(x, amplitude, centre, gamma):
+    def lorentzian_func(x, amplitude, centre, gamma, offset=0):
         """Calculates the Lorentzian profile at given x values.
 
         Parameters
@@ -306,10 +314,12 @@ class Profiles:
             The center position of the Lorentzian profile.
         gamma : float
             The half-width at half-maximum.
+        offset : float, optional
+            The continuum offset, by default 0.
 
         Returns
         -------
         array_like
             The Lorentzian profile evaluated at the input x values.
         """
-        return (amplitude * (gamma**2)) / ((x - centre)**2 + gamma**2) + 1
+        return (amplitude * (gamma**2)) / ((x - centre)**2 + gamma**2) + offset
