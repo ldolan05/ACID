@@ -888,6 +888,12 @@ class Acid:
                 yerr[start:end] = 1e12
                 pix_mask[start:end] = True
 
+        # Warn if more than 50% of spectrum is masked
+        if np.sum(pix_mask) > 0.5 * len(pix_mask):
+            if self.config.verbose > 0:
+                print(f"Warning: More than 50% of the spectrum is masked based on residuals. \n" \
+                "Please check your initial continuum fit (by using verbose=3 when initialising) or consider adjusting the pix_chunk and dev_perc parameters.")
+
         ##############################################
         #                  TELLURICS                 #   
         ##############################################
@@ -909,18 +915,14 @@ class Acid:
 
         m = np.median(residuals)
         sigma = np.std(residuals)
+        clip = self.config.n_sig * sigma
 
-        upper_clip = m + self.config.n_sig * sigma
-        lower_clip = m - self.config.n_sig * sigma
+        lower_clip = m - clip
+        upper_clip = m + clip
+        mask = (residuals <= lower_clip) | (residuals >= upper_clip)
+        yerr[mask] = 1e12
 
-        rcopy = residuals.copy()
-
-        idx1 = tuple([rcopy <= lower_clip])
-        idx2 = tuple([rcopy >= upper_clip])
-
-        yerr[idx1] = 1e12
-        yerr[idx2] = 1e12
-
+        # Now do final LSD call
         poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(y, x, yerr, self.config.poly_ord,
                                                    plot_result=self.config.verbose > 2,
                                                    plot_title="Continuum Fit after Residual Masking")
@@ -939,7 +941,7 @@ class Acid:
         # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
 
         if self.config.verbose > 2:
-            nremoved = np.sum(idx1)+np.sum(idx2)
+            nremoved = np.sum(mask)
             print(f"Residal masking has removed {nremoved}/{len(residuals)} points.")
 
             fig, ax = plt.subplots(figsize=(15, 9))
