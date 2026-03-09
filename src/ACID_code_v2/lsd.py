@@ -158,10 +158,14 @@ class LSD:
         idx = (depths_linelist >= 1/(3*sn))
         wavelengths_linelist = wavelengths_linelist[idx]
         depths_linelist = depths_linelist[idx]
+
+        # Analyse remaining lines
+        ncut = np.sum(~idx)
+        nrest = np.sum(idx)
+        perc = 100 * nrest / (nrest + ncut)
+        if nrest == 0:
+            raise ValueError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
         if self.config.verbose > 0:
-            ncut = np.sum(~idx)
-            nrest = np.sum(idx)
-            perc = 100 * nrest / (nrest + ncut)
             if perc < 5:
                 print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
             if self.config.verbose > 2 or perc < 5:
