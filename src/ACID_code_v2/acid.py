@@ -411,7 +411,7 @@ class Acid:
         # Masking based off residuals
         # Inputs: self.x, self.y, self.yerr, self.data.model_inputs, self.poly
         # Sets: self.c_factor, self.residual_masks
-        # Modifies: self.alpha, self.yerr
+        # Modifies: self.yerr
         # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
         if all((
             self.data.residual_masks is not None,
@@ -851,6 +851,7 @@ class Acid:
         x = self.data.wavelengths["combined"]
         y = self.data.flux["combined"]
         yerr = self.data.errors["combined"]
+        sn = self.data.sn["combined"]
         forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
         # plt.plot(forward)
         # plt.show()
@@ -928,10 +929,9 @@ class Acid:
                                                    plot_title="Continuum Fit after Residual Masking")
 
         LSD_masking = LSD(self.data)
-        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn=self.data.sn["combined"])
-        # a, b = utils.get_normalisation_coeffs(x)
-        # LSD_masking.run_LSD(x, y, yerr, sn=self.data.sn["combined"])
-        self.data.alpha = LSD_masking.alpha
+        # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
+        # alpha since it wil be the same. We still run LSD to get c_factor and the profile
+        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
         self.data.c_factor = LSD_masking.c_factor
 
         self.data.wavelengths["masked"] = x
