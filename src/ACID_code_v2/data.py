@@ -486,11 +486,10 @@ class TelluricLines:
         return self.lines[key]
 
     def get_mask(self, x):
-        telluric_mask = np.zeros_like(x, dtype=bool)
-        lines = self.lines["lines"]
-        widths = self.lines["widths"]
-        for line, width in zip(lines, widths):
-            limit = 3 + (width/c_kms)*line
-            idx = ((line-limit) <= x) & (x <= (limit+line))
-            telluric_mask[idx] = True
+        lines = np.asarray(self.lines["lines"])
+        widths = np.asarray(self.lines["widths"])
+
+        limits = 3 + (widths / c_kms) * lines
+        conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
+        telluric_mask = np.any(conditions, axis=0)
         return telluric_mask
