@@ -853,10 +853,6 @@ class Acid:
         yerr = self.data.errors["combined"]
         sn = self.data.sn["combined"]
         forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
-        # plt.plot(forward)
-        # plt.show()
-        # plt.plot(_)
-        # plt.show()
 
         # data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
         # forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
@@ -889,11 +885,13 @@ class Acid:
                 yerr[start:end] = 1e12
                 pix_mask[start:end] = True
 
-        # Warn if more than 50% of spectrum is masked
+        # Warn if more than 50% of spectrum is masked this way
         if np.sum(pix_mask) > 0.5 * len(pix_mask):
             if self.config.verbose > 0:
                 print(f"Warning: More than 50% of the spectrum is masked based on residuals. \n" \
-                "Please check your initial continuum fit (by using verbose=3 when initialising) or consider adjusting the pix_chunk and dev_perc parameters.")
+                "Please check your initial continuum fit (by using verbose=3 when initialising), \n" \
+                "or consider adjusting the pix_chunk and dev_perc parameters. If you are aware that you \n" \
+                "have bad spectra, then this can be ignored.")
 
         ##############################################
         #                  TELLURICS                 #   
@@ -903,7 +901,7 @@ class Acid:
         telluric_mask = np.zeros_like(residuals, dtype=bool)
         for line in self.config.telluric_lines:
             limit = (21/c_kms)*line + 3
-            idx = np.logical_and((line-limit) <= x, x <= (limit+line))
+            idx = ((line-limit) <= x) & (x <= (limit+line))
             yerr[idx] = 1e12
             telluric_mask[idx] = True
 
