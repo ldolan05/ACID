@@ -168,7 +168,7 @@ class MCMC:
 
     def log_prior(self, z):
         """Calculates the log prior probability of the profile points (z) and imposes the prior
-        restrictions on the inputs - rejects if profile point is less than -0.5 or greater than 1.5.
+        restrictions on the inputs - rejects if profile point is less than -0.4 or greater than 1.6.
 
         Parameters
         ----------
@@ -182,7 +182,7 @@ class MCMC:
         """
 
         # Hard box prior on each z[i]
-        if np.any((z < -0.3) | (z > 1.5)):
+        if np.any((z < -0.4) | (z > 1.6)):
             return -np.inf
 
         # # excluding the continuum points in the profile (in flux)
