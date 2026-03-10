@@ -26,15 +26,15 @@ class Acid:
 
     def __init__(
         self,
-        velocities     :Array1D|None         = None,
-        linelist_path                        = None,
-        linelist_wl    :Array1D|None         = None,
-        linelist_depths:Array1D|None         = None,
-        verbose        :IntLike|bool|None  = 2,
-        telluric_lines :Array1D|None         = None,
-        name           :str                  = 'ACID',
-        seed           :IntLike|None       = None,
-        data                                 = None,
+        velocities      :Array1D|None      = None,
+        linelist_path                      = None,
+        linelist_wl     :Array1D|None      = None,
+        linelist_depths :Array1D|None      = None,
+        verbose         :IntLike|bool|None = 2,
+        telluric_lines                     = None,
+        name            :str               = 'ACID',
+        seed            :IntLike|None      = None,
+        data                               = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -63,7 +63,13 @@ class Acid:
             any verbose setting in the dataclass.
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
-            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked. By default None
+            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked.
+            By default None. You can also put a TelluricLines class or dictionary with keys "lines" and "widths" for the telluric lines,
+            where "lines" (required) is the same list of wavelengths above and "widths" (optional, default None) is a list of the widths of said lines.
+            They can be telluric, or a list of strong Hydrogen lines (as included in the default telluric_lines). If widths are not provided,
+            a default width of 21 km/s is used for all lines, which is the typical width of telluric lines. If widths are provided, the width of
+            each line is taken to be the inputted value in km/s. When masking H lines, ACID will instead use a default width of 1000 km/s, so if you
+            want to use your own list, make sure to input wider widths for the H lines.
         name : str, optional
             Name to call any saved files, by default 'ACID'
         seed : int | None, optional
@@ -898,12 +904,8 @@ class Acid:
         ##############################################
 
         ## masking tellurics
-        telluric_mask = np.zeros_like(residuals, dtype=bool)
-        for line in self.config.telluric_lines:
-            limit = (21/c_kms)*line + 3
-            idx = ((line-limit) <= x) & (x <= (limit+line))
-            yerr[idx] = 1e12
-            telluric_mask[idx] = True
+        telluric_mask = self.config.telluric_lines.get_mask(x)
+        yerr[telluric_mask] = 1e12
 
         # Note that this is used to keep track of the residual masks for later use in _get_profiles
         self.data.residual_masks = tuple([yerr >= 1e12])
@@ -1342,6 +1344,7 @@ class Acid:
 
         return spectrum, spec_errors
 
+# All code below is just to ensure backward compatibility with previous ACID versions
 def ACID(*args, **kwargs):
     """Legacy ACID function
 

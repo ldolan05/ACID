@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Optional
+from .utils import Array1D, c_kms
 import pickle
 import numpy as np
 from . import utils
@@ -10,26 +11,49 @@ class Config:
     defaults = {
         "verbose" : 2,
         "order_range" : [1],
-        "telluric_lines" : [
-            3820.33, # metal?
-            3835.38, # H eta (new)
-            3889.05, # H zeta (new)
-            3933.66, # Ca II K
-            3968.47, # Ca II H
-            4101.74, # H delta (new)
-            4307.90, # metal?
-            4327.74, # metal?
-            4340.47, # H gamma (new)
-            4383.55, # Fe 1
-            4861.34, # H beta
-            5183.62, # Mg I b triplet
-            5270.39, # Fe 1
-            5889.95, # Na I D2
-            5895.92, # Na I D1
-            6562.81, # H alpha
-            7593.70, # O2 telluric
-            8226.96  # H2O telluric?
-        ]
+        "telluric_width" : 21, # in km/s, if changed, change below default widths too
+        "telluric_lines" : {
+            "lines" : [
+                3820.33, # metal?
+                3835.38, # H eta (new)
+                3889.05, # H zeta (new)
+                3933.66, # Ca II K
+                3968.47, # Ca II H
+                4101.74, # H delta (new)
+                4307.90, # metal?
+                4327.74, # metal?
+                4340.47, # H gamma (new)
+                4383.55, # Fe 1
+                4861.34, # H beta
+                5183.62, # Mg I b triplet
+                5270.39, # Fe 1
+                5889.95, # Na I D2
+                5895.92, # Na I D1
+                6562.81, # H alpha
+                7593.70, # O2 telluric
+                8226.96, # H2O telluric?
+            ],
+            "widths": [
+                21, # metal?
+                1000, # H eta
+                1000, # H zeta
+                21, # Ca II K
+                21, # Ca II H
+                1000, # H delta
+                21, # metal?
+                21, # metal?
+                1000, # H gamma
+                21, # Fe 1
+                1000, # H beta
+                21, # Mg I b triplet
+                21, # Fe 1
+                21, # Na I D2
+                21, # Na I D1
+                1000, # H alpha
+                21, # O2 telluric
+                21, # H2O telluric?
+            ],
+            }
     }
 
     def __init__(self, **kwargs) -> None:
@@ -41,13 +65,7 @@ class Config:
 
         self.update_hipri(**kwargs) # Set initial values, allowing overwriting and validation of properties
 
-        # for k, v in self.defaults.items():
-        #     if getattr(self, k, None) is None:
-        #         setattr(self, k, v)
-
         self.order_range = self.defaults["order_range"] 
-
-        # self.update_lowpri(**self.defaults) # Could do later if moving all defaults to this class
 
     # --- Update methods ---
     def update_hipri(self, **kwargs: Any) -> None:
@@ -79,7 +97,7 @@ class Config:
     def to_dict(self) -> dict[str, Any]:
         d = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
         for k in self.property_names:
-            d[k] = getattr(self, k)
+            d[k] = getattr(self, f"_{k}")
         return d
 
     @classmethod
@@ -136,25 +154,39 @@ class Config:
     @property
     def telluric_lines(self) -> int:
         if self._telluric_lines is None:
-            return self.defaults["telluric_lines"]
-        return self._telluric_lines
-    
+            return TelluricLines(self.defaults["telluric_lines"])
+        return TelluricLines(self._telluric_lines)
+
     @telluric_lines.setter
     def telluric_lines(self, lines) -> None:
         telluric_lines = lines
         # Define telluric_lines with defaults if not input, check type if it is
-        if getattr(self, "telluric_lines", None) is not None:
+        if self._telluric_lines is not None:
             return
-        
+
         if telluric_lines is None:
-            telluric_lines = self.defaults["telluric_lines"]
-        if not isinstance(telluric_lines, (list, np.ndarray)):
-            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to" \
-            "mask in angstroms (could be empty or single-valued)")
-        telluric_lines = np.array(telluric_lines)
-        if telluric_lines.ndim != 1 or telluric_lines.size == 0:
-            raise ValueError("telluric_lines must be a one-dimensional array or list")
-        
+            lines = self.defaults["telluric_lines"]["lines"]
+            widths = self.defaults["telluric_lines"]["widths"]
+        elif isinstance(telluric_lines, (np.ndarray, list)):
+            if telluric_lines.ndim != 1 or telluric_lines.size == 0:
+                raise ValueError("telluric_lines must be a one-dimensional array or list")
+            lines = np.array(telluric_lines)
+            widths = [self.config.defaults["telluric_width"] for _ in range(len(lines))]
+        elif isinstance(telluric_lines, dict):
+            if "lines" not in telluric_lines:
+                raise ValueError("If telluric_lines is a dict, it must contain a 'lines' key with the list/array of lines to mask")
+            lines = np.array(telluric_lines["lines"])
+            widths = telluric_lines.get("widths", None)
+            widths = [self.config.defaults["telluric_width"] for _ in range(len(lines))] if widths is None else widths
+        elif isinstance(telluric_lines, Linelist):
+            lines = telluric_lines[0]
+            widths = telluric_lines[1]
+        else:
+            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to " \
+            f"mask in angstroms. \n A dictionary can also be provided with " \
+            f"a 'lines' key containing the list/array of lines, \n and an optional 'widths' key containing the widths " \
+            f"of the lines for user reference. \n Got type: {type(telluric_lines)}")
+        telluric_lines = {"lines": lines, "widths": widths}
         self._telluric_lines = telluric_lines
 
 @dataclass(slots=True)
@@ -426,3 +458,37 @@ class Linelist:
         if return_mask:
             return wavelengths[mask], depths[mask], mask
         return wavelengths[mask], depths[mask]
+
+class TelluricLines:
+    """A simple class to expose the telluric lines when called in Config. This will help
+    to store telluric lines as a dictionary. With a default itercall to list the line-wise elements,
+    but a dictionary index to also store the width of the line, which can then allow for masking Hydrogen
+    lines with much wider masks."""
+    __slots__ = ("lines",) # the only thing stored in this class is this dictionary
+    def __init__(self, lines:dict):
+        if len(lines["widths"]) != len(lines["lines"]):
+            raise ValueError("If 'widths' are provided in the telluric_lines dictionary, they must have the same length as 'lines'")
+        self.lines = lines
+
+    def __iter__(self):
+        yield self.lines["lines"]
+        yield self.lines.get("widths", None)
+
+    def __getitem__(self, key):
+        if key == 0:
+            return self.lines["lines"]
+        if key == 1:
+            return self.lines["widths"]
+        if isinstance(key, int):
+            raise IndexError("TelluricLines only has keys 0 and 1, or 'lines' and 'widths'")
+        return self.lines[key]
+
+    def get_mask(self, x):
+        telluric_mask = np.zeros_like(x, dtype=bool)
+        lines = self.lines["lines"]
+        widths = self.lines["widths"]
+        for line, width in zip(lines, widths):
+            limit = 3 + (width/c_kms)*line
+            idx = ((line-limit) <= x) & (x <= (limit+line))
+            telluric_mask[idx] = True
+        return telluric_mask
