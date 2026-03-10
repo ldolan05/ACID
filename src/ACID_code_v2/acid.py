@@ -136,7 +136,7 @@ class Acid:
         errors                :Array1D|Array2D|None        = None,
         sn                    :Array1D|Array2D|Scalar|None = None,
         all_frames                                         = None,
-        deterministic_profile :bool                        = False,
+        deterministic_profile :bool                        = True,
         poly_ord              :IntLike                     = 3,
         continuum_percentile  :IntLike                     = 90,
         bin_size              :IntLike                     = 100,
