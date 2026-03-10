@@ -84,15 +84,16 @@ class MCMC:
         a, b = utils.get_normalisation_coeffs(self.x)
         self.u = (a * self.x) + b
 
+        # For deterministic model, the below variables are used, and are precomputed for speed
+        err_od = self.yerr / self.y # independent of continuum, since it's a ratio
+        V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
+        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
+
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
             self.model_function = self.full_model # include profile fitting
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
-            # Precompute certain values for speed
-            err_od = self.yerr / self.y # independent of continuum, since it's a ratio
-            V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
-            self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
 
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
