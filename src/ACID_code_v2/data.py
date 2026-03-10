@@ -411,8 +411,10 @@ class Data:
                 raise ValueError("If 'linelist_path' is a list or array, it must have length 2, with index 0 being wavelengths and index 1 being depths")
             linelist_wl = linelist_path[0]
             linelist_depths = linelist_path[1]
+        elif linelist_wl is not None and linelist_depths is not None:
+            pass # linelist_wl and linelist_depths already set, will be processed below
         else:
-            raise ValueError("'linelist_path' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', " \
+            raise ValueError(f"'linelist_path' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a Linelist object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
         
         linelist_wl = np.array(linelist_wl)
