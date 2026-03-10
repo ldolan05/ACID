@@ -4,6 +4,7 @@ from . import utils
 from .data import Data
 from beartype import beartype
 from numpy.polynomial import polynomial as P
+from scipy.linalg import cho_solve
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -88,6 +89,10 @@ class MCMC:
             self.model_function = self.full_model # include profile fitting
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
+            # Precompute certain values for speed
+            err_od = self.yerr / self.y # independent of continuum, since it's a ratio
+            V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
+            self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
 
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
@@ -145,11 +150,9 @@ class MCMC:
             return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
 
         fitted_flux = self.y/mdl
-        fitted_err = self.yerr/mdl
-        err_od = fitted_err / fitted_flux
         flux_od = - np.log(fitted_flux)
 
-        z = LSD.solve_z(self.alpha, flux_od, err_od, self.c_factor, return_error=False)
+        z = cho_solve(self.c_factor, self.AtV @ flux_od)
         # TODO: See if I can try removing the exp+log and get profiles without those steps
         # TODO: And see if the flux_to_od function is just as fast as below and 2 above
         forward = np.exp(- (self.alpha @ z)) * mdl

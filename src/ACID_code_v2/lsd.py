@@ -314,6 +314,7 @@ class LSD:
         error,
         c_factor,
         return_error : bool = True,
+        return_cov : bool = False,
         **kwargs,
         ):
         """Solves for the LSD profile and its errors using the Cholesky factors.
@@ -332,6 +333,8 @@ class LSD:
         return_error : bool, optional
             Whether to calculate and return the profile errors along with the
             profile, by default True
+        return_cov : bool, optional
+            Whether to return the full covariance matrix instead of just the errors, by default False
         **kwargs : dict, optional
             Additional keyword arguments to pass to both scipy.linalg.cho_solve calls
             (one for the profile, one for the covariance matrix)
@@ -339,24 +342,27 @@ class LSD:
 
         Returns
         -------
-        profile, profile_errors : tuple
-            LSD profile and its errors (if return_error is True)
+        profile, profile_errors, cov_z : tuple
+            LSD profile and its errors (if return_error is True) and covariance matrix (if return_cov is True)
         """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
         R = flux         # R matrix in log space
 
         # M = αT V α,  b = αT V R
         AVR = alpha.T @ (V * R)
-        AVA = alpha.T @ (V[:, None] * alpha)
 
         # z = M⁻¹ b
         profile = cho_solve(c_factor, AVR, overwrite_b=False, **kwargs)
 
         # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
-        if return_error:
+        if return_error or return_cov:
+            AVA = alpha.T @ (V[:, None] * alpha)
             cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=False, **kwargs)
             profile_errors = np.sqrt(np.diag(cov_z))
-            return profile, profile_errors
+            if return_cov:
+                return profile, profile_errors, cov_z
+            else:
+                return profile, profile_errors
         else:
             return profile
 
