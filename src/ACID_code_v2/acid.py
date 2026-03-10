@@ -1306,24 +1306,28 @@ class Acid:
 
         return frame_wavelengths, frames, errors, sns
 
+    @staticmethod
     def combineprofiles(
-        self,
-        spectra,
-        errors,
+        spectra: Array2D,
+        errors: Array2D,
         ):
-        spectra = np.array(spectra)
-        idx = np.isnan(spectra)
-        shape_og = spectra.shape
-        if len(spectra[idx])>0:
-            spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
-            for n in range(len(spectra)):
-                if spectra[n] == np.nan:
-                    spectra[n] = (spectra[n+1]+spectra[n-1])/2
-                    if spectra[n] == np.nan:
-                        spectra[n] = 0.
-        spectra = spectra.reshape(shape_og)
-        errors = np.array(errors)
-        
+        spectra = np.asarray(spectra)
+        errors = np.asarray(errors)
+        if spectra.shape != errors.shape:
+            raise ValueError(f"Spectra and errors must have the same shape. Got {spectra.shape} and {errors.shape}.")
+
+        # idx = np.isnan(spectra)
+        # shape_og = spectra.shape
+        # if len(spectra[idx])>0:
+        #     spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
+        #     for n in range(len(spectra)):
+        #         if spectra[n] == np.nan:
+        #             spectra[n] = (spectra[n+1]+spectra[n-1])/2
+        #             if spectra[n] == np.nan:
+        #                 spectra[n] = 0.
+        # spectra = spectra.reshape(shape_og)
+        # errors = np.array(errors)
+
         spectra_to_combine = []
         weights=[]
         for n in range(0, len(spectra)):
