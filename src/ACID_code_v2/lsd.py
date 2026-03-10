@@ -46,6 +46,7 @@ class LSD:
         linelist                   = None,
         velocities  : Array1D      = None,
         verbose     : IntLike|None = None,
+        alpha       : Array2D      = None,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -68,6 +69,9 @@ class LSD:
         verbose : int | None, optional
             Verbosity level, if None, uses the class default of 2. See the Acid class for more information about
             verbosity integer levels, by default None
+        alpha : np.ndarray, optional
+            Precomputed alpha matrix, if already calculated and you want to skip directly to the Cholesky 
+            decomposition and solving for the profile, by default None
         """
 
         if not wavelengths.shape == flux.shape == errors.shape:
@@ -98,7 +102,10 @@ class LSD:
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
+        if alpha is None:
+            self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
+        else:
+            self.alpha = alpha
 
         # Now solve for profile using Cholesky decomposition
         self.c_factor = self.calc_cholesky(self.alpha, errors)
