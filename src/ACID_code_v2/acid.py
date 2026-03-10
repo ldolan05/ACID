@@ -490,7 +490,13 @@ class Acid:
                 print("MCMC not run, returning None. Class attributes have been updated.")
             return None
 
-    def ACID_HARPS(
+    def ACID_HARPS(self, *args, **kwargs):
+        raise DeprecationWarning(f"The ACID_HARPS function is deprecated and will be removed in a future version. \n" \
+        f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n" \
+        f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
+        f"If you still would like to force try to use ACID_HARPS, then refer to the documentation of ACID (v1).")
+
+    def _ACID_HARPS(
         self,
         filelist    : list,
         order_range : Array1D|None = None,
@@ -1444,7 +1450,7 @@ def ACID_HARPS(*args, **kwargs):
     init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_HARPS_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
 
     acid = Acid(**init_kwargs)
-    return acid.ACID_HARPS(**run_kwargs)
+    return acid._ACID_HARPS(**run_kwargs)
 
 def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     """Helper function to split legacy args and kwargs into init and run kwargs given
