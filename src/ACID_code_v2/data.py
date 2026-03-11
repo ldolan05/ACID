@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field, fields
+from beartype import beartype
 from typing import Any, Dict, Optional
 from .utils import Array1D, c_kms
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ import matplotlib as mpl
 import pickle, os
 import numpy as np
 from . import utils
+from .utils import IntLike, Array1D
 from .mcmc import MCMC
 
 class Config:
@@ -185,7 +187,7 @@ class Config:
             lines = telluric_lines[0]
             widths = telluric_lines[1]
         else:
-            raise TypeError("telluric_lines must be a list or numpy array of telluric lines to " \
+            raise ValueError("telluric_lines must be a list or numpy array of telluric lines to " \
             f"mask in angstroms. \n A dictionary can also be provided with " \
             f"a 'lines' key containing the list/array of lines, \n and an optional 'widths' key containing the widths " \
             f"of the lines for user reference. \n Got type: {type(telluric_lines)}")
@@ -495,7 +497,7 @@ class Data:
             if isinstance(self.all_frames, Result):
                 self.all_frames = self.all_frames.all_frames
         if not isinstance(self.all_frames, np.ndarray):
-            raise TypeError("'all_frames' must be a numpy array")
+            raise ValueError("'all_frames' must be a numpy array")
         if not self.all_frames.ndim == 4:
             raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
 
@@ -517,7 +519,7 @@ class Data:
     def load(cls, filename: str):
         with open(filename, "rb") as f:
             payload = pickle.load(f)
-        
+
         obj = cls()
 
         obj.from_dict(payload)
@@ -572,7 +574,8 @@ class Data:
         Linelist.validate_dimensions(linelist_wl, linelist_depths)
         self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
-class DataList:
+@beartype
+class Datalist:
     """A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
     by result. This can map the order number of an instrument to the 0-indexed python list."""
     def __init__(self, data_list:list[Data]|Data):
@@ -580,19 +583,23 @@ class DataList:
         # generate the mapping of order to index in the list. The Load class will configure the correct order range based
         # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
         if isinstance(data_list, Data):
-            self.data_list = [data_list]
-        if len(data_list) > 1:
-            order_range_0 = self.data_list[0].config.order_range
-            if not all(
-                data.config.order_range == order_range_0 for data in self.data_list
-            ):
-                raise TypeError("All Data instances within the inputted list must have the same order range.")
-        self.order_range = self.data_list[0].config.order_range
-        self.orders = [data.config.order for data in self.data_list]
+            data_list = [data_list]
+        
+        self.verbose = np.max([data.config.verbose for data in data_list])
+        
+        order_range = data_list[0].config.order_range
+        if len(data_list) > 1 and self.verbose > 0:
+            if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
+                print("Warning: Not all Data instances have the same order_range. Taking the longest order range.")
+
+        max_order_range_idx = np.argmax([len(data.config.order_range) for data in data_list])
+        self.order_range = data_list[max_order_range_idx].config.order_range
+
+        self.data_list = data_list
+        self.sort_by_order() # generates self.orders and self.o2i
+
         if len(np.unique(self.orders)) != len(self.orders):
             raise ValueError("All Data instances within the inputted list must have unique order numbers.")
-
-        self.order_to_index = {data.config.order_range[0]: i for i, data in enumerate(self.data_list)} # check this
 
     def __iter__(self):
         yield from self.data_list
@@ -601,18 +608,59 @@ class DataList:
         return self.data_list[k]
 
     def __repr__(self):
-        return f"DataList with {len(self.data_list)} Data instances, for orders: {[data.config.order_range for data in self.data_list]}"
+        return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"
 
-    def append(self, data: Data, overwrite:bool=False) -> None:
-        if data.config.order_range != self.order_range:
-            raise TypeError("The order range of the appended data class does not match the rest of the list.")
-        if data.config.order in self.order_to_index and not overwrite:
-            raise ValueError(f"A Data instance with order {data.config.order} already exists in the list. " \
+    def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
+        """Appends a Data instance to the data list
+        "Note that the order range of the class is kept, if you want to set a new order range, \n" \
+        "Use the set_order_range() method first to change it."
+        """
+        if force_order is not None:
+            data.config.order = force_order
+        order = data.config.order
+        if order in self.orders and overwrite is False:
+            raise ValueError(f"A Data instance with order {order} already exists in the list. " \
             "If you want to overwrite it, set overwrite=True in the append method.")
+        if order not in self.order_range:
+            if not extend:
+                raise ValueError("The order of the appended data class does not match the rest of the list. \n" \
+                            "If you want to extend the order_range to append the new order, set extend=True. \n" \
+                            "Note that the order range of the class is kept, if you want to set a new order range, \n" \
+                            "Use the set_order_range() method first to change it.")
+            else:
+                self.order_range = np.append(self.order_range, order).astype(np.int32)
+        
+        if overwrite and data.config.order in self.orders:
+            self.data_list[self.o2i[order]] = data
+        else:
+            self.data_list.append(data)
+        
+        self.sort_by_order() # re-sorts the list and updates the o2i mapping
 
-        self.data_list.append(data)
-        self.order_to_index[data.config.order_range[0]] = len(self.data_list) - 1
-        self.order_range = data.config.order_range
+    def set_order_range(self, order_range:Array1D):
+        "A list or numpy array of the order range"
+        if np.any([o not in order_range for o in self.orders]):
+            raise ValueError("The already saved orders must be a subset of the inputted order_range.")
+        self.order_range = np.array(order_range, dtype=np.int32)
+
+    def sort_by_order(self):
+        """Sorts the data list by order number, and updates the o2i mapping accordingly."""
+        self.data_list.sort(key=lambda data: data.config.order)
+        self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
+        self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
+        self.orders = [data.config.order for data in self.data_list]
+    
+    def save(self, path:str):
+        dict_list = [data.to_dict() for data in self.data_list]
+        with open(path, "wb") as f:
+            pickle.dump(dict_list, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @classmethod
+    def load(cls, path:str):
+        with open(path, "rb") as f:
+            dict_list = pickle.load(f)
+        data_list = [Data().from_dict(d) for d in dict_list]
+        return cls(data_list)
 
 class Linelist:
     """A simple class to expose the linelist when called in Data"""
