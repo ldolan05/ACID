@@ -491,129 +491,10 @@ class Acid:
             return None
 
     def ACID_HARPS(self, *args, **kwargs):
-        raise DeprecationWarning(f"The ACID_HARPS function is deprecated and will be removed in a future version. \n" \
-        f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n" \
+        raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID v2. \n"
+        f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
-        f"If you still would like to force try to use ACID_HARPS, then refer to the documentation of ACID (v1).")
-
-    def _ACID_HARPS(
-        self,
-        filelist    : list,
-        order_range : Array1D|None = None,
-        save_path   : str          = './',
-        file_type   : str          = 'e2ds',
-        **kwargs,
-        ):
-        """ACID for HARPS e2ds and s1d spectra (DRS pipeline 3.5)
-
-        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
-        returning an LSD profile for each file given. Files must all be kept in the same folder as well
-        as their corresponding blaze files. If 's1d' are being used their e2ds equivalents must also be
-        in this folder. Result files containing profiles and associated errors for each order (or
-        corresponding wavelength range in the case of 's1d' files) will be created and saved to a
-        specified folder. It is recommended that this folder is seperate to the input files.
-
-        Parameters
-        ----------
-        filelist : list of strings
-            List of files. Files must come from the same observation night as continuum is fit for a combined
-            spectrum of all frames. A profile and associated errors will be produced for each file specified.
-        order_range : array, optional
-            Orders to be included in the final profiles. If s1d files are input, the corresponding wavelengths 
-            will be considered, by default None.
-        save_path : str, optional
-            Path to the directory where output files will be saved, by default './'
-        file_type : str, optional
-            Type of the input files, either "e2ds" or "s1d", by default 'e2ds'
-        **kwargs
-            Additional arguments to be passed to the ACID function. See ACID function for details.
-
-        Returns
-        -------
-        Object
-            Result object containing the LSD profiles and associated data. ACID_HARPS=True flag is set to allow
-            legacy subscripting and iteration if needed. The legacy subscript and iteration methods will access the
-            following attributes:
-            list
-                Barycentric Julian Date for files
-            list
-                Profiles (in normalised flux)
-            list
-                Errors on profiles (in normalised flux)
-            It can be accessed for example by:
-            >>> result = Acid.ACID_HARPS(...)
-            >>> BJDs = result.BJDs
-            >>> profiles = result.profiles
-            >>> errors = result.errors
-            or
-            >>> BJDs, profiles, errors = result
-        """
-
-        file_type = file_type.lower()
-        if file_type not in ['e2ds', 's1d']:
-            raise ValueError("file_type must be either 'e2ds' or 's1d'")
-
-        # Handle order_range input
-        if order_range is None:
-            # Be default, class is initialised with order_range = [1] for HARPS, this part forces
-            # order range to np.arange(10, 70) if not specified for the ACID HARPS function.
-            order_range = np.arange(10, 70)
-
-        self.config.order_range = np.array(order_range) # Makes sure order range is an array regardless of input type
-        self.file_type = file_type
-        self.filelist = filelist
-
-        for order in self.config.order_range:
-            if self.config.verbose > 1:
-                print('Running for order %s/%s...'%(order-min(self.config.order_range)+1, max(self.config.order_range)-min(self.config.order_range)+1))
-
-            frame_wavelengths, frame_flux, frame_errors, sns = self.read_in_frames(order, self.filelist, self.file_type)
-
-            # Updates recursively the all_frames array with the profiles for each order
-            self.ACID(
-                frame_wavelengths,
-                frame_flux,
-                frame_errors,
-                sns,
-                order         = order-min(self.config.order_range),
-                **kwargs
-            )
-
-        # adding into fits files for each frame
-        BJDs = []
-        profiles = []
-        errors = []
-        for frame_no in range(0, len(frame_flux)):
-            file = filelist[frame_no]
-            fits_file = fits.open(file)
-            hdu = fits.HDUList()
-            hdr = fits.Header()
-            
-            for order in self.config.order_range:
-                hdr['ORDER'] = order
-                hdr['BJD'] = fits_file[0].header['ESO DRS BJD']
-                if order == self.config.order_range[0]:
-                    BJDs.append(fits_file[0].header['ESO DRS BJD'])
-                hdr['CRVAL1'] = np.min(self.data.velocities)
-                hdr['CDELT1'] = self.data.velocities[1] - self.data.velocities[0]
-
-                profile = self.data.all_frames[frame_no, order-min(self.config.order_range), 0]
-                profile_err = self.data.all_frames[frame_no, order-min(self.config.order_range), 1]
-
-                hdu.append(fits.PrimaryHDU(data = [profile, profile_err], header = hdr))
-                if save_path != 'no save':
-                    month = 'August2007'
-                    hdu.writeto('%s%s_%s_%s.fits'%(save_path, month, frame_no, self.config.name), output_verify='fix', overwrite='True')
-
-            result1, result2 = self.combineprofiles(self.data.all_frames[frame_no, :, 0], self.data.all_frames[frame_no, :, 1])
-            profiles.append(result1)
-            errors.append(result2)
-
-        self.BJDs = BJDs
-        self.profiles = profiles
-        self.errors = errors
-        # Return Result class with ACID_HARPS=True flag to allow legacy subscripting and iteration if needed.
-        return Result(self, ACID_HARPS=True)
+        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
 
     def combine_spec(
         self,
@@ -1314,54 +1195,12 @@ def ACID(*args, **kwargs):
     return acid.ACID(**run_kwargs)
 
 def ACID_HARPS(*args, **kwargs):
-    """Legacy ACID_HARPS function
-
-    This function runs the legacy ACID_HARPS code. This is provided for backwards compatibility with previous versions of ACID.
-    It is recommended to use the ACID class and its methods for new code. The args and kwargs passing follows the original
-    v1 version of ACID_HARPS, which can be found in https://github.com/ldolan05/ACID
-
-    Parameters
-    ----------
-    *args
-        Positional arguments to be passed to the run_ACID_HARPS function.
-    **kwargs
-        Keyword arguments to be passed to the ACID initialisation and run_ACID_HARPS function.
-
-    Returns
-    -------
-    Any
-        Returns the outputs of the run_ACID_HARPS function (now a Result object).
+    """Legacy ACID_HARPS function, depracated after 1.4.5.
     """
-
-    # Use old argument names and map to new ones
-    LEGACY_HARPS_ARGS = [
-        "filelist",
-        "line",
-        "vgrid",
-        "poly_or",
-        "order_range",
-        "save_path",
-        "file_type",
-        "pix_chunk",
-        "dev_perc",
-        "n_sig",
-        "telluric_lines",
-    ]
-    RENAMED_LEGACY_ARGS = {
-        "input_wavelengths": "wavelengths",
-        "input_spectra": "flux",
-        "input_spectral_errors": "errors",
-        "frame_sns": "sn",
-        "vgrid": "velocities",
-        "line": "linelist_path",
-        "poly_or": "poly_ord",
-    }
-
-    # Split args and kwargs into init and run kwargs using helper function
-    init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_HARPS_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
-
-    acid = Acid(**init_kwargs)
-    return acid._ACID_HARPS(**run_kwargs)
+    raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID v2. \n"
+        f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
+        f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
+        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
 
 def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     """Helper function to split legacy args and kwargs into init and run kwargs given
