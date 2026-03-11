@@ -389,7 +389,7 @@ class Acid:
                 self.data.errors["combined"],
                 poly_ord = self.config.poly_ord,
                 plot_result = self.config.verbose > 2,
-                plot_title = "Initial Continuum Fit"
+                plot_type = "initial"
             )
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
@@ -738,7 +738,7 @@ class Acid:
         errors     : Array1D,
         poly_ord   : IntLike = 3,
         plot_result: bool    = False,
-        plot_title : str     = "Continuum Fit"
+        plot_type : str     = "initial"
         ):
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -752,8 +752,8 @@ class Acid:
             The error values associated with the spectrum.
         poly_ord : int
             The order of the polynomial to fit to the continuum. By default 3.
-        plot_result : bool, optional
-            If True, plots the original spectrum and the fitted continuum, by default False
+        plot_type : str, optional
+            The type of plot to generate, either "initial" or "masked", by default "initial"
 
         Returns
         -------
@@ -761,7 +761,6 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
         a, b = utils.get_normalisation_coeffs(wavelengths)
-        unnormalised_wavelengths = np.copy(wavelengths) # copy if needed for plot
         wavelengths = (wavelengths*a)+b
 
         idx = np.argsort(wavelengths)
@@ -795,54 +794,10 @@ class Acid:
         new_errors = errors / fit
         poly_coeffs = np.flip(coeffs)
 
+        # Save to Data the required variables for the plot
+        self.data.
         if plot_result is True:
-
-            fig, ax = plt.subplots(figsize=(15, 9))
-            ax.plot(unnormalised_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
-            ax.plot(unnormalised_wavelengths, fit, label='Fitted Continuum', color='red')
-            ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
-
-            # Plot bad regions:
-            masked = ~good
-            padded = np.concatenate(([False], masked, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-            for i, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((clipped_waves[start]-b)/a, (clipped_waves[end-1]-b)/a,
-                           color='red', alpha=0.15, label="Bad regions" if i == 0 else None)
-
-            ll_wl = self.data.linelist["wavelengths"]
-            ll_depths = self.data.linelist["depths"]
-
-            ll_wl, ll_depths = LSD.clip_wavelengths(unnormalised_wavelengths, ll_wl, ll_depths)
-            idx = np.argsort(ll_depths)
-            ll_wl = ll_wl[idx]
-            ll_depths = ll_depths[idx]
-            ll_wl = ll_wl[-20:]
-            ll_depths = ll_depths[-20:]
-
-            try:
-                cmap = plt.cm.viridis_r
-                norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
-                for i, (wl, depth) in enumerate(zip(ll_wl, ll_depths)):
-                    ax.axvline(
-                        wl,
-                        color=cmap(norm(depth)),
-                        linestyle="--",
-                        alpha=1,
-                        label="Line List (20 strongest lines in region)" if i == 0 else None,
-                    )
-                # Create colorbar for depth
-                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-                sm.set_array([])  # needed for some matplotlib versions
-                cbar = fig.colorbar(sm, ax=ax)
-                cbar.set_label("Line depth")
-            except:
-                print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
-                pass
-            ax.set_title(plot_title)
-            ax.legend()
-            plt.show()
+            self.data.plot_continuum_fit(plot_type="initial")
 
         if np.any(flux_obs <= 0) or np.any(new_errors <= 0):
             raise ValueError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
@@ -932,7 +887,7 @@ class Acid:
         # Now do final LSD call
         poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(y, x, yerr, self.config.poly_ord,
                                                    plot_result=self.config.verbose > 2,
-                                                   plot_title="Continuum Fit after Residual Masking")
+                                                   plot_type="masked")
 
         LSD_masking = LSD(self.data)
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 

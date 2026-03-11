@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Optional
 from .utils import Array1D, c_kms
-import pickle
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import pickle, os
 import numpy as np
 from . import utils
+from . import LSD
 
 class Config:
     """A simple class to store the configuration of the ACID run."""
@@ -193,7 +196,9 @@ class Config:
 class Data:
     """Stores necessary data for the Acid class which can be conveniently updated and saved.
     Allows ACID to handle data that has already been computed to avoid recalculation. This class
-    is designed to be lightweight in memory and hence does not store the sampler as an object."""
+    is designed to be lightweight in memory and hence does not store the sampler as an object.
+    Note that a Data class should only hold the data for ONE order or observation, but it can hold
+    the data for multiple frames of the same order."""
 
     # Standard necessary inputs, stored in dictionaries so we can store their state at multiple different
     # states of the calculations in Acid
@@ -223,16 +228,101 @@ class Data:
     nsteps     : Optional[int]        = 0
     max_steps  : Optional[int]        = None
 
-    # Other useful data:
+    # Other useful data and figures:
     initialisation_time : Optional[float] = None  # time taken for initialization
     mcmc_time           : Optional[float] = None  # time taken for MCMC sampling
     get_profiles_time   : Optional[float] = None  # time taken to get profiles
     full_run_time       : Optional[float] = None  # total time for the full run
+    # figures             : Dict[str, Any]  = field(default_factory=dict)  # dictionary to store any figures generated during the run, for easy access after the run
 
     # Initialise the properties
     # Config data for convenience, it is very memory light so not an issue to also store in here
     _config   : Config = field(default_factory=Config) # config stored as class, but converted to dict on save
     _linelist : Optional[Dict[str, np.ndarray]] = None
+
+    def plot_continuum_fit(self, plot_type:str="initial") -> None:
+        if plot_type not in ["initial", "masked"]:
+            raise ValueError("plot_type must be either 'initial' or 'masked'")
+        if not all(
+            getattr(self, attr, None) is not None for attr in ["wavelengths", "flux", "errors", "model_inputs", "initial_profile"]
+            ):
+            raise ValueError("To plot the continuum fit, the following attributes must be set: wavelengths, flux, errors, model_inputs, initial_profile")
+        if plot_type == "initial":
+            wavelengths = self.wavelengths["combined"]
+            fluxes = self.flux["combined"]
+            errors = self.errors["combined"]
+        
+        good = 
+        
+        a, b = utils.get_normalisation_coeffs(wavelengths)
+        fig, ax = plt.subplots(figsize=(15, 9))
+        ax.plot(wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
+        ax.plot(wavelengths, fit, label='Fitted Continuum', color='red')
+        ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
+
+        # Plot bad regions:
+        masked = ~good
+        padded = np.concatenate(([False], masked, [False]))
+        starts = np.flatnonzero(~padded[:-1] & padded[1:])
+        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+        for i, (start, end) in enumerate(zip(starts, ends)):
+            ax.axvspan((clipped_waves[start]-b)/a, (clipped_waves[end-1]-b)/a,
+                        color='red', alpha=0.15, label="Bad regions" if i == 0 else None)
+
+        ll_wl = self.data.linelist["wavelengths"]
+        ll_depths = self.data.linelist["depths"]
+
+        ll_wl, ll_depths = LSD.clip_wavelengths(wavelengths, ll_wl, ll_depths)
+        idx = np.argsort(ll_depths)
+        ll_wl = ll_wl[idx]
+        ll_depths = ll_depths[idx]
+        ll_wl = ll_wl[-20:]
+        ll_depths = ll_depths[-20:]
+
+        try:
+            cmap = plt.cm.viridis_r
+            norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
+            for i, (wl, depth) in enumerate(zip(ll_wl, ll_depths)):
+                ax.axvline(
+                    wl,
+                    color=cmap(norm(depth)),
+                    linestyle="--",
+                    alpha=1,
+                    label="Line List (20 strongest lines in region)" if i == 0 else None,
+                )
+            # Create colorbar for depth
+            sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+            sm.set_array([])  # needed for some matplotlib versions
+            cbar = fig.colorbar(sm, ax=ax)
+            cbar.set_label("Line depth")
+        except:
+            print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
+            pass
+        plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
+        ax.set_title(plot_title)
+        ax.legend()
+        plt.show()
+
+    # def set_fig(self, name: str, fig: Any) -> None:
+    #     """Sets a figure to the figures dictionary for easy access after the run."""
+    #     self.figures[name] = fig
+
+    # def show_fig(self, name: str) -> None:
+    #     """Plots a stored figure."""
+    #     if name not in self.figures:
+    #         raise ValueError(f"No figure stored with name '{name}'")
+    #     self.figures[name].show()
+
+    # def save_fig(self, name:str, path: str) -> None:
+    #     """Saves desired figure to a path."""
+    #     if name not in self.figures:
+    #         raise ValueError(f"No figure stored with name '{name}'")
+    #     self.figures[name].savefig(path)
+
+    # def get_fig(self, name: str) -> Any:
+    #     if name not in self.figures:
+    #         raise ValueError(f"No figure stored with name '{name}'")
+    #     return self.figures[name]
 
     def set_inputs(
         self,
@@ -323,7 +413,7 @@ class Data:
         if not self.all_frames.ndim == 4:
             raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
 
-    def save(self, filename: str = "data.pkl") -> None:
+    def save(self, filename:str="data.pkl") -> None:
         """Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
 
