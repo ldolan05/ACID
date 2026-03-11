@@ -371,6 +371,11 @@ def test_edge_cases():
     result.plot_walkers()
     result.plot_autocorrelation()
 
+    # Plot continuum fit with the data class
+    result.data.plot_continuum_fit("initial")
+    result.data.plot_continuum_fit("masked")
+    result.data.plot_residual_masking()
+
     # Guess SNR, run_acid=False
 
     pass

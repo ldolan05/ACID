@@ -761,6 +761,7 @@ class Acid:
             A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
         """
         a, b = utils.get_normalisation_coeffs(wavelengths)
+        unnormalized_wavelengths = np.copy(wavelengths)
         wavelengths = (wavelengths*a)+b
 
         idx = np.argsort(wavelengths)
@@ -795,9 +796,16 @@ class Acid:
         poly_coeffs = np.flip(coeffs)
 
         # Save to Data the required variables for the plot
-        self.data.
+        if plot_type not in self.data.plotting_variables:
+            self.data.plotting_variables[plot_type] = {}
+        self.data.plotting_variables[plot_type]["unnormalized_wavelengths"] = unnormalized_wavelengths
+        self.data.plotting_variables[plot_type]["fluxes"]                   = fluxes
+        self.data.plotting_variables[plot_type]["fit"]                      = fit
+        self.data.plotting_variables[plot_type]["clipped_waves"]            = clipped_waves
+        self.data.plotting_variables[plot_type]["clipped_flux"]             = clipped_flux
+        self.data.plotting_variables[plot_type]["good"]                     = good
         if plot_result is True:
-            self.data.plot_continuum_fit(plot_type="initial")
+            self.data.plot_continuum_fit(plot_type=plot_type)
 
         if np.any(flux_obs <= 0) or np.any(new_errors <= 0):
             raise ValueError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
@@ -901,74 +909,18 @@ class Acid:
         self.data.sn["masked"]          = np.copy(self.data.sn["combined"]) # SN is not changed in this func
         # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
 
+        # Set required variables for plotting
+        if "residual_masking" not in self.data.plotting_variables:
+            self.data.plotting_variables["residual_masking"] = {}
+        self.data.plotting_variables["residual_masking"]["mask"] = mask
+        self.data.plotting_variables["residual_masking"]["residuals"] = residuals
+        self.data.plotting_variables["residual_masking"]["upper_clip"] = upper_clip
+        self.data.plotting_variables["residual_masking"]["lower_clip"] = lower_clip
+        self.data.plotting_variables["residual_masking"]["telluric_mask"] = telluric_mask
+        self.data.plotting_variables["residual_masking"]["pix_mask"] = pix_mask
+        self.data.plotting_variables["residual_masking"]["profile_F"] = LSD_masking.profile_F
         if self.config.verbose > 2:
-            nremoved = np.sum(mask)
-            print(f"Residal masking has removed {nremoved}/{len(residuals)} points.")
-
-            fig, ax = plt.subplots(figsize=(15, 9))
-            ax.plot(x, residuals, label='Residuals', color='blue')
-            ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
-            ax.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
-            ax.axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
-            
-            # Show telluric masking regions
-            masked = telluric_mask
-            padded = np.concatenate(([False], masked, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-            for i, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((x[start]), (x[end-1]),
-                           color='orange', alpha=0.3, label="Telluric masking" if i == 0 else None)
-
-            # Show pix_chunk masked points:
-            masked = pix_mask
-            padded = np.concatenate(([False], masked, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-            for i, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((x[start]), (x[end-1]),
-                           color='red', alpha=0.15, label="Chunk deviation masking" if i == 0 else None)
-            # And show pix_chunk range
-            dev = self.config.dev_perc / 100
-            ax.axhspan(-dev, dev, color='green', alpha=0.1, label="Chunk deviation masking range")
-
-            ax.set_xlim(np.min(x), np.max(x))
-            ax.grid(True)
-            ax.set_title('Residuals with Sigma Clipping Thresholds')
-            ax.set_xlabel('Wavelength')
-            ax.set_ylabel('Residuals')
-            ax.legend(loc="lower right")
-            plt.show()
-
-            # Plot the profile
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(self.data.velocities, LSD_masking.profile_F, label='LSD Profile after Masking and before sampling', color='red')
-            ax.set_title('LSD Profile after Residual Masking')
-            ax.set_xlabel('Velocity (km/s)')
-            ax.set_ylabel('LSD Profile')
-            ax.axhline(1, color='black', linestyle='--')
-            ax.legend()
-            ax.grid(True)
-            plt.show()
-
-            # Finally plot the forward model
-            forward_masked, _ = mcmc.MCMC(self.data).deterministic_model(poly_inputs)
-            fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
-            ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
-            ax[0].plot(x, forward_masked, label='Forward model with masked residuals', color='C0', linewidth=1)
-            ax[0].set_title('Forward model with masked residuals')
-            ax[0].set_xlabel('Wavelength')
-            ax[0].set_ylabel('Flux')
-            ax[1].plot(x, (y-forward_masked)/forward_masked, label='Residuals', color='blue')
-            ax[1].axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
-            ax[1].axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
-            ax[1].axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
-            ax[1].set_title('Residuals of forward model with masked residuals')
-            ax[1].set_xlabel('Wavelength')
-            ax[1].set_ylabel('Residuals')
-            ax[0].legend()
-            ax[0].grid(True)
-            plt.show()
+            self.data.plot_residual_masking()
 
         return
 

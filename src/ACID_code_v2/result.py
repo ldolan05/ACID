@@ -6,7 +6,6 @@ from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 from beartype import beartype
 from scipy.interpolate import interp1d
-from numpy import integer as npint
 from numpy.polynomial import polynomial as P
 from .lsd import LSD
 from . import mcmc

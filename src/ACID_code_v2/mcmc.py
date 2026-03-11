@@ -1,7 +1,5 @@
 import numpy as np
-from .lsd import LSD
 from . import utils
-from .data import Data
 from beartype import beartype
 from numpy.polynomial import polynomial as P
 from scipy.linalg import cho_solve
@@ -24,7 +22,7 @@ class MCMC:
     @beartype
     def __init__(
             self,
-            x_or_data   : np.ndarray|Data,
+            x_or_data   : np.ndarray|object,
             y           : np.ndarray      = None,
             yerr        : np.ndarray      = None,
             alpha       : np.ndarray      = None,
@@ -37,7 +35,7 @@ class MCMC:
 
         Parameters
         ----------
-        x_or_data : np.ndarray|Data
+        x_or_data : np.ndarray|object
             Wavelength array or Data object. If a Data object is provided, takes all 
             the arguments below from there. If a Data object is provided, all other 
             arguments are ignored.
@@ -58,7 +56,7 @@ class MCMC:
 
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
-        if isinstance(x_or_data, Data):
+        if not isinstance(x_or_data, np.ndarray):
             data = x_or_data
             self.x = data.wavelengths["masked"]
             self.y = data.flux["masked"]

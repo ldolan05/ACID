@@ -6,7 +6,7 @@ import matplotlib as mpl
 import pickle, os
 import numpy as np
 from . import utils
-from . import LSD
+from .mcmc import MCMC
 
 class Config:
     """A simple class to store the configuration of the ACID run."""
@@ -233,31 +233,36 @@ class Data:
     mcmc_time           : Optional[float] = None  # time taken for MCMC sampling
     get_profiles_time   : Optional[float] = None  # time taken to get profiles
     full_run_time       : Optional[float] = None  # total time for the full run
-    # figures             : Dict[str, Any]  = field(default_factory=dict)  # dictionary to store any figures generated during the run, for easy access after the run
+    plotting_variables  : Dict[str, Any]  = field(default_factory=dict)
 
     # Initialise the properties
     # Config data for convenience, it is very memory light so not an issue to also store in here
     _config   : Config = field(default_factory=Config) # config stored as class, but converted to dict on save
     _linelist : Optional[Dict[str, np.ndarray]] = None
 
-    def plot_continuum_fit(self, plot_type:str="initial") -> None:
+    def plot_continuum_fit(self, plot_type:str="initial", return_fig:bool=False, save_fig:str|None=None) -> None:
         if plot_type not in ["initial", "masked"]:
             raise ValueError("plot_type must be either 'initial' or 'masked'")
+        if plot_type not in self.plotting_variables:
+            raise ValueError(f"No plotting variables found for plot_type={plot_type!r}. " \
+                             "Please ensure that the continuum fit has been performed for this plot_type.")
         if not all(
-            getattr(self, attr, None) is not None for attr in ["wavelengths", "flux", "errors", "model_inputs", "initial_profile"]
+            attr in self.plotting_variables[plot_type] for attr in [
+                "unnormalized_wavelengths", "fluxes", "fit", "clipped_waves", "clipped_flux", "good"]
             ):
-            raise ValueError("To plot the continuum fit, the following attributes must be set: wavelengths, flux, errors, model_inputs, initial_profile")
-        if plot_type == "initial":
-            wavelengths = self.wavelengths["combined"]
-            fluxes = self.flux["combined"]
-            errors = self.errors["combined"]
-        
-        good = 
-        
-        a, b = utils.get_normalisation_coeffs(wavelengths)
+            raise ValueError("To plot the continuum fit, the following attributes must be set: unnormalized_wavelengths, fluxes, fit, clipped_waves, clipped_flux, good")
+
+        unnormalized_wavelengths = self.plotting_variables[plot_type]["unnormalized_wavelengths"]
+        fluxes                   = self.plotting_variables[plot_type]["fluxes"]
+        good                     = self.plotting_variables[plot_type]["good"]
+        fit                      = self.plotting_variables[plot_type]["fit"]
+        clipped_waves            = self.plotting_variables[plot_type]["clipped_waves"]
+        clipped_flux             = self.plotting_variables[plot_type]["clipped_flux"]
+
+        a, b = utils.get_normalisation_coeffs(unnormalized_wavelengths)
         fig, ax = plt.subplots(figsize=(15, 9))
-        ax.plot(wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
-        ax.plot(wavelengths, fit, label='Fitted Continuum', color='red')
+        ax.plot(unnormalized_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
+        ax.plot(unnormalized_wavelengths, fit, label='Fitted Continuum', color='red')
         ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
 
         # Plot bad regions:
@@ -269,10 +274,10 @@ class Data:
             ax.axvspan((clipped_waves[start]-b)/a, (clipped_waves[end-1]-b)/a,
                         color='red', alpha=0.15, label="Bad regions" if i == 0 else None)
 
-        ll_wl = self.data.linelist["wavelengths"]
-        ll_depths = self.data.linelist["depths"]
+        ll_wl = self.linelist["wavelengths"]
+        ll_depths = self.linelist["depths"]
 
-        ll_wl, ll_depths = LSD.clip_wavelengths(wavelengths, ll_wl, ll_depths)
+        ll_wl, ll_depths = utils.clip_wavelengths(unnormalized_wavelengths, ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
         ll_depths = ll_depths[idx]
@@ -301,28 +306,109 @@ class Data:
         plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
         ax.set_title(plot_title)
         ax.legend()
+        if save_fig is not None:
+            plt.savefig(save_fig)
+        if return_fig:
+            return fig, ax
         plt.show()
 
-    # def set_fig(self, name: str, fig: Any) -> None:
-    #     """Sets a figure to the figures dictionary for easy access after the run."""
-    #     self.figures[name] = fig
+    def plot_residual_masking(self, save_fig:str|None=None) -> None:
+        if "residual_masking" not in self.plotting_variables:
+            raise ValueError("No plotting variables found for residual_masking. ")
+        if not all(
+            attr in self.plotting_variables["residual_masking"] for attr in [
+                "mask", "residuals", "upper_clip", "lower_clip", "telluric_mask", "pix_mask", "profile_F"]
+        ):
+            raise ValueError("Not all required plotting variables found for residual_masking. ")
+        if "masked" not in self.wavelengths and "masked" not in self.flux:
+            raise ValueError("No masked wavelengths or fluxes found. Please ensure that the residual masking step has been performed")
+        if save_fig is not None:
+            if not os.path.isdir(save_fig):
+                raise ValueError(f"save_fig must be a valid path to a directory to save the figures, or None to show the figures. Got: {save_fig}")
 
-    # def show_fig(self, name: str) -> None:
-    #     """Plots a stored figure."""
-    #     if name not in self.figures:
-    #         raise ValueError(f"No figure stored with name '{name}'")
-    #     self.figures[name].show()
+        x = self.wavelengths["masked"]
+        y = self.flux["masked"]
+        mask = self.plotting_variables["residual_masking"]["mask"]
+        residuals = self.plotting_variables["residual_masking"]["residuals"]
+        upper_clip = self.plotting_variables["residual_masking"]["upper_clip"]
+        lower_clip = self.plotting_variables["residual_masking"]["lower_clip"]
+        telluric_mask = self.plotting_variables["residual_masking"]["telluric_mask"]
+        pix_mask = self.plotting_variables["residual_masking"]["pix_mask"]
+        profile_F = self.plotting_variables["residual_masking"]["profile_F"]
 
-    # def save_fig(self, name:str, path: str) -> None:
-    #     """Saves desired figure to a path."""
-    #     if name not in self.figures:
-    #         raise ValueError(f"No figure stored with name '{name}'")
-    #     self.figures[name].savefig(path)
+        nremoved = np.sum(mask)
+        print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
 
-    # def get_fig(self, name: str) -> Any:
-    #     if name not in self.figures:
-    #         raise ValueError(f"No figure stored with name '{name}'")
-    #     return self.figures[name]
+        fig, ax = plt.subplots(figsize=(15, 9))
+        ax.plot(x, residuals, label='Residuals', color='blue')
+        ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
+        ax.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
+        ax.axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
+        
+        # Show telluric masking regions
+        masked = telluric_mask
+        padded = np.concatenate(([False], masked, [False]))
+        starts = np.flatnonzero(~padded[:-1] & padded[1:])
+        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+        for i, (start, end) in enumerate(zip(starts, ends)):
+            ax.axvspan((x[start]), (x[end-1]),
+                        color='orange', alpha=0.3, label="Telluric masking" if i == 0 else None)
+
+        # Show pix_chunk masked points:
+        masked = pix_mask
+        padded = np.concatenate(([False], masked, [False]))
+        starts = np.flatnonzero(~padded[:-1] & padded[1:])
+        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+        for i, (start, end) in enumerate(zip(starts, ends)):
+            ax.axvspan((x[start]), (x[end-1]),
+                        color='red', alpha=0.15, label="Chunk deviation masking" if i == 0 else None)
+        # And show pix_chunk range
+        dev = self.config.dev_perc / 100
+        ax.axhspan(-dev, dev, color='green', alpha=0.1, label="Chunk deviation masking range")
+
+        ax.set_xlim(np.min(x), np.max(x))
+        ax.grid(True)
+        ax.set_title('Residuals with Sigma Clipping Thresholds')
+        ax.set_xlabel('Wavelength')
+        ax.set_ylabel('Residuals')
+        ax.legend(loc="lower right")
+        if save_fig is not None:
+            plt.savefig(f"{save_fig}/residuals.png")
+        plt.show()
+
+        # Plot the profile
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(self.velocities, profile_F, label='LSD Profile after Masking and before sampling', color='red')
+        ax.set_title('LSD Profile after Residual Masking')
+        ax.set_xlabel('Velocity (km/s)')
+        ax.set_ylabel('LSD Profile')
+        ax.axhline(1, color='black', linestyle='--')
+        ax.legend()
+        ax.grid(True)
+        if save_fig is not None:
+            plt.savefig(f"{save_fig}/initial_profile.png")
+        plt.show()
+
+        # Finally plot the forward model
+        forward_masked, _ = MCMC(self).deterministic_model(self.poly_inputs)
+        fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
+        ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
+        ax[0].plot(x, forward_masked, label='Forward model with masked residuals', color='C0', linewidth=1)
+        ax[0].set_title('Forward model with masked residuals')
+        ax[0].set_xlabel('Wavelength')
+        ax[0].set_ylabel('Flux')
+        ax[1].plot(x, (y-forward_masked)/forward_masked, label='Residuals', color='blue')
+        ax[1].axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
+        ax[1].axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
+        ax[1].axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
+        ax[1].set_title('Residuals of forward model with masked residuals')
+        ax[1].set_xlabel('Wavelength')
+        ax[1].set_ylabel('Residuals')
+        ax[0].legend()
+        ax[0].grid(True)
+        if save_fig is not None:
+            plt.savefig(f"{save_fig}/forward_model.png")
+        plt.show()
 
     def set_inputs(
         self,

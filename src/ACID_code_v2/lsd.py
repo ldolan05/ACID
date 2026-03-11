@@ -11,7 +11,7 @@ from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
 from .data import Config
-from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
+from .utils import c_kms, IntLike, Scalar, Array1D, Array2D
 
 @beartype
 class LSD:
@@ -89,7 +89,7 @@ class LSD:
         # wavelengths, flux, errors = utils.drop_invalid(wavelengths, flux, errors)
 
         # Clip linelist to wavelength range of spectrum
-        wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+        wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
         if len(wavelengths_linelist) == 0:
             raise ValueError(f"No lines in linelist are within the wavelength range of the observed spectrum. "\
                              f"Please check your linelist and input spectrum. You may have mismatched wavelengths "\
@@ -117,30 +117,6 @@ class LSD:
         self.profile_F, self.profile_errors_F = utils.od_to_flux(self.profile, self.profile_errors)
 
         return
-
-    @staticmethod
-    def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
-        """Clips the linelist to only include lines within the wavelength range of the observed spectrum.
-
-        Parameters
-        ----------
-        wavelengths : np.ndarray
-            Wavelengths of the observed spectrum
-        wavelengths_linelist : np.ndarray
-            Wavelengths from the linelist
-        depths_linelist : np.ndarray
-            Depths from the linelist
-
-        Returns
-        -------
-        wavelengths_linelist : np.ndarray
-            Clipped wavelengths from the linelist
-        depths_linelist : np.ndarray
-            Clipped depths from the linelist
-        """
-        lower, upper = np.nanmin(wavelengths), np.nanmax(wavelengths)
-        idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
-        return wavelengths_linelist[idx], depths_linelist[idx]
 
     def sn_clip(self, wavelengths_linelist, depths_linelist, sn):
         """Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn).
@@ -212,7 +188,7 @@ class LSD:
         deltav = self.data.velocities[1] - self.data.velocities[0]
 
         # Clip linelist to wavelength range of spectrum (again just in case this is called without run_LSD)
-        wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+        wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
 
         # Find differences and velocities
         blankwaves = wavelengths
