@@ -389,6 +389,34 @@ class Data:
         if self._linelist is not None: # linelist already set, do not overwrite
             return
 
+        linelist_wl, linelist_depths = Linelist.validate_linelist(linelist_wl, linelist_depths, linelist_path)
+        linelist_wl = np.array(linelist_wl)
+        linelist_depths = np.array(linelist_depths)
+        linelist_wl, linelist_depths = Linelist.drop_NaNs(linelist_wl, linelist_depths)
+        Linelist.validate_dimensions(linelist_wl, linelist_depths)
+        self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+
+class Linelist:
+    """A simple class to expose the linelist when called in Data"""
+    __slots__ = ("ll",) # the only thing stored in this class is the linelist
+    def __init__(self, ll: dict):
+        self.ll = ll
+
+    def __getitem__(self, k):
+        if k == 0:
+            return self.ll["wavelengths"]
+        if k == 1:
+            return self.ll["depths"]
+        if isinstance(k, int):
+            raise IndexError("Linelist only has keys 0 and 1, or 'wavelengths' and 'depths'")
+        return self.ll[k]  # allow "wavelengths"/"depths"
+    
+    def __iter__(self):
+        yield self.ll["wavelengths"]
+        yield self.ll["depths"]
+
+    @staticmethod
+    def validate_linelist(linelist_wl, linelist_depths, linelist_path=None):
         if (linelist_wl is None and linelist_depths is None) and linelist_path is None:
             raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist_path' must be provided.")
         elif linelist_path is None and (linelist_wl is None or linelist_depths is None):
@@ -416,32 +444,8 @@ class Data:
         else:
             raise ValueError(f"'linelist_path' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a Linelist object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
-        
-        linelist_wl = np.array(linelist_wl)
-        linelist_depths = np.array(linelist_depths)
-        linelist_wl, linelist_depths = Linelist.drop_NaNs(linelist_wl, linelist_depths)
-        Linelist.validate_dimensions(linelist_wl, linelist_depths)
-        self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+        return linelist_wl, linelist_depths
 
-class Linelist:
-    """A simple class to expose the linelist when called in Data"""
-    __slots__ = ("ll",) # the only thing stored in this class is the linelist
-    def __init__(self, ll: dict):
-        self.ll = ll
-
-    def __getitem__(self, k):
-        if k == 0:
-            return self.ll["wavelengths"]
-        if k == 1:
-            return self.ll["depths"]
-        if isinstance(k, int):
-            raise IndexError("Linelist only has keys 0 and 1, or 'wavelengths' and 'depths'")
-        return self.ll[k]  # allow "wavelengths"/"depths"
-    
-    def __iter__(self):
-        yield self.ll["wavelengths"]
-        yield self.ll["depths"]
-    
     @staticmethod
     def validate_dimensions(wavelengths, depths):
         if wavelengths.ndim != 1 or depths.ndim != 1:
