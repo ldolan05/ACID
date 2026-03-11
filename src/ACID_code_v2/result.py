@@ -51,6 +51,7 @@ def _require_data(method):
 
 def _require_sampler(method):
     # Make sure sampler object is available before calling method
+    # TODO: Make save for a thinned chain, discard sampler unless store_sampler is True
     sig = inspect.signature(method)
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):

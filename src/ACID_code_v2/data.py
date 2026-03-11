@@ -124,7 +124,7 @@ class Config:
         if self._verbose is None:
             return self.defaults["verbose"]
         return self._verbose
-    
+
     @verbose.setter
     def verbose(self, value) -> None:
         # Make verbosity always an int regardless of input type, and check correct range
@@ -578,15 +578,15 @@ class Data:
 class Datalist:
     """A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
     by result. This can map the order number of an instrument to the 0-indexed python list."""
-    def __init__(self, data_list:list[Data]|Data):
+    def __init__(self, data_list:list[Data]|Data, save_dir:str|None=None):
         # All configs should have the same order_range so that they are internally aware. We just take the first one to 
         # generate the mapping of order to index in the list. The Load class will configure the correct order range based
         # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
         if isinstance(data_list, Data):
             data_list = [data_list]
-        
+
         self.verbose = np.max([data.config.verbose for data in data_list])
-        
+
         order_range = data_list[0].config.order_range
         if len(data_list) > 1 and self.verbose > 0:
             if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
@@ -598,8 +598,8 @@ class Datalist:
         self.data_list = data_list
         self.sort_by_order() # generates self.orders and self.o2i
 
-        if len(np.unique(self.orders)) != len(self.orders):
-            raise ValueError("All Data instances within the inputted list must have unique order numbers.")
+        self._save_dir = None
+        self.save_dir = save_dir # property setter handles input
 
     def __iter__(self):
         yield from self.data_list
@@ -649,18 +649,40 @@ class Datalist:
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
         self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
         self.orders = [data.config.order for data in self.data_list]
-    
-    def save(self, path:str):
-        dict_list = [data.to_dict() for data in self.data_list]
-        with open(path, "wb") as f:
-            pickle.dump(dict_list, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        if len(np.unique(self.orders)) != len(self.orders):
+            raise ValueError("All Data instances within the inputted list must have unique order numbers.")
+
+    def save(self, save_dir:str=None):
+        d = {}
+        self.save_dir = save_dir
+        if self.save_dir is None:
+            raise ValueError("No save path provided and save_dir was not set.")
+        d["dict_list"] = [data.to_dict() for data in self.data_list]
+        save_loc = os.path.join(self.save_dir, "datalist.pkl")
+        d["save_dir"] = self.save_dir
+        with open(save_loc, "wb") as f:
+            pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
     def load(cls, path:str):
         with open(path, "rb") as f:
-            dict_list = pickle.load(f)
-        data_list = [Data().from_dict(d) for d in dict_list]
-        return cls(data_list)
+            d = pickle.load(f)
+        data_list = [Data().from_dict(d) for d in d["dict_list"]]
+        obj = cls(data_list, d["save_dir"])
+        return obj
+
+    @property
+    def save_dir(self):
+        return self._save_dir
+
+    @save_dir.setter
+    def save_dir(self, dir):
+        if dir is None:
+            return # do not change save_dir
+        if not os.path.isdir(dir):
+            raise ValueError(f"save_dir must be a valid path to a directory to save the datalist, or None to not save to disk. Got: {dir}")
+        self._save_dir = dir
 
 class Linelist:
     """A simple class to expose the linelist when called in Data"""

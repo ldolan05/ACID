@@ -15,6 +15,7 @@ from .lsd import LSD
 from . import mcmc
 from .result import Result
 from .data import Data
+from .data import Datalist
 from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
 @beartype
@@ -26,15 +27,16 @@ class Acid:
 
     def __init__(
         self,
-        velocities      :Array1D|None      = None,
-        linelist_path                      = None,
-        linelist_wl     :Array1D|None      = None,
-        linelist_depths :Array1D|None      = None,
-        verbose         :IntLike|bool|None = 2,
-        telluric_lines                     = None,
-        name            :str               = 'ACID',
-        seed            :IntLike|None      = None,
-        data                               = None,
+        velocities       : Array1D|None       = None,
+        linelist_path                         = None,
+        linelist_wl      : Array1D|None       = None,
+        linelist_depths  : Array1D|None       = None,
+        order_range      : Array1D            = [0],
+        verbose          : IntLike|bool|None  = 2,
+        telluric_lines                        = None,
+        name             : str                = 'ACID',
+        seed             : IntLike|None       = None,
+        data_or_datalist : Data|Datalist|None = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -55,6 +57,9 @@ class Acid:
         linelist_depths : np.ndarray | list | None, optional
             Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
+        order_range : list | np.ndarray | None, optional
+            Range of orders in the observation. For non-echelle spectra, this can just be [0] (default). For echelle spectra, 
+            this can be a list of the order numbers (not 0-indexed) that you want to run ACID on.
         verbose : bool | int | None, optional
             An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
             about any potential issues with the input data or autocorrelation warnings. If True, defaults to 2. If False, defaults to 0.
@@ -75,15 +80,16 @@ class Acid:
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
-        data : Data|None, optional
+        data_or_datalist : Data|Datalist|None, optional
             An optional backend Data object to use for storing data. Allows previously calculated results to be skipped.
-            If None, a new Data object is created, by default None. Please note that if the Data class already has a saved ACID config
+            If None and if using an order_range of length 1 a new Data object is created, if the order_range length is greater than 1,
+            a Datalist instance is created by default None. Please note that if the Data class already has a saved ACID config
             class, then those config values will overwrite the inputted values in initialisation or ACID method.
-            
+
         """
         # Initialise the data class to store calculations in ACID
-        if data is not None:
-            self.data = data
+        if data_or_datalist is not None:
+            self.data = data_or_datalist
         else:
             self.data = Data()
         
