@@ -13,7 +13,7 @@ class Config:
 
     defaults = {
         "verbose" : 2,
-        "order_range" : [1],
+        "order_range" : [0],
         "telluric_width" : 21, # in km/s, if changed, change below default widths too
         "telluric_lines" : {
             "lines" : [
@@ -571,6 +571,48 @@ class Data:
         linelist_wl, linelist_depths = Linelist.drop_NaNs(linelist_wl, linelist_depths)
         Linelist.validate_dimensions(linelist_wl, linelist_depths)
         self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+
+class DataList:
+    """A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
+    by result. This can map the order number of an instrument to the 0-indexed python list."""
+    def __init__(self, data_list:list[Data]|Data):
+        # All configs should have the same order_range so that they are internally aware. We just take the first one to 
+        # generate the mapping of order to index in the list. The Load class will configure the correct order range based
+        # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
+        if isinstance(data_list, Data):
+            self.data_list = [data_list]
+        if len(data_list) > 1:
+            order_range_0 = self.data_list[0].config.order_range
+            if not all(
+                data.config.order_range == order_range_0 for data in self.data_list
+            ):
+                raise TypeError("All Data instances within the inputted list must have the same order range.")
+        self.order_range = self.data_list[0].config.order_range
+        self.orders = [data.config.order for data in self.data_list]
+        if len(np.unique(self.orders)) != len(self.orders):
+            raise ValueError("All Data instances within the inputted list must have unique order numbers.")
+
+        self.order_to_index = {data.config.order_range[0]: i for i, data in enumerate(self.data_list)} # check this
+
+    def __iter__(self):
+        yield from self.data_list
+
+    def __getitem__(self, k):
+        return self.data_list[k]
+
+    def __repr__(self):
+        return f"DataList with {len(self.data_list)} Data instances, for orders: {[data.config.order_range for data in self.data_list]}"
+
+    def append(self, data: Data, overwrite:bool=False) -> None:
+        if data.config.order_range != self.order_range:
+            raise TypeError("The order range of the appended data class does not match the rest of the list.")
+        if data.config.order in self.order_to_index and not overwrite:
+            raise ValueError(f"A Data instance with order {data.config.order} already exists in the list. " \
+            "If you want to overwrite it, set overwrite=True in the append method.")
+
+        self.data_list.append(data)
+        self.order_to_index[data.config.order_range[0]] = len(self.data_list) - 1
+        self.order_range = data.config.order_range
 
 class Linelist:
     """A simple class to expose the linelist when called in Data"""
