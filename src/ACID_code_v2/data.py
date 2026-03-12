@@ -7,14 +7,18 @@ import matplotlib as mpl
 import pickle, os
 import numpy as np
 from . import utils
-from .utils import IntLike, Array1D
+from .utils import IntLike, Array1D, Array2D
 from .mcmc import MCMC
 
+@beartype
 class Config:
     """A simple class to store the configuration of the ACID run."""
 
     defaults = {
+
+        # INIT CONFIGURATION
         "verbose" : 2,
+        "order" : 0,
         "order_range" : [0],
         "telluric_width" : 21, # in km/s, if changed, change below default widths too
         "telluric_lines" : {
@@ -58,19 +62,35 @@ class Config:
                 21, # O2 telluric
                 21, # H2O telluric?
             ],
-            }
+            },
+
+        # RUN_ACID CONFIGURATION
+        "deterministic_profile" : True,
+        "poly_ord" : 3,
+        "continuum_percentile" : 90,
+        "bin_size" : 100,
+        "pix_chunk" : 20,
+        "dev_perc" : 25,
+        "n_sig" : 1,
+        "skips" : 1,
+        "parallel" : True,
+        "cores" : None,
+        "nsteps" : 10000,
+        "max_steps" : None,
+        "check_interval" : 1000,
+        "min_checks" : 1,
+        "min_tau_factor" : 50,
+        "tau_tol" : 0.05,
+        "run_mcmc" : True,
     }
 
     def __init__(self, **kwargs) -> None:
-        # Initialize all properties to None, so that we can check if they 
-        # have been set or not in the update methods
-        self.property_names = self.get_property_names()
-        for k in self.property_names:
-            setattr(self, f"_{k}", None)
+        
+        # Set defaults
+        self.update_hipri(**self.defaults) # Set defaults as hipri, so they can be overwritten by user inputs in kwargs
 
+        # Override with any inputted kwargs
         self.update_hipri(**kwargs) # Set initial values, allowing overwriting and validation of properties
-
-        self.order_range = self.defaults["order_range"] 
 
     # --- Update methods ---
     def update_hipri(self, **kwargs: Any) -> None:
@@ -78,45 +98,19 @@ class Config:
         for k, v in kwargs.items():
             if v is None:
                 continue
-            if self.is_property(k):
-                old = getattr(self, f"_{k}", None)
-                try:
-                    setattr(self, f"_{k}", None)
-                    setattr(self, k, v)
-                except Exception:
-                    setattr(self, f"_{k}", old)
-                    raise
             else:
                 setattr(self, k, v)
 
     def update_lowpri(self, **kwargs: Any) -> None:
         # Update but do not overwrite existing keys
         for k, v in kwargs.items():
-            # Property setters automatically only set if previous value was None
-            if self.is_property(k):
-                setattr(self, k, v) # setter already implements "only if None"
-            else:
-                if getattr(self, k, None) is None:
-                    setattr(self, k, v)
+            if v is None:
+                continue
+            if getattr(self, k, None) is None:
+                setattr(self, k, v)
 
     def to_dict(self) -> dict[str, Any]:
-        d = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        for k in self.property_names:
-            d[k] = getattr(self, f"_{k}")
-        return d
-
-    @classmethod
-    def get_property_names(cls) -> set[str]:
-        # Collect @property names from the class and its bases
-        names: set[str] = set()
-        for c in cls.mro():
-            for name, attr in c.__dict__.items():
-                if isinstance(attr, property):
-                    names.add(name)
-        return names
-
-    def is_property(self, name: str) -> bool:
-        return name in self.property_names
+        return {k: v for k, v in self.__dict__.items()}
 
     # --- Properties ---
     @property
@@ -128,8 +122,6 @@ class Config:
     @verbose.setter
     def verbose(self, value) -> None:
         # Make verbosity always an int regardless of input type, and check correct range
-        if self._verbose is not None:
-            return
         if value is True:
             value = self.defaults["verbose"]
         elif value is False:
@@ -139,13 +131,13 @@ class Config:
                 raise ValueError("verbose must be an integer between 0 and 3")
         elif isinstance(value, str):
             value = value.lower()
-            if value in ["none", "no", "false"]:
+            if value in ["none", "no", "false", "off", "n", "0"]:
                 value = 0
-            elif value in ["low", "1"]:
+            elif value in ["low", "lo", "l", "1"]:
                 value = 1
-            elif value in ["medium", "med", "2"]:
+            elif value in ["medium", "med", "m", "2"]:
                 value = 2
-            elif value in ["high", "3"]:
+            elif value in ["high", "hi", "h", "3"]:
                 value = 3
             else:
                 raise ValueError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high' or their common variants")
@@ -154,7 +146,7 @@ class Config:
         else:
             raise ValueError("verbose must be an integer between 0 and 3, a boolean, or a string indicating the verbosity level")
 
-        self._verbose = value # Only updates if it was previously None
+        self._verbose = value
 
     @property
     def telluric_lines(self) -> int:
@@ -163,27 +155,33 @@ class Config:
         return TelluricLines(self._telluric_lines)
 
     @telluric_lines.setter
-    def telluric_lines(self, lines) -> None:
+    def telluric_lines(self, lines:Array1D|Array2D|dict|TelluricLines) -> None:
         telluric_lines = lines
         # Define telluric_lines with defaults if not input, check type if it is
-        if self._telluric_lines is not None:
-            return
-
+        # TODO MAKE THE default for inputted telluric lines values to be the widths if lines within +-1 of any of the defaults
         if telluric_lines is None:
             lines = self.defaults["telluric_lines"]["lines"]
             widths = self.defaults["telluric_lines"]["widths"]
         elif isinstance(telluric_lines, (np.ndarray, list)):
-            if telluric_lines.ndim != 1 or telluric_lines.size == 0:
-                raise ValueError("telluric_lines must be a one-dimensional array or list")
-            lines = np.array(telluric_lines)
-            widths = [self.config.defaults["telluric_width"] for _ in range(len(lines))]
+            telluric_lines = np.array(telluric_lines)
+            if telluric_lines.size == 0:
+                raise ValueError("telluric_lines cannot be an empty array or list")                
+            if telluric_lines.ndim == 1:
+                lines = np.array(telluric_lines)
+                widths = self.defaults["telluric_lines"]["widths"]
+            elif telluric_lines.ndim == 2:
+                lines = telluric_lines[0]
+                widths = telluric_lines[1]
+            else:
+                raise ValueError("telluric_lines must be a one- or two-dimensional array or list")
         elif isinstance(telluric_lines, dict):
             if "lines" not in telluric_lines:
                 raise ValueError("If telluric_lines is a dict, it must contain a 'lines' key with the list/array of lines to mask")
             lines = np.array(telluric_lines["lines"])
             widths = telluric_lines.get("widths", None)
-            widths = [self.config.defaults["telluric_width"] for _ in range(len(lines))] if widths is None else widths
-        elif isinstance(telluric_lines, Linelist):
+            widths = widths if widths is not None else self.defaults["telluric_lines"]["widths"]
+            widths = np.array(widths)
+        elif isinstance(telluric_lines, TelluricLines):
             lines = telluric_lines[0]
             widths = telluric_lines[1]
         else:
@@ -435,14 +433,12 @@ class Data:
         skips : int, optional
             Number of pixels to skip when processing the spectra, by default 1 (no skipping)
         """
-
+        # TODO Allow SN to be per pixel
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
         # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
         # inputs to numpy arrays.
         if input_wavelengths is None or input_flux is None or input_errors is None:
-            if "input" in self.wavelengths and "input" in self.flux and "input" in self.errors:
-                return # if wavelengths already set, do not overwrite
-            else:
+            if "input" not in self.wavelengths and "input" not in self.flux and "input" not in self.errors:
                 raise ValueError("input_wavelengths, input_flux, and input_errors must be provided either as arguments " \
                 "to this function or in a Data object.")
 
@@ -465,10 +461,37 @@ class Data:
             "not an array of S/N values for each pixel. " \
             "The shape of the input input_sn does not match the number of frames in input_flux.")
 
+        # Apply skips
+        input_wavelengths = input_wavelengths[:, ::skips]
+        input_flux       = input_flux[:, ::skips]
+        input_errors     = input_errors[:, ::skips]
+
+        # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
+        to_check = ["wavelengths", "flux", "errors"]
+        reset = False
+        for check in to_check:
+            if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
+                if not np.array_equal(getattr(self, check)["input"], eval(f"input_{check}")):
+                    reset = True
+                    continue
+                if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}")):
+                    reset = True
+        if reset:
+            if self.config.verbose > 0:
+                print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
+                "Resetting variables that need to be recalculated. The velocity grid will not be reset.")
+            self.alpha          = None
+            self.c_factor       = None
+            self.residual_masks = None
+            self.wavelengths    = {"input": input_wavelengths}
+            self.flux           = {"input": input_flux}
+            self.errors         = {"input": input_errors}
+            self.sn             = {"input": input_sn}
+
         # Apply skips and set inputs to class variables
-        self.wavelengths["input"] = input_wavelengths[:, ::skips]
-        self.flux["input"]        = input_flux[:, ::skips]
-        self.errors["input"]      = input_errors[:, ::skips]
+        self.wavelengths["input"] = input_wavelengths
+        self.flux["input"]        = input_flux
+        self.errors["input"]      = input_errors
         self.sn["input"]          = input_sn
 
     def save(self, filename:str="data.pkl") -> None:
@@ -548,14 +571,18 @@ class Data:
 class Datalist:
     """A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
     by result. This can map the order number of an instrument to the 0-indexed python list."""
-    def __init__(self, data_list:list[Data]|Data, save_dir:str|None=None):
+    def __init__(self, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|None=None):
         # All configs should have the same order_range so that they are internally aware. We just take the first one to 
         # generate the mapping of order to index in the list. The Load class will configure the correct order range based
         # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
         if isinstance(data_list, Data):
             data_list = [data_list]
 
-        self.verbose = np.max([data.config.verbose for data in data_list])
+        if verbose is not None:
+            self.data[0].config.verbose = verbose # verbose in config is a property and has good validation
+            self.verbose = self.data[0].config.verbose
+        else:
+            self.verbose = np.max([data.config.verbose for data in data_list])
 
         order_range = data_list[0].config.order_range
         if len(data_list) > 1 and self.verbose > 0:

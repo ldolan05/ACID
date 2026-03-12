@@ -14,7 +14,7 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
-from .data import Data
+from .data import Data, Config, TelluricLines, Linelist
 from .data import Datalist
 from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
@@ -23,24 +23,34 @@ class Acid:
     """Accurate Continuum fItting and Deconvolution (ACID) class. This class contains the ACID method 
     which fits the continuum of spectra and performs Least Squares Deconvolution (LSD) to obtain
     LSD profiles for each spectrum. It also contains many internal methods used within the main ACID 
-    function."""
+    function. See Dolan et al (2024) for more details on the ACID method and its applications."""
 
     def __init__(
         self,
-        velocities       : Array1D|None       = None,
-        linelist_path                         = None,
-        linelist_wl      : Array1D|None       = None,
-        linelist_depths  : Array1D|None       = None,
-        order            : IntLike            = 0,
-        order_range      : Array1D            = [0],
-        verbose          : IntLike|bool|None  = 2,
-        telluric_lines                        = None,
-        name             : str                = 'ACID',
-        seed             : IntLike|None       = None,
-        data             : Data|Datalist|None = None,
+        velocities       : Array1D|None  = None, # Data
+        linelist_path    : Array2D|str|Linelist|dict = None, # Data
+        linelist_wl      : Array1D|None  = None, # Data
+        linelist_depths  : Array1D|None  = None, # Data
+        order            : IntLike       = None, # Config
+        order_range      : Array1D       = None, # Config
+        verbose          : IntLike|bool|str = None, # Config
+        telluric_lines   : Array1D|Array2D|dict|TelluricLines = None, # Config
+        seed             : IntLike       = None, # Config
+        data             : Data|Datalist = None, # Data
+        # config           : Config        = None, # Config
         ):
-        """Initialises the Acid class with inputted parameters. The parameters set here arre independent
-        of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
+        """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
+        in the config class (stored in Data for convenience). Both Data and the Result class (passed after run_ACID) have save and load 
+        methods which can save the result of any calculations, with the Result class naturally saving the Data class together. ACID is designed
+        now to be run on only one order at a time, for running and keeping track of multiple orders, please see the Datalist class for a natural
+        implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
+        the results for each order. The Datalist instance has been designed with parallelization on HPC's in mind, allowing orders (which are
+        independent) to be run by different jobs. See also the multiprocessing section the readthedocs
+        (https://acid-v2.readthedocs.io/en/latest/using_ACID.html#multiprocessing).
+
+        Important note: All defaults in the code are None, meaning if any values are input, they will override the default Config and/or Data values or
+        any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
+        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid)
 
         Parameters
         ----------
@@ -81,8 +91,6 @@ class Acid:
             a default width of 21 km/s is used for all lines, which is the typical width of telluric lines. If widths are provided, the width of
             each line is taken to be the inputted value in km/s. When masking H lines, ACID will instead use a default width of 1000 km/s, so if you
             want to use your own list, make sure to input wider widths for the H lines.
-        name : str, optional
-            Name to call any saved files, by default 'ACID'
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
@@ -91,8 +99,8 @@ class Acid:
             If None, a new Data object is created. Please note that if the Data class already has a saved ACID config
             class, then those config values will overwrite the inputted values in initialisation or ACID method. If a 
             Datalist instance is inputted, the data instance corresponding to the inputted order is used.
-
         """
+
         # Initialise the data class to store calculations in ACID
         if data is not None:
             if isinstance(data, Datalist):
@@ -101,7 +109,7 @@ class Acid:
                 self.data = data
         else:
             self.data = Data()
-        
+
         # Set config if old one exists
         self.config = self.data.config # Make config the same as old config, or generates a new empty one (handled in Data)
 
@@ -109,8 +117,8 @@ class Acid:
         if velocities is not None:
             if velocities.ndim != 1:
                 raise ValueError("'velocities' must be a one-dimensional array")
-        # data.velocities defaults to None in Data class, can be set in ACID function
-        self.data.velocities = self.data.velocities if self.data.velocities is not None else velocities
+        # data.velocities defaults to None in Data class, will be set in ACID function from wavelengths if not provided
+        self.data.velocities = velocities if velocities is not None else self.data.velocities
 
         # Verbosity validation handled in config property setter
         self.config.verbose = verbose
@@ -129,12 +137,9 @@ class Acid:
         # else: seed already in config, so seed would already have been set when put in
         # I may make seed a property of the config class in the future
 
-        # Name is also added to config
-        self.config.name = name if getattr(self.config, "name", None) is None else self.config.name
-
         # Default order range for ACID, can be updated in ACID_HARPS. Eventually will add option to add this to inputs
-        self.config.order_range = [0] if getattr(self.config, "order_range", None) is None else self.config.order_range
-        self.config.order = order if getattr(self.config, "order", None) is None else self.config.order
+        self.config.order_range = order_range if order_range is not None else self.config.order_range
+        self.config.order = order if order is not None else self.config.order
 
         # Save config to data class
         self.data.config = self.config
@@ -153,32 +158,36 @@ class Acid:
 
     def ACID(
         self,
-        wavelengths           :Array1D|Array2D|None        = None,
-        flux                  :Array1D|Array2D|None        = None,
-        errors                :Array1D|Array2D|None        = None,
-        sn                    :Array1D|Array2D|Scalar|None = None,
-        deterministic_profile :bool                        = True,
-        poly_ord              :IntLike                     = 3,
-        continuum_percentile  :IntLike                     = 90,
-        bin_size              :IntLike                     = 100,
-        pix_chunk             :IntLike                     = 20,
-        dev_perc              :IntLike                     = 25,
-        n_sig                 :IntLike                     = 1,
-        skips                 :IntLike                     = 1,
-        parallel              :bool                        = True,
-        cores                 :IntLike|None                = None,
-        nsteps                :IntLike                     = 10000,
-        max_steps             :IntLike|None                = None,
-        check_interval        :IntLike                     = 1000,
-        min_checks            :IntLike                     = 1,
-        min_tau_factor        :IntLike                     = 50,
-        tau_tol               :float                       = 0.05,
-        run_mcmc              :bool                        = True,
-        _all_frames                                        = None, # to work with legacy code, not to be used, silently ignored
+        wavelengths           : Array1D|Array2D        = None, # Data
+        flux                  : Array1D|Array2D        = None, # Data
+        errors                : Array1D|Array2D        = None, # Data
+        sn                    : Array1D|Array2D|Scalar = None, # Data
+        deterministic_profile : bool                   = None, # Config
+        poly_ord              : IntLike                = None, # Config
+        continuum_percentile  : IntLike                = None, # Config
+        bin_size              : IntLike                = None, # Config
+        pix_chunk             : IntLike                = None, # Config
+        dev_perc              : IntLike                = None, # Config
+        n_sig                 : IntLike                = None, # Config
+        skips                 : IntLike                = None, # Config
+        parallel              : bool                   = None, # Config
+        cores                 : IntLike                = None, # Config
+        nsteps                : IntLike                = None, # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
+        max_steps             : IntLike                = None, # Config
+        check_interval        : IntLike                = None, # Config
+        min_checks            : IntLike                = None, # Config
+        min_tau_factor        : IntLike                = None, # Config
+        tau_tol               : float                  = None, # Config
+        run_mcmc              : bool                   = True,
+        _all_frames                                    = None, # to work with legacy code, not to be used, silently ignored
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
+
+        Important note: All defaults in the code are None, meaning if any values are input, they will override the default Config and/or Data values or
+        any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
+        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid)
 
         Parameters
         ----------
@@ -305,6 +314,7 @@ class Acid:
             "parallel"              : parallel,
             "cores"                 : cores,
             "deterministic_profile" : deterministic_profile,
+            "nsteps"                : nsteps,
             "max_steps"             : max_steps,
             "check_interval"        : check_interval,
             "min_checks"            : min_checks,
@@ -315,11 +325,8 @@ class Acid:
         # TODO: make all input defaults None and overwrite config if input, with config handling problems caused therein
 
         # Update config if any of the above config settings are new
-        self.config.update_lowpri(**ACID_config) # self.config overwrites ACID_config if overlapping
-        self.data.config = self.config # update dataclass config as well
-
-        # Exceptions that should be hipri:
-        self.config.update_hipri(**{"run_mcmc": run_mcmc})
+        self.config.update_hipri(**ACID_config) # self.config overwrites ACID_config if overlapping
+        self.data.config = self.config # update dataclass config as well, although I think this line is redundant
 
         if self.config.parallel and sys.platform == "win32":
             if self.config.verbose > 0:
@@ -474,9 +481,9 @@ class Acid:
         if self.config.run_mcmc is True:
             if self.config.max_steps is None:
                 if self.config.verbose > 1:
-                    print("Running MCMC for %s steps..."%nsteps)
-                self.run_mcmc(nsteps, initial_state)
-                self.data.nsteps += nsteps
+                    print("Running MCMC for %s steps..."%self.config.nsteps)
+                self.run_mcmc(self.config.nsteps, initial_state)
+                self.data.nsteps += self.config.nsteps
             else:
                 if self.config.verbose > 1:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
