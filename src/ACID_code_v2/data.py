@@ -226,7 +226,7 @@ class Data:
     ndim     : Optional[int]        = None
 
     # Data required/calculated in results/after MCMC sampling
-    all_frames : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
+    profiles : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
     nsteps     : Optional[int]        = 0
     max_steps  : Optional[int]        = None
 
@@ -471,36 +471,6 @@ class Data:
         self.errors["input"]      = input_errors[:, ::skips]
         self.sn["input"]          = input_sn
 
-    def initiate_all_frames(self, all_frames: np.ndarray) -> None:
-        """Initiates the all_frames variable, used in the ACID method, to eventually store the results of the MCMC sampling.
-        This is used to update the all_frames variable after each sampling step, allowing for resuming and avoiding
-        recalculation of profiles if the user wishes to continue sampling.
-
-        Parameters
-        ----------
-        all_frames : np.ndarray
-            The array of all frames to be stored in the data class. This should be of shape (n_steps, n_profiles, 2)
-            where the last dimension contains the profile and its error.
-        """
-        if isinstance(all_frames, str):
-            if all_frames == "default":
-                all_frames = None # legacy behaviour
-        if all_frames is None:
-            if self.all_frames is None:
-                # By default order_range is [1], so len(self.order_range) = 1, which is same as original
-                # code behaviour. This change allows self.order_range to be used in ACID_HARPS.
-                self.all_frames = np.zeros((len(self.flux["input"]), len(self.config.order_range), 2, len(self.velocities)))
-        else:
-            self.all_frames = all_frames
-        if isinstance(self.all_frames, object):
-            from .result import Result
-            if isinstance(self.all_frames, Result):
-                self.all_frames = self.all_frames.all_frames
-        if not isinstance(self.all_frames, np.ndarray):
-            raise ValueError("'all_frames' must be a numpy array")
-        if not self.all_frames.ndim == 4:
-            raise ValueError("'all_frames' must be a 4-dimensional numpy array, see docstring for details")
-
     def save(self, filename:str="data.pkl") -> None:
         """Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
@@ -605,7 +575,7 @@ class Datalist:
         yield from self.data_list
 
     def __getitem__(self, k):
-        return self.data_list[k]
+        return self.data_list[self.o2i[k]]
 
     def __repr__(self):
         return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"

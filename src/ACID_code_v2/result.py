@@ -16,20 +16,20 @@ from .utils import FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
 warnings.filterwarnings("ignore")
 
-def _require_all_frames(method):
+def _require_profiles(method):
     # Make sure all results are processed before calling method
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if self.all_frames is None:
+        if self.profiles is None:
             name = method.__qualname__
             if self.sampler is not None and self.data is not None:
                 if self.config.verbose>0:
-                    print(f"Note: The Result object was created without all_frames processed. " \
+                    print(f"Note: The Result object was created without the profiles processed. " \
                         f"Running {name} requires all results to be processed, " \
                         "so process_results() will be called automatically...")
                 self.process_results()
             else:
-                error = f"Cannot call {name}. The all_frames attribute is not available, and no " \
+                error = f"Cannot call {name}. The profiles attribute is not available, and no " \
                 "sampler and data objects are available to process results. Please pass an Acid " \
                 "object after running ACID to the results init."
                 raise ValueError(error)
@@ -43,8 +43,7 @@ def _require_data(method):
         if self.data is None:
             name = method.__qualname__
             error = f"Cannot call {name}. The Data object is not available in this " \
-            "Result instance. This can occur if Data was set to None to allow for pickling in the " \
-            "case that multiple orders or frames were used."
+            "Result instance."
             raise ValueError(error)
         return method(self, *args, **kwargs)
     return wrapper
@@ -82,7 +81,6 @@ class Result:
             Acid_or_Data_or_Sampler,
             sampler                        = None,
             process_results: bool          = True,
-            ACID_HARPS     : bool          = False,
             verbose        : IntLike|None = None,
         ):
         """Initiate Result class
@@ -101,14 +99,12 @@ class Result:
             provided in the first argument, this will be ignored (with a warning), by default None
         process_results : bool, optional
             Whether to process the results from the Acid object upon initialisation, by default True.
-            If False, the all_frames attribute will not be available until Result.process_results() is called.
+            If False, the profiles attribute will not be available until Result.process_results() is called.
             The process_results functions does a LSD call, which can be skipped to save time and use
-            the Result object for methods that do not require the all_frames attribute, such as 
+            the Result object for methods that do not require the profiles attribute, such as 
             continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
             and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
             By default, None.
-        ACID_HARPS : bool, optional
-            Whether the ACID_HARPS function was used, by default False
         verbose : int|bool|None, optional
             Verbosity level, works exactly the same as Acid verbosity, if not provided
             defaults to provided Acid class verbosity otherwise defaults to 2.
@@ -118,7 +114,7 @@ class Result:
         obj = Acid_or_Data_or_Sampler
         self.sampler    = None
         self.data       = None
-        self.all_frames = None
+        self.profiles = None
         self.config     = Config() # default config, will be updated if Acid or Data object is provided
         self.slurm      = "SLURM_JOB_ID" in os.environ
 
@@ -148,21 +144,13 @@ class Result:
 
         # From this point, a Data instance is provided and can be drawn from, but sampler may or may not be provided.
         # All frames must be available as a Result class variable due to legacy behaviour. Once created, we can point
-        # Data.all_frames to Result.all_frames to keep them in sync.
+        # Data.profiles to Result.profiles to keep them in sync.
         if process_results:
-            self.process_results() # sets self.data.all_frames, and points self.all_frames to self.data.all_frames
+            self.process_results() # sets self.data.profiles, and points self.profiles to self.data.profiles
         else:
             if self.config.verbose>0:
-                print("Warning: Results not processed. all_frames attribute will not be available until " \
+                print("Warning: Results not processed. profiles attribute will not be available until " \
                 "Result.process_results() is called.")
-
-        # Store internal variables
-        self.ACID_HARPS = ACID_HARPS
-
-        # Only takes if ACID_HARPS was run, otherwise all None
-        self.BJDs = getattr(obj, 'BJDs', None)
-        self.profiles = getattr(obj, 'profiles', None)
-        self.errors = getattr(obj, 'errors', None)
 
     @_require_data
     @_require_sampler
@@ -255,36 +243,29 @@ class Result:
             profile_errors_f = LSD_profiles.profile_errors_F
             # profile_f = profile_f-1
 
-            self.all_frames[counter, self.config.order]=[profile_f, profile_errors_f]
+            self.profiles[counter]=[profile_f, profile_errors_f]
 
-        self.data.all_frames = self.all_frames # point Data.all_frames to Result.all_frames to keep them in sync
+        self.data.profiles = self.profiles # point Data.profiles to Result.profiles to keep them in sync
         self.data.get_profiles_time = time() - t0
         self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
 
         return
 
-    @_require_all_frames
+    @_require_profiles
     def __getitem__(self, item):
-        """Allows indexing into the all_frames array directly from the Result object.
+        """Allows indexing into the profiles array directly from the Result object.
         """
+        return self.profiles[item]
 
-        if self.ACID_HARPS:
-            return self.BJDs[item], self.profiles[item], self.errors[item]
-        else:
-            return self.all_frames[item]
-
-    @_require_all_frames
+    @_require_profiles
     def __iter__(self):
-        """Allows iteration over the BJDs, profiles, and errors if ACID_HARPS was used.
+        """Allows iterating over the profiles array directly from the Result object.
         """
-        if self.ACID_HARPS:
-            return iter((self.BJDs, self.profiles, self.errors))
-        # Acid is not subscriptable normally, only when ACID_HARPS was called 
-        raise TypeError("Result is not iterable unless ACID_HARPS=True")
+        return iter(self.profiles)
 
     def __repr__(self):
-        # Only print out the sampler and data attributes, and whether all_frames is available, to avoid printing large arrays
-        return f"Result object with sampler={self.sampler}, data={self.data}, all_frames={'available' if self.all_frames is not None else 'not available'}"
+        # Only print out the sampler and data attributes, and whether profiles is available, to avoid printing large arrays
+        return f"Result object with sampler={self.sampler}, data={self.data}, profiles={'available' if self.profiles is not None else 'not available'}"
 
     @_require_data
     @_require_sampler
@@ -304,7 +285,7 @@ class Result:
             ignored. Passed to Acid.continue_sampling with the stored sampler.
         process_results : bool, optional
             Whether to process the results after continuing sampling, by default True.
-            If False, the all_frames attribute will not be updated until Result.process_results() is called.
+            If False, the profiles attribute will not be updated until Result.process_results() is called.
         sampler : emcee.EnsembleSampler | None, optional
             Optionally provide a different sampler to continue sampling from, otherwise,
             takes the sampler from the Result object, by default None
@@ -319,10 +300,10 @@ class Result:
         self.initiate_sampler(self.sampler) # update internal variables to match new sampler
 
         if process_results:
-            self.process_results() # update all_frames
+            self.process_results() # update profiles
         else:
             if self.config.verbose>0:
-                print("Warning: Results not processed. all_frames attribute will not be available until " \
+                print("Warning: Results not processed. profiles attribute will not be available until " \
                 "Result.process_results() is called.")
 
     @_require_sampler
@@ -389,7 +370,7 @@ class Result:
             return fig
         plt.show()
 
-    @_require_all_frames
+    @_require_profiles
     def plot_profiles(
         self,
         grid            :bool      = True,
@@ -437,27 +418,18 @@ class Result:
         labels = utils.set_dict_defaults(labels, default_labels)
 
         # Set useful variables
-        nframes = len(self.all_frames)
-        norders = len(self.all_frames[0])
-        frames = np.copy(self.all_frames)
+        nframes = len(self.profiles)
+        frames = np.copy(self.profiles)
         if fig_ax is None:
             fig, ax = plt.subplots(**subplot_kwargs)
         else:
             fig, ax = fig_ax
-        if nframes > 1:
-            if norders > 1:
-                if self.verbose > 0:
-                    print("Warning: Multiple frames and orders detected. Only plotting the first frame for each order")
-                frames = frames[:1, :, :, :]  # Take first frame only
+
         for f, frame in enumerate(frames):
-            for o, order in enumerate(frame):
-                x, y, yerr = self.data.velocities, order[0], order[1]
-                # TODO: Make Order a function of self.order_range, which needs to be configured in Acid
-                # so that order_range is done automatically if multiple orders are manually put (and not 
-                # just using ACID_HARPS)
-                label_default = f"Frame {f+1}, Order {o+1}" if nframes > 1 and norders > 1 else None
-                errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, {"label": label_default})
-                ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
+            x, y, yerr = self.data.velocities, frame[0], frame[1]
+            label_default = f"Frame {f+1}" if nframes > 1 else None
+            errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, {"label": label_default})
+            ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
 
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
@@ -470,7 +442,7 @@ class Result:
         else:
             plt.show()
 
-    @_require_all_frames
+    @_require_profiles
     def plot_forward_model(
         self,
         input_version   :str       = "masked",
@@ -785,7 +757,7 @@ class Result:
         if data is None:
             return # data already initiated from initialisation, so skip the rest of the method
 
-        self.all_frames = self.data.all_frames
+        self.profiles = self.data.profiles
         self.nsteps     = self.data.nsteps
 
         # For convenience, let the user call the model without needing to input all required args
@@ -859,7 +831,7 @@ class Result:
             res.backend = None # backend is now stored in the sampler, so remove it from the Result object to avoid confusion
 
         # rebuild convenience things that shouldn’t be pickled
-        cls.initiate_data(res, res.data) # sets all_frames and nsteps
+        cls.initiate_data(res, res.data) # sets profiles and nsteps
 
         if getattr(res, "sampler", None) is not None:
             cls.initiate_sampler(res, res.sampler) # sets burnin, thin, and default params/labels

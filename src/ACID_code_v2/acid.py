@@ -31,12 +31,13 @@ class Acid:
         linelist_path                         = None,
         linelist_wl      : Array1D|None       = None,
         linelist_depths  : Array1D|None       = None,
+        order            : IntLike            = 0,
         order_range      : Array1D            = [0],
         verbose          : IntLike|bool|None  = 2,
         telluric_lines                        = None,
         name             : str                = 'ACID',
         seed             : IntLike|None       = None,
-        data_or_datalist : Data|Datalist|None = None,
+        data             : Data|Datalist|None = None,
         ):
         """Initialises the Acid class with inputted parameters. The parameters set here arre independent
         of the choice of the ACID and ACID_HARPS functions, which take different formats for inputted spectra.
@@ -57,9 +58,14 @@ class Acid:
         linelist_depths : np.ndarray | list | None, optional
             Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
             Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
-        order_range : list | np.ndarray | None, optional
-            Range of orders in the observation. For non-echelle spectra, this can just be [0] (default). For echelle spectra, 
-            this can be a list of the order numbers (not 0-indexed) that you want to run ACID on.
+        order : int, optional
+            If this ACID instance is intended as a run on a specific order, then you can designate this instance to that order. This will allow
+            the resulting Data instance to track which order the profiles correspond to. Note that orders can be indexed by the correct indexing
+            of the spectrograph (ie. some spectrographs start at order ~20). By default 0.
+        order_range : np.ndarray | list, optional
+            Optionally also give ACID the full order range of the spectograph for the observation. ACID only ever runs on one order at a time,
+            but this will allows ACID and eventually the Datalist to keep track of which orders have been run and which haven't, and will be 
+            used in the future for plotting and saving results. As with order, the orders can be indexed to the spectrograph orders.
         verbose : bool | int | None, optional
             An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
             about any potential issues with the input data or autocorrelation warnings. If True, defaults to 2. If False, defaults to 0.
@@ -80,16 +86,19 @@ class Acid:
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
-        data_or_datalist : Data|Datalist|None, optional
+        data : Data|Datalist|None, optional
             An optional backend Data object to use for storing data. Allows previously calculated results to be skipped.
-            If None and if using an order_range of length 1 a new Data object is created, if the order_range length is greater than 1,
-            a Datalist instance is created by default None. Please note that if the Data class already has a saved ACID config
-            class, then those config values will overwrite the inputted values in initialisation or ACID method.
+            If None, a new Data object is created. Please note that if the Data class already has a saved ACID config
+            class, then those config values will overwrite the inputted values in initialisation or ACID method. If a 
+            Datalist instance is inputted, the data instance corresponding to the inputted order is used.
 
         """
         # Initialise the data class to store calculations in ACID
-        if data_or_datalist is not None:
-            self.data = data_or_datalist
+        if data is not None:
+            if isinstance(data, Datalist):
+                data = data[order]
+            else:
+                self.data = data
         else:
             self.data = Data()
         
@@ -124,7 +133,8 @@ class Acid:
         self.config.name = name if getattr(self.config, "name", None) is None else self.config.name
 
         # Default order range for ACID, can be updated in ACID_HARPS. Eventually will add option to add this to inputs
-        self.config.order_range = [1]
+        self.config.order_range = [0] if getattr(self.config, "order_range", None) is None else self.config.order_range
+        self.config.order = order if getattr(self.config, "order", None) is None else self.config.order
 
         # Save config to data class
         self.data.config = self.config
@@ -147,7 +157,6 @@ class Acid:
         flux                  :Array1D|Array2D|None        = None,
         errors                :Array1D|Array2D|None        = None,
         sn                    :Array1D|Array2D|Scalar|None = None,
-        all_frames                                         = None,
         deterministic_profile :bool                        = True,
         poly_ord              :IntLike                     = 3,
         continuum_percentile  :IntLike                     = 90,
@@ -155,7 +164,6 @@ class Acid:
         pix_chunk             :IntLike                     = 20,
         dev_perc              :IntLike                     = 25,
         n_sig                 :IntLike                     = 1,
-        order                 :IntLike                     = 0,
         skips                 :IntLike                     = 1,
         parallel              :bool                        = True,
         cores                 :IntLike|None                = None,
@@ -166,6 +174,7 @@ class Acid:
         min_tau_factor        :IntLike                     = 50,
         tau_tol               :float                       = 0.05,
         run_mcmc              :bool                        = True,
+        _all_frames                                        = None, # to work with legacy code, not to be used, silently ignored
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -176,25 +185,20 @@ class Acid:
         wavelengths : np.ndarray | list | None, optional
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
             wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
-            provided in initialisation.
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
         flux : np.ndarray | list | None, optional
             An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
             flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
-            provided in initialisation., by default None
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
         errors : np.ndarray | list | None, optional
             Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
             errors[i] corresponds to the spectral errors for the ith frame. Can only be None if a data instance was 
-            provided in initialisation., by default None
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
         sn : int | np.ndarray | list | None, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
             sn[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
             spectra, by default None
-        all_frames : str | np.ndarray | None, optional
-            Output array for resulting profiles. Only neccessary if looping ACID function over many wavelength
-            regions or order (in the case of echelle spectra). General shape needs to be
-            (no. of frames, no. of orders, 2, no. of velocity pixels). If not provided, one is created with that shape.
-             The only allowed string is "default" due to legacy behaviour, which now acts the same as None, by default None
         deterministic_profile : bool, optional
             If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
             profile is inferred from the continuum fit. Setting this to False can significantly speed up compution time, 
@@ -221,10 +225,6 @@ class Acid:
             residuals between an inital model and the data. The regions that are clipped from the residuals will
             be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 1
-        order : int, optional
-            Only applicable if an all_frames output array has been provided as this is the order position in that
-            array where the result should be input. i.e. if order = 5 the output profile and errors would be inserted in
-            all_frames[:, 5]., by default 0
         skips : int, optional
             An option to only select one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quick result, by default 1
@@ -276,7 +276,7 @@ class Acid:
         init_t0 = time.time()
         if self.config.verbose>1:
             print('Initialising...')
-
+        # TODO: allow SN input for each pixel, and then take a mean
         # Setup and data validation done in data class and applies skips
         self.data.set_inputs(wavelengths, flux, errors, sn, skips)
 
@@ -299,7 +299,6 @@ class Acid:
             "poly_ord"              : poly_ord,
             "continuum_percentile"  : continuum_percentile,
             "bin_size"              : bin_size,
-            "order"                 : order,
             "pix_chunk"             : pix_chunk,
             "dev_perc"              : dev_perc,
             "n_sig"                 : n_sig,
@@ -336,10 +335,6 @@ class Acid:
                 "It is highly recommended to input your own velocity grid, especially if you need a different wavelength range.")
             deltav = utils.calc_deltav(self.data.wavelengths["input"][0])
             self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
-
-        # Initiates all_frames variable, which is used to store the results of the MCMC sampling.
-        # If an all_frames array is provided, this is used, otherwise a new one is created with the correct shape.
-        self.data.initiate_all_frames(all_frames)
 
         ### Begin ACID process
 
@@ -1192,6 +1187,7 @@ def ACID(*args, **kwargs):
         "vgrid": "velocities",
         "line": "linelist_path",
         "poly_or": "poly_ord",
+        "all_frames": "_all_frames",
     }
 
     # Split args and kwargs into init and run kwargs using helper function
