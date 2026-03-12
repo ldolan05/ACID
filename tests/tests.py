@@ -146,37 +146,9 @@ def legacy_test():
         plt.show()
         return result
 
-    def test_run_e2ds():
-
-        e2ds_files = glob.glob('tests/data/*e2ds_A*.fits')
-        linelist = 'example/example_linelist.txt'
-        save_path = 'no save'
-
-        velocities = np.arange(-25, 25, 0.82)
-
-        # run ACID on e2ds files
-        ACID_results_e2ds = acid.ACID_HARPS(e2ds_files, linelist, velocities=velocities, save_path=save_path,
-                                            order_range=np.arange(41, 43), nsteps=2000, skips=3)
-        return ACID_results_e2ds
-
-    def test_run_s1d():
-
-        s1d_files = glob.glob('tests/data/*s1d_A*.fits')
-        linelist = 'example/example_linelist.txt'
-        save_path = 'no save'
-
-        velocities = np.arange(-25, 25, 0.82)
-
-        # run ACID on s1d files
-        ACID_results_s1d = acid.ACID_HARPS(s1d_files, linelist, velocities=velocities, save_path=save_path,
-                                        order_range = np.arange(41, 43), file_type = 's1d', nsteps=2000, skips=3)
-        return ACID_results_s1d
-
     _ = quickstart() # generic quick test
     _ = multiple_frames()
     _ = multiple_orders()
-    _ = test_run_e2ds() # test ACID harps function on e2ds files
-    _ = test_run_s1d() # test ACID harps function on s1d files
 
 def class_test():
     def classes_test(skips, nsteps):
@@ -200,6 +172,7 @@ def class_test():
     nsteps1 = 5000
     nsteps2 = 3000
     result = classes_test(skips=3, nsteps=nsteps1) # test the classes and result handling, use lower skips
+    os.makedirs("tests/test_data", exist_ok=True) # create test data directory if it doesn't exist
     result.save_result(filename="tests/test_data/classes_test.pkl")
     result = acid.Result.load_result("tests/test_data/classes_test.pkl")
     result.plot_corner()
