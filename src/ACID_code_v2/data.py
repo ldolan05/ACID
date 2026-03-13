@@ -637,8 +637,10 @@ class Data:
         return LineList(self._linelist)if self._linelist is not None else None
 
     def set_linelist(self, linelist_path=None, linelist_wl=None, linelist_depths=None) -> None:
-        if self._linelist is not None: # linelist already set, do not overwrite
-            return
+        if self._linelist is not None:
+            if linelist_path is None and linelist_wl is None and linelist_depths is None:
+                return
+            # else: override with new inputs below, with validation
 
         linelist_wl, linelist_depths = LineList.validate_linelist(linelist_wl, linelist_depths, linelist_path)
         linelist_wl = np.array(linelist_wl)
