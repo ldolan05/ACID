@@ -182,13 +182,13 @@ class Config:
         self._verbose = value
 
     @property
-    def telluric_lines(self) -> int:
+    def telluric_lines(self) -> TelluricLines:
         if self._telluric_lines is None:
             return TelluricLines(self.defaults["telluric_lines"])
         return TelluricLines(self._telluric_lines)
 
     @telluric_lines.setter
-    def telluric_lines(self, lines:Array1D|Array2D|dict|TelluricLines) -> None:
+    def telluric_lines(self, lines:Array1D|Array2D|dict|TelluricLines|None) -> None:
         telluric_lines = lines
         # Define telluric_lines with defaults if not input, check type if it is
         # TODO MAKE THE default for inputted telluric lines values to be the widths if lines within +-1 of any of the defaults
