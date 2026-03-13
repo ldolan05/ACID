@@ -202,6 +202,8 @@ class Result:
         conts = (coeffs @ powers.T)
         continuum_error = np.std(conts, axis=0)
 
+        self.profiles = np.zeros((len(self.data.flux["input"]), 2, len(self.data.velocities)))
+
         for counter in range(len(self.data.flux["input"])):
             flux = np.copy(self.data.flux["input"][counter])
             error = np.copy(self.data.errors["input"][counter])
