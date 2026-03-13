@@ -421,16 +421,17 @@ class Result:
 
         # Set useful variables
         nframes = len(self.profiles)
-        frames = np.copy(self.profiles)
         if fig_ax is None:
             fig, ax = plt.subplots(**subplot_kwargs)
         else:
             fig, ax = fig_ax
 
-        for f, frame in enumerate(frames):
+        for f, frame in enumerate(self.profiles):
             x, y, yerr = self.data.velocities, frame[0], frame[1]
             label_default = f"Frame {f+1}" if nframes > 1 else None
-            errorbar_kwargs = utils.set_dict_defaults(errorbar_kwargs, {"label": label_default})
+            # Override label in errorbar_kwargs if it is not already set, otherwise use the default label
+            if "label" not in errorbar_kwargs:
+                errorbar_kwargs["label"] = label_default
             ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
 
         ax.set_title(labels["title"])
