@@ -81,19 +81,25 @@ class Acid:
             If you want to ignore the warnings but still keep progress information, set verbose to 1. A verbosity of 3 will produce 
             additional plots, such as the result of the continuum fit. By default None, which defaults to 2 (True). If set, overrides 
             any verbose setting in the dataclass.
-        telluric_lines : np.ndarray | list | None, optional
-            List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
-            lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked.
-            By default None. You can also put a MaskingLines class or dictionary with keys "lines" and "widths" for the telluric lines,
-            where "lines" (required) is the same list of wavelengths above and "widths" (optional, default None) is a list of the widths of said lines.
-            They can be telluric, or a list of strong Hydrogen lines (as included in the default telluric_lines). If widths are not provided,
-            a default width of 21 km/s is used for all lines, which is the typical width of telluric lines. If widths are provided, the width of
-            each line is taken to be the inputted value in km/s. When masking H lines, ACID will instead use a default width of 1000 km/s, so if you
-            want to use your own list, make sure to input wider widths for the H lines.
+        telluric_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
+            Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. For many types of inputs, widths are optional,
+            and if not provided, the default telluric width is used (see below). The inputs must be of the following forms: 
+                - 1D or 2D Array-like: Wavelengths at index 0, and optionally widths at index 1. The length of both indices must match if provided.
+                - Dictionary: with keys "lines" and optionally "widths" (both array-like), length of both must match if provided.
+                - MaskingLines class: The MaskingLines class is used to expose the linelist for masking or getting/plotting the Masked lines. You can input
+                an instance if you have one.
+                - List of tuples: Each tuple should be in the format (line:float, width:Optional(float)). This format is useful for directly inputting
+                lines with default width unless explicitly specified for some lines. Again, lines without the width provided will be set from the
+                default telluric_width input.
         telluric_widths : Scalar, optional
             The default telluric width if any widths are missing from the above inputs. For each inputted telluric line, if a width is not provided, 
-            this width is used. The default is 21 km/s, which is the typical width of telluric lines. If you are masking H lines, it is recommended 
-            you set them in the above telluric_lines input.
+            this width is used. The default is 21 km/s, a typical width of telluric lines.
+        hydrogen_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
+            The exact same format as telluric_lines, but for hydrogen lines. The masking process is also identical, but the default widths can be different 
+            (see below).
+        hydrogen_widths : Scalar, optional
+            Works the same way as telluric_widths, but for hydrogen lines. The default is 1000 km/s, a typical width of hydrogen lines, it may be worth increasing 
+            for hotter stars.
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
