@@ -18,62 +18,6 @@ Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Sc
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 ArrayAnyD: TypeAlias = NumericArray | list
 
-def validate_args(x, i, allow_none=False, sn=False):
-    """Validates the input arguments. This function can be used to ensure inputs to Acid
-    are of the correct type and shape. It is performed automatically in Acid.
-
-    Parameters
-    ----------
-    x : array_like
-        array, list, or int to be validated
-    i : int
-        position of the input argument
-    allow_none : bool, optional
-        Whether None is allowed as a valid input, by default False
-    sn : bool, optional
-        Whether the input is a signal-to-noise ratio array, by default False
-    Returns
-    -------
-    array
-        The validated and converted numpy array.
-
-    Raises
-    ------
-    TypeError
-        If any of the conditions on inputs are not met.
-    """
-    if x is None:
-        if allow_none:
-            return None
-        else:
-            raise TypeError(f"Argument in position {i} must be a list or numpy array, not None")
-    if not isinstance(x, (list, np.ndarray)):
-        if sn is False:
-            raise TypeError(f"Argument in position {i} must be a list or numpy array")
-    if isinstance(x, list):
-        if len(x) == 0:
-            raise TypeError(f"Argument list in position {i} is empty")
-    x = np.array(x)
-    if x.ndim > 2:
-        raise TypeError(f"Argument in position {i} must be a list or numpy array with at most two dimensions")
-    elif x.ndim == 0:
-        if sn is False:
-            raise TypeError(f"Argument in position {i} must be a list or numpy array with at least one dimension")
-        else:
-            return np.array([x]) # ensure sn is always 1D
-    return np.array([x])
-    # elif x.ndim == 1:
-    #     if sn:
-    #         return x
-    #     return np.array([x])
-    # elif x.ndim == 2:
-    #     if sn:
-    #         if x.shape[0] != 1: # ie if 1, an extra [] was added to input to make 2D.
-    #             raise TypeError(f"Argument for sn in position {i} must be a 1D numpy array or list (the input was 2D)")
-    #         else:
-    #             return x[0]
-    #     return x # 2D array, return as is
-
 def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
