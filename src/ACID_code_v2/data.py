@@ -130,15 +130,16 @@ class Config:
         # Update and overwrite existing keys
         for k, v in kwargs.items():
             if v is None:
-                continue
+                # If input is None, and attribute does not exist, set to None
+                if not hasattr(self, k):
+                    setattr(self, k, None)
             else:
                 setattr(self, k, v)
 
     def update_lowpri(self, **kwargs: Any) -> None:
         # Update but do not overwrite existing keys
         for k, v in kwargs.items():
-            if v is None:
-                continue
+            # Below also sets if None is input but attribute does not exist
             if getattr(self, k, None) is None:
                 setattr(self, k, v)
 
