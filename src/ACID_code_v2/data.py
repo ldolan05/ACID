@@ -256,6 +256,7 @@ class Data:
     initial_profile        : Optional[np.ndarray] = None  # initial profile generated in residual masking
     initial_profile_errors : Optional[np.ndarray] = None  # corresponding errors
     poly_inputs            : Optional[np.ndarray] = None  # polynomial inputs for just the continuum model
+    initial_model_inputs   : Optional[np.ndarray] = None  # The initial_model_inputs if needed for debugging, only set after model_inputs is modified in residual masking
     model_inputs           : Optional[np.ndarray] = None  # the concatenated array of initial profile and poly coefficents, used as input to emcee
     initial_state          : Optional[np.ndarray] = None  # the initial state of the MCMC walkers, used for resuming and debugging
 

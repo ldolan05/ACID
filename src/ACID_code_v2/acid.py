@@ -804,7 +804,11 @@ class Acid:
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
         LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
+
+        ### Update and set new variables
         self.data.c_factor = LSD_masking.c_factor
+        self.data.initial_model_inputs = np.copy(self.data.model_inputs) # Save the initial model inputs before masking for later use if needed
+        self.data.model_inputs = np.concatenate((LSD_masking.profile, poly_inputs))
 
         self.data.wavelengths["masked"] = x
         self.data.flux["masked"]        = y # x and y dont change in this func
