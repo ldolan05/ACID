@@ -114,6 +114,12 @@ class Config:
         "min_checks" : 1,
         "min_tau_factor" : 50,
         "tau_tol" : 0.05,
+        "moves" : [
+            ("StretchMove", 0.20, {}),
+            ("DESnookerMove", 0.1, {}),
+            ("DEMove", 0.6, {}),
+            ("DEMove", 0.1, {"gamma0": 1.0}),
+        ],
         "run_mcmc" : True,
     }
 

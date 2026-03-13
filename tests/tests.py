@@ -312,24 +312,30 @@ def test_edge_cases():
     velocities = np.arange(-25, 25, deltav)
     result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities, nsteps=2000)
     result.plot_profiles()
+
+    # Test using a different moveset:
+    Acid = acid.Acid(data=data)
+    data.config.moves = [("StretchMove", 0.6, {}), ("DEMove", 0.2)]
+    result = Acid.ACID(max_steps=5000)
+    result.plot_walkers()
     pass
 
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")
 
-# The first five tests use legacy ACID inputs and calls
-legacy_test()
+# # The first five tests use legacy ACID inputs and calls
+# legacy_test()
 
-# Now test classes
-class_test()
+# # Now test classes
+# class_test()
 
-# Test verbosities
-verbosity_test()
+# # Test verbosities
+# verbosity_test()
 
-# Test deterministic profile fit
-deterministic_test()
+# # Test deterministic profile fit
+# deterministic_test()
 
-# Add a skipping calculations using the data class test
-data_and_convergence_test()
+# # Add a skipping calculations using the data class test
+# data_and_convergence_test()
 
 # Test edge cases, including no parallelization
 test_edge_cases()

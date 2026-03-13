@@ -5,9 +5,9 @@ Utility functions for the ACID package. Some functions may not be useful to the 
 from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
-import glob
+import glob, emcee
 import scipy.constants as const
-from typing import TypeAlias, Annotated
+from typing import Tuple, TypeAlias, Annotated
 from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
@@ -17,6 +17,49 @@ NumericArray: TypeAlias = NDArray[np.number]
 Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 ArrayAnyD: TypeAlias = NumericArray | list
+
+def convert_moves_to_emcee(moves:list[Tuple]):
+    """Converts a list of move specifications to emcee moves.
+
+    Parameters
+    ----------
+    moves : list[Tuple]
+        A list of tuples specifying the moves. Each tuple should be in the format:
+        (move_name:str, fraction:float, move_kwargs:Optional[dict]).
+            - move_name: The name of the emcee move, the only possible variants are as follows:
+             "RedBlueMove", "StretchMove", "WalkMove", "KDEMove", "DEMove", "DESnookerMove", 
+             "MHMove", "GaussianMove". Refer to the emcee documentation for more details on each move type.
+            - fraction: The fraction of walkers to which this move should be applied.
+            - move_kwargs: A dictionary of keyword arguments to pass to the move class initialisation.
+
+    Returns
+    -------
+    list
+        A list of emcee move objects corresponding to the input specifications.
+    """
+    emcee_moves = []
+    for move in moves:
+        if len(move) == 2:
+            move_name, fraction = move
+            move_kwargs = {}
+        elif len(move) == 3:
+            move_name, fraction, move_kwargs = move
+            if not isinstance(move_kwargs, dict):
+                raise ValueError(
+                    "Move kwargs must be a dictionary of keyword arguments to pass to " \
+                    "the move class initialisation (if passed)."
+                )
+        else:
+            raise ValueError(
+                "Each move tuple must have length 2 or 3: " \
+                "(move_name, fraction) or (move_name, fraction, kwargs).")
+
+        if not hasattr(emcee.moves, move_name):
+            raise ValueError(f"Move '{move_name}' is not a valid emcee move.")
+        move_class = getattr(emcee.moves, move_name)
+        emcee_moves.append((move_class(**move_kwargs), fraction))
+        
+    return emcee_moves
 
 def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.

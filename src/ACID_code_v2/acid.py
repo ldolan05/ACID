@@ -3,13 +3,10 @@ warnings.filterwarnings("ignore")
 import sys, emcee, os, time, inspect, inspect
 import numpy as np
 from math import log10, floor
-from astropy.io import fits
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
-import matplotlib.pyplot as plt
-import scipy.constants as const
-import matplotlib as mpl
+from typing import Tuple
 from . import utils
 from .lsd import LSD
 from . import mcmc
@@ -186,6 +183,7 @@ class Acid:
         min_checks            : IntLike                = None, # Config
         min_tau_factor        : IntLike                = None, # Config
         tau_tol               : float                  = None, # Config
+        moves                 : list                   = None, # Config
         run_mcmc              : bool                   = True,
         _all_frames                                    = None, # to work with legacy code, not to be used, silently ignored
         **kwargs,
@@ -268,6 +266,16 @@ class Acid:
             Minimum tau factor for MCMC stopping criterion, by default 50. Only used if max_steps is set.
         tau_tol : float, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.01. Only used if max_steps is set.
+        moves : list[Tuple], optional
+            A list of tuples specifying the moves. Each tuple should be in the format:
+            (move_name:str, fraction:float, move_kwargs:Optional[dict]).
+                - move_name: The name of the emcee move, the only possible variants are currently as follows:
+                "RedBlueMove", "StretchMove", "WalkMove", "KDEMove", "DEMove", "DESnookerMove", 
+                "MHMove", "GaussianMove". Refer to the emcee documentation for more details on each move type. The move
+                names that get input are checked against the emcee.moves module for if they exist, so any move in that 
+                module can be used, but not all of them are tested with ACID.
+                - fraction: The fraction of walkers to which this move should be applied.
+                - move_kwargs: A dictionary of keyword arguments to pass to the move class initialisation.
         run_mcmc : bool, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
@@ -327,6 +335,7 @@ class Acid:
             "min_checks"            : min_checks,
             "min_tau_factor"        : min_tau_factor,
             "tau_tol"               : tau_tol,
+            "moves"                 : moves,
             "run_mcmc"              : run_mcmc,
         }
 
@@ -934,13 +943,9 @@ class Acid:
                 self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.config.cores = os.cpu_count()
-        # TODO Make moves a ACID input
-        moves = [
-            (emcee.moves.StretchMove(), 0.20),
-            (emcee.moves.DESnookerMove(), 0.1),
-            (emcee.moves.DEMove(), 0.6),
-            (emcee.moves.DEMove(gamma0=1.0), 0.1)
-        ]
+
+        # Configure moves based on config
+        moves = utils.convert_moves_to_emcee(self.config.moves)
 
         sampler_kwargs = {
             "nwalkers"   : self.data.nwalkers,
