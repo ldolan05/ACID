@@ -10,7 +10,6 @@ PROJECT_ROOT = next(p for p in SCRIPT_DIR.parents if (p / "pyproject.toml").exis
 sys.path.append(str(PROJECT_ROOT))
 os.chdir(PROJECT_ROOT)
 from src import  ACID_code_v2 as acid
-acid._reload_all()
 np.random.seed(0) # Set random seed for reproducibility in tests
 start = time()
 skips = 5
@@ -35,8 +34,8 @@ def legacy_test():
         result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000)
 
         # extract profile and errors
-        profile = result[0, 0, 0]
-        profile_error = result[0, 0, 1]
+        profile = result[0, 0]
+        profile_error = result[0, 1]
 
         # plot results
         plt.figure()
@@ -78,67 +77,9 @@ def legacy_test():
         plt.figure()
 
         for frame in range(len(files)):
-            profile = result[frame, 0, 0]
-            profile_error = result[frame, 0, 1]
+            profile = result[frame, 0]
+            profile_error = result[frame, 1]
             plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
-
-        plt.xlabel('Velocities (km/s)')
-        plt.ylabel('Flux')
-        plt.legend()
-        plt.show()
-        return result
-
-    def multiple_orders():
-        spec_file = fits.open('example/sample_spec_1.fits')
-
-        wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
-        spectrum = spec_file[1].data[::skips]     # Spectral Flux
-        error = spec_file[2].data[::skips]        # Spectral Flux Errors
-        sn = spec_file[3].data           # SN of Spectrum
-
-        linelist = 'example/example_linelist.txt' # Insert path to line list
-
-        # choose a velocity grid for the final profile(s)
-        deltav = acid.calc_deltav(wavelength)  
-        velocities = np.arange(-25, 25, deltav)
-
-        # choose size of wavelength ranges (or chunks)
-        wave_chunk = 25
-        chunks_no = int(np.floor((max(wavelength)-min(wavelength))/wave_chunk))
-        min_wave = min(wavelength)
-        max_wave = min_wave+wave_chunk
-
-        # create result array of shape (no. of frames, no. of chunks, 2, no. of velocity pixels)
-        result = np.zeros((1, chunks_no, 2, len(velocities)))
-
-        for i in range(chunks_no):
-
-            # use indexing to select correct chunk of spectrum
-            idx = np.logical_and(wavelength>=min_wave, wavelength<=max_wave)
-
-            # run ACID function on specific chunk
-            result = acid.ACID([wavelength[idx]], [spectrum[idx]], [error[idx]], linelist,
-                                [sn], velocities, all_frames=result, order=i, nsteps=2000)
-
-            min_wave += wave_chunk
-            max_wave += wave_chunk
-
-        # reset min and max wavelengths
-        min_wave = min(wavelength)
-        max_wave = min_wave+wave_chunk
-
-        # plot results
-        plt.figure()
-        for i in range(chunks_no):
-
-            # extract profile and errors
-            profile = result[0, i, 0]
-            profile_error = result[0, i, 1]
-
-            plt.errorbar(velocities, profile, profile_error, label='(%s - %sÅ)'%(min_wave, max_wave))
-
-            min_wave += wave_chunk
-            max_wave += wave_chunk
 
         plt.xlabel('Velocities (km/s)')
         plt.ylabel('Flux')
@@ -148,7 +89,6 @@ def legacy_test():
 
     _ = quickstart() # generic quick test
     _ = multiple_frames()
-    _ = multiple_orders()
 
 def class_test():
     def classes_test(skips, nsteps):
@@ -186,7 +126,7 @@ def class_test():
     result.plot_walkers()
     result.plot_autocorrelation()
     result.plot_acf()
-    acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=result[0,0,0]).plot_fit("all")
+    acid.Profiles(velocities=np.arange(-25, 25, 0.82), flux=result[0,0]).plot_fit("all")
     result.plot_profiles()
     del result # clean up memory after test
 
@@ -355,7 +295,23 @@ def test_edge_cases():
     result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, run_mcmc=False,
                        skips=skips, parallel=False, deterministic_profile=True)
     assert result is None, "When run_mcmc is set to False, the ACID function should return None, but it did not."
-    
+
+    # Guess sn for multiple frames, plot multiple frames
+    files = glob.glob('example/sample_spec_*.fits')
+    wavelengths = []
+    spectra = []
+    errors = []
+    sns = []
+    for file in files:
+        spec_file = fits.open('%s'%file)
+        wavelengths.append(spec_file[0].data[::skips])    # Wavelengths in Angstroms
+        spectra.append(spec_file[1].data[::skips])        # Spectral Flux
+        errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
+        sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
+    deltav = acid.calc_deltav(wavelengths[0])
+    velocities = np.arange(-25, 25, deltav)
+    result = acid.ACID(wavelengths, spectra, errors, linelist, sns, velocities, nsteps=2000)
+    result.plot_profiles()
     pass
 
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")
