@@ -194,21 +194,22 @@ def calc_deltav(wavelengths:Array1D):
     wavelengths = np.sort(wavelengths)
     return c_kms * np.nanmean(np.diff(np.log(wavelengths)))
 
+@beartype
 def guess_SNR(
-        frame_wavelengths : np.ndarray | list,
-        frame_flux        : np.ndarray | list,
-        frame_errors      : np.ndarray | list
+        frame_wavelengths : Array1D | Array2D,
+        frame_flux        : Array1D | Array2D,
+        frame_errors      : Array1D | Array2D
         ) -> np.ndarray:
     """Estimates S/N for each frame. Takes the median S/N in the central two-thirds of the
     wavelength range. Fully vectorized so that all the frames can be passed at once.
 
     Parameters
     ----------
-    frame_wavelengths : np.ndarray | list
+    frame_wavelengths : Array1D | Array2D
         Array/list of wavelengths for each frame.
-    frame_flux : np.ndarray | list
+    frame_flux : Array1D | Array2D
         Array/list of flux values for each frame.
-    frame_errors : np.ndarray | list
+    frame_errors : Array1D | Array2D
         Array/list of error values for each frame.
 
     Returns
@@ -216,29 +217,20 @@ def guess_SNR(
     np.ndarray
         Array of estimated signal-to-noise ratios for each frame.
     """
+    if np.any(frame_flux) <= 0 or np.any(frame_errors) <= 0 or np.any(frame_wavelengths <= 0):
+        raise ValueError("Flux, errors, and wavelengths must all be positive non-zero to estimate S/N.")
 
-    # Quick validation check and conversion to numpy arrays
-    frame_wavelengths, frame_flux, frame_errors = [
-        validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
+    frame_wavelengths = np.atleast_2d(frame_wavelengths)
+    frame_flux = np.atleast_2d(frame_flux)
+    frame_errors = np.atleast_2d(frame_errors)
 
-    # Calculate S/N in central two-thirds of wavelength range
-    wavelength_upper = np.nanmax(frame_wavelengths, axis=-1)
-    wavelength_lower = np.nanmin(frame_wavelengths, axis=-1)
-    delta_wavelength = wavelength_upper - wavelength_lower
-    upper_cut = wavelength_lower + delta_wavelength * (5/6)
-    lower_cut = wavelength_lower + delta_wavelength * (1/6)
-
-    # Keep shape; drop out-of-band values as NaN
-    mask = (frame_wavelengths > lower_cut[:, None]) & (frame_wavelengths < upper_cut[:, None])
-
-    frame_wavelengths = np.where(mask, frame_wavelengths, np.nan)
+    lo, hi = np.nanpercentile(frame_wavelengths, [100/6, 500/6], axis=-1)
+    mask = (frame_wavelengths > lo[:, None]) & (frame_wavelengths < hi[:, None])
     frame_flux = np.where(mask, frame_flux, np.nan)
     frame_errors = np.where(mask, frame_errors, np.nan)
 
-    median = np.nanmedian(frame_flux, axis=-1)
-    median_error = np.nanmedian(frame_errors, axis=-1)
-
-    return np.abs(median / median_error)
+    sn_per_pixel = frame_flux / frame_errors
+    return np.nanmedian(sn_per_pixel, axis=-1).squeeze()
 
 def collapse_SNR(sn, wavelengths):
     """Collapses the SN of a 1D or 2D wavelength and sn array to the median of the SNs
