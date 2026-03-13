@@ -467,28 +467,54 @@ class Data:
         skips : int, optional
             Number of pixels to skip when processing the spectra, by default 1 (no skipping)
         """
-        # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
-        # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
-        # inputs to numpy arrays.
-        if input_wavelengths is None or input_flux is None or input_errors is None:
-            if "input" not in self.wavelengths and "input" not in self.flux and "input" not in self.errors:
-                raise ValueError("input_wavelengths, input_flux, and input_errors must be provided either as arguments " \
-                "to this function or in a Data object.")
+        input_keys = ["wavelengths", "flux", "errors"]
+        inputs = {
+            "wavelengths": input_wavelengths,
+            "flux": input_flux,
+            "errors": input_errors,
+        }
+        inputs_already_exist = all(
+            getattr(self, attr).get("input", None) is not None for attr in input_keys
+        )
+        all_inputs_not_none = all(inputs[attr] is not None for attr in input_keys)
+        any_inputs_not_none = any(inputs[attr] is not None for attr in input_keys)
+        del inputs # it was just a trick to do the input checks in a loop
 
-        input_wavelengths, input_flux, input_errors = [
-            utils.validate_args(arg, i) for i, arg in enumerate((input_wavelengths, input_flux, input_errors))]
-        input_sn = utils.validate_args(input_sn, 3, sn=True, allow_none=True)
+        if inputs_already_exist:
+            if not all_inputs_not_none and any_inputs_not_none and self.config.verbose > 0:
+                print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
+                      f"Some of the inputs you provided are None. \n" \
+                      f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
+                      f"The current input wavelengths, flux, and errors will be kept.")
+                return
+            elif not any_inputs_not_none and self.config.verbose > 1:
+                print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
+                return
+            # Else continue with the rest of the function to update inputs, later on, the code will check if new inputs are 
+            # different from the existing ones, if so, deletes variables that need to be recalculated.
+        else:
+            if not all_inputs_not_none:
+                raise ValueError("input_wavelengths, input_flux, and input_errors must be provided either as arguments " \
+                                 "or in a Data object.")
+
+        # Convert to arrays, squeeze to remove extra dimensions (as default in legacy inputs)
+        input_wavelengths = np.array(input_wavelengths).squeeze()
+        input_flux = np.array(input_flux).squeeze()
+        input_errors = np.array(input_errors).squeeze()
+        input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
 
         # Check all inputs have the same shape
         if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
+        # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
         input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
 
+        # Guess sn if input_sn not provided
         if input_sn is None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
-        if input_sn.shape[0] != input_flux.shape[0]:
-            raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
+            if self.config.verbose > 1:
+                print(f"No input_sn provided, guessed S/N values from the input spectra. Guessed value(s):\n {input_sn}")
         if input_sn.ndim == input_flux.ndim:
             # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
             input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
@@ -498,7 +524,17 @@ class Data:
             "The shape of the input input_sn does not match the number of frames in input_flux, \
             nor does it have one more dimension than input_flux.")
         assert input_sn.ndim == input_flux.ndim - 1, \
-            "input_sn.ndim and input_flux.ndim-1 do not match"
+            f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}"
+
+        # Ensure all inputs are at least 2D (with the first dimension being the frame number), 
+        # to ensure consistent handling of single-frame and multi-frame inputs. 
+        input_wavelengths = np.atleast_2d(input_wavelengths)
+        input_flux = np.atleast_2d(input_flux)
+        input_errors = np.atleast_2d(input_errors)
+        input_sn = np.atleast_1d(input_sn)
+
+        if input_sn.shape[0] != input_flux.shape[0]:
+            raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
 
         # Apply skips
         input_wavelengths = input_wavelengths[:, ::skips]
@@ -506,9 +542,8 @@ class Data:
         input_errors     = input_errors[:, ::skips]
 
         # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
-        to_check = ["wavelengths", "flux", "errors"]
         reset = False
-        for check in to_check:
+        for check in input_keys:
             if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
                 if not np.array_equal(getattr(self, check)["input"], eval(f"input_{check}")):
                     reset = True
