@@ -10,7 +10,7 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
-from .data import Data, Config, TelluricLines, LineList
+from .data import Data, Config, MaskingLines, LineList
 from .data import DataList
 from .utils import IntLike, Scalar, Array1D, Array2D
 
@@ -23,17 +23,20 @@ class Acid:
 
     def __init__(
         self,
-        velocities       : Array1D|None  = None, # Data
-        linelist_path    : Array2D|str|LineList|dict = None, # Data
-        linelist_wl      : Array1D|None  = None, # Data
-        linelist_depths  : Array1D|None  = None, # Data
-        order            : IntLike       = None, # Config
-        order_range      : Array1D       = None, # Config
-        verbose          : IntLike|bool|str = None, # Config
-        telluric_lines   : Array1D|Array2D|dict|TelluricLines = None, # Config
-        seed             : IntLike       = None, # Config
-        data             : Data|DataList = None, # Data
-        config           : Config        = None, # Config
+        velocities      : Array1D|None                                  = None,   # Data
+        linelist_path   : Array2D|str|LineList|dict                     = None,   # Data
+        linelist_wl     : Array1D|None                                  = None,   # Data
+        linelist_depths : Array1D|None                                  = None,   # Data
+        order           : IntLike                                       = None,   # Config
+        order_range     : Array1D                                       = None,   # Config
+        verbose         : IntLike|bool|str                              = None,   # Config
+        telluric_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
+        telluric_widths : Scalar                                        = None,   # Config
+        hydrogen_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
+        hydrogen_widths : Scalar                                        = None,   # Config
+        seed            : IntLike                                       = None,   # Config
+        data            : Data|DataList                                 = None,   # Data
+        config          : Config                                        = None,   # Config
         ):
         """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
         in the config class (stored in Data for convenience). Both Data and the Result class (passed after run_ACID) have save and load 
@@ -81,12 +84,16 @@ class Acid:
         telluric_lines : np.ndarray | list | None, optional
             List of wavelengths (in Angstroms) of telluric lines to be masked. This can also include problematic
             lines/features that should be masked also. For each wavelengths in the list ~3Å eith side of the line is masked.
-            By default None. You can also put a TelluricLines class or dictionary with keys "lines" and "widths" for the telluric lines,
+            By default None. You can also put a MaskingLines class or dictionary with keys "lines" and "widths" for the telluric lines,
             where "lines" (required) is the same list of wavelengths above and "widths" (optional, default None) is a list of the widths of said lines.
             They can be telluric, or a list of strong Hydrogen lines (as included in the default telluric_lines). If widths are not provided,
             a default width of 21 km/s is used for all lines, which is the typical width of telluric lines. If widths are provided, the width of
             each line is taken to be the inputted value in km/s. When masking H lines, ACID will instead use a default width of 1000 km/s, so if you
             want to use your own list, make sure to input wider widths for the H lines.
+        telluric_widths : Scalar, optional
+            The default telluric width if any widths are missing from the above inputs. For each inputted telluric line, if a width is not provided, 
+            this width is used. The default is 21 km/s, which is the typical width of telluric lines. If you are masking H lines, it is recommended 
+            you set them in the above telluric_lines input.
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
@@ -99,7 +106,8 @@ class Acid:
             An optional Config object to use for storing configuration. Allows you to override the config values stored in the Data object,
             otherwise, inputs to the init here and the ACID method will overwrite these config values again (if entered).
         """
-
+        # TODO write docstring for all defaults, and all new features docstring them please
+        # TODO: update readthedocs with examples for using own linelists and using own masking lines, and also eventually using the Datalist object
         # Initialise the data class to store calculations in ACID
         if data is not None:
             if isinstance(data, DataList):
@@ -130,7 +138,11 @@ class Acid:
         # Set linelist in the Data class, the property setter handles input validation
         self.data.set_linelist(linelist_path, linelist_wl, linelist_depths)
 
+        # Set the lines to mask, the telluric_lines and hydrogen_lines property setters in the config class handle input validation and None check
         self.config.telluric_lines = telluric_lines
+        self.config.telluric_widths = telluric_widths if telluric_widths is not None else self.config.telluric_widths
+        self.config.hydrogen_lines = hydrogen_lines
+        self.config.hydrogen_widths = hydrogen_widths if hydrogen_widths is not None else self.config.hydrogen_widths
 
         # Set seed if not already done in config, in this way, seed is only explicitly set once
         if getattr(self.config, "seed", None) is None:
@@ -183,8 +195,8 @@ class Acid:
         min_tau_factor        : IntLike                = None, # Config
         tau_tol               : float                  = None, # Config
         moves                 : list                   = None, # Config
-        run_mcmc              : bool                   = True,
-        _all_frames                                    = None, # to work with legacy code, not to be used, silently ignored
+        run_mcmc              : bool                   = True, # Config
+        _all_frames                                    = None, # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ):
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -439,7 +451,7 @@ class Acid:
         # Masking based off residuals
         # Inputs: self.x, self.y, self.yerr, self.data.model_inputs, self.poly
         # Sets: self.c_factor, self.residual_masks
-        # Modifies: self.yerr
+        # Modifies: self.yerr, and as of 1.5, 
         # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
         if all((
             self.data.residual_masks is not None,
@@ -771,13 +783,13 @@ class Acid:
                 "or consider adjusting the pix_chunk and dev_perc parameters. If you are aware that you \n" \
                 "have bad spectra, then this can be ignored.")
 
-        ##############################################
-        #                  TELLURICS                 #   
-        ##############################################
+        ###############################################
+        #         TELLURIC AND HYDROGEN LINES         #   
+        ###############################################
 
-        ## masking tellurics
         telluric_mask = self.config.telluric_lines.get_mask(x)
-        yerr[telluric_mask] = 1e12
+        hydrogen_mask = self.config.hydrogen_lines.get_mask(x)
+        yerr[telluric_mask | hydrogen_mask] = 1e12
 
         # Note that this is used to keep track of the residual masks for later use in _get_profiles
         self.data.residual_masks = tuple([yerr >= 1e12])

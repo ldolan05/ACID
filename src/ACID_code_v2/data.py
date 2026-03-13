@@ -10,15 +10,14 @@ from . import utils
 from .utils import IntLike, Array1D, Array2D
 from .mcmc import MCMC
 
-class TelluricLines:
+class MaskingLines:
     """A simple class to expose the telluric lines when called in Config. This will help
     to store telluric lines as a dictionary. With a default itercall to list the line-wise elements,
     but a dictionary index to also store the width of the line, which can then allow for masking Hydrogen
     lines with much wider masks."""
     __slots__ = ("lines",) # the only thing stored in this class is this dictionary
+
     def __init__(self, lines:dict):
-        if len(lines["widths"]) != len(lines["lines"]):
-            raise ValueError("If 'widths' are provided in the telluric_lines dictionary, they must have the same length as 'lines'")
         self.lines = lines
 
     def __iter__(self):
@@ -29,9 +28,9 @@ class TelluricLines:
         if key == 0:
             return self.lines["lines"]
         if key == 1:
-            return self.lines["widths"]
+            return self.lines.get("widths", None)
         if isinstance(key, int):
-            raise IndexError("TelluricLines only has keys 0 and 1, or 'lines' and 'widths'")
+            raise IndexError("MaskingLines only has keys 0 and 1, or 'lines' and 'widths'")
         return self.lines[key]
 
     def get_mask(self, x):
@@ -40,8 +39,62 @@ class TelluricLines:
 
         limits = 3 + (widths / c_kms) * lines
         conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
-        telluric_mask = np.any(conditions, axis=0)
-        return telluric_mask
+        mask = np.any(conditions, axis=0)
+        return mask
+
+    @staticmethod
+    def validate_lines(lines, default_width):
+        length_mismatch_error = f"The number of lines and inputted widths must be the same if inputting widths.\n" \
+        f"If you only wish to input the widths of certain lines, use a list of tuples, see the readthedocs for more details."
+        if isinstance(lines, (np.ndarray, list)):
+            if isinstance(lines[0], tuple):
+                lines = []
+                widths = []
+                for line in lines:
+                    if len(line) == 1:
+                        lines.append(line[0])
+                        widths.append(default_width)
+                    elif len(line) == 2:
+                        lines.append(line[0])
+                        widths.append(line[1])
+                    else:
+                        raise ValueError("If telluric_lines is a list or array of tuples, each tuple must have length 1 " \
+                        f"(line only) or 2 (line and width). \nGot tuple with length {len(line)}")          
+            else:
+                lines = np.array(lines)
+                if lines.size == 0:
+                    raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
+                if lines.ndim == 1:
+                    widths = [default_width for _ in lines]
+                elif lines.ndim == 2:
+                    widths = lines[1]
+                    lines = lines[0]
+                    if len(lines) != len(widths):
+                        raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
+                else:
+                    raise ValueError("lines must be a one- or two-dimensional array or list")
+        elif isinstance(lines, dict):
+            lines_dict = lines
+            if "lines" not in lines_dict:
+                raise ValueError("If lines is a dict, it must contain a 'lines' key with the list/array of lines to mask")
+            lines = lines_dict["lines"]
+            widths = lines_dict.get("widths", None)
+            if widths is not None:
+                if len(lines) != len(widths):
+                    raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
+            widths = widths if widths is not None else [default_width for _ in lines]
+        elif isinstance(lines, MaskingLines):
+            # Masking lines always has correct dimensions with lines and widths, so just unpack
+            widths = lines[1]
+            lines = lines[0]
+        else:
+            raise ValueError("The inputted teluric/hydrogen lines must be a list or numpy array of lines to " \
+            f"mask in angstroms. \n A dictionary can also be provided with " \
+            f"a 'lines' key containing the list/array of lines, \n and an optional 'widths' key containing the widths " \
+            f"of the lines for user reference. \n Got type: {type(lines)}")
+
+        assert len(lines) == len(widths), f"lines and widths must be of same length, got: {len(lines)}, {len(widths)}"
+        return lines, widths
 
 @beartype
 class Config:
@@ -57,45 +110,32 @@ class Config:
         "telluric_lines" : {
             "lines" : [
                 3820.33, # metal?
-                3835.38, # H eta (new)
-                3889.05, # H zeta (new)
                 3933.66, # Ca II K
                 3968.47, # Ca II H
-                4101.74, # H delta (new)
                 4307.90, # metal?
                 4327.74, # metal?
-                4340.47, # H gamma (new)
                 4383.55, # Fe 1
-                4861.34, # H beta
                 5183.62, # Mg I b triplet
                 5270.39, # Fe 1
                 5889.95, # Na I D2
                 5895.92, # Na I D1
-                6562.81, # H alpha
                 7593.70, # O2 telluric
                 8226.96, # H2O telluric?
             ],
-            "widths": [
-                21, # metal?
-                1000, # H eta
-                1000, # H zeta
-                21, # Ca II K
-                21, # Ca II H
-                1000, # H delta
-                21, # metal?
-                21, # metal?
-                1000, # H gamma
-                21, # Fe 1
-                1000, # H beta
-                21, # Mg I b triplet
-                21, # Fe 1
-                21, # Na I D2
-                21, # Na I D1
-                1000, # H alpha
-                21, # O2 telluric
-                21, # H2O telluric?
+            "widths": None,
+        },
+        "hydrogen_width" : 1000, # in km/s, the default width to use when masking H lines
+        "hydrogen_lines" : {
+            "lines" : [
+                3835.38, # H eta (new)
+                3889.05, # H zeta (new)
+                4101.74, # H delta (new)
+                4340.47, # H gamma (new)
+                4861.34, # H beta
+                6562.81, # H alpha
             ],
-            },
+            "widths" : None
+        },
 
         # RUN_ACID CONFIGURATION
         "deterministic_profile" : True,
@@ -162,7 +202,9 @@ class Config:
     @verbose.setter
     def verbose(self, value) -> None:
         # Make verbosity always an int regardless of input type, and check correct range
-        if value is True:
+        if value is None:
+            return
+        elif value is True:
             value = self.defaults["verbose"]
         elif value is False:
             value = 0
@@ -181,56 +223,39 @@ class Config:
                 value = 3
             else:
                 raise ValueError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high' or their common variants")
-        elif value is None:
-            value = self.defaults["verbose"]
         else:
             raise ValueError("verbose must be an integer between 0 and 3, a boolean, or a string indicating the verbosity level")
 
         self._verbose = value
 
     @property
-    def telluric_lines(self) -> TelluricLines:
+    def telluric_lines(self) -> MaskingLines:
         if self._telluric_lines is None:
-            return TelluricLines(self.defaults["telluric_lines"])
-        return TelluricLines(self._telluric_lines)
+            return MaskingLines(self.defaults["telluric_lines"])
+        return MaskingLines(self._telluric_lines)
 
     @telluric_lines.setter
-    def telluric_lines(self, lines:Array1D|Array2D|dict|TelluricLines|None) -> None:
-        telluric_lines = lines
-        # Define telluric_lines with defaults if not input, check type if it is
-        # TODO MAKE THE default for inputted telluric lines values to be the widths if lines within +-1 of any of the defaults
+    def telluric_lines(self, telluric_lines:Array1D|Array2D|dict|MaskingLines|None) -> None:
         if telluric_lines is None:
-            lines = self.defaults["telluric_lines"]["lines"]
-            widths = self.defaults["telluric_lines"]["widths"]
-        elif isinstance(telluric_lines, (np.ndarray, list)):
-            telluric_lines = np.array(telluric_lines)
-            if telluric_lines.size == 0:
-                raise ValueError("telluric_lines cannot be an empty array or list")                
-            if telluric_lines.ndim == 1:
-                lines = np.array(telluric_lines)
-                widths = self.defaults["telluric_lines"]["widths"]
-            elif telluric_lines.ndim == 2:
-                lines = telluric_lines[0]
-                widths = telluric_lines[1]
-            else:
-                raise ValueError("telluric_lines must be a one- or two-dimensional array or list")
-        elif isinstance(telluric_lines, dict):
-            if "lines" not in telluric_lines:
-                raise ValueError("If telluric_lines is a dict, it must contain a 'lines' key with the list/array of lines to mask")
-            lines = np.array(telluric_lines["lines"])
-            widths = telluric_lines.get("widths", None)
-            widths = widths if widths is not None else self.defaults["telluric_lines"]["widths"]
-            widths = np.array(widths)
-        elif isinstance(telluric_lines, TelluricLines):
-            lines = telluric_lines[0]
-            widths = telluric_lines[1]
-        else:
-            raise ValueError("telluric_lines must be a list or numpy array of telluric lines to " \
-            f"mask in angstroms. \n A dictionary can also be provided with " \
-            f"a 'lines' key containing the list/array of lines, \n and an optional 'widths' key containing the widths " \
-            f"of the lines for user reference. \n Got type: {type(telluric_lines)}")
-        telluric_lines = {"lines": lines, "widths": widths}
-        self._telluric_lines = telluric_lines
+            return
+        self._telluric_lines = self._get_lines(telluric_lines, "telluric")
+
+    @property
+    def hydrogen_lines(self) -> MaskingLines:
+        if self._hydrogen_lines is None:
+            return MaskingLines(self.defaults["hydrogen_lines"])
+        return MaskingLines(self._hydrogen_lines)
+
+    @hydrogen_lines.setter
+    def hydrogen_lines(self, hydrogen_lines:Array1D|Array2D|dict|MaskingLines|None) -> None:
+        if hydrogen_lines is None:
+            return
+        self._hydrogen_lines = self._get_lines(hydrogen_lines, "hydrogen")
+
+    def _get_lines(self, lines, type:str) -> dict[str, np.ndarray]:
+        lines, widths = MaskingLines.validate_lines(lines, self.defaults[f"{type}_width"])
+        return {"lines": np.array(lines), "widths": np.array(widths)}
+
 
 @dataclass(slots=True)
 class Data:
@@ -611,7 +636,7 @@ class Data:
             else:
                 payload[name] = val
         return payload
-    
+
     def from_dict(self, payload: dict[str, Any]) -> None:
         """Updates the data object from a dictionary payload. This is used internally in the load method, but can also be used for debugging or other purposes."""
         for f in fields(self):

@@ -318,6 +318,8 @@ def test_edge_cases():
     data.config.moves = [("StretchMove", 0.6, {}), ("DEMove", 0.2)]
     result = Acid.ACID(max_steps=5000)
     result.plot_walkers()
+
+    # Own telluric lines
     pass
 
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")
