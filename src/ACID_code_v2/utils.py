@@ -3,20 +3,19 @@ Utility functions for the ACID package. Some functions may not be useful to the 
 """
 
 from beartype import beartype
+from beartype.vale import IsAttr, IsEqual
 import numpy as np
 import glob
 import scipy.constants as const
-import astropy.units as u
-from astropy.nddata import StdDevUncertainty
-from typing import TypeAlias
+from typing import TypeAlias, Annotated
 from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
-Scalar: TypeAlias = FloatLike | IntLike
+Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["ndim", IsEqual[0]]]
 NumericArray: TypeAlias = NDArray[np.number]
-Array1D: TypeAlias = NumericArray | list[Scalar]
-Array2D: TypeAlias = NumericArray | list[Array1D]
+Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
+Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 ArrayAnyD: TypeAlias = NumericArray | list
 
 def validate_args(x, i, allow_none=False, sn=False):
