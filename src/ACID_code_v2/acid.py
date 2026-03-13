@@ -285,7 +285,6 @@ class Acid:
         init_t0 = time.time()
         if self.config.verbose>1:
             print('Initialising...')
-        # TODO: allow SN input for each pixel, and then take a mean
         # Setup and data validation done in data class and applies skips
         self.data.set_inputs(wavelengths, flux, errors, sn, skips)
 
@@ -322,7 +321,6 @@ class Acid:
             "tau_tol"               : tau_tol,
             "run_mcmc"              : run_mcmc,
         }
-        # TODO: make all input defaults None and overwrite config if input, with config handling problems caused therein
 
         # Update config if any of the above config settings are new
         self.config.update_hipri(**ACID_config) # self.config overwrites ACID_config if overlapping

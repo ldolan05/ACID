@@ -433,7 +433,6 @@ class Data:
         skips : int, optional
             Number of pixels to skip when processing the spectra, by default 1 (no skipping)
         """
-        # TODO Allow SN to be per pixel
         # Validate input arrays using the validate_args function within utils.py, ensuring inputs are correct shape, or to
         # best guess the user's intentions. See the utils.validate_args function for more details. This also converts
         # inputs to numpy arrays.
@@ -456,10 +455,16 @@ class Data:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
             assert input_sn.ndim == input_flux.ndim - 1, \
             "input_sn.ndim and input_flux.ndim-1 do not match"
-        if np.asarray(input_sn).shape[0] != np.asarray(input_flux).shape[0]:
-            raise ValueError("input_sn must be a single-valued list/array with the average S/N for each frame, " \
-            "not an array of S/N values for each pixel. " \
-            "The shape of the input input_sn does not match the number of frames in input_flux.")
+        if input_sn.shape[0] != input_flux.shape[0]:
+            raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
+        if input_sn.ndim == input_flux.ndim:
+            # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
+            input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
+        elif input_sn.ndim != input_flux.ndim-1:
+            raise ValueError("input_sn must be either a single-valued list/array with the average S/N for each frame, " \
+            f"or an array of S/N values for each pixel. \n" \
+            "The shape of the input input_sn does not match the number of frames in input_flux, \
+            nor does it have one more dimension than input_flux.")
 
         # Apply skips
         input_wavelengths = input_wavelengths[:, ::skips]

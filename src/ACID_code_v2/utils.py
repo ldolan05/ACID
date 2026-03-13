@@ -62,19 +62,18 @@ def validate_args(x, i, allow_none=False, sn=False):
             raise TypeError(f"Argument in position {i} must be a list or numpy array with at least one dimension")
         else:
             return np.array([x]) # ensure sn is always 1D
-    elif x.ndim == 1:
-        if sn:
-            return x
-        return np.array([x])
-    elif x.ndim == 2:
-        if sn:
-            if x.shape[0] != 1: # ie if 1, an extra [] was added to input to make 2D.
-                raise TypeError(f"Argument for sn in position {i} must be a 1D numpy array or list (the input was 2D)")
-            else:
-                return x[0]
-        return x # 2D array, return as is, code later does np.array(x) so no change
-    else: # should not reach here, somehow ndim is negative
-        raise ValueError(f"Argument in position {i} has invalid (or negative?) number of dimensions ({x.ndim})")
+    return np.array([x])
+    # elif x.ndim == 1:
+    #     if sn:
+    #         return x
+    #     return np.array([x])
+    # elif x.ndim == 2:
+    #     if sn:
+    #         if x.shape[0] != 1: # ie if 1, an extra [] was added to input to make 2D.
+    #             raise TypeError(f"Argument for sn in position {i} must be a 1D numpy array or list (the input was 2D)")
+    #         else:
+    #             return x[0]
+    #     return x # 2D array, return as is
 
 def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
@@ -201,7 +200,7 @@ def guess_SNR(
         frame_flux        : np.ndarray | list,
         frame_errors      : np.ndarray | list
         ) -> np.ndarray:
-    """Estimates S/N for each frame. Takes the median S/N in the central third of the
+    """Estimates S/N for each frame. Takes the median S/N in the central two-thirds of the
     wavelength range. Fully vectorized so that all the frames can be passed at once.
 
     Parameters
@@ -223,12 +222,12 @@ def guess_SNR(
     frame_wavelengths, frame_flux, frame_errors = [
         validate_args(arg, i) for i, arg in enumerate((frame_wavelengths, frame_flux, frame_errors))]
 
-    # Calculate S/N in central third of wavelength range
+    # Calculate S/N in central two-thirds of wavelength range
     wavelength_upper = np.nanmax(frame_wavelengths, axis=-1)
     wavelength_lower = np.nanmin(frame_wavelengths, axis=-1)
     delta_wavelength = wavelength_upper - wavelength_lower
-    upper_cut = wavelength_lower + delta_wavelength * (2/3)
-    lower_cut = wavelength_lower + delta_wavelength * (1/3)
+    upper_cut = wavelength_lower + delta_wavelength * (5/6)
+    lower_cut = wavelength_lower + delta_wavelength * (1/6)
 
     # Keep shape; drop out-of-band values as NaN
     mask = (frame_wavelengths > lower_cut[:, None]) & (frame_wavelengths < upper_cut[:, None])
@@ -241,6 +240,17 @@ def guess_SNR(
     median_error = np.nanmedian(frame_errors, axis=-1)
 
     return np.abs(median / median_error)
+
+def collapse_SNR(sn, wavelengths):
+    """Collapses the SN of a 1D or 2D wavelength and sn array to the median of the SNs
+    on the central 2/3 wavelengths.
+    """
+    sn = np.atleast_2d(sn)
+    wavelengths = np.atleast_2d(wavelengths)
+
+    lo, hi = np.nanpercentile(wavelengths, [100/6, 500/6], axis=-1)
+    mask = (wavelengths > lo[:, None]) & (wavelengths < hi[:, None])
+    return np.nanmedian(np.where(mask, sn, np.nan), axis=-1)
 
 def get_normalisation_coeffs(wl):
     """Calculates normalization coefficients for wavelength array
