@@ -112,6 +112,7 @@ class MCMC:
         tuple
             Model spectrum and profile points (z).
         """
+        # Extract profile points and continuum coefficients from theta
         z = theta[:self.k_max]
         mdl = self.alpha @ z
 
@@ -148,12 +149,14 @@ class MCMC:
         if np.any(mdl <= 0): # force positive continuum at all points
             return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
 
+        # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
         flux_od = - np.log(fitted_flux)
 
+        # Solve for the profile points
         z = cho_solve(self.c_factor, self.AtV @ flux_od)
-        # TODO: See if I can try removing the exp+log and get profiles without those steps
-        # TODO: And see if the flux_to_od function is just as fast as below and 2 above
+
+        # Convert back from optical depth to flux
         forward = np.exp(- (self.alpha @ z)) * mdl
 
         return forward, z

@@ -322,20 +322,20 @@ def test_edge_cases():
 
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")
 
-# # The first five tests use legacy ACID inputs and calls
-# legacy_test()
+# The first five tests use legacy ACID inputs and calls
+legacy_test()
 
-# # Now test classes
-# class_test()
+# Now test classes
+class_test()
 
-# # Test verbosities
-# verbosity_test()
+# Test verbosities
+verbosity_test()
 
-# # Test deterministic profile fit
-# deterministic_test()
+# Test deterministic profile fit
+deterministic_test()
 
-# # Add a skipping calculations using the data class test
-# data_and_convergence_test()
+# Add a skipping calculations using the data class test
+data_and_convergence_test()
 
 # Test edge cases, including no parallelization
 test_edge_cases()
