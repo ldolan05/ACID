@@ -6,7 +6,6 @@ from math import log10, floor
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
-from typing import Tuple
 from . import utils
 from .lsd import LSD
 from . import mcmc
@@ -266,7 +265,7 @@ class Acid:
             Minimum tau factor for MCMC stopping criterion, by default 50. Only used if max_steps is set.
         tau_tol : float, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.01. Only used if max_steps is set.
-        moves : list[Tuple], optional
+        moves : list[tuple], optional
             A list of tuples specifying the moves. Each tuple should be in the format:
             (move_name:str, fraction:float, move_kwargs:Optional[dict]).
                 - move_name: The name of the emcee move, the only possible variants are currently as follows:
@@ -544,7 +543,7 @@ class Acid:
 
         Returns
         -------
-        Tuple, if output is True, containing:
+        tuple, if output is True, containing:
             combined_wavelengths : array
                 Wavelengths for the combined spectrum
             combined_spectrum : array

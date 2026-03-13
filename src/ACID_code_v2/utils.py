@@ -7,7 +7,7 @@ from beartype.vale import IsAttr, IsEqual
 import numpy as np
 import glob, emcee
 import scipy.constants as const
-from typing import Tuple, TypeAlias, Annotated
+from typing import TypeAlias, Annotated
 from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
@@ -18,12 +18,12 @@ Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Sc
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 ArrayAnyD: TypeAlias = NumericArray | list
 
-def convert_moves_to_emcee(moves:list[Tuple]):
+def convert_moves_to_emcee(moves:list[tuple]):
     """Converts a list of move specifications to emcee moves.
 
     Parameters
     ----------
-    moves : list[Tuple]
+    moves : list[tuple]
         A list of tuples specifying the moves. Each tuple should be in the format:
         (move_name:str, fraction:float, move_kwargs:Optional[dict]).
             - move_name: The name of the emcee move, the only possible variants are as follows:
