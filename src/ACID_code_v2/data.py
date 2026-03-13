@@ -634,21 +634,21 @@ class Data:
     @property
     def linelist(self) -> Dict[str, np.ndarray]:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
-        return Linelist(self._linelist)if self._linelist is not None else None
+        return LineList(self._linelist)if self._linelist is not None else None
 
     def set_linelist(self, linelist_path=None, linelist_wl=None, linelist_depths=None) -> None:
         if self._linelist is not None: # linelist already set, do not overwrite
             return
 
-        linelist_wl, linelist_depths = Linelist.validate_linelist(linelist_wl, linelist_depths, linelist_path)
+        linelist_wl, linelist_depths = LineList.validate_linelist(linelist_wl, linelist_depths, linelist_path)
         linelist_wl = np.array(linelist_wl)
         linelist_depths = np.array(linelist_depths)
-        linelist_wl, linelist_depths = Linelist.drop_NaNs(linelist_wl, linelist_depths)
-        Linelist.validate_dimensions(linelist_wl, linelist_depths)
+        linelist_wl, linelist_depths = LineList.drop_NaNs(linelist_wl, linelist_depths)
+        LineList.validate_dimensions(linelist_wl, linelist_depths)
         self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
 @beartype
-class Datalist:
+class DataList:
     """A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
     by result. This can map the order number of an instrument to the 0-indexed python list."""
     def __init__(self, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|None=None):
@@ -758,10 +758,10 @@ class Datalist:
         if dir is None:
             return # do not change save_dir
         if not os.path.isdir(dir):
-            raise ValueError(f"save_dir must be a valid path to a directory to save the datalist, or None to not save to disk. Got: {dir}")
+            raise ValueError(f"save_dir must be a valid path to a directory to save the DataList, or None to not save to disk. Got: {dir}")
         self._save_dir = dir
 
-class Linelist:
+class LineList:
     """A simple class to expose the linelist when called in Data"""
     __slots__ = ("ll",) # the only thing stored in this class is the linelist
     def __init__(self, ll: dict):
@@ -773,7 +773,7 @@ class Linelist:
         if k == 1:
             return self.ll["depths"]
         if isinstance(k, int):
-            raise IndexError("Linelist only has keys 0 and 1, or 'wavelengths' and 'depths'")
+            raise IndexError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
         return self.ll[k]  # allow "wavelengths"/"depths"
     
     def __iter__(self):
@@ -791,7 +791,7 @@ class Linelist:
             full_linelist = np.genfromtxt('%s'%linelist_path, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
             linelist_wl = full_linelist[:,0]
             linelist_depths = full_linelist[:,1]
-        elif isinstance(linelist_path, Linelist):
+        elif isinstance(linelist_path, LineList):
             linelist_wl = linelist_path[0]
             linelist_depths = linelist_path[1]
         elif isinstance(linelist_path, dict):
@@ -808,7 +808,7 @@ class Linelist:
             pass # linelist_wl and linelist_depths already set, will be processed below
         else:
             raise ValueError(f"'linelist_path' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
-            "a Linelist object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
+            "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
         return linelist_wl, linelist_depths
 
     @staticmethod

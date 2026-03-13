@@ -11,8 +11,8 @@ from . import utils
 from .lsd import LSD
 from . import mcmc
 from .result import Result
-from .data import Data, Config, TelluricLines, Linelist
-from .data import Datalist
+from .data import Data, Config, TelluricLines, LineList
+from .data import DataList
 from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
 
 @beartype
@@ -25,7 +25,7 @@ class Acid:
     def __init__(
         self,
         velocities       : Array1D|None  = None, # Data
-        linelist_path    : Array2D|str|Linelist|dict = None, # Data
+        linelist_path    : Array2D|str|LineList|dict = None, # Data
         linelist_wl      : Array1D|None  = None, # Data
         linelist_depths  : Array1D|None  = None, # Data
         order            : IntLike       = None, # Config
@@ -33,15 +33,15 @@ class Acid:
         verbose          : IntLike|bool|str = None, # Config
         telluric_lines   : Array1D|Array2D|dict|TelluricLines = None, # Config
         seed             : IntLike       = None, # Config
-        data             : Data|Datalist = None, # Data
+        data             : Data|DataList = None, # Data
         config           : Config        = None, # Config
         ):
         """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
         in the config class (stored in Data for convenience). Both Data and the Result class (passed after run_ACID) have save and load 
         methods which can save the result of any calculations, with the Result class naturally saving the Data class together. ACID is designed
-        now to be run on only one order at a time, for running and keeping track of multiple orders, please see the Datalist class for a natural
+        now to be run on only one order at a time, for running and keeping track of multiple orders, please see the DataList class for a natural
         implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
-        the results for each order. The Datalist instance has been designed with parallelization on HPC's in mind, allowing orders (which are
+        the results for each order. The DataList instance has been designed with parallelization on HPC's in mind, allowing orders (which are
         independent) to be run by different jobs. See also the multiprocessing section the readthedocs
         (https://acid-v2.readthedocs.io/en/latest/using_ACID.html#multiprocessing).
 
@@ -56,7 +56,7 @@ class Acid:
             from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, 
             by default None
         linelist_path : str | None, optional
-            Can be a path to linelist in string format, a dictionary with keys "wavelengths" and "depths", a Linelist class, or a 
+            Can be a path to linelist in string format, a dictionary with keys "wavelengths" and "depths", a LineList class, or a 
             list/array indexed such that 0 is the wavelengths and 1 is the depths. If None, you can directly provide linelist_wl
             and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided. By default None.
         linelist_wl : np.ndarray | list | None, optional
@@ -71,7 +71,7 @@ class Acid:
             of the spectrograph (ie. some spectrographs start at order ~20). By default 0.
         order_range : np.ndarray | list, optional
             Optionally also give ACID the full order range of the spectograph for the observation. ACID only ever runs on one order at a time,
-            but this will allows ACID and eventually the Datalist to keep track of which orders have been run and which haven't, and will be 
+            but this will allows ACID and eventually the DataList to keep track of which orders have been run and which haven't, and will be 
             used in the future for plotting and saving results. As with order, the orders can be indexed to the spectrograph orders.
         verbose : bool | int | None, optional
             An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
@@ -91,11 +91,11 @@ class Acid:
         seed : int | None, optional
             Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
             the universe and everything)
-        data : Data|Datalist|None, optional
+        data : Data|DataList|None, optional
             An optional backend Data object to use for storing data. Allows previously calculated results to be skipped.
             If None, a new Data object is created. Please note that if the Data class already has a saved ACID config
             class, then those config values will overwrite the inputted values in initialisation or ACID method. If a 
-            Datalist instance is inputted, the data instance corresponding to the inputted order is used.
+            DataList instance is inputted, the data instance corresponding to the inputted order is used.
         config : Config, optional
             An optional Config object to use for storing configuration. Allows you to override the config values stored in the Data object,
             otherwise, inputs to the init here and the ACID method will overwrite these config values again (if entered).
@@ -103,7 +103,7 @@ class Acid:
 
         # Initialise the data class to store calculations in ACID
         if data is not None:
-            if isinstance(data, Datalist):
+            if isinstance(data, DataList):
                 data = data[order]
             else:
                 self.data = data
