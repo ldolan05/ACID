@@ -349,8 +349,13 @@ def test_edge_cases():
     result.data.plot_continuum_fit("masked")
     result.data.plot_residual_masking()
 
-    # Guess SNR, run_acid=False
-
+    # per pixel snr, and no run_mcmc test
+    sn = np.random.normal(loc=100, scale=10, size=spectrum.shape) # create a random sn array with the same shape as the spectrum
+    Acid = acid.Acid(linelist_path=linelist)
+    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, run_mcmc=False,
+                       skips=skips, parallel=False, deterministic_profile=True)
+    assert result is None, "When run_mcmc is set to False, the ACID function should return None, but it did not."
+    
     pass
 
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")

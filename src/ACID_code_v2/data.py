@@ -453,8 +453,6 @@ class Data:
 
         if input_sn is None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
-            assert input_sn.ndim == input_flux.ndim - 1, \
-            "input_sn.ndim and input_flux.ndim-1 do not match"
         if input_sn.shape[0] != input_flux.shape[0]:
             raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
         if input_sn.ndim == input_flux.ndim:
@@ -465,6 +463,8 @@ class Data:
             f"or an array of S/N values for each pixel. \n" \
             "The shape of the input input_sn does not match the number of frames in input_flux, \
             nor does it have one more dimension than input_flux.")
+        assert input_sn.ndim == input_flux.ndim - 1, \
+            "input_sn.ndim and input_flux.ndim-1 do not match"
 
         # Apply skips
         input_wavelengths = input_wavelengths[:, ::skips]

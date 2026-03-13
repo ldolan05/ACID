@@ -250,7 +250,7 @@ def collapse_SNR(sn, wavelengths):
 
     lo, hi = np.nanpercentile(wavelengths, [100/6, 500/6], axis=-1)
     mask = (wavelengths > lo[:, None]) & (wavelengths < hi[:, None])
-    return np.nanmedian(np.where(mask, sn, np.nan), axis=-1)
+    return np.nanmedian(np.where(mask, sn, np.nan), axis=-1).squeeze()
 
 def get_normalisation_coeffs(wl):
     """Calculates normalization coefficients for wavelength array
