@@ -37,7 +37,7 @@ class Acid:
         telluric_lines   : Array1D|Array2D|dict|TelluricLines = None, # Config
         seed             : IntLike       = None, # Config
         data             : Data|Datalist = None, # Data
-        # config           : Config        = None, # Config
+        config           : Config        = None, # Config
         ):
         """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
         in the config class (stored in Data for convenience). Both Data and the Result class (passed after run_ACID) have save and load 
@@ -99,6 +99,9 @@ class Acid:
             If None, a new Data object is created. Please note that if the Data class already has a saved ACID config
             class, then those config values will overwrite the inputted values in initialisation or ACID method. If a 
             Datalist instance is inputted, the data instance corresponding to the inputted order is used.
+        config : Config, optional
+            An optional Config object to use for storing configuration. Allows you to override the config values stored in the Data object,
+            otherwise, inputs to the init here and the ACID method will overwrite these config values again (if entered).
         """
 
         # Initialise the data class to store calculations in ACID
@@ -110,8 +113,13 @@ class Acid:
         else:
             self.data = Data()
 
-        # Set config if old one exists
-        self.config = self.data.config # Make config the same as old config, or generates a new empty one (handled in Data)
+        # If a config is inputted, this will overwrite any config values already in the data class, 
+        # otherwise, the config values in the data class will be used and updated by any inputs to the init or ACID method. 
+        if config is not None:
+            self.data.config = config
+
+        self.config = self.data.config # Either was None (on Data initialisation above) or had a previous config stored in the old or
+        # overwritten Data class
 
         # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
         if velocities is not None:
