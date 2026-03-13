@@ -12,7 +12,7 @@ from . import mcmc
 from .result import Result
 from .data import Data, Config, TelluricLines, LineList
 from .data import DataList
-from .utils import c_kms, FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
+from .utils import IntLike, Scalar, Array1D, Array2D
 
 @beartype
 class Acid:
