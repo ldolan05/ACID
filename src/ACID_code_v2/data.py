@@ -10,6 +10,39 @@ from . import utils
 from .utils import IntLike, Array1D, Array2D
 from .mcmc import MCMC
 
+class TelluricLines:
+    """A simple class to expose the telluric lines when called in Config. This will help
+    to store telluric lines as a dictionary. With a default itercall to list the line-wise elements,
+    but a dictionary index to also store the width of the line, which can then allow for masking Hydrogen
+    lines with much wider masks."""
+    __slots__ = ("lines",) # the only thing stored in this class is this dictionary
+    def __init__(self, lines:dict):
+        if len(lines["widths"]) != len(lines["lines"]):
+            raise ValueError("If 'widths' are provided in the telluric_lines dictionary, they must have the same length as 'lines'")
+        self.lines = lines
+
+    def __iter__(self):
+        yield self.lines["lines"]
+        yield self.lines.get("widths", None)
+
+    def __getitem__(self, key):
+        if key == 0:
+            return self.lines["lines"]
+        if key == 1:
+            return self.lines["widths"]
+        if isinstance(key, int):
+            raise IndexError("TelluricLines only has keys 0 and 1, or 'lines' and 'widths'")
+        return self.lines[key]
+
+    def get_mask(self, x):
+        lines = np.asarray(self.lines["lines"])
+        widths = np.asarray(self.lines["widths"])
+
+        limits = 3 + (widths / c_kms) * lines
+        conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
+        telluric_mask = np.any(conditions, axis=0)
+        return telluric_mask
+
 @beartype
 class Config:
     """A simple class to store the configuration of the ACID run."""
@@ -754,36 +787,3 @@ class Linelist:
         if return_mask:
             return wavelengths[mask], depths[mask], mask
         return wavelengths[mask], depths[mask]
-
-class TelluricLines:
-    """A simple class to expose the telluric lines when called in Config. This will help
-    to store telluric lines as a dictionary. With a default itercall to list the line-wise elements,
-    but a dictionary index to also store the width of the line, which can then allow for masking Hydrogen
-    lines with much wider masks."""
-    __slots__ = ("lines",) # the only thing stored in this class is this dictionary
-    def __init__(self, lines:dict):
-        if len(lines["widths"]) != len(lines["lines"]):
-            raise ValueError("If 'widths' are provided in the telluric_lines dictionary, they must have the same length as 'lines'")
-        self.lines = lines
-
-    def __iter__(self):
-        yield self.lines["lines"]
-        yield self.lines.get("widths", None)
-
-    def __getitem__(self, key):
-        if key == 0:
-            return self.lines["lines"]
-        if key == 1:
-            return self.lines["widths"]
-        if isinstance(key, int):
-            raise IndexError("TelluricLines only has keys 0 and 1, or 'lines' and 'widths'")
-        return self.lines[key]
-
-    def get_mask(self, x):
-        lines = np.asarray(self.lines["lines"])
-        widths = np.asarray(self.lines["widths"])
-
-        limits = 3 + (widths / c_kms) * lines
-        conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
-        telluric_mask = np.any(conditions, axis=0)
-        return telluric_mask
