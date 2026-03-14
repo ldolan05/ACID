@@ -557,18 +557,18 @@ class Acid:
         frame_errors:      Array1D|Array2D|None = None,
         frame_sns:         Array1D|Array2D|None = None,
         output:            bool                 = True
-        ):
+        ) -> tuple:
         """Combines multiple spectral frames into one spectrum
 
         Parameters
         ----------
-        frame_wavelengths : array, optional
+        frame_wavelengths : Array1D | Array2D, optional
             Wavelengths for the spectral frames, by default None
-        frame_flux : array, optional
+        frame_flux : Array1D | Array2D, optional
             Fluxes for the spectral frames, by default None
-        frame_errors : array, optional
+        frame_errors : Array1D | Array2D, optional
             Errors for the spectral frames, by default None
-        frame_sns : array, optional
+        frame_sns : Array1D | Array2D, optional
             Signal-to-noise ratio for the spectral frames, by default None
         output : bool, optional
             Whether to output the combined spectrum, by default True
@@ -576,14 +576,15 @@ class Acid:
         Returns
         -------
         tuple, if output is True, containing:
-            combined_wavelengths : array
+            combined_wavelengths : Array1D
                 Wavelengths for the combined spectrum
-            combined_spectrum : array
+            combined_spectrum : Array1D
                 Fluxes for the combined spectrum
-            combined_errors : array
+            combined_errors : Array1D
                 Errors for the combined spectrum
             combined_sn : float
                 Signal-to-noise ratio for the combined spectrum
+        None, if output is False, but the combined spectrum is still saved in the data class attributes.
         """
 
         if frame_wavelengths is not None: # This should only be for testing
@@ -668,13 +669,13 @@ class Acid:
 
     def continuumfit(
         self,
-        fluxes     : Array1D,
-        wavelengths: Array1D,
-        errors     : Array1D,
-        poly_ord   : IntLike = 3,
-        plot_result: bool    = False,
-        plot_type : str     = "initial"
-        ):
+        fluxes      : Array1D,
+        wavelengths : Array1D,
+        errors      : Array1D,
+        poly_ord    : IntLike = 3,
+        plot_result : bool    = False,
+        plot_type   : str     = "initial"
+        ) -> tuple:
         """Provides an initial, normalised continuum fit using inputted spectra.
 
         Parameters
@@ -687,13 +688,17 @@ class Acid:
             The error values associated with the spectrum.
         poly_ord : int
             The order of the polynomial to fit to the continuum. By default 3.
+        plot_result : bool, optional
+            Whether to plot the continuum fit result, by default False.
         plot_type : str, optional
             The type of plot to generate, either "initial" or "masked", by default "initial"
 
         Returns
         -------
-        tuple
-            A tuple containing the polynomial coefficients, the normalized flux, and the normalized errors.
+        tuple containing:
+            - Polynomial coefficients: The coefficients of the fitted polynomial, ordered from highest degree to lowest.
+            - Normalized flux: The flux values normalized by the fitted continuum.
+            - Normalized errors: The error values normalized by the fitted continuum.
         """
         a, b = utils.get_normalisation_coeffs(wavelengths)
         unnormalized_wavelengths = np.copy(wavelengths)
@@ -749,13 +754,10 @@ class Acid:
 
         return poly_coeffs, flux_obs, new_errors
 
-    def residual_mask(
-        self,
-        ):
-        """Masks regions of the spectrum based on residuals from an initial model fit.
-        """
+    def residual_mask(self) -> None:
+        """Masks regions of the spectrum based on residuals from an initial model fit. A purely class method not to be used elsewhere."""
 
-        ## iterative residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
+        ## Residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
         # Set standard variables
         x = self.data.wavelengths["combined"]
@@ -764,32 +766,19 @@ class Acid:
         sn = self.data.sn["combined"]
         forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
 
-        # data_normalised = (y - np.min(y)) / (np.max(y) - np.min(y))
-        # forward_normalised = (forward - np.min(forward)) / (np.max(forward) - np.min(forward))
-        # residuals = data_normalised - forward_normalised
         residuals = (y - forward) / forward
 
-        ### finds consectuative sections where at least pix_chunk points have residuals greater than 0.25 - these are masked
-        # idx = (abs(residuals) > self.config.dev_perc / 100)
-        # flag_min = 0
-        # flag_max = 0
-        # for value in range(len(idx)):
-        #     if idx[value] == True and flag_min <= value:
-        #         flag_min = value
-        #         flag_max = value
-        #     elif idx[value] == True and flag_max < value:
-        #         flag_max = value
-        #     elif idx[value] == False and flag_max - flag_min >= self.config.pix_chunk:
-        #         yerr[flag_min:flag_max] = 1e12
-        #         flag_min = value
-        #         flag_max = value
+        # Get bad pixels that deviate by a percentage greater than dev_perc
         bad_idx = np.abs(residuals) > (self.config.dev_perc / 100)
 
+        # A trick to get the mask for continous regions of bad pixels, by padding the bad_idx 
+        # with False on both sides and finding the start and end indices of the True regions
         padded = np.concatenate(([False], bad_idx, [False]))
         starts = np.flatnonzero(~padded[:-1] & padded[1:])
         ends = np.flatnonzero(padded[:-1] & ~padded[1:])
         pix_mask = np.zeros_like(residuals, dtype=bool)
 
+        # Then mask those regions that are greater than pix_chunk in length
         for start, end in zip(starts, ends):
             if (end - start) >= self.config.pix_chunk:
                 yerr[start:end] = 1e12
@@ -807,31 +796,36 @@ class Acid:
         #         TELLURIC AND HYDROGEN LINES         #   
         ###############################################
 
+        # The code for telluric masking is contained without the MaskingLines class, which both telluric_lines
+        # and hydrogen_lines are instances of.
         telluric_mask = self.config.telluric_lines.get_mask(x)
         hydrogen_mask = self.config.hydrogen_lines.get_mask(x)
         yerr[telluric_mask | hydrogen_mask] = 1e12
 
-        # Note that this is used to keep track of the residual masks for later use in _get_profiles
+        # Note that this is used to keep track of the residual masks for later use when processing the results
         self.data.residual_masks = tuple([yerr >= 1e12])
 
         ###################################
         ###      sigma clip masking     ###
         ###################################
 
+        # Get median, sigma, and clip limits
         m = np.median(residuals)
         sigma = np.std(residuals)
         clip = self.config.n_sig * sigma
-
         lower_clip = m - clip
         upper_clip = m + clip
+
+        # Find and apply mask
         mask = (residuals <= lower_clip) | (residuals >= upper_clip)
         yerr[mask] = 1e12
 
-        # Now do final LSD call
+        # Now do another continuum fit with masked yerr
         poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(y, x, yerr, self.config.poly_ord,
                                                    plot_result=self.config.verbose > 2,
                                                    plot_type="masked")
 
+        # Run LSD again with the new fitted flux and errors
         LSD_masking = LSD(self.data)
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
@@ -867,7 +861,7 @@ class Acid:
         self,
         nsteps,
         state = None,        
-        ):
+        ) -> None:
 
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
 
@@ -895,7 +889,7 @@ class Acid:
         self,
         max_steps      : IntLike,
         state=None,
-        ):
+        ) -> None:
 
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
         stopping_criterion_args = (self.config.min_checks, self.config.min_tau_factor, self.config.tau_tol)
@@ -965,6 +959,8 @@ class Acid:
         self.step_number = step_number
 
     def _get_sampler_kwargs(self, nsteps, state=None):
+        # Gets sampler kwargs for the emcee EnsembleSampler and run_mcmc functions based on the current state of the
+        # ACID instance and the inputted nsteps and state.
 
         sampler_verbosity = True if self.config.verbose>1 else False
         backend = None
@@ -1003,7 +999,7 @@ class Acid:
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
         max_steps_kwards : dict|None = None
-        ):
+        ) -> emcee.EnsembleSampler:
         """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
         This necessarily requires a Data instance to have been put into the ACID init.
 
@@ -1045,7 +1041,7 @@ class Acid:
 
     def get_result(
         self=None,
-        ):
+        ) -> Result:
         """Return a Result object for this instance or one passed explicitly.
         
         Parameters
