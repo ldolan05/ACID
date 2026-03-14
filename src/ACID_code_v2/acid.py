@@ -24,7 +24,7 @@ class Acid:
     def __init__(
         self,
         velocities      : Array1D|None                                  = None,   # Data
-        linelist_path   : Array2D|str|LineList|dict                     = None,   # Data
+        linelist        : Array2D|str|LineList|dict                     = None,   # Data
         linelist_wl     : Array1D|None                                  = None,   # Data
         linelist_depths : Array1D|None                                  = None,   # Data
         order           : IntLike                                       = None,   # Config
@@ -37,50 +37,64 @@ class Acid:
         seed            : IntLike                                       = None,   # Config
         data            : Data|DataList                                 = None,   # Data
         config          : Config                                        = None,   # Config
-        ):
+        ) -> None:
         """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
-        in the config class (stored in Data for convenience). Both Data and the Result class (passed after run_ACID) have save and load 
+        in the Config class (stored in Data for convenience). Both Data and the Result class (passed after ACID) have save and load 
         methods which can save the result of any calculations, with the Result class naturally saving the Data class together. ACID is designed
         now to be run on only one order at a time, for running and keeping track of multiple orders, please see the DataList class for a natural
         implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
         the results for each order. The DataList instance has been designed with parallelization on HPC's in mind, allowing orders (which are
-        independent) to be run by different jobs. See also the multiprocessing section the readthedocs
-        (https://acid-v2.readthedocs.io/en/latest/using_ACID.html#multiprocessing).
+        independent) to be run by different jobs. See also the multiprocessing section of the Read the Docs:
+        (https://acid-v2.readthedocs.io/en/stable/using_ACID.html#multiprocessing).
 
-        Important note: All defaults in the code are None, meaning if any values are input, they will override the default Config and/or Data values or
+        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid)
+        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
+        are also None, such as velocities, as this can be calculated from the input wavelengths.
+
+        Also shown is where each parameters is stored (either in the Data instance obtained from Acid.data) or in the Config instance (obtained from either
+        Acid.config or Acid.data.config, which should be the same). The Config instance is for runtime settings and the Data instance is for storing data and
+        any calculations. 
 
         Parameters
         ----------
-        velocities : np.ndarray | None, optional
+        velocities : Array1D, optional
             Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
-            from -25 to 25 km/s with a spacing calculated by calc_deltav. It is highly recommended to choose your own velocity grid, 
-            by default None
-        linelist_path : str | None, optional
-            Can be a path to linelist in string format, a dictionary with keys "wavelengths" and "depths", a LineList class, or a 
-            list/array indexed such that 0 is the wavelengths and 1 is the depths. If None, you can directly provide linelist_wl
-            and linelist_depths instead. At least one of linelist_path or linelist_wl and linelist_depths must be provided. By default None.
-        linelist_wl : np.ndarray | list | None, optional
-            Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist_path is not provided. 
-            Must be same length as linelist_depths. If None, linelist_path must be provided., by default None
-        linelist_depths : np.ndarray | list | None, optional
-            Depths of lines in linelist (between 0 and 1). Only necessary if linelist_path is not provided. 
-            Must be same length as linelist_wl. If None, linelist_path must be provided., by default None
-        order : int, optional
-            If this ACID instance is intended as a run on a specific order, then you can designate this instance to that order. This will allow
-            the resulting Data instance to track which order the profiles correspond to. Note that orders can be indexed by the correct indexing
+            from -25 to 25 km/s with a spacing calculated by calc_deltav after the wavelengths are provided. It is highly recommended to 
+            choose your own velocity grid, by default None, stored in the Data instance.
+        linelist : Array2D | str | LineList | dict, optional
+            The linelist to use for LSD. The linelist should have wavelengths in angstroms and depths relative depths between 0 and 1.
+            This is a required parameter if linelist_wl and linelist_depths are not provided. It can be of the forms:
+                - String: A path to a VALD linelist in string format. Support for other linelists may be added in the future or on request.
+                - Array2D: A 2D array-like object indexed such that index 0 is wavelengths and index 1 is depths.
+                - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
+                - LineList: The LineList class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
+                - If None, linelist_wl and linelist_depths must be provided (see below), by default None
+        linelist_wl : Array1D, optional
+            Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist is not provided. 
+            Must be same length as linelist_depths. If None, linelist must be provided (see above), by default None
+        linelist_depths : Array1D, optional
+            Relative depths of lines in linelist (between 0 and 1). Only necessary if linelist is not provided. 
+            Must be same length as linelist_wl. If None, linelist must be provided (see above), by default None
+        order : IntLike, optional
+            If this ACID instance is intended as a run on a specific order, then you can designate this instance for that order. This will allow
+            the resulting Data instance to track of which order the profiles correspond to. Note that orders can be indexed by the correct indexing
             of the spectrograph (ie. some spectrographs start at order ~20). By default 0.
-        order_range : np.ndarray | list, optional
+        order_range : Array1D, optional
             Optionally also give ACID the full order range of the spectograph for the observation. ACID only ever runs on one order at a time,
             but this will allows ACID and eventually the DataList to keep track of which orders have been run and which haven't, and will be 
-            used in the future for plotting and saving results. As with order, the orders can be indexed to the spectrograph orders.
-        verbose : bool | int | None, optional
-            An integer between 0 and 3. If 0, nothing is printed. If 2, prints out useful progress information, as well as ACID warnings 
-            about any potential issues with the input data or autocorrelation warnings. If True, defaults to 2. If False, defaults to 0.
-            If you want to ignore the warnings but still keep progress information, set verbose to 1. A verbosity of 3 will produce 
-            additional plots, such as the result of the continuum fit. By default None, which defaults to 2 (True). If set, overrides 
-            any verbose setting in the dataclass.
+            used in the future for plotting and saving results. As with order (above), the orders can be indexed to the spectrograph orders.
+            By default [0]
+        verbose : bool | IntLike | str, optional
+            The verbosity for printing and plotting the progress and warnings of ACID. The verbosities are natively stored as integers corresponding to:
+                0: No printing or plotting, all warnings are ignored.
+                1: Only printing warnings.
+                2: Printing progress and warnings.
+                3: Printing progress and warnings, as well as additional plots and helpful information about the run.
+            The possible input types are described below:
+                - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
+                - Boolean: If True, defaults to 2. If False, defaults to 0.
+                - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
         telluric_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. For many types of inputs, widths are optional,
             and if not provided, the default telluric width is used (see below). The inputs must be of the following forms: 
@@ -100,17 +114,16 @@ class Acid:
         hydrogen_widths : Scalar, optional
             Works the same way as telluric_widths, but for hydrogen lines. The default is 1000 km/s, a typical width of hydrogen lines, it may be worth increasing 
             for hotter stars.
-        seed : int | None, optional
-            Random seed for reproducibility, set it to None to be a random seed, by default 42 (the answer to life,
-            the universe and everything)
-        data : Data|DataList|None, optional
-            An optional backend Data object to use for storing data. Allows previously calculated results to be skipped.
+        seed : IntLike, optional
+            Random seed for reproducibility, leave it on None for a random seed, by default None.
+        data : Data | DataList, optional
+            An optional backend Data object to use for storing data. Allows previously calculated results to be used skipped.
             If None, a new Data object is created. Please note that if the Data class already has a saved ACID config
-            class, then those config values will overwrite the inputted values in initialisation or ACID method. If a 
+            class, then any inputs to the Acid initialisation and ACID method will overwrite these config values. If a 
             DataList instance is inputted, the data instance corresponding to the inputted order is used.
         config : Config, optional
-            An optional Config object to use for storing configuration. Allows you to override the config values stored in the Data object,
-            otherwise, inputs to the init here and the ACID method will overwrite these config values again (if entered).
+            An optional Config object to use for storing the configuration. Allows you to override the config values stored in the Data object,
+            otherwise, inputs to the initialisation here and the ACID method will overwrite these config values again (if entered).
         """
         # TODO write docstring for all defaults, and all new features docstring them please
         # TODO: update readthedocs with examples for using own linelists and using own masking lines, and also eventually using the Datalist object
@@ -142,7 +155,7 @@ class Acid:
         self.config.verbose = verbose
 
         # Set linelist in the Data class, the property setter handles input validation
-        self.data.set_linelist(linelist_path, linelist_wl, linelist_depths)
+        self.data.set_linelist(linelist, linelist_wl, linelist_depths)
 
         # Set the lines to mask, the telluric_lines and hydrogen_lines property setters in the config class handle input validation and None check
         self.config.telluric_lines = telluric_lines
@@ -204,87 +217,92 @@ class Acid:
         run_mcmc              : bool                   = True, # Config
         _all_frames                                    = None, # To work with legacy code, not to be used, silently ignored
         **kwargs,
-        ):
+        ) -> Result | None:
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
-        Important note: All defaults in the code are None, meaning if any values are input, they will override the default Config and/or Data values or
+        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid)
+        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
+        are also None, such as velocities, as this can be calculated from the input wavelengths.
 
         Parameters
         ----------
-        wavelengths : np.ndarray | list | None, optional
-            An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2-d array such that
+        wavelengths : Array1D | Array2D, optional
+            An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2D array such that
             wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
             provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
-        flux : np.ndarray | list | None, optional
-            An array of spectral frames (in flux). For multiple frames this should be a 2-d array such that 
+        flux : Array1D | Array2D, optional
+            An array of spectral frames (in flux). For multiple frames this should be a 2D array such that 
             flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
             provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
-        errors : np.ndarray | list | None, optional
-            Errors for each frame (in flux). For multiple frames this should be a 2-d array such that
+        errors : Array1D | Array2D, optional
+            Errors for each frame (in flux). For multiple frames this should be a 2D array such that
             errors[i] corresponds to the spectral errors for the ith frame. Can only be None if a data instance was 
             provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
-        sn : int | np.ndarray | list | None, optional
+        sn : Scalar | IntLike | Array1D, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
-            Each frame should have only one S/N value, so for multiple frames this should be a 1-d array such that
+            Each frame should have only one S/N value, so for multiple frames this should be a 1D array such that
             sn[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
             spectra, by default None
         deterministic_profile : bool, optional
             If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
-            profile is inferred from the continuum fit. Setting this to False can significantly speed up compution time, 
-            depending on the machine used as it is not as easy to parallelise. It may decrease accuracy, and is not fully tested
-            as of yet, by default True.
-        poly_ord : int, optional
+            profile is inferred from the continuum fit. This is a new feature that has been set to the default as it significantly
+            decrease convergence time and computation time per step, while fully maintaining accuracy. Setting this to False will 
+            match legacy behaviour, by default True.
+        poly_ord : IntLike, optional
             Order of polynomial to fit as the continuum, by default 3
-        continuum_percentile : int, optional
+        continuum_percentile : IntLike, optional
             The percentile to use when fitting the continuum, by default 90. For example, if 90, the continuum fit will be performed
-            on the points in the spectra that are above the 90th percentile in flux.
-        bin_size : int, optional
-            The size of bins to use when performing the continuum fit. The spectra are split into bins of this size, and the continuum
-            is fit to the median wavelength and the specified percentile of flux in each bin. By default 100 pixels.
-        pix_chunk : int, optional
+            on the points in the spectra that are above the 90th percentile in flux in each spectral bin (determined by bin_size below).
+        bin_size : IntLike, optional
+            The size of bins to use when performing the continuum fit. The spectra are split into bins with this number of pixels, and 
+            the continuum is fit to the median wavelength and the specified percentile of flux in each bin. By default 100 pixels.
+        pix_chunk : IntLike, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
-            and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels,
-            by default 20
-        dev_perc : int, optional
+            and the data. If the residuals deviate by a specified percentage (see dev_perc below) for this number (pix_chunk) of pixels,
+            then this chunk of pixels are masked in the spectra. By default 20
+        dev_perc : IntLike, optional
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
-            and the data. If a residual deviates by a specified percentage (dev_perc) for a specified number of pixels,
-            by default 25
-        n_sig : int, optional
-            Number of sigma to clip in sigma clipping. Ill fitting lines are identified by sigma-clipping the
-            residuals between an inital model and the data. The regions that are clipped from the residuals will
-            be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
+            and the data. If a residual deviates by this percentage for a specified number of pixels,
+            then this chunk of pixels are masked in the spectra. By default 25
+        n_sig : IntLike, optional
+            Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
+            residuals between an inital model and the data. Regions that lie outside the median +- n_sig STDEVs are clipped.
+            The clipped regions will be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 1
-        skips : int, optional
-            An option to only select one in every n pixels, where n is the integer argument. This is only useful for
-            testing to get a quick result, by default 1
+        skips : IntLike, optional
+            An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
+            testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
         parallel : bool, optional
-            If True uses multiprocessing to calculate the profiles for each frame in parallel, by default True
-        cores : int, optional
+            If True uses multiprocessing to calculate the profiles for each frame in parallel, see
+            https://acid-v2.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
+        cores : IntLike, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
-        nsteps : int, optional
-            nsteps (int, optional): Number of steps for the MCMC to run, try increasing if it doesn't converge,
-            by default 10000
-        max_steps : int | None, optional
+        nsteps : IntLike, optional
+            Number of steps for the MCMC to run, by default 10000
+        max_steps : IntLike, optional
             If set, the sampler will run until max_steps or convergence is reached by estimation using the emcee autocorrelation 
             time (tau). The sampler will check for convergence every 'check_interval' steps, and will require a minimum number 
             of checks ('min_checks') and a minimum tau factor ('min_tau_factor') before it can stop. The stopping criterion 
             is met when the change in tau is less than 'tau_tol' for all parameters. By default None, which means no maximum. 
             If a value is inputted, the nsteps parameter is ignored. The continue_sampling method in Result or Acid can still
-            be used normally to continue after either stopping criterion is reached.
-        check_interval : int, optional
+            be used normally to continue sampling after either stopping criterion is reached.
+        check_interval : IntLike, optional
             Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 1000. 
             Only used if max_steps is set.
-        min_checks : int, optional
-            Minimum number of checks before MCMC can be stopped, by default 3. Only used if max_steps is set.
-        min_tau_factor : int, optional
-            Minimum tau factor for MCMC stopping criterion, by default 50. Only used if max_steps is set.
+        min_checks : IntLike, optional
+            Minimum number of checks before MCMC can be stopped, by default 1. Only used if max_steps is set.
+        min_tau_factor : IntLike, optional
+            Minimum tau factor for MCMC stopping criterion, by default 50, which is the emcee recommendation, it's not
+            recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
+            Only used if max_steps is set.
         tau_tol : float, optional
-            Tolerance for tau convergence in MCMC stopping criterion, by default 0.01. Only used if max_steps is set.
+            Tolerance for tau convergence in MCMC stopping criterion, by default 0.05. Only used if max_steps is set.
         moves : list[tuple], optional
-            A list of tuples specifying the moves. Each tuple should be in the format:
+            A list of tuples specifying the moves for the MCMC sampler. The format tries best to follow the emcee documentation,
+            however, the config cannot store classes (which the moves input needs to be), so instead the names of the moves are used
+            and converted when building the sampler. Each tuple should be in the format:
             (move_name:str, fraction:float, move_kwargs:Optional[dict]).
                 - move_name: The name of the emcee move, the only possible variants are currently as follows:
                 "RedBlueMove", "StretchMove", "WalkMove", "KDEMove", "DEMove", "DESnookerMove", 
@@ -292,28 +310,24 @@ class Acid:
                 names that get input are checked against the emcee.moves module for if they exist, so any move in that 
                 module can be used, but not all of them are tested with ACID.
                 - fraction: The fraction of walkers to which this move should be applied.
-                - move_kwargs: A dictionary of keyword arguments to pass to the move class initialisation.
+                - move_kwargs: An optional dictionary of keyword arguments to pass to the move class initialisation.
         run_mcmc : bool, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
+            If True, the method returns a Result object, and if False, the method returns None, but attributes are updated.
         **kwargs : dict, optional
-            Additional keyword arguments. kwargs are passed to the Result class when returning the Result object,
-            see Result class for more details on what kwargs can be passed. Note that any kwargs that are also 
-            in the class initialisation will be ignored, and the inputted value will not be used. This is to 
-            avoid confusion for users who may accidentally input an argument that is meant for the class 
-            initialisation rather than the ACID function, which takes different arguments. The ignored 
-            kwargs are checked for and printed at the start of the function.
+            Unused, only used to catch accidental inputs of initialisation arguments into the ACID method and warn if so.
         Returns
         -------
-        Result
+        Result | None
             Result object containing the LSD profiles and associated data. See Result class for methods and attributes.
             If run_mcmc is False, None is returned, but the class attributes are still updated (so that acid.data can be 
             used for example).
 
         Raises
         ------
-        TypeError
-            If the input types are not as expected.
+        ValueError
+            If any input arguments do not conform to the expected formats and requirements.
         """
         init_t0 = time.time()
         if self.config.verbose>1:
@@ -1138,7 +1152,7 @@ def ACID(*args, **kwargs):
         "input_spectral_errors": "errors",
         "frame_sns": "sn",
         "vgrid": "velocities",
-        "line": "linelist_path",
+        "line": "linelist",
         "poly_or": "poly_ord",
         "all_frames": "_all_frames",
     }
