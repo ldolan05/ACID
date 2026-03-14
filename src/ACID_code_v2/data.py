@@ -136,6 +136,7 @@ class Config:
             ],
             "widths" : None
         },
+        "seed" : None,
 
         # RUN_ACID CONFIGURATION
         "deterministic_profile" : True,
