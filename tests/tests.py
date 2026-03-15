@@ -319,6 +319,12 @@ def test_edge_cases():
     result = Acid.ACID(max_steps=5000)
     result.plot_walkers()
 
+    # Test plotting masking lines
+    result.data.config.plot_masking_lines()
+
+    # Test plotting linelist
+    result.data.plot_linelist()
+
     # Own telluric lines
     pass
 

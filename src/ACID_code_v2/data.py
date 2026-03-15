@@ -7,7 +7,7 @@ import matplotlib as mpl
 import pickle, os
 import numpy as np
 from . import utils
-from .utils import IntLike, Array1D, Array2D
+from .utils import IntLike, Array1D, Array2D, Scalar
 from .mcmc import MCMC
 
 class MaskingLines:
@@ -17,7 +17,7 @@ class MaskingLines:
     lines with much wider masks."""
     __slots__ = ("lines",) # the only thing stored in this class is this dictionary
 
-    def __init__(self, lines:dict):
+    def __init__(self, lines:dict) -> None:
         self.lines = lines
 
     def __iter__(self):
@@ -33,7 +33,7 @@ class MaskingLines:
             raise IndexError("MaskingLines only has keys 0 and 1, or 'lines' and 'widths'")
         return self.lines[key]
 
-    def get_mask(self, x):
+    def get_mask(self, x) -> np.ndarray:
         lines = np.asarray(self.lines["lines"])
         widths = np.asarray(self.lines["widths"])
 
@@ -43,7 +43,7 @@ class MaskingLines:
         return mask
 
     @staticmethod
-    def validate_lines(lines, default_width):
+    def validate_lines(lines, default_width) -> tuple[np.ndarray, np.ndarray]:
         length_mismatch_error = f"The number of lines and inputted widths must be the same if inputting widths.\n" \
         f"If you only wish to input the widths of certain lines, use a list of tuples, see the readthedocs for more details."
         if isinstance(lines, (np.ndarray, list)):
@@ -101,7 +101,6 @@ class Config:
     """A simple class to store the configuration of the ACID run."""
 
     defaults = {
-
         # INIT CONFIGURATION
         "verbose" : 2,
         "order" : 0,
@@ -190,18 +189,18 @@ class Config:
             if getattr(self, k, None) is None:
                 setattr(self, k, v)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict:
         return {k: v for k, v in self.__dict__.items()}
 
     # --- Properties ---
     @property
-    def verbose(self) -> int:
+    def verbose(self) -> IntLike:
         if self._verbose is None:
             return self.defaults["verbose"]
         return self._verbose
 
     @verbose.setter
-    def verbose(self, value) -> None:
+    def verbose(self, value:IntLike|str|bool|None) -> None:
         # Make verbosity always an int regardless of input type, and check correct range
         if value is None:
             return
@@ -231,32 +230,67 @@ class Config:
 
     @property
     def telluric_lines(self) -> MaskingLines:
-        if self._telluric_lines is None:
-            return MaskingLines(self.defaults["telluric_lines"])
-        return MaskingLines(self._telluric_lines)
+        default_lines = {"lines":np.array(self.defaults["telluric_lines"]), 
+                         "widths":np.array([self.defaults["telluric_width"] for _ in self.defaults["telluric_lines"]])}
+        return MaskingLines(self._telluric_lines if self._telluric_lines is not None else default_lines)
 
     @telluric_lines.setter
     def telluric_lines(self, telluric_lines:Array1D|Array2D|dict|MaskingLines|None) -> None:
-        if telluric_lines is None:
-            return
-        self._telluric_lines = self._get_lines(telluric_lines, "telluric")
+        if telluric_lines is not None:
+            lines, widths = MaskingLines.validate_lines(telluric_lines, self.defaults["telluric_width"])
+            self._telluric_lines = {"lines":np.array(lines), "widths":np.array(widths)}
 
     @property
     def hydrogen_lines(self) -> MaskingLines:
-        if self._hydrogen_lines is None:
-            return MaskingLines(self.defaults["hydrogen_lines"])
-        return MaskingLines(self._hydrogen_lines)
+        default_lines = {"lines":np.array(self.defaults["hydrogen_lines"]), 
+                         "widths":np.array([self.defaults["hydrogen_width"] for _ in self.defaults["hydrogen_lines"]])}
+        return MaskingLines(self._hydrogen_lines if self._hydrogen_lines is not None else default_lines)
 
     @hydrogen_lines.setter
     def hydrogen_lines(self, hydrogen_lines:Array1D|Array2D|dict|MaskingLines|None) -> None:
-        if hydrogen_lines is None:
-            return
-        self._hydrogen_lines = self._get_lines(hydrogen_lines, "hydrogen")
+        if hydrogen_lines is not None:
+            lines, widths = MaskingLines.validate_lines(hydrogen_lines, self.defaults["hydrogen_width"])
+            self._hydrogen_lines = {"lines":np.array(lines), "widths":np.array(widths)}
 
-    def _get_lines(self, lines, type:str) -> dict[str, np.ndarray]:
-        lines, widths = MaskingLines.validate_lines(lines, self.defaults[f"{type}_width"])
-        return {"lines": np.array(lines), "widths": np.array(widths)}
+    def plot_masking_lines(self, line_type:str="all", return_fig:bool=False) -> None|tuple:
+        """
+        Plots the telluric and/or hydrogen lines that will be masked in the residual masking step, with shaded regions indicating 
+        the widths of the masks.
+        
+        Parameters
+        ----------
+        line_type : str, optional
+            The type of lines to plot, by default "all". Must be one of "telluric", "hydrogen", or "all".
+        return_fig : bool, optional
+            Whether to return the figure and axis objects instead of showing the plot, by default False.
+        
+        Returns
+        -------
+        If return_fig is True, returns a tuple of (fig, ax) where fig is the matplotlib figure object and ax is the axis object.
+        Otherwise, returns None and shows the plot.
+        """
+        line_type = line_type.lower()
+        if line_type not in ["telluric", "hydrogen", "all"]:
+            raise ValueError("line_type must be one of 'telluric', 'hydrogen', or 'all'")
 
+        fig, ax = plt.subplots(figsize=(10, 6))
+        if line_type in ["telluric", "all"]:
+            telluric_lines = self.telluric_lines
+            for line, width in zip(telluric_lines[0], telluric_lines[1]):
+                ax.axvline(line, color='blue', linestyle='--', label='Telluric line' if line == telluric_lines[0][0] else None)
+                ax.axvspan(line - width/2, line + width/2, color='blue', alpha=0.1)
+        if line_type in ["hydrogen", "all"]:
+            hydrogen_lines = self.hydrogen_lines
+            for line, width in zip(hydrogen_lines[0], hydrogen_lines[1]):
+                ax.axvline(line, color='red', linestyle='--', label='Hydrogen line' if line == hydrogen_lines[0][0] else None)
+                ax.axvspan(line - width/2, line + width/2, color='red', alpha=0.1)
+        ax.set_title(f"{line_type.capitalize()} lines to be masked")
+        ax.set_xlabel("Wavelength (Angstroms)")
+        ax.set_ylabel("Masking region")
+        ax.legend()
+        if return_fig:
+             return fig, ax
+        plt.show()
 
 @dataclass(slots=True)
 class Data:
@@ -675,6 +709,41 @@ class Data:
         linelist_wl, linelist_depths = LineList.drop_NaNs(linelist_wl, linelist_depths)
         LineList.validate_dimensions(linelist_wl, linelist_depths)
         self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+
+    def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
+        """
+        Plots the linelist points with their corresponding depths as delta-function lines.
+        
+        Parameters
+        ----------
+        min_depth : Scalar
+            The minimum depth for plotting the linelist points.
+        bounds : tuple or list, optional
+            The wavelength bounds for clipping the linelist. If None, no clipping is applied.
+        return_fig : bool, optional
+            If True, returns the figure and axis objects instead of displaying the plot.
+        """
+        if self.linelist is None:
+            raise ValueError("No linelist found. Please set a linelist before trying to plot it.")
+        wl = self.linelist["wavelengths"]
+        depths = self.linelist["depths"]
+
+        # Clip the linelist to the specified bounds if provided, and to the min_depth
+        if bounds is not None:
+            wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
+            depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
+        wl = wl[depths >= min_depth]
+        depths = depths[depths >= min_depth]
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.vlines(wl, 0, depths, color='C0')
+        ax.set_title('Line List')
+        ax.set_xlabel('Wavelength (Angstroms)')
+        ax.set_ylabel('Relative Line Depth')
+        ax.legend()
+        if return_fig:
+            return fig, ax
+        plt.show()
 
 @beartype
 class DataList:
