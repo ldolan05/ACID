@@ -79,11 +79,11 @@ class Result:
     def __init__(
             self,
             Acid_or_Data_or_Sampler,
-            sampler                        = None,
-            process_results: bool          = True,
-            verbose        : IntLike|None = None,
-        ):
-        """Initiate Result class
+            sampler                 : EnsembleSampler  = None,
+            process_results         : bool             = True,
+            verbose                 : IntLike|bool|str = None,
+        ) -> None:
+        """Initiate the Result class
 
         Parameters
         ----------
@@ -93,7 +93,7 @@ class Result:
             provided, a sampler can be provided in the second argument. If a sampler object 
             is provided, it will be used as the sampler, but all other attributes will need 
             to be set manually for the Result object to be fully functional.
-        sampler : emcee.EnsembleSampler | None, optional
+        sampler : emcee.EnsembleSampler, optional
             A sampler object to use if the Data object was provided. If an Acid object 
             was provided, the sampler will be taken from there. If a sampler object was
             provided in the first argument, this will be ignored (with a warning), by default None
@@ -105,7 +105,7 @@ class Result:
             continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
             and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
             By default, None.
-        verbose : int|bool|None, optional
+        verbose : int | bool | str, optional
             Verbosity level, works exactly the same as Acid verbosity, if not provided
             defaults to provided Acid class verbosity otherwise defaults to 2.
         # production_run : bool, optional
@@ -154,7 +154,8 @@ class Result:
 
     @_require_data
     @_require_sampler
-    def process_results(self):
+    def process_results(self) -> None:
+        """Processes the MCMC sampler results to obtain the final LSD profiles and continuum fit, and errors on both."""
         t0 = time()
 
         # Obtain flattened samples
@@ -254,13 +255,13 @@ class Result:
         return
 
     @_require_profiles
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> np.ndarray:
         """Allows indexing into the profiles array directly from the Result object.
         """
         return self.profiles[item]
 
     @_require_profiles
-    def __iter__(self):
+    def __iter__(self) -> np.ndarray:
         """Allows iterating over the profiles array directly from the Result object.
         """
         return iter(self.profiles)
@@ -271,7 +272,7 @@ class Result:
 
     @_require_data
     @_require_sampler
-    def continue_sampling(self, process_results:bool=True, sampler=None, **kwargs):
+    def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler=None, **kwargs) -> None:
         """Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
         Acid.continue_sampling() for more details on the parameters that can be passed.
 
@@ -309,21 +310,31 @@ class Result:
                 "Result.process_results() is called.")
 
     @_require_sampler
-    def plot_walkers(self, sampler=None, burnin:IntLike|None=None, thin:IntLike|None=None, return_fig:bool=False):
+    def plot_walkers(
+        self,
+        sampler    : EnsembleSampler = None,
+        burnin     : IntLike         = None,
+        thin       : IntLike         = None,
+        return_fig : bool            = False
+        ) -> None | tuple:
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
 
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler | None, optional
+        sampler : emcee.EnsembleSampler, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
         burnin : int | None, optional
-            Optionally define the number of burnin steps, by default None
+            Optionally define the number of burnin steps, by default uses the burnin calculated when the sampler was initiated.
         thin : int | None, optional
-            Optionally define the number of thinning steps, by default None
+            Optionally define the number of thinning steps, by default uses the thinning calculated when the sampler was initiated.
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
+
+        Returns
+        ----------
+        If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing, else None
         """
 
         burnin = burnin if burnin is not None else self.burnin
@@ -348,9 +359,14 @@ class Result:
         plt.show()
 
     @_require_sampler
-    def plot_corner(self, sampler=None, return_fig:bool=False, **kwargs):
+    def plot_corner(
+        self,
+        sampler    :EnsembleSampler = None,
+        return_fig :bool            = False,
+        **kwargs,
+        ) -> None | tuple:
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
-        
+
         Parameters
         ----------
         sampler : emcee.EnsembleSampler | None, optional
@@ -360,6 +376,10 @@ class Result:
             Whether to return the figure object instead of showing the plot, by default False
         **kwargs:
             Additional keyword arguments to pass to corner.corner().
+        
+        Returns
+        ----------
+        If return_fig is True, returns the figure object containing the corner plot, else None
         """
 
         samples = self.sampler.get_chain()
@@ -381,8 +401,7 @@ class Result:
         subplot_kwargs  :dict|None = None,
         errorbar_kwargs :dict|None = None,
         fig_ax                     = None,
-        **kwargs,
-        ):
+        ) -> None | tuple:
         """Plots the LSD profile result from Acid.
 
         Parameters
@@ -399,6 +418,11 @@ class Result:
             Keyword arguments to be passed to ax.errorbar(), by default None
         fig_ax : tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] | None, optional
             Optionally provide an existing fig/axis tuple to plot on, by default None
+        
+        Returns
+        ----------
+        If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing the plot.
+        Otherwise, displays the plot and returns None.
         """
         # Set default errorbar kwargs
         errorbar_defaults = {
@@ -453,8 +477,7 @@ class Result:
         labels          :dict|None = None,
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
-        **kwargs # for testing
-        ):
+        ) -> None | tuple:
         """Plots the forward model fit to the observed spectrum.
 
         Parameters
@@ -469,6 +492,11 @@ class Result:
             Whether to return the figure and axis objects instead of showing the plot, by default False
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
+        
+        Returns
+        ----------
+        If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing the plot.
+        Otherwise, displays the plot and returns None.
         """
 
         # Validate all inputs and set defaults
@@ -527,15 +555,15 @@ class Result:
     @_require_sampler
     def plot_autocorrelation(
         self,
-        sampler=None,
-        burnin: IntLike | None = None,
-        thin: IntLike | None = None,
-        n_grid: IntLike = 12,
-        c: float = 5.0,
-        return_fig: bool = False,
-        subplot_kwargs: dict | None = None,
-        min_steps: IntLike = 100
-    ):
+        sampler        : EnsembleSampler = None,
+        burnin         : IntLike         = None,
+        thin           : IntLike         = None,
+        n_grid         : IntLike         = 12,
+        c              : float           = 5.0,
+        return_fig     : bool            = False,
+        subplot_kwargs : dict            = None,
+        min_steps      : IntLike         = 100
+        ) -> None | tuple:
         """
         Plot estimated integrated autocorrelation time as a function of chain length.
 
@@ -553,7 +581,7 @@ class Result:
         n_grid : int, optional
             Number of N values (prefix lengths) to evaluate, by default 12.
         c : float, optional
-            Sokal window constant (usually 5), by default 5.0.
+            Sokal window constant, by default 5.0.
         return_fig : bool, optional
             Whether to return the figure and axes objects, by default False
         subplot_kwargs : dict | None, optional
@@ -611,24 +639,24 @@ class Result:
     @_require_sampler
     def plot_acf(
         self,
-        sampler=None,
-        max_lag: IntLike | None = None,
-        return_fig: bool = False,
-        subplot_kwargs: dict | None = None,
-        ):
+        sampler        : EnsembleSampler = None,
+        max_lag        : IntLike         = None,
+        return_fig     : bool            = False,
+        subplot_kwargs : dict            = None,
+        ) -> None | tuple:
         """
         Plot the autocorrelation function (ACF) for each parameter, averaged across walkers.
         
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler | None, optional
+        sampler : emcee.EnsembleSampler, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        max_lag : int | None, optional
+        max_lag : int, optional
             Maximum lag to plot, by default None (plots up to min(5000, nsteps-1))
         return_fig : bool, optional
             Whether to return the figure and axes objects, by default False
-        subplot_kwargs : dict | None, optional
+        subplot_kwargs : dict, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
 
         Returns
@@ -672,7 +700,7 @@ class Result:
             return fig, ax
         plt.show()
 
-    def initiate_sampler(self, sampler):
+    def initiate_sampler(self, sampler:EnsembleSampler) -> None:
         """Initiates the sampler attribute from an external sampler.
 
         Parameters
@@ -746,7 +774,7 @@ class Result:
         self.default_params = poly_params
         self.default_param_labels = poly_labels
 
-    def initiate_data(self, data):
+    def initiate_data(self, data:Data) -> None:
         """Initiates the data attribute from an external Data object.
 
         Parameters
@@ -769,7 +797,7 @@ class Result:
 
     @_require_data
     @_require_sampler
-    def save_result(self, filename:str="result.pkl", store_sampler:bool=True):
+    def save_result(self, filename:str="result.pkl", store_sampler:bool=True) -> None:
         """Saves the Result object to a pickle file.
 
         Parameters

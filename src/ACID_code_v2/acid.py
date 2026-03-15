@@ -1,6 +1,7 @@
 import warnings
 warnings.filterwarnings("ignore")
 import sys, emcee, os, time, inspect, inspect
+from emcee import EnsembleSampler
 import numpy as np
 from math import log10, floor
 from scipy.interpolate import interp1d
@@ -877,12 +878,12 @@ class Acid:
             # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
             ctx = mp.get_context("fork")
             with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
-                self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
+                self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                 self.sampler.run_mcmc(**mcmc_kwargs)
 
         else:
             MCMC = mcmc.MCMC(self.data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+            self.sampler = EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
             self.sampler.run_mcmc(**mcmc_kwargs)
 
     def run_mcmc_until_converged(
@@ -906,7 +907,7 @@ class Acid:
             
             ctx = mp.get_context("fork")
             with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
-                self.sampler = emcee.EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
+                self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                 for i in range(max_samples):
                     tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
                     desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
@@ -932,7 +933,7 @@ class Acid:
                           f"Consider increasing max_steps.")
         else:
             MCMC = mcmc.MCMC(self.data)
-            self.sampler = emcee.EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+            self.sampler = EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
 
             for i in range(max_samples):
                 tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
@@ -999,7 +1000,7 @@ class Acid:
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
         max_steps_kwards : dict|None = None
-        ) -> emcee.EnsembleSampler:
+        ) -> EnsembleSampler:
         """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
         This necessarily requires a Data instance to have been put into the ACID init.
 
