@@ -23,9 +23,9 @@ class MCMC:
     def __init__(
             self,
             x_or_data   : np.ndarray|object,
-            y           : np.ndarray      = None,
-            yerr        : np.ndarray      = None,
-            alpha       : np.ndarray      = None,
+            y           : np.ndarray|None = None,
+            yerr        : np.ndarray|None = None,
+            alpha       : np.ndarray|None = None,
             velocities  : np.ndarray|None = None,
             c_factor                      = None,
             deterministic_profile : bool  = False,

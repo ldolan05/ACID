@@ -163,7 +163,7 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
     return wavelengths_linelist[idx], depths_linelist[idx]
 
 @beartype
-def calc_deltav(wavelengths:Array1D):
+def calc_deltav(wavelengths:Array1D)->Scalar:
     """Calculates velocity pixel size
 
     Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
@@ -230,7 +230,8 @@ def collapse_SNR(sn, wavelengths):
     mask = (wavelengths > lo[:, None]) & (wavelengths < hi[:, None])
     return np.nanmedian(np.where(mask, sn, np.nan), axis=-1).squeeze()
 
-def get_normalisation_coeffs(wl):
+@beartype
+def get_normalisation_coeffs(wl:Array1D)->tuple[Scalar, Scalar]:
     """Calculates normalization coefficients for wavelength array
 
     Parameters

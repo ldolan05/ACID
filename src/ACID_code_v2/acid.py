@@ -24,20 +24,20 @@ class Acid:
 
     def __init__(
         self,
-        velocities      : Array1D|None                                  = None,   # Data
-        linelist        : Array2D|str|LineList|dict                     = None,   # Data
-        linelist_wl     : Array1D|None                                  = None,   # Data
-        linelist_depths : Array1D|None                                  = None,   # Data
-        order           : IntLike                                       = None,   # Config
-        order_range     : Array1D                                       = None,   # Config
-        verbose         : IntLike|bool|str                              = None,   # Config
-        telluric_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
-        telluric_width  : Scalar                                        = None,   # Config
-        hydrogen_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
-        hydrogen_width  : Scalar                                        = None,   # Config
-        seed            : IntLike                                       = None,   # Config
-        data            : Data|DataList                                 = None,   # Data
-        config          : Config                                        = None,   # Config
+        velocities      : Array1D|None                                       = None,   # Data
+        linelist        : Array2D|None|str|LineList|dict                     = None,   # Data
+        linelist_wl     : Array1D|None                                       = None,   # Data
+        linelist_depths : Array1D|None                                       = None,   # Data
+        order           : IntLike|None                                       = None,   # Config
+        order_range     : Array1D|None                                       = None,   # Config
+        verbose         : IntLike|bool|str|None                              = None,   # Config
+        telluric_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple]|None = None,   # Config
+        telluric_width  : Scalar|None                                        = None,   # Config
+        hydrogen_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple]|None = None,   # Config
+        hydrogen_width  : Scalar|None                                        = None,   # Config
+        seed            : IntLike|None                                       = None,   # Config
+        data            : Data|DataList|None                                 = None,   # Data
+        config          : Config|None                                        = None,   # Config
         **kwargs,
         ) -> None:
         """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
@@ -211,29 +211,29 @@ class Acid:
 
     def ACID(
         self,
-        wavelengths           : Array1D|Array2D        = None, # Data
-        flux                  : Array1D|Array2D        = None, # Data
-        errors                : Array1D|Array2D        = None, # Data
-        sn                    : Array1D|Array2D|Scalar = None, # Data
-        deterministic_profile : bool                   = None, # Config
-        poly_ord              : IntLike                = None, # Config
-        continuum_percentile  : IntLike                = None, # Config
-        bin_size              : IntLike                = None, # Config
-        pix_chunk             : IntLike                = None, # Config
-        dev_perc              : IntLike                = None, # Config
-        n_sig                 : IntLike                = None, # Config
-        skips                 : IntLike                = None, # Config
-        parallel              : bool                   = None, # Config
-        cores                 : IntLike                = None, # Config
-        nsteps                : IntLike                = None, # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
-        max_steps             : IntLike                = None, # Config
-        check_interval        : IntLike                = None, # Config
-        min_checks            : IntLike                = None, # Config
-        min_tau_factor        : IntLike                = None, # Config
-        tau_tol               : float                  = None, # Config
-        moves                 : list                   = None, # Config
-        run_mcmc              : bool                   = True, # Config
-        _all_frames                                    = None, # To work with legacy code, not to be used, silently ignored
+        wavelengths           : Array1D|Array2D|None        = None,   # Data
+        flux                  : Array1D|Array2D|None        = None,   # Data
+        errors                : Array1D|Array2D|None        = None,   # Data
+        sn                    : Array1D|Array2D|Scalar|None = None,   # Data
+        deterministic_profile : bool|None                   = None,   # Config
+        poly_ord              : IntLike|None                = None,   # Config
+        continuum_percentile  : IntLike|None                = None,   # Config
+        bin_size              : IntLike|None                = None,   # Config
+        pix_chunk             : IntLike|None                = None,   # Config
+        dev_perc              : IntLike|None                = None,   # Config
+        n_sig                 : IntLike|None                = None,   # Config
+        skips                 : IntLike|None                = None,   # Config
+        parallel              : bool|None                   = None,   # Config
+        cores                 : IntLike|None                = None,   # Config
+        nsteps                : IntLike|None                = None,   # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
+        max_steps             : IntLike|None                = None,   # Config
+        check_interval        : IntLike|None                = None,   # Config
+        min_checks            : IntLike|None                = None,   # Config
+        min_tau_factor        : IntLike|None                = None,   # Config
+        tau_tol               : float|None                  = None,   # Config
+        moves                 : list|None                   = None,   # Config
+        run_mcmc              : bool|None                   = True,   # Config
+        _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
         """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
@@ -877,7 +877,7 @@ class Acid:
 
     def run_mcmc(
         self,
-        nsteps,
+        nsteps:IntLike,
         state = None,        
         ) -> None:
 
@@ -905,7 +905,7 @@ class Acid:
 
     def run_mcmc_until_converged(
         self,
-        max_steps      : IntLike,
+        max_steps:IntLike,
         state=None,
         ) -> None:
 

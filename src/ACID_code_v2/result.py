@@ -79,9 +79,9 @@ class Result:
     def __init__(
             self,
             Acid_or_Data_or_Sampler,
-            sampler                 : EnsembleSampler  = None,
-            process_results         : bool             = True,
-            verbose                 : IntLike|bool|str = None,
+            sampler                 : EnsembleSampler|None  = None,
+            process_results         : bool                  = True,
+            verbose                 : IntLike|bool|str|None = None,
         ) -> None:
         """Initiate the Result class
 
@@ -272,7 +272,7 @@ class Result:
 
     @_require_data
     @_require_sampler
-    def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler=None, **kwargs) -> None:
+    def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler|None=None, **kwargs) -> None:
         """Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
         Acid.continue_sampling() for more details on the parameters that can be passed.
 
@@ -312,10 +312,10 @@ class Result:
     @_require_sampler
     def plot_walkers(
         self,
-        sampler    : EnsembleSampler = None,
-        burnin     : IntLike         = None,
-        thin       : IntLike         = None,
-        return_fig : bool            = False
+        sampler    : EnsembleSampler|None = None,
+        burnin     : IntLike|None         = None,
+        thin       : IntLike|None         = None,
+        return_fig : bool                 = False
         ) -> None | tuple:
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
@@ -361,8 +361,8 @@ class Result:
     @_require_sampler
     def plot_corner(
         self,
-        sampler    :EnsembleSampler = None,
-        return_fig :bool            = False,
+        sampler    :EnsembleSampler|None = None,
+        return_fig :bool                 = False,
         **kwargs,
         ) -> None | tuple:
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
@@ -555,14 +555,14 @@ class Result:
     @_require_sampler
     def plot_autocorrelation(
         self,
-        sampler        : EnsembleSampler = None,
-        burnin         : IntLike         = None,
-        thin           : IntLike         = None,
-        n_grid         : IntLike         = 12,
-        c              : float           = 5.0,
-        return_fig     : bool            = False,
-        subplot_kwargs : dict            = None,
-        min_steps      : IntLike         = 100
+        sampler        : EnsembleSampler|None = None,
+        burnin         : IntLike|None         = None,
+        thin           : IntLike|None         = None,
+        n_grid         : IntLike              = 12,
+        c              : float                = 5.0,
+        return_fig     : bool                 = False,
+        subplot_kwargs : dict|None            = None,
+        min_steps      : IntLike              = 100
         ) -> None | tuple:
         """
         Plot estimated integrated autocorrelation time as a function of chain length.
@@ -639,10 +639,10 @@ class Result:
     @_require_sampler
     def plot_acf(
         self,
-        sampler        : EnsembleSampler = None,
-        max_lag        : IntLike         = None,
-        return_fig     : bool            = False,
-        subplot_kwargs : dict            = None,
+        sampler        : EnsembleSampler|None = None,
+        max_lag        : IntLike|None         = None,
+        return_fig     : bool                 = False,
+        subplot_kwargs : dict|None            = None,
         ) -> None | tuple:
         """
         Plot the autocorrelation function (ACF) for each parameter, averaged across walkers.
@@ -823,7 +823,7 @@ class Result:
             print(f"Result object saved to {filename}")
 
     @classmethod
-    def load_result(cls, result_object: str | object = "result.pkl"):
+    def load_result(cls, result_object:str|object="result.pkl"):
         """Loads a Result object from a pickle file or from an object with the same attributes as a saved Result object.
 
         Parameters

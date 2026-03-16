@@ -44,9 +44,9 @@ class LSD:
         errors      : Array1D,
         sn          : Scalar|Array1D,
         linelist                   = None,
-        velocities  : Array1D      = None,
+        velocities  : Array1D|None = None,
         verbose     : IntLike|None = None,
-        alpha       : Array2D      = None,
+        alpha       : Array2D|None = None,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -157,7 +157,7 @@ class LSD:
         wavelengths          : Array1D,
         wavelengths_linelist : Array1D,
         depths_linelist      : Array1D,
-        velocities           : Array1D      = None,
+        velocities           : Array1D|None = None,
         verbose              : IntLike|None = None,
         ):
         """Calculates the alpha matrix given flux and errors in OD space, and a line_list in OD space.

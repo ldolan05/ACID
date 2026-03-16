@@ -830,7 +830,7 @@ class DataList:
         if len(np.unique(self.orders)) != len(self.orders):
             raise ValueError("All Data instances within the inputted list must have unique order numbers.")
 
-    def save(self, save_dir:str=None):
+    def save(self, save_dir:str|None=None):
         d = {}
         self.save_dir = save_dir
         if self.save_dir is None:

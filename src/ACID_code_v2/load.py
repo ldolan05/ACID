@@ -13,7 +13,7 @@ class Load:
             self,
             instrument: str,
             file      : str,
-            blaze_file: str = None,
+            blaze_file: str|None = None,
             ):
         """
         Parameters
