@@ -277,13 +277,15 @@ class Config:
         if line_type in ["telluric", "all"]:
             telluric_lines = self.telluric_lines
             for line, width in zip(telluric_lines[0], telluric_lines[1]):
+                delta_lambda = line * width / c_kms
                 ax.axvline(line, color='blue', linestyle='--', label='Telluric line' if line == telluric_lines[0][0] else None)
-                ax.axvspan(line - width/2, line + width/2, color='blue', alpha=0.1)
+                ax.axvspan(line - delta_lambda, line + delta_lambda, color='blue', alpha=0.1)
         if line_type in ["hydrogen", "all"]:
             hydrogen_lines = self.hydrogen_lines
             for line, width in zip(hydrogen_lines[0], hydrogen_lines[1]):
+                delta_lambda = line * width / c_kms
                 ax.axvline(line, color='red', linestyle='--', label='Hydrogen line' if line == hydrogen_lines[0][0] else None)
-                ax.axvspan(line - width/2, line + width/2, color='red', alpha=0.1)
+                ax.axvspan(line - delta_lambda, line + delta_lambda, color='red', alpha=0.1)
         ax.set_title(f"{line_type.capitalize()} lines to be masked")
         ax.set_xlabel("Wavelength (Angstroms)")
         ax.set_ylabel("Masking region")
@@ -735,8 +737,8 @@ class Data:
         wl = wl[depths >= min_depth]
         depths = depths[depths >= min_depth]
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.vlines(wl, 0, depths, color='C0')
+        fig, ax = plt.subplots(figsize=(15, 9))
+        ax.vlines(wl, 0, depths, color='C0', )
         ax.set_title('Line List')
         ax.set_xlabel('Wavelength (Angstroms)')
         ax.set_ylabel('Relative Line Depth')
