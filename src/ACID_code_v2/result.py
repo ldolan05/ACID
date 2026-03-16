@@ -700,7 +700,7 @@ class Result:
             return fig, ax
         plt.show()
 
-    def initiate_sampler(self, sampler:EnsembleSampler) -> None:
+    def initiate_sampler(self, sampler:EnsembleSampler|None) -> None:
         """Initiates the sampler attribute from an external sampler.
 
         Parameters

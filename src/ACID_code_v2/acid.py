@@ -32,9 +32,9 @@ class Acid:
         order_range     : Array1D                                       = None,   # Config
         verbose         : IntLike|bool|str                              = None,   # Config
         telluric_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
-        telluric_widths : Scalar                                        = None,   # Config
+        telluric_width : Scalar                                        = None,   # Config
         hydrogen_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
-        hydrogen_widths : Scalar                                        = None,   # Config
+        hydrogen_width : Scalar                                        = None,   # Config
         seed            : IntLike                                       = None,   # Config
         data            : Data|DataList                                 = None,   # Data
         config          : Config                                        = None,   # Config
@@ -107,14 +107,14 @@ class Acid:
                 - List of tuples: Each tuple should be in the format (line:float, width:Optional(float)). This format is useful for directly inputting
                 lines with default width unless explicitly specified for some lines. Again, lines without the width provided will be set from the
                 default telluric_width input.
-        telluric_widths : Scalar, optional
+        telluric_width : Scalar, optional
             The default telluric width if any widths are missing from the above inputs. For each inputted telluric line, if a width is not provided, 
             this width is used. The default is 21 km/s, a typical width of telluric lines.
         hydrogen_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
             The exact same format as telluric_lines, but for hydrogen lines. The masking process is also identical, but the default widths can be different 
             (see below).
-        hydrogen_widths : Scalar, optional
-            Works the same way as telluric_widths, but for hydrogen lines. The default is 1000 km/s, a typical width of hydrogen lines, it may be worth increasing 
+        hydrogen_width : Scalar, optional
+            Works the same way as telluric_width, but for hydrogen lines. The default is 1000 km/s, a typical width of hydrogen lines, it may be worth increasing 
             for hotter stars.
         seed : IntLike, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
@@ -177,9 +177,9 @@ class Acid:
 
         # Set the lines to mask, the telluric_lines and hydrogen_lines property setters in the config class handle input validation and None check
         self.config.telluric_lines = telluric_lines
-        self.config.telluric_widths = telluric_widths if telluric_widths is not None else self.config.telluric_widths
+        self.config.telluric_width = telluric_width if telluric_width is not None else self.config.telluric_width
         self.config.hydrogen_lines = hydrogen_lines
-        self.config.hydrogen_widths = hydrogen_widths if hydrogen_widths is not None else self.config.hydrogen_widths
+        self.config.hydrogen_width = hydrogen_width if hydrogen_width is not None else self.config.hydrogen_width
 
         # Set seed if not already done in config, in this way, seed is only explicitly set once
         if getattr(self.config, "seed", None) is None:
@@ -575,7 +575,7 @@ class Acid:
         frame_errors:      Array1D|Array2D|None = None,
         frame_sns:         Array1D|Array2D|None = None,
         output:            bool                 = True
-        ) -> tuple:
+        ) -> tuple | None:
         """Combines multiple spectral frames into one spectrum
 
         Parameters
@@ -593,7 +593,7 @@ class Acid:
 
         Returns
         -------
-        tuple, if output is True, containing:
+        tuple | None, if output is True, containing:
             combined_wavelengths : Array1D
                 Wavelengths for the combined spectrum
             combined_spectrum : Array1D
