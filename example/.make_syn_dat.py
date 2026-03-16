@@ -4,7 +4,7 @@ from astropy.io import fits
 import emcee
 from scipy.special import wofz
 
-# gaussian model
+# gaussian model function
 def gauss(x, rv, sd, height, cont):
     y = cont+(height*np.exp(-(x-rv)**2/(2*sd**2)))
     return y
