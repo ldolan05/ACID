@@ -38,6 +38,7 @@ class Acid:
         seed            : IntLike                                       = None,   # Config
         data            : Data|DataList                                 = None,   # Data
         config          : Config                                        = None,   # Config
+        **kwargs,
         ) -> None:
         """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
         in the Config class (stored in Data for convenience). Both Data and the Result class (passed after ACID) have save and load 
@@ -125,10 +126,12 @@ class Acid:
         config : Config, optional
             An optional Config object to use for storing the configuration. Allows you to override the config values stored in the Data object,
             otherwise, inputs to the initialisation here and the ACID method will overwrite these config values again (if entered).
+        **kwargs : dict, optional
+            Unused, mainly only to catch if users use the "linelist_path" input rather than the now "linelist" input.
         """
         # TODO write docstring for all defaults, and all new features docstring them please
         # TODO: update readthedocs with examples for using own linelists and using own masking lines, and also eventually using the Datalist object
-        # Initialise the data class to store calculations in ACID
+        # Initialise the data class to store calculations in ACID        
         if data is not None:
             if isinstance(data, DataList):
                 data = data[order]
@@ -154,6 +157,20 @@ class Acid:
 
         # Verbosity validation handled in config property setter
         self.config.verbose = verbose
+
+        # Catch for the linelist_path argument, which was old way to input a linelist
+        if "linelist_path" in kwargs:
+            if linelist is not None or linelist_wl is not None or linelist_depths is not None:
+                raise ValueError("Use either 'linelist', or legacy 'linelist_path', not both. See the API for more details.")
+            linelist = kwargs.pop("linelist_path")
+            if self.verbose > 0:
+                print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
+                f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
+        # Anything left in kwargs is invalid
+        if kwargs:
+            raise TypeError(
+                f"Unexpected keyword argument(s) for Acid.__init__: {', '.join(sorted(kwargs))}"
+            )
 
         # Set linelist in the Data class, the property setter handles input validation
         self.data.set_linelist(linelist, linelist_wl, linelist_depths)
@@ -190,7 +207,7 @@ class Acid:
     # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
     # This is to avoid confusion for users who may accidentally input an argument that is meant for
     # the class initialisation rather than the ACID function, which takes different arguments.
-    _INIT_KEYS = set(inspect.signature(__init__).parameters) - {"self"}
+    _INIT_KEYS = set(inspect.signature(__init__).parameters) - {"self", "kwargs"}
 
     def ACID(
         self,
@@ -342,13 +359,13 @@ class Acid:
             for key in sorted(overlap):
                 print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
 
-        # Raise an error if the kwargs are not part of either the ACID init or the Result init, so that the error happens
-        # now rather than during the Result initialisation, which would waste the user's time
-        valid_result_keys = set(inspect.signature(Result.__init__).parameters) - {"self"}
-        invalid_keys = set(kwargs.keys()) - self._INIT_KEYS - valid_result_keys
-        if invalid_keys and self.config.verbose > 0:
-            raise ValueError(f"The following kwargs are not valid for either the ACID initialisation or the Result "
-                             f"initialisation: {', '.join(invalid_keys)}. Please check your input arguments.")
+        # Raise an error if the kwargs are not part of the ACID init
+        invalid_keys = set(kwargs.keys()) - self._INIT_KEYS
+        if invalid_keys:
+            raise ValueError(
+                f"The following keyword arguments are not recognised by ACID or Acid.__init__: "
+                f"{', '.join(sorted(invalid_keys))}."
+            )
 
         # Assign inputted configuration to config dictionary plus or minus a few variables
         ACID_config = {
