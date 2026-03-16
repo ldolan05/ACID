@@ -32,9 +32,9 @@ class Acid:
         order_range     : Array1D                                       = None,   # Config
         verbose         : IntLike|bool|str                              = None,   # Config
         telluric_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
-        telluric_width : Scalar                                        = None,   # Config
+        telluric_width  : Scalar                                        = None,   # Config
         hydrogen_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple] = None,   # Config
-        hydrogen_width : Scalar                                        = None,   # Config
+        hydrogen_width  : Scalar                                        = None,   # Config
         seed            : IntLike                                       = None,   # Config
         data            : Data|DataList                                 = None,   # Data
         config          : Config                                        = None,   # Config
