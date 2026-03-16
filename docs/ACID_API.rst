@@ -1,7 +1,7 @@
-.. _ACID:
+.. _API:
 
 ACID API
-=========
+========
 
 .. currentmodule:: ACID_code_v2
 
@@ -14,12 +14,14 @@ Core Classes
 
    Acid
    Result
+   Data
+   Config
+   DataList
    LSD
    Profiles
-   Data
    MCMC
-   Config
-   Linelist
+   LineList
+   MaskingLines
 
 Utility Functions
 ------------------

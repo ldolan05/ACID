@@ -13,6 +13,8 @@ ACID_v2 is a fork of ACID (https://github.com/ldolan05/ACID) from the work of Lu
     - Improving memory management so that ACID can be run on MacOS without crashes (ie extending compatibility to all POSIX systems)
     - Adding additional kwargs to ACID to tailor output, including verbosity settings, MCMC number of steps, multiprocessing switch, and more.
     - Utilising classes for both ACID and the result of ACID, allowing for analysis methods that can be found in the documentation.
+    - Methods to extract fits formats for common instruments (e.g. ESPRESSO, HARPS, UVES) and to load them directly into ACID.
+    - Updated documentation and examples
 
 The mathematical functions and method remain the same as ACID and are outlined in Dolan et al. 2024 (https://academic.oup.com/mnras/article/529/3/2071/7624678).
 
@@ -31,19 +33,23 @@ Please note that ACID v2 now functions as a class, and so the usage is slightly 
 .. _GitHub: https://github.com/Benjamin-Cadell/ACID_v2
 
 User Guide
------------
+----------
 
 .. toctree::
    :maxdepth: 2
 
-   Installation <_installation>
-   Tutorial - Using ACID <_using_ACID>
-   Other Functions <_other_functions>
-   ACID API <_ACID>
-
+   Installation and Setup <_installation>
+   Tutorial - Using ACID <_tutorial>
+   Results and Plotting <_results>
+   Multiprocessing <_multiprocessing>
+   Using the Data class <_data>
+   The DataList and loading FITS files <_datalist>
+   Analysing the Final Profiles <_profiles>
+   Other ACID Functions <_other>
+   ACID API <_API>
 
 License and Attribution
-------------------------
+-----------------------
 
 Copyright 2025, Benjamin Cadell.
 
