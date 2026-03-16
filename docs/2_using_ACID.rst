@@ -3,10 +3,10 @@
 Tutorial - Using ACID
 ======================
 
-These tutorials requires use of the example data included in the example_ folder. See the repository cloning_ section to install the data.
+These tutorials require use of the example data included in the example_ folder. See the repository cloning_ section to install the data.
 You can find the script in example/tutorial_code.py
 
-.. _source: https://github.com/Benjamin-Cadell/ACID_v2/tree/main/example
+.. _example: https://github.com/Benjamin-Cadell/ACID_v2/tree/main/example
 .. _cloning: https://acid-v2.readthedocs.io/en/stable/installation.html#cloning-the-repository
 
 The architecture of ACID_v2 is slightly different to the original ACID code. ACID now works under the hood as a class (called Acid), rather than previously as a function.
