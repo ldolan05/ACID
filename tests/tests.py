@@ -105,7 +105,7 @@ def class_test():
         velocities = np.arange(-25, 25, 0.82)
 
         # run ACID function
-        Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+        Acid = acid.Acid(velocities=velocities, linelist=linelist)
         result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=nsteps, skips=skips)
         return result
 
@@ -146,7 +146,7 @@ def verbosity_test():
         velocities = np.arange(-25, 25, deltav)
 
         # run ACID function
-        Acid = acid.Acid(velocities=velocities, linelist_path=linelist, verbose=False)
+        Acid = acid.Acid(velocities=velocities, linelist=linelist, verbose=False)
         result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
         return result
 
@@ -165,7 +165,7 @@ def verbosity_test():
         velocities = np.arange(-25, 25, deltav)
 
         # run ACID function
-        Acid = acid.Acid(velocities=velocities, linelist_path=linelist, verbose=3)
+        Acid = acid.Acid(velocities=velocities, linelist=linelist, verbose=3)
         result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
         return result
     
@@ -195,13 +195,13 @@ def deterministic_test():
             errors.append(spec_file[2].data)         # Spectral Flux Errors
             sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
-        linelist_path = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'example/example_linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         velocities = np.arange(-25, 25, 0.82)
 
         # run ACID function
-        Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+        Acid = acid.Acid(velocities=velocities, linelist=linelist)
         result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=nsteps, parallel=True, deterministic_profile=True, skips=skips)
         result.plot_walkers()
         return result
@@ -229,7 +229,7 @@ def data_and_convergence_test():
     velocities = np.arange(-25, 25, 0.82)
 
     # run ACID function
-    Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+    Acid = acid.Acid(velocities=velocities, linelist=linelist)
     result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, skips=skips)
 
     data = result.data
@@ -270,7 +270,7 @@ def test_edge_cases():
     # velocities = np.arange(-25, 25, 0.82)
 
     # run ACID function
-    Acid = acid.Acid(linelist_path=linelist)
+    Acid = acid.Acid(linelist=linelist)
     result = Acid.ACID(wavelength, spectrum, error, nsteps=2000, 
                        skips=skips, parallel=False, deterministic_profile=True)
 
@@ -291,7 +291,7 @@ def test_edge_cases():
 
     # per pixel snr, and no run_mcmc test
     sn = np.random.normal(loc=100, scale=10, size=spectrum.shape) # create a random sn array with the same shape as the spectrum
-    Acid = acid.Acid(linelist_path=linelist)
+    Acid = acid.Acid(linelist=linelist)
     result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, run_mcmc=False,
                        skips=skips, parallel=False, deterministic_profile=True)
     assert result is None, "When run_mcmc is set to False, the ACID function should return None, but it did not."
