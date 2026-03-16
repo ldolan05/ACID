@@ -1,7 +1,7 @@
-.. _using_acid:
+.. _tutorial:
 
 Tutorial - Using ACID
-=====================
+======================
 
 These tutorials requires use of the example data included in the example_ folder. See the repository cloning_ section to install the data.
 You can find the script in example/tutorial_code.py
@@ -43,7 +43,7 @@ The detection threshold input to VALD must be less than 1/(3*SN) where SN is the
 We can then run ACID and plot the final results:
 
 .. code-block:: python
-
+   
    import numpy as np
    import ACID_code_v2 as acid
 
@@ -182,6 +182,7 @@ by passing them to the ACID function:
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
 
 .. code-block:: text
+
    Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 227.45it/s]
    Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 234.49it/s]
    Iteration 3/5, last tolerance: 0.5674>0.05, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 219.90it/s]

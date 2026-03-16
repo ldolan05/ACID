@@ -1,4 +1,4 @@
-.. _tutorial:
+.. _installation:
 
 Installation and Setup
 ======================

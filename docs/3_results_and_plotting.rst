@@ -6,6 +6,7 @@ Results and Plotting
 By default, the ACID method returns a Result object which contains many methods to analyse the results and simple tools to return the profile and errors.
 
 .. code-block:: python
+    
     import ACID_code_v2 as acid
     spec_file = fits.open('sample_spec_1.fits')
     wavelength = spec_file[0].data

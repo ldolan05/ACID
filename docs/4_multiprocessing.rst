@@ -14,12 +14,14 @@ On most standard machines, you can set these two variables to false just before 
 environments, for unknown reasons, eg. some HPC environments, they must be set either in the terminal with:
 
 .. code-block:: bash
+
    export OMP_NUM_THREADS=1
    export MKL_NUM_THREADS=1
 
 or right at the top of the page before ALL other imports:
 
 .. code-block:: python
+
    import os
    os.environ["OMP_NUM_THREADS"] = "1"
    os.environ["MKL_NUM_THREADS"] = "1"
@@ -33,7 +35,8 @@ set when multiprocessing is True, but in other environments, if they are not set
 
 Reminder: you can always turn off multiprocessing in ACID by setting parallel=False:
 
-.. code-block:: pyton
+.. code-block:: python
+   
    acid = Acid(...)
    result = acid.ACID(
       ..., # other inputs

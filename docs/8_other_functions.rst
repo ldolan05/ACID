@@ -30,7 +30,7 @@ Note again that if multiple orders or frames were calculated, this method must b
 not from a saved .pkl file.
 
 Performing LSD
-------------
+---------------
 The ACID package can perform traditional LSD in a standalone LSD class. This can be useful for comparison to ACID results or for quick-look analysis.
 The LSD class can be used as an example as follows:
 
