@@ -6,13 +6,13 @@ Installation
 Installing the package
 ------------------------
 
-ACID_v2 has been tested in Python 3.13, and is currently incompatible with 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
+ACID_v2 has been tested in Python 3.13 and 3.14, running fastest on 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
 
 In this example we create an environment named 'acid' and activate it using:
 
 .. code-block:: bash
 
-    conda create -n acid python=3.13
+    conda create -n acid python=3.14
     conda activate acid
 
 Once the environment has been activated ACID can be installed using pip_:
@@ -41,12 +41,12 @@ If this fails they will attempt to import from the local source directory instea
 Testing the installation
 -------------------------
 
-Test your installation by running our test file in the test directory using pytest_. This may take a while (~1-2 min) but should run without any errors if the installation has gone smoothly.
-
-.. _pytest: https://docs.pytest.org/en/7.4.x/contents.html
+Test your installation by running our test file in the test directory. This may take a while (~1-2 min) but should run without any errors if the installation has gone smoothly.
+The test file will attempt to run all of the methods and functions in ACID. If any of these fail and you believe that this is due to the source code and not your installation, please raise an issue on GitHub.
 
 .. code-block:: bash
     
-    pytest tests/tests.py
+    conda install pytest
+    python tests/tests.py
 
 

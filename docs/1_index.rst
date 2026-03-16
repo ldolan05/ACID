@@ -22,7 +22,7 @@ ACID is a technique that builds on traditional Least-Squares Deconvolution (LSD)
 
 In a basic sense, ACID simulatenously fits the stellar continuum and profile using a combination of LSD and MCMC techniques (MCMC implementation through emcee_). The spectra are then continuum corrected using this continuum fit. LSD is then run on the continuum corrected spectra to return high-resolution line profiles for each spectrum.
 
-For a full outline of ACID's algorithm and implementation, see our paper_ or view the package on GitHub_.
+For a full outline of ACID's algorithm and implementation, see the paper_ or view the package on GitHub_.
 
 Please note that ACID v2 now functions as a class, and so the usage is slightly different to ACID v1. Please see the User Guide and the Using ACID page for more information.
 
@@ -36,10 +36,10 @@ User Guide
 .. toctree::
    :maxdepth: 2
 
-   installation
-   Tutorial - Using ACID <using_ACID>
-   Other Functions <other_functions>
-   ACID API <ACID>
+   Installation <_installation>
+   Tutorial - Using ACID <_using_ACID>
+   Other Functions <_other_functions>
+   ACID API <_ACID>
 
 
 License and Attribution

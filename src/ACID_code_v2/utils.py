@@ -1,5 +1,5 @@
 """
-Utility functions for the ACID package. Some functions may not be useful to the user.
+All of the utility functions for the ACID package. Some functions may not be useful to the user.
 """
 
 from beartype import beartype
