@@ -50,9 +50,33 @@ autodoc_type_aliases = {
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
 html_theme = 'sphinx_rtd_theme'
-# html_static_path = ['_static']
+
+
+_ALIAS_REPLACEMENTS = {
+    "ACID_code_v2.utils.FloatLike": "FloatLike",
+    "ACID_code_v2.utils.IntLike": "IntLike",
+    "ACID_code_v2.utils.Scalar": "Scalar",
+    "ACID_code_v2.utils.NumericArray": "NumericArray",
+    "ACID_code_v2.utils.Array1D": "Array1D",
+    "ACID_code_v2.utils.Array2D": "Array2D",
+    "ACID_code_v2.utils.ArrayAnyD": "ArrayAnyD",
+}
+
+def _clean_signature_text(text: str | None) -> str | None:
+    if text is None:
+        return None
+
+    for full_name, short_name in _ALIAS_REPLACEMENTS.items():
+        text = text.replace(f"TypeAliasForwardRef('{full_name}')", short_name)
+        text = text.replace(f'TypeAliasForwardRef("{full_name}")', short_name)
+
+    return text
+
+def process_signature(app, what, name, obj, options, signature, return_annotation):
+    signature = _clean_signature_text(signature)
+    return_annotation = _clean_signature_text(return_annotation)
+    return signature, return_annotation
+
+def setup(app):
+    app.connect("autodoc-process-signature", process_signature)
