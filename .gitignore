@@ -1,7 +1,17 @@
+# User added
+*.h5
+test.py
+test_data/
+
+# Standard Python ignores
 .vscode/
 *.png
 *.gif
-ACID/__pycache__/
+__pycache__*/
+.DS_Store
+*.pyc
+*.pyo
+*.pyd
 
 # Distribution / packaging
 .Python
@@ -20,4 +30,5 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-unfinished/
+packager/
+*.code-workspace

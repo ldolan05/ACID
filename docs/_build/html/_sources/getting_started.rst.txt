@@ -1,9 +1,0 @@
-.. _getting_started:
-
-Installation
-=====================
-
-Here is how to install the package (once I've figured it out)
-
-
-

@@ -1,11 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Jan 28 12:20:32 2021
-
-@author: lucydolan
-"""
-
+#%%
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import numpy as np
@@ -13,7 +6,6 @@ import math
 import glob
 from scipy.interpolate import interp1d
 from statistics import stdev
-import LSD_func_faster as LSD
 from scipy.optimize import curve_fit
 
 # run_name = input('Run name (all_frames or jvc):' )

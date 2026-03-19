@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Jan 22 14:14:17 2021
-
-@author: lucydolan
-"""
+#%%
 import numpy as np
 import math
 import glob
