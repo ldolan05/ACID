@@ -17,10 +17,12 @@ from .utils import IntLike, Scalar, Array1D, Array2D
 
 @beartype
 class Acid:
-    """Accurate Continuum fItting and Deconvolution (ACID) class. This class contains the ACID method 
+    """
+    Accurate Continuum fItting and Deconvolution (ACID) class. This class contains the ACID method 
     which fits the continuum of spectra and performs Least Squares Deconvolution (LSD) to obtain
     LSD profiles for each spectrum. It also contains many internal methods used within the main ACID 
-    function. See Dolan et al (2024) for more details on the ACID method and its applications."""
+    function. See Dolan et al (2024) for more details on the ACID method and its applications.
+    """
 
     def __init__(
         self,
@@ -40,7 +42,10 @@ class Acid:
         config          : Config|None                                        = None,   # Config
         **kwargs,
         ) -> None:
-        """Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
+        """
+        Notes
+        -----
+        Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
         in the Config class (stored in Data for convenience). Both Data and the Result class (passed after ACID) have save and load 
         methods which can save the result of any calculations, with the Result class naturally saving the Data class together. ACID is designed
         now to be run on only one order at a time, for running and keeping track of multiple orders, please see the DataList class for a natural
@@ -236,7 +241,10 @@ class Acid:
         _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
-        """Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
+        """
+        Notes
+        -----
+        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
         returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
@@ -318,17 +326,27 @@ class Acid:
         tau_tol : float, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.05. Only used if max_steps is set.
         moves : list[tuple], optional
-            A list of tuples specifying the moves for the MCMC sampler. The format tries best to follow the emcee documentation,
-            however, the config cannot store classes (which the moves input needs to be), so instead the names of the moves are used
-            and converted when building the sampler. Each tuple should be in the format:
-            (move_name:str, fraction:float, move_kwargs:Optional[dict]).
-                - move_name: The name of the emcee move, the only possible variants are currently as follows:
-                "RedBlueMove", "StretchMove", "WalkMove", "KDEMove", "DEMove", "DESnookerMove", 
-                "MHMove", "GaussianMove". Refer to the emcee documentation for more details on each move type. The move
-                names that get input are checked against the emcee.moves module for if they exist, so any move in that 
-                module can be used, but not all of them are tested with ACID.
-                - fraction: The fraction of walkers to which this move should be applied.
-                - move_kwargs: An optional dictionary of keyword arguments to pass to the move class initialisation.
+            A list of tuples specifying the moves for the MCMC sampler. The format
+            tries to follow the emcee documentation as closely as possible.
+            However, the config cannot store classes directly, so move names are
+            used instead and converted when building the sampler.
+
+            Each tuple should have the form::
+
+                (move_name: str, fraction: float, move_kwargs: dict | None)
+
+            where:
+
+            - "move_name" is the name of the emcee move. Supported variants currently
+            include "RedBlueMove", "StretchMove", "WalkMove",
+            "KDEMove", "DEMove", "DESnookerMove", "MHMove",
+            and "GaussianMove". Refer to the emcee documentation for more
+            details on each move type. Input move names are checked against the
+            "emcee.moves" module, so other moves from that module may also work,
+            although not all have been tested with ACID.
+            - "fraction" is the fraction of walkers to which this move should be applied.
+            - "move_kwargs" is an optional dictionary of keyword arguments passed to
+            the move class initialisation.
         run_mcmc : bool, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
@@ -338,9 +356,11 @@ class Acid:
         Returns
         -------
         Result | None
-            Result object containing the LSD profiles and associated data. See Result class for methods and attributes.
-            If run_mcmc is False, None is returned, but the class attributes are still updated (so that acid.data can be 
-            used for example).
+            A Result object containing the LSD profiles and associated data.
+            See the Result class for available methods and attributes.
+
+            If "run_mcmc" is False, "None" is returned, but the class
+            attributes are still updated.
 
         Raises
         ------
