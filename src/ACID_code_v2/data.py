@@ -1,6 +1,6 @@
+from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from beartype import beartype
-from __future__ import annotations
 from typing import Any, Dict, Optional
 from .utils import Array1D, c_kms
 import matplotlib.pyplot as plt

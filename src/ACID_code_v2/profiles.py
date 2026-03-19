@@ -1,8 +1,8 @@
+from __future__ import annotations
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
-from __future__ import annotations
 from scipy.special import wofz
 
 @beartype

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import warnings
 warnings.filterwarnings("ignore")
 import sys, emcee, os, time, inspect, inspect
@@ -7,7 +8,6 @@ from math import log10, floor
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
-from __future__ import annotations
 from . import utils
 from .lsd import LSD
 from . import mcmc

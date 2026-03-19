@@ -1,7 +1,7 @@
+from __future__ import annotations
 import numpy as np
 from . import utils
 from beartype import beartype
-from __future__ import annotations
 from numpy.polynomial import polynomial as P
 from scipy.linalg import cho_solve
 

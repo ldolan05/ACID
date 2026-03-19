@@ -1,9 +1,8 @@
 """
 All of the utility functions for the ACID package. Some functions may not be useful to the user.
 """
-
-from beartype import beartype
 from __future__ import annotations
+from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
 import glob, emcee

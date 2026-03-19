@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 from astropy.io import  fits
 import glob, psutil, os
@@ -9,7 +10,6 @@ from tqdm import tqdm
 from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
-from __future__ import annotations
 from . import utils
 from .data import Config
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D
