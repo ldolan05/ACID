@@ -45,6 +45,7 @@ where = ["src"]
 [tool.setuptools_scm]
 version_scheme = "post-release"
 local_scheme = "dirty-tag"
+tag_regex = r"^v(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)$"
 
 
 # ... other project metadata fields as listed in:

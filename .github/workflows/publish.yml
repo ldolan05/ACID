@@ -20,6 +20,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      
+      - name: Debug version inference
+        run: |
+          git tag --list
+          git describe --tags --long || true
+          python -m setuptools_scm || true
 
       - run: pip install build twine
       - run: python -m build
