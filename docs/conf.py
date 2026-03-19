@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath('../src'))
 project = 'ACID_code_v2'
 copyright = '2025, Benjamin Cadell'
 author = 'Benjamin Cadell'
-root_doc = '0_index'
+root_doc = 'index'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
