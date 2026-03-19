@@ -1,0 +1,17 @@
+name: acid
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - ipykernel
+  - setuptools
+  - astropy
+  - numpy
+  - scipy
+  - matplotlib
+  - tqdm
+  - emcee
+  - sphinx_rtd_theme
+  - corner
+  - beartype
+prefix: /Users/benjamincadell/miniforge3/envs/acid

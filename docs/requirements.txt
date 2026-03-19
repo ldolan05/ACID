@@ -3,6 +3,8 @@ emcee
 matplotlib
 scipy
 astropy
-statistics
 sphinx_rtd_theme
 tqdm
+psutil
+corner
+beartype

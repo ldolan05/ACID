@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ACID_code_v2"
+authors = [
+    {name = "Benjamin Cadell", email="bcadell01@qub.ac.uk"},
+    {name = "Lucy Dolan"}
+]
+description = "Returns line profiles from input spectra by fitting the stellar continuum and performing LSD"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = ["lsd", "least squares deconvolution", "fitting", "ACID"]
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX"
+]
+dependencies = [
+    "numpy",
+    "emcee",
+    "matplotlib",
+    "scipy",
+    "astropy",
+    "tqdm",
+    "psutil",
+    "corner",
+    "beartype"
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx_rtd_theme"
+]
+
+[project.urls]
+Homepage = "https://github.com/Benjamin-Cadell/ACID"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "dirty-tag"
+
+
+# ... other project metadata fields as listed in:
+#     https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
