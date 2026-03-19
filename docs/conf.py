@@ -38,13 +38,13 @@ autodoc_member_order = "bysource"
 autodoc_typehints = "signature"
 autodoc_typehints_format = "short"
 autodoc_type_aliases = {
-    "FloatLike": "ACID_code_v2.FloatLike",
-    "IntLike": "ACID_code_v2.IntLike",
-    "Scalar": "ACID_code_v2.Scalar",
-    "NumericArray": "ACID_code_v2.NumericArray",
-    "Array1D": "ACID_code_v2.Array1D",
-    "Array2D": "ACID_code_v2.Array2D",
-    "ArrayAnyD": "ACID_code_v2.ArrayAnyD",
+    "FloatLike": "ACID_code_v2.utils.FloatLike",
+    "IntLike": "ACID_code_v2.utils.IntLike",
+    "Scalar": "ACID_code_v2.utils.Scalar",
+    "NumericArray": "ACID_code_v2.utils.NumericArray",
+    "Array1D": "ACID_code_v2.utils.Array1D",
+    "Array2D": "ACID_code_v2.utils.Array2D",
+    "ArrayAnyD": "ACID_code_v2.utils.ArrayAnyD",
 }
 
 templates_path = ['_templates']
