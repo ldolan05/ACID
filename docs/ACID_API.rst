@@ -3,7 +3,7 @@
 ACID API
 ========
 
-.. currentmodule:: ACID_code_v2
+.. currentmodule:: ACID_code
 
 Core Classes
 -------------

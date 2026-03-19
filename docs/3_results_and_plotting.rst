@@ -6,8 +6,8 @@ Results and Plotting
 By default, the ACID method returns a Result object which contains many methods to analyse the results and simple tools to return the profile and errors.
 
 .. code-block:: python
-    
-    import ACID_code_v2 as acid
+
+    import ACID_code as acid
     spec_file = fits.open('sample_spec_1.fits')
     wavelength = spec_file[0].data
     spectrum = spec_file[1].data
@@ -79,7 +79,7 @@ and the sampler also fitted the profile, the parameters of the first, last and m
 
 .. code-block:: python
 
-    import ACID_code_v2 as acid
+    import ACID_code as acid
 
     result = acid.Result.load_result('example_result.pkl')
 

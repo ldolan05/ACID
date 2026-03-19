@@ -38,13 +38,13 @@ autodoc_member_order = "bysource"
 autodoc_typehints = "signature"
 autodoc_typehints_format = "short"
 autodoc_type_aliases = {
-    "FloatLike": "ACID_code_v2.utils.FloatLike",
-    "IntLike": "ACID_code_v2.utils.IntLike",
-    "Scalar": "ACID_code_v2.utils.Scalar",
-    "NumericArray": "ACID_code_v2.utils.NumericArray",
-    "Array1D": "ACID_code_v2.utils.Array1D",
-    "Array2D": "ACID_code_v2.utils.Array2D",
-    "ArrayAnyD": "ACID_code_v2.utils.ArrayAnyD",
+    "FloatLike": "ACID_code.utils.FloatLike",
+    "IntLike": "ACID_code.utils.IntLike",
+    "Scalar": "ACID_code.utils.Scalar",
+    "NumericArray": "ACID_code.utils.NumericArray",
+    "Array1D": "ACID_code.utils.Array1D",
+    "Array2D": "ACID_code.utils.Array2D",
+    "ArrayAnyD": "ACID_code.utils.ArrayAnyD",
 }
 
 templates_path = ['_templates']
@@ -54,13 +54,13 @@ html_theme = 'sphinx_rtd_theme'
 
 
 _ALIAS_REPLACEMENTS = {
-    "ACID_code_v2.utils.FloatLike": "FloatLike",
-    "ACID_code_v2.utils.IntLike": "IntLike",
-    "ACID_code_v2.utils.Scalar": "Scalar",
-    "ACID_code_v2.utils.NumericArray": "NumericArray",
-    "ACID_code_v2.utils.Array1D": "Array1D",
-    "ACID_code_v2.utils.Array2D": "Array2D",
-    "ACID_code_v2.utils.ArrayAnyD": "ArrayAnyD",
+    "ACID_code.utils.FloatLike": "FloatLike",
+    "ACID_code.utils.IntLike": "IntLike",
+    "ACID_code.utils.Scalar": "Scalar",
+    "ACID_code.utils.NumericArray": "NumericArray",
+    "ACID_code.utils.Array1D": "Array1D",
+    "ACID_code.utils.Array2D": "Array2D",
+    "ACID_code.utils.ArrayAnyD": "ArrayAnyD",
 }
 
 def _clean_signature_text(text: str | None) -> str | None:

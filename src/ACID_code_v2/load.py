@@ -59,7 +59,7 @@ class Load:
         self.load_exception = f"Error loading data for the '{self.instrument}' instrument. \n" \
         f"Please check the file format and ensure it follows standard routines for extracting with fits formats. \n" \
         f"If you believe this is a standard format and are still getting this error, \n " \
-        f"please open an issue on the ACID_v2 GitHub repository with details of the file format and the error message you received." \
+        f"please open an issue on the ACID GitHub repository with details of the file format and the error message you received." \
         f"Exception: \n"
 
         self.data = Data()

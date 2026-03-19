@@ -404,7 +404,7 @@ def configure_mp_environ(os):
         if os.getenv("OMP_NUM_THREADS") != "1" or os.getenv("MKL_NUM_THREADS") != "1":
             raise ValueError(f"In a SLURM environment, OMP_NUM_THREADS and MKL_NUM_THREADS must be set to 1 before any imports for parallel MCMC. \n" \
             "Please set this in your SLURM job script or at the top of your python script before any other imports.\n" \
-            "See https://acid-v2.readthedocs.io/en/latest/using_ACID.html#multiprocessing for more information.")
+            "See https://acid-code.readthedocs.io/en/latest/using_ACID.html#multiprocessing for more information.")
     else:
         # Emcee recommendation, after testing this is absolutely a requirement
         os.environ["OMP_NUM_THREADS"] = "1"

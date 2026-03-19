@@ -53,11 +53,11 @@ class Acid:
         implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
         the results for each order. The DataList instance has been designed with parallelization on HPC's in mind, allowing orders (which are
         independent) to be run by different jobs. See also the multiprocessing section of the Read the Docs:
-        (https://acid-v2.readthedocs.io/en/stable/using_ACID.html#multiprocessing).
+        (https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing).
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
+        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
         are also None, such as velocities, as this can be calculated from the input wavelengths.
 
         Also shown is where each parameters is stored (either in the Data instance obtained from Acid.data) or in the Config instance (obtained from either
@@ -250,7 +250,7 @@ class Acid:
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code_v2.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
+        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
         are also None, such as velocities, as this can be calculated from the input wavelengths.
 
         Parameters
@@ -303,7 +303,7 @@ class Acid:
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
         parallel : bool, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, see
-            https://acid-v2.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
+            https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
         cores : IntLike, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
         nsteps : IntLike, optional
@@ -585,10 +585,10 @@ class Acid:
             return None
 
     def ACID_HARPS(self, *args, **kwargs):
-        raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID v2. \n"
+        raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
-        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
+        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code==1.4.5")
 
     def combine_spec(
         self,
@@ -1202,10 +1202,10 @@ def ACID(*args, **kwargs):
 def ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function, depracated after 1.4.5.
     """
-    raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID v2. \n"
+    raise NotImplementedError(f"ACID_HARPS is no longer supported. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
-        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
+        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code==1.4.5")
 
 def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     """Helper function to split legacy args and kwargs into init and run kwargs given

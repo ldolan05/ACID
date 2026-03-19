@@ -6,7 +6,7 @@ Installation and Setup
 Installing the package
 ------------------------
 
-ACID_v2 has been tested in Python 3.13 and 3.14, running fastest on 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
+ACID has been tested in Python 3.13 and 3.14, running fastest on 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
 
 In this example we create an environment named 'acid' and activate it using:
 
@@ -21,7 +21,7 @@ Once the environment has been activated ACID can be installed using pip_:
 
 .. code-block:: bash
 
-    pip install ACID_code_v2
+    pip install ACID_code
 
 .. _source:
 
@@ -35,8 +35,8 @@ If this fails they will attempt to import from the local source directory instea
 
 .. code-block:: bash
 
-    git clone https://github.com/Benjamin-Cadell/ACID_v2.git
-    cd ACID_v2
+    git clone https://github.com/ldolan05/ACID.git
+    cd ACID
 
 .. _test:
 

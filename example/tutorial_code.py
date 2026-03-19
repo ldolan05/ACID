@@ -5,17 +5,11 @@ import matplotlib.pyplot as plt
 import glob, os, importlib, sys
 os.chdir(os.path.dirname(__file__))
 os.chdir("..")  # ensures we are in the main directory
-try:
-    raise Exception("Force local import")
-    # import ACID_code_v2 as acid
-except:
-    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-    sys.path.append(PROJECT_ROOT)
-    from src import ACID_code_v2 as acid
-    print("pip module failed to import, imported from local instead")
-acid._reload_all()
-skips = 2 # Skip some values to save time in this tutorial
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.append(PROJECT_ROOT)
+from src import ACID_code as acid
+skips = 1 # Skip some values to save time in this tutorial
 
 # Quickstart Example
 spec_file = fits.open('example/sample_spec_1.fits')

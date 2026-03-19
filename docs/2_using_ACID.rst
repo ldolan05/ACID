@@ -6,10 +6,10 @@ Tutorial - Using ACID
 These tutorials require use of the example data included in the example_ folder. See the repository cloning_ section to install the data.
 You can find the script in example/tutorial_code.py
 
-.. _example: https://github.com/Benjamin-Cadell/ACID_v2/tree/main/example
-.. _cloning: https://acid-v2.readthedocs.io/en/stable/installation.html#cloning-the-repository
+.. _example: https://github.com/ldolan05/ACID/tree/main/example
+.. _cloning: https://acid-code.readthedocs.io/en/stable/installation.html#cloning-the-repository
 
-The architecture of ACID_v2 is slightly different to the original ACID code. ACID now works under the hood as a class (called Acid), rather than previously as a function.
+The architecture of ACID is slightly different to the original ACID code. ACID now works under the hood as a class (called Acid), rather than previously as a function.
 The main method (ACID) of the Acid class is now a Result class with its own methods and attributes that allow useful analysis.
 The legacy ACID and ACID_HARPS functions are still available for backwards compatibility, however it is recommended to use the Acid class for new applications.
 The tutorials below walk through how to use ACID for a variety of applications using the new class structure.
@@ -45,7 +45,7 @@ We can then run ACID and plot the final results:
 .. code-block:: python
    
    import numpy as np
-   import ACID_code_v2 as acid
+   import ACID_code as acid
 
    # choose a velocity grid for the final profile(s)
    deltav = acid.calc_deltav(wavelength)   # velocity pixel size must not be smaller than the spectral pixel size - can use acid.calc_deltav function if unsure what this would be.
@@ -99,7 +99,7 @@ Once the inputs have been constructed ACID can be applied and the results plotte
 
 .. code-block:: python
 
-   import ACID_code_v2 as acid
+   import ACID_code as acid
    import numpy as np
 
    # choose a velocity grid for the final profile(s)

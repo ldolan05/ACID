@@ -9,7 +9,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = next(p for p in SCRIPT_DIR.parents if (p / "pyproject.toml").exists())
 sys.path.append(str(PROJECT_ROOT))
 os.chdir(PROJECT_ROOT)
-from src import  ACID_code_v2 as acid
+from src import  ACID_code as acid
 np.random.seed(0) # Set random seed for reproducibility in tests
 start = time()
 skips = 5

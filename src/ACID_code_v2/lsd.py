@@ -328,7 +328,7 @@ class LSD:
         # z = M⁻¹ b
         profile = cho_solve(c_factor, AVR, overwrite_b=False, **kwargs)
 
-        # Find error, cov(z) = M⁻¹, take diagonal, as in ACID v1
+        # Find error, cov(z) = M⁻¹, take diagonal
         if return_error or return_cov:
             AVA = alpha.T @ (V[:, None] * alpha)
             cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=False, **kwargs)

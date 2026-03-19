@@ -14,7 +14,7 @@ This method takes the same keyword arguments as the nsteps argument in ACID, all
 
 .. code-block:: python
 
-    import ACID_code_v2 as acid
+    import ACID_code as acid
 
     result = acid.Result.load_result('example_result.pkl')
 
@@ -36,7 +36,7 @@ The LSD class can be used as an example as follows:
 
 .. code-block:: python
 
-   import ACID_code_v2 as acid
+   import ACID_code as acid
    import numpy as np
    from astropy.io import fits
    import matplotlib.pyplot as plt

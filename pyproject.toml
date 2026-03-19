@@ -3,7 +3,7 @@ requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ACID_code_v2"
+name = "ACID_code"
 authors = [
     {name = "Benjamin Cadell", email="bcadell01@qub.ac.uk"},
     {name = "Lucy Dolan"}
@@ -37,7 +37,7 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Benjamin-Cadell/ACID"
+Homepage = "https://github.com/ldolan05/ACID"
 
 [tool.setuptools.packages.find]
 where = ["src"]
