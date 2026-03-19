@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath('../src'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'ACID_code_v2'
+project = 'ACID_code'
 copyright = '2025, Benjamin Cadell'
 author = 'Benjamin Cadell'
 root_doc = 'index'
