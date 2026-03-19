@@ -7,6 +7,7 @@ from math import log10, floor
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
+from __future__ import annotations
 from . import utils
 from .lsd import LSD
 from . import mcmc

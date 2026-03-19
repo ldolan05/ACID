@@ -5,6 +5,7 @@ import corner, sys, os, pickle, warnings, contextlib, functools, inspect, psutil
 from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 from beartype import beartype
+from __future__ import annotations
 from scipy.interpolate import interp1d
 from numpy.polynomial import polynomial as P
 from .lsd import LSD

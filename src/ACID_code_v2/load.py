@@ -3,6 +3,7 @@ This script contains functions to load data from different fits files and instru
 Each function will load a data object that can be directly input into the ACID initialisation.
 """
 from beartype import beartype
+from __future__ import annotations
 from .data import Data
 from . import utils
 from astropy.io import fits
