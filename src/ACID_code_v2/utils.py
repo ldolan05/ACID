@@ -23,14 +23,28 @@ def convert_moves_to_emcee(moves:list[tuple]):
 
     Parameters
     ----------
-    moves : list[tuple]
-        A list of tuples specifying the moves. Each tuple should be in the format:
-        (move_name:str, fraction:float, move_kwargs:Optional[dict]).
-            - move_name: The name of the emcee move, the only possible variants are as follows:
-             "RedBlueMove", "StretchMove", "WalkMove", "KDEMove", "DEMove", "DESnookerMove", 
-             "MHMove", "GaussianMove". Refer to the emcee documentation for more details on each move type.
-            - fraction: The fraction of walkers to which this move should be applied.
-            - move_kwargs: A dictionary of keyword arguments to pass to the move class initialisation.
+    moves : list[tuple], optional
+        A list of tuples specifying the moves for the MCMC sampler. The format
+        tries to follow the emcee documentation as closely as possible.
+        However, the config cannot store classes directly, so move names are
+        used instead and converted when building the sampler.
+
+        Each tuple should have the form::
+
+            (move_name: str, fraction: float, move_kwargs: dict | None)
+
+        where:
+
+        - "move_name" is the name of the emcee move. Supported variants currently
+          include "RedBlueMove", "StretchMove", "WalkMove",
+          "KDEMove", "DEMove", "DESnookerMove", "MHMove",
+          and "GaussianMove". Refer to the emcee documentation for more
+          details on each move type. Input move names are checked against the
+          "emcee.moves" module, so other moves from that module may also work,
+          although not all have been tested with ACID.
+        - "fraction" is the fraction of walkers to which this move should be applied.
+        - "move_kwargs" is an optional dictionary of keyword arguments passed to
+          the move class initialisation.
 
     Returns
     -------

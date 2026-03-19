@@ -72,11 +72,11 @@ class Acid:
         linelist : Array2D | str | LineList | dict, optional
             The linelist to use for LSD. The linelist should have wavelengths in angstroms and depths relative depths between 0 and 1.
             This is a required parameter if linelist_wl and linelist_depths are not provided. It can be of the forms:
-                - String: A path to a VALD linelist in string format. Support for other linelists may be added in the future or on request.
-                - Array2D: A 2D array-like object indexed such that index 0 is wavelengths and index 1 is depths.
-                - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
-                - LineList: The LineList class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
-                - If None, linelist_wl and linelist_depths must be provided (see below), by default None
+            - String: A path to a VALD linelist in string format. Support for other linelists may be added in the future or on request.
+            - Array2D: A 2D array-like object indexed such that index 0 is wavelengths and index 1 is depths.
+            - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
+            - LineList: The LineList class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
+            - If None, linelist_wl and linelist_depths must be provided (see below), by default None
         linelist_wl : Array1D, optional
             Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist is not provided. 
             Must be same length as linelist_depths. If None, linelist must be provided (see above), by default None
@@ -94,24 +94,24 @@ class Acid:
             By default [0]
         verbose : bool | IntLike | str, optional
             The verbosity for printing and plotting the progress and warnings of ACID. The verbosities are natively stored as integers corresponding to:
-                0: No printing or plotting, all warnings are ignored.
-                1: Only printing warnings.
-                2: Printing progress and warnings.
-                3: Printing progress and warnings, as well as additional plots and helpful information about the run.
+            0: No printing or plotting, all warnings are ignored.
+            1: Only printing warnings.
+            2: Printing progress and warnings.
+            3: Printing progress and warnings, as well as additional plots and helpful information about the run.
             The possible input types are described below:
-                - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
-                - Boolean: If True, defaults to 2. If False, defaults to 0.
-                - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
+            - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
+            - Boolean: If True, defaults to 2. If False, defaults to 0.
+            - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
         telluric_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. For many types of inputs, widths are optional,
             and if not provided, the default telluric width is used (see below). The inputs must be of the following forms: 
-                - 1D or 2D Array-like: Wavelengths at index 0, and optionally widths at index 1. The length of both indices must match if provided.
-                - Dictionary: with keys "lines" and optionally "widths" (both array-like), length of both must match if provided.
-                - MaskingLines class: The MaskingLines class is used to expose the linelist for masking or getting/plotting the Masked lines. You can input
-                an instance if you have one.
-                - List of tuples: Each tuple should be in the format (line:float, width:Optional(float)). This format is useful for directly inputting
-                lines with default width unless explicitly specified for some lines. Again, lines without the width provided will be set from the
-                default telluric_width input.
+            - 1D or 2D Array-like: Wavelengths at index 0, and optionally widths at index 1. The length of both indices must match if provided.
+            - Dictionary: with keys "lines" and optionally "widths" (both array-like), length of both must match if provided.
+            - MaskingLines class: The MaskingLines class is used to expose the linelist for masking or getting/plotting the Masked lines. You can input
+              an instance if you have one.
+            - List of tuples: Each tuple should be in the format (line:float, width:Optional(float)). This format is useful for directly inputting
+              lines with default width unless explicitly specified for some lines. Again, lines without the width provided will be set from the
+              default telluric_width input.
         telluric_width : Scalar, optional
             The default telluric width if any widths are missing from the above inputs. For each inputted telluric line, if a width is not provided, 
             this width is used. The default is 21 km/s, a typical width of telluric lines.
@@ -338,21 +338,22 @@ class Acid:
             where:
 
             - "move_name" is the name of the emcee move. Supported variants currently
-            include "RedBlueMove", "StretchMove", "WalkMove",
-            "KDEMove", "DEMove", "DESnookerMove", "MHMove",
-            and "GaussianMove". Refer to the emcee documentation for more
-            details on each move type. Input move names are checked against the
-            "emcee.moves" module, so other moves from that module may also work,
-            although not all have been tested with ACID.
+              include "RedBlueMove", "StretchMove", "WalkMove",
+              "KDEMove", "DEMove", "DESnookerMove", "MHMove",
+              and "GaussianMove". Refer to the emcee documentation for more
+              details on each move type. Input move names are checked against the
+              "emcee.moves" module, so other moves from that module may also work,
+              although not all have been tested with ACID.
             - "fraction" is the fraction of walkers to which this move should be applied.
             - "move_kwargs" is an optional dictionary of keyword arguments passed to
-            the move class initialisation.
+              the move class initialisation.
         run_mcmc : bool, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
             If True, the method returns a Result object, and if False, the method returns None, but attributes are updated.
         **kwargs : dict, optional
             Unused, only used to catch accidental inputs of initialisation arguments into the ACID method and warn if so.
+
         Returns
         -------
         Result | None
