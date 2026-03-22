@@ -4,22 +4,37 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
 from scipy.special import wofz
+from utils import Array1D
+from .data import Data
 
 @beartype
 class Profiles:
     """A class for fitting spectral line profiles such as Voigt and Gaussian profiles.
     """
-    def __init__(self, velocities, flux, flux_err=None):
+    def __init__(
+            self,
+            velocities : Array1D = None,
+            flux       : Array1D = None,
+            flux_err   : Array1D = None,
+            data       : Data    = None
+        ) -> None:
         """Initializes the Profiles class with velocity, flux, and optional flux error data.
 
         Parameters
         ----------
-        velocities : array_like
+        velocities : Array1D
             The velocity values corresponding to the spectral line profile.
-        flux : array_like
-            The flux values of the spectral line profile.
-        flux_err : array_like, optional
-            The errors associated with the flux values, by default None.
+            Must be provided if no data instance is passed, by default None.
+        flux : Array1D
+            The flux values of the spectral line profile
+            Must be provided if no data instance is passed, by default None.
+        flux_err : Array1D, optional
+            The errors associated with the flux values, 
+            Must be provided if no data instance is passed, by default None.
+        data : Data, optional
+            A data instance to draw velocities, flux and flux errors. Will raise an
+            exception if they do not exist within the class.
+            Must be provided if all three of the above inputs were not passed, by default None.
         """
 
         flux -= 1
@@ -35,23 +50,26 @@ class Profiles:
         self.fitted_x = np.linspace(np.min(velocities), np.max(velocities), 1000)
         pass
 
-    def plot_fit(self, model:str|None='all', **kwargs):
+    def plot_fit(self, model:str|None='voigt', return_fig=False, **kwargs):
         """Plots the original data and the fitted profile if available.
         
         Parameters
         ----------
         model : str | None, optional
             The type of model to plot. String options are 'voigt', 'gaussian', 
-            'lorentzian', or 'all'. Choosing None will plot whichever models have 
+            'lorentzian', 'none', or 'all'. Choosing 'none' or None will plot whichever models have 
             already been fitted for, by default 'all'.
+        return_fig : bool, optional
+            Whether to return the (fig, ax) tuple and not call plt.show(). If False, calls
+            plt.show() and returns None. By default False.
         **kwargs : dict
             Additional keyword arguments to pass to the fitting functions if the models
             have not been fitted yet.
         Returns
         -------
-        None
+        tuple | None
         """
-        models = ["voigt", "gaussian", "lorentzian"]
+        models = ["voigt", "gaussian", "lorentzian", "none"]
         if model is not None:
             model = model.lower()
             if model not in models + ['all']:
@@ -59,7 +77,7 @@ class Profiles:
         
         if model == 'all':
             model_list = models
-        elif model is None:
+        elif model is None or model == "none":
             model_list = list(self.fitted_y.keys())
         else:
             model_list = [model]
