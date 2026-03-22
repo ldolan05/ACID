@@ -37,7 +37,17 @@ class Profiles:
             Must be provided if all three of the above inputs were not passed, by default None.
         """
 
-        flux -= 1
+        if data is not None:
+            if not getattr(data, 'velocities', None) or not getattr(data, 'profiles', None):
+                raise ValueError("Data instance must have attributes 'velocities' and 'profiles'. Try running ACID first.")
+            velocities = data.velocities
+            flux = data.profiles[0,0] # Subtract 1 to convert from normalized flux to absorption depth
+            flux_err = data.profiles[0,1]
+        else:
+            if velocities is None or flux is None or flux_err is None:
+                raise ValueError("If no data instance is provided, velocities, flux and flux_err must all be provided.")
+
+        flux -= 1 # Subtract 1 to convert from normalized flux to absorption depth
 
         self.velocities = velocities
         self.flux = flux
