@@ -47,4 +47,4 @@ Windows Support
 ---------------
 
 Windows is not supported for multiprocessing as the mp context cannot be set to fork. If a windows system is detected, you will be warned that multiprocessing is not
-supported and then automatically turned off. This project has otherwise not received extensive testing on Windows, there may be other unforseen issues.
+supported and then have multiprocesing automatically turned off. This project has otherwise not received extensive testing on Windows, there may be other unforseen issues.

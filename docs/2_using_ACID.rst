@@ -52,7 +52,7 @@ We can then run ACID and plot the final results:
    velocities = np.arange(-25, 25, deltav)  
 
    # Initiate Acid
-   Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+   Acid = acid.Acid(velocities=velocities, linelist=linelist)
    # Run ACID
    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
 
@@ -107,7 +107,7 @@ Once the inputs have been constructed ACID can be applied and the results plotte
    velocities = np.arange(-25, 25, deltav)  
 
    # run ACID function
-   Acid = acid.Acid(velocities=velocities, linelist_path=linelist_path)
+   Acid = acid.Acid(velocities=velocities, linelist=linelist)
    result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
 
    # plot results
@@ -141,7 +141,7 @@ The feature can be disabled by setting deterministic_profile=False when calling 
 
    # ... same code as before to set up data and run ACID ...
 
-   Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+   Acid = acid.Acid(velocities=velocities, linelist=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, deterministic_profile=True)
    # Now runs ACID with deterministic profile points inferred from the continuum parameters.
 
@@ -178,7 +178,7 @@ by passing them to the ACID function:
 
    # ... same code as before to set up data and run ACID ...
 
-   Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+   Acid = acid.Acid(velocities=velocities, linelist=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
 
 .. code-block:: text
@@ -209,7 +209,7 @@ If we turn on the deterministic profile feature, we see a significant improvemen
 
    # ... same code as before to set up data and run ACID ...
 
-   Acid = acid.Acid(velocities=velocities, linelist_path=linelist)
+   Acid = acid.Acid(velocities=velocities, linelist=linelist)
    result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000, deterministic_profile=True)
 
 .. code-block:: text

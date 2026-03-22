@@ -14,7 +14,7 @@ By default, the ACID method returns a Result object which contains many methods 
     error = spec_file[2].data
     sn = spec_file[3].data
     linelist = 'example_linelist.txt'
-    acid = acid.Acid(velocities, linelist_path)
+    acid = acid.Acid(velocities, linelist)
 
     # We will use the above result object for the rest of this page
     result = acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
