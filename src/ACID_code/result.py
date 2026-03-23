@@ -763,7 +763,7 @@ class Result:
         try:
             self.thin = int(np.min(self.tau)/5)
             if self.converged:
-                self.burnin = int(2 * np.max(self.tau))
+                self.burnin = int(3 * np.max(self.tau))
             else:
                 self.burnin = self.nsteps - 1000 # just the last 1000 steps
         except:
