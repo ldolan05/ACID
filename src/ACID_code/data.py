@@ -607,6 +607,12 @@ class Data:
         if input_sn.shape[0] != input_flux.shape[0]:
             raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
 
+        # Ensure data is sorted by wavelength
+        sort_idx = np.argsort(input_wavelengths, axis=-1)
+        input_wavelengths = np.take_along_axis(input_wavelengths, sort_idx, axis=-1)
+        input_flux = np.take_along_axis(input_flux, sort_idx, axis=-1)
+        input_errors = np.take_along_axis(input_errors, sort_idx, axis=-1)
+
         # Apply skips
         input_wavelengths = input_wavelengths[:, ::skips]
         input_flux       = input_flux[:, ::skips]
@@ -633,7 +639,7 @@ class Data:
             self.errors         = {"input": input_errors}
             self.sn             = {"input": input_sn}
 
-        # Apply skips and set inputs to class variables
+        # Set inputs to class variables
         self.wavelengths["input"] = input_wavelengths
         self.flux["input"]        = input_flux
         self.errors["input"]      = input_errors
