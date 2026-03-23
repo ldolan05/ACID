@@ -29,8 +29,8 @@ class Profiles:
             The flux values of the spectral line profile
             Must be provided if no data instance is passed, by default None.
         flux_err : Array1D, optional
-            The errors associated with the flux values, 
-            Must be provided if no data instance is passed, by default None.
+            The errors associated with the flux values, by default None. If not
+            input, they won't be used in the fitting process.
         data : Data, optional
             A data instance to draw velocities, flux and flux errors. Will raise an
             exception if they do not exist within the class.
@@ -44,8 +44,8 @@ class Profiles:
             flux = data.profiles[0,0] # Subtract 1 to convert from normalized flux to absorption depth
             flux_err = data.profiles[0,1]
         else:
-            if velocities is None or flux is None or flux_err is None:
-                raise ValueError("If no data instance is provided, velocities, flux and flux_err must all be provided.")
+            if velocities is None or flux is None:
+                raise ValueError("If no data instance is provided, then at least velocities and flux must be provided.")
 
         flux -= 1 # Subtract 1 to convert from normalized flux to absorption depth
 
@@ -84,14 +84,14 @@ class Profiles:
             model = model.lower()
             if model not in models + ['all']:
                 raise ValueError("Model must be 'voigt', 'gaussian', 'lorentzian' or 'all'.")
-        
+
         if model == 'all':
-            model_list = models
+            model_list = models[:-1] # Exclude 'none'
         elif model is None or model == "none":
             model_list = list(self.fitted_y.keys())
         else:
             model_list = [model]
-        
+
         for m in model_list:
             if m not in self.fitted_y:
                 fit_func = getattr(self, f"fit_{m}")
