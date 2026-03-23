@@ -354,7 +354,7 @@ def flux_to_od(flux=None, errors=None, linelist=None):
     if linelist is not None:
         out.append(-np.log(1 - linelist))
 
-    return tuple(out)
+    return tuple(out) if len(out) > 1 else out[0]
 
 def od_to_flux(od=None, errors=None, linelist=None):
     """Converts optical depth to flux, errors, and linelist.
@@ -389,7 +389,7 @@ def od_to_flux(od=None, errors=None, linelist=None):
     if linelist is not None:
         out.append(1-np.exp(-linelist))
 
-    return tuple(out)
+    return tuple(out) if len(out) > 1 else out[0]
 
 def configure_mp_environ(os):
     """Configures the multiprocessing environment variables for optimal performance.

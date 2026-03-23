@@ -543,7 +543,7 @@ class Result:
         flux = self.data.flux["combined"]
 
         a, b = utils.get_normalisation_coeffs(wavelengths)
-        profile = utils.flux_to_od(self.combined_profile[0])[0]
+        profile = utils.flux_to_od(self.combined_profile[0])
 
         # Get flat_samples which are the same samples used to calculate the final profile
         flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
