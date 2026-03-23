@@ -206,50 +206,58 @@ class Result:
 
         self.profiles = np.zeros((len(self.data.flux["input"]), 2, len(self.data.velocities)))
 
-        for counter in range(len(self.data.flux["input"])):
-            flux = np.copy(self.data.flux["input"][counter])
-            error = np.copy(self.data.errors["input"][counter])
-            wavelengths = np.copy(self.data.wavelengths["input"][counter])
-            sn = np.copy(self.data.sn["input"][counter])
+        # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
+        # If there is one frame, then the combined_profile is the same as the single frame profile.
 
-            flux = flux[self.data.nanmask]
-            error = error[self.data.nanmask]
-            wavelengths = wavelengths[self.data.nanmask]
+        for counter in range(len(self.data.flux["input"])) + 1:
+            if counter == 0:
+                flux = np.copy(self.data.flux["combined"])[self.data.nanmask]
+                error = np.copy(self.data.errors["combined"])[self.data.nanmask]
+                wavelengths = np.copy(self.data.wavelengths["combined"])[self.data.nanmask]
+                sn = np.copy(self.data.sn["combined"])
+                error[self.data.residual_masks] = 1e12
+            else:
+                flux = np.copy(self.data.flux["input"][counter-1])[self.data.nanmask]
+                error = np.copy(self.data.errors["input"][counter-1])[self.data.nanmask]
+                wavelengths = np.copy(self.data.wavelengths["input"][counter-1])[self.data.nanmask]
+                sn = np.copy(self.data.sn["input"][counter-1])
+
+                # Masking based off residuals interpolated onto new wavelength grid
+                reference_wave = self.data.wavelengths["input"][np.nanargmax(self.data.sn["input"])]
+                reference_wave = reference_wave[self.data.nanmask]
+
+                reference_mask = np.zeros_like(reference_wave, dtype=bool)
+                reference_mask[self.data.residual_masks] = True
+                reference_interp1d = interp1d(reference_wave, reference_mask.astype(float), kind="nearest", bounds_error=False, fill_value=0.0)
+                interpolated_mask = reference_interp1d(wavelengths) > 0.5
+                error[interpolated_mask] = 1e12
 
             # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl1 = P.polyval(norm_wavelengths, self.poly_cos)
-
-            # Masking based off residuals interpolated onto new wavelength grid
-            reference_wave = self.data.wavelengths["input"][np.nanargmax(self.data.sn["input"])]
-            reference_wave = reference_wave[self.data.nanmask]
-            mask_pos = np.ones(reference_wave.shape)
-            mask_pos[self.data.residual_masks]=1e12
-            f2 = interp1d(reference_wave, mask_pos, bounds_error = False, fill_value = np.nan)
-            interp_mask_pos = f2(wavelengths)
-            interp_mask_idx = tuple([interp_mask_pos>=1e12])
-
-            error[interp_mask_idx]=1e12
+            mdl = P.polyval(norm_wavelengths, self.poly_cos)
 
             # correcting continuum
-            error = np.sqrt((error/mdl1)**2 + (continuum_error/mdl1)**2)
-            flux /= mdl1
+            error = np.sqrt((error/mdl)**2 + (continuum_error/mdl)**2)
+            flux /= mdl
 
-            remove = tuple([flux<0])
-            flux[remove] = 1.
-            error[remove] = 1e12
+            # Check whether we can skip alpha by reusing the same alpha, only true if the wavelength grid is identical
+            condition = np.all(wavelengths==self.data.wavelengths["combined"])
+            alpha = self.data.alpha if condition is True else None
 
             LSD_profiles = LSD(self.data)
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn, alpha=alpha)
 
             profile_f = LSD_profiles.profile_F
             profile_errors_f = LSD_profiles.profile_errors_F
-            # profile_f = profile_f-1
 
-            self.profiles[counter]=[profile_f, profile_errors_f]
+            if counter == 0:
+                self.combined_profile = [profile_f, profile_errors_f]
+            else:
+                self.profiles[counter-1] = [profile_f, profile_errors_f]
 
         self.data.profiles = self.profiles # point Data.profiles to Result.profiles to keep them in sync
+        self.data.combined_profiles = self.combined_profile
         self.data.get_profiles_time = time() - t0
         self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
 

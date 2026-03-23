@@ -328,9 +328,10 @@ class Data:
     ndim     : Optional[int]        = None
 
     # Data required/calculated in results/after MCMC sampling
-    profiles : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
-    nsteps     : Optional[int]        = 0
-    max_steps  : Optional[int]        = None
+    profiles          : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
+    combined_profiles : Optional[np.ndarray] = None
+    nsteps            : Optional[int]        = 0
+    max_steps         : Optional[int]        = None
 
     # Other useful data and figures:
     initialisation_time : Optional[float] = None  # time taken for initialization
