@@ -209,7 +209,7 @@ class Result:
         # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
         # If there is one frame, then the combined_profile is the same as the single frame profile.
 
-        for counter in range(len(self.data.flux["input"])) + 1:
+        for counter in range(len(self.data.flux["input"])+1):
             if counter == 0:
                 flux = np.copy(self.data.flux["combined"])[self.data.nanmask]
                 error = np.copy(self.data.errors["combined"])[self.data.nanmask]
