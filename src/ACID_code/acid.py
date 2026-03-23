@@ -1,4 +1,5 @@
 from __future__ import annotations
+import contextlib
 import warnings
 warnings.filterwarnings("ignore")
 import sys, emcee, os, time, inspect, inspect
@@ -169,7 +170,7 @@ class Acid:
             if linelist is not None or linelist_wl is not None or linelist_depths is not None:
                 raise ValueError("Use either 'linelist', or legacy 'linelist_path', not both. See the API for more details.")
             linelist = kwargs.pop("linelist_path")
-            if self.verbose > 0:
+            if self.config.verbose > 0:
                 print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
                 f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
         # Anything left in kwargs is invalid
@@ -957,8 +958,11 @@ class Acid:
                     step_number += self.config.check_interval
 
                     try:
-                        # We want to keep the time for get_autocorr_time to run constant, so thin accordingly 
-                        tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
+                        # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
+                        with open(os.devnull, "w") as devnull, \
+                            contextlib.redirect_stdout(devnull), \
+                            contextlib.redirect_stderr(devnull):
+                            tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
                     except emcee.autocorr.AutocorrError:
                         continue
 
@@ -983,7 +987,11 @@ class Acid:
                 step_number += self.config.check_interval
 
                 try:
-                    tau = self.sampler.get_autocorr_time(tol=0)
+                    # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
+                    with open(os.devnull, "w") as devnull, \
+                        contextlib.redirect_stdout(devnull), \
+                        contextlib.redirect_stderr(devnull):
+                        tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
                 except emcee.autocorr.AutocorrError:
                     continue
 
