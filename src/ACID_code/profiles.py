@@ -4,7 +4,7 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
 from scipy.special import wofz
-from utils import Array1D
+from .utils import Array1D
 from .data import Data
 
 @beartype
