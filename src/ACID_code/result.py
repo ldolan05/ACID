@@ -497,18 +497,15 @@ class Result:
     @_require_profiles
     def plot_forward_model(
         self,
-        input_version   :str       = "masked",
         grid            :bool      = True,
         labels          :dict|None = None,
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
         ) -> None | tuple:
-        """Plots the forward model fit to the observed spectrum.
+        """Plots the forward model calculated from the final profiles to the combined input spectrum.
 
         Parameters
         ----------
-        input_version : str, optional
-            Which input spectrum to use: 'combined', 'input', 'masked', by default 'masked'
         grid : bool, optional
             Show or hide grid, by default True
         labels : dict | None, optional
@@ -523,11 +520,6 @@ class Result:
         If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing the plot.
         Otherwise, displays the plot and returns None.
         """
-
-        # Validate all inputs and set defaults
-        input_version = input_version.lower()
-        if input_version not in self.data.wavelengths.keys():
-            raise ValueError(f"input_version must be one of {list(self.data.wavelengths.keys())}")
         
         # Set default labels
         default_labels = {
@@ -547,20 +539,26 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
 
         # Get input data
-        input_wavelengths = self.data.wavelengths[input_version]
-        input_flux = self.data.flux[input_version]
-        input_errors = self.data.errors[input_version]
+        wavelengths = self.data.wavelengths["combined"]
+        flux = self.data.flux["combined"]
 
-        # Get model flux
-        samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
-        theta_median = np.median(samples, axis=0)
-        model_flux, _ = self.model(theta_median)
+        a, b = utils.get_normalisation_coeffs(wavelengths)
+        profile = utils.flux_to_od(self.combined_profile[0])[0]
+
+        # Get flat_samples which are the same samples used to calculate the final profile
+        flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
+        nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
+        poly_samples = flat_samples[:, nvel:] # continuum polynomial samples
+        continuum_model = P.polyval(wavelengths*a+b, np.median(poly_samples, axis=0))
+        model_flux = np.exp(- (self.data.alpha @ profile)) * continuum_model
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
-        ax[0].plot(input_wavelengths, input_flux, color='black', linewidth=1, label='Observed Spectrum')
-        ax[0].plot(input_wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
-        ax[1].plot(input_wavelengths, input_flux - model_flux, color='C0', linewidth=1, label='Residuals')
+        ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
+        ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
+        ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
+        ax[1].plot(wavelengths, flux - model_flux, color='C0', linewidth=1, label='Residuals')
+        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].set_title(labels["title"])
         ax[1].set_xlabel(labels["xlabel"])
         ax[0].set_ylabel(labels["ylabel"])
