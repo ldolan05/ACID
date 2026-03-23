@@ -211,9 +211,9 @@ class Result:
 
         for counter in range(len(self.data.flux["input"])+1):
             if counter == 0:
-                flux = np.copy(self.data.flux["combined"])[self.data.nanmask]
-                error = np.copy(self.data.errors["combined"])[self.data.nanmask]
-                wavelengths = np.copy(self.data.wavelengths["combined"])[self.data.nanmask]
+                flux = np.copy(self.data.flux["combined"])
+                error = np.copy(self.data.errors["combined"])
+                wavelengths = np.copy(self.data.wavelengths["combined"])
                 sn = np.copy(self.data.sn["combined"])
                 error[self.data.residual_masks] = 1e12
             else:
