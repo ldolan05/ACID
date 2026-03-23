@@ -6,15 +6,18 @@ from __future__ import annotations
 from beartype import beartype
 from .data import Data
 from . import utils
+from .utils import Array2D
 from astropy.io import fits
 
 @beartype
 class Load:
+
     def __init__(
             self,
-            instrument: str,
-            file      : str,
-            blaze_file: str|None = None,
+            instrument    : str,
+            file          : str,
+            blaze_file    : str|None     = None,
+            blaze_profile : Array2D|None = None
             ):
         """
         Parameters
@@ -22,6 +25,16 @@ class Load:
         instrument : str
             The name of the instrument the data was taken with. This will determine how the data is loaded and configured.
             Current options are "HARPS", "HARPS-N", "GEMINI-GHOST", "GEMINI-GRACES"
+        file : str
+            The path to the fits file containing the data to be loaded.
+        blaze_file : str, optional
+            The path to the fits file containing the blaze profile for the data to be loaded.
+            If not provided, no blaze correction is applied. By default, None
+        blaze_profile : Array2D, optional
+            Instead load the blaze profile yourself and input it here. This will override the blaze_file input if 
+            both are provided. By default, None
+        
+        
         """
 
         self.file = file
@@ -66,6 +79,12 @@ class Load:
         # Load data into class
         self.hdul = fits.open(file) # standard astropy error catching will catch if this fails
         self.loader(self.hdul)
+
+        # If blaze profile is provided, load it
+        if blaze_profile is not None:
+            self.data.blaze = blaze_profile
+        elif blaze_file is not None:
+            pass # TODO: load blaze file and save to self.data.blaze or tailor blaze files to each instrument
 
     def HARPS(self):
         # La Silla HARPS spectra
