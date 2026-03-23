@@ -267,11 +267,22 @@ class Result:
     def __getitem__(self, item) -> np.ndarray:
         """Allows indexing into the profiles array directly from the Result object.
         """
-        # Legacy support for indexing style
-        if isinstance(item, tuple) and len(item) == 3:
-            _order, frame, velocity = item
-            item = (frame, velocity)
-
+        if isinstance(item, tuple):
+            if len(item) == 3:
+                # Legacy support for indexing style
+                _order, frame, velocity = item
+                item = (frame, velocity)
+            elif len(item) == 2:
+                item = item
+            elif len(item) == 1:
+                return self.combined_profile[item[0]]
+        elif isinstance(item, int):
+            return self.combined_profile[item]
+        elif isinstance(item, str):
+            if "combined" in item.lower():
+                return self.combined_profile
+            elif "profile" in item.lower():
+                return self.profiles
         return self.profiles[item]
 
     @_require_profiles
