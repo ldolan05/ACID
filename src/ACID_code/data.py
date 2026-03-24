@@ -844,7 +844,11 @@ class DataList:
         if len(np.unique(self.orders)) != len(self.orders):
             raise ValueError("All Data instances within the inputted list must have unique order numbers.")
 
-    def run_ACID(self, orders:Array1D|int|str|None=None, store_sampler:bool=True) -> None:
+    def run_ACID(
+        self,
+        orders        : Array1D|int|str|None = None,
+        store_sampler : bool                 = True
+        ) -> None:
         from .acid import Acid
 
         if isinstance(orders, int):
@@ -867,7 +871,10 @@ class DataList:
         for order in orders:
             result = Acid(data=self.data_list[self.o2i[order]]).ACID()
             if self.save_dir is not None:
-                result.save(os.path.join(self.save_dir, f"result_order_{order}.pkl"), store_sampler=store_sampler)
+                results_dir = os.path.join(self.save_dir, "results")
+                os.makedirs(results_dir, exist_ok=True)
+                save_path = os.path.join(results_dir, f"order_{order}.pkl")
+                result.save(save_path, store_sampler=store_sampler)
         return
 
     @classmethod
