@@ -204,12 +204,11 @@ class Result:
         conts = (coeffs @ powers.T)
         continuum_error = np.std(conts, axis=0)
 
-        self.profiles = np.zeros((len(self.data.flux["input"]), 2, len(self.data.velocities)))
-
         # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
         # If there is one frame, then the combined_profile is the same as the single frame profile.
-
-        for counter in range(len(self.data.flux["input"])+1):
+        nframes = len(self.data.flux["input"])
+        self.profiles = np.zeros((nframes, 2, len(self.data.velocities)))
+        for counter in range(nframes+1):
             if counter == 0:
                 flux = np.copy(self.data.flux["combined"])
                 error = np.copy(self.data.errors["combined"])
