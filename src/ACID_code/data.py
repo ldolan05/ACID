@@ -581,6 +581,10 @@ class Data:
         # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
         input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
 
+        # Check that none of the inputs are all nan
+        if np.all(np.isnan(input_wavelengths)) or np.all(np.isnan(input_flux)) or np.all(np.isnan(input_errors)):
+            raise ValueError("Any of the input wavelengths, spectra, and errors cannot be all NaN.")
+
         # Guess sn if input_sn not provided
         if input_sn is None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
