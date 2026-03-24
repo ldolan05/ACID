@@ -844,6 +844,75 @@ class DataList:
         if len(np.unique(self.orders)) != len(self.orders):
             raise ValueError("All Data instances within the inputted list must have unique order numbers.")
 
+    def run_ACID(self, orders:Array1D|int|str|None=None, store_sampler:bool=True) -> None:
+        from .acid import Acid
+
+        if isinstance(orders, int):
+            orders = [orders]
+        elif isinstance(orders, str):
+            if orders == "all":
+                orders = self.orders
+            else:
+                raise ValueError("If orders is a string, it must be 'all' to run ACID on all orders. Got: {orders!r}")
+        elif orders is None:
+            orders = self.orders
+        elif isinstance(orders, list):
+            if not all(isinstance(o, int) for o in orders):
+                raise ValueError("If orders is a list, all elements must be integers. Got: {orders!r}")
+            if not all(o in self.orders for o in orders):
+                raise ValueError("All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+        else:
+            raise ValueError("orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
+
+        for order in orders:
+            result = Acid(data=self.data_list[self.o2i[order]]).ACID()
+            if self.save_dir is not None:
+                result.save(os.path.join(self.save_dir, f"result_order_{order}.pkl"), store_sampler=store_sampler)
+        return
+
+    @classmethod
+    def create(
+        cls,
+        wavelengths : Array2D                        = None,
+        flux        : Array2D                        = None,
+        errors      : Array2D                        = None,
+        sn          : Array1D                        = None,
+        order_range : Array1D|None                   = None,
+        load                                         = None,
+        config      : Config|None                    = None,
+        linelist    : Array2D|None|str|LineList|dict = None,
+        velocities  : Array1D|None                   = None,
+        save_dir    : str|None                       = None,
+        verbose     : IntLike|bool|None              = None,
+        ) -> DataList:
+
+        if load is not None:
+            from .load import Load
+            if not isinstance(load, Load):
+                raise ValueError("load must be an instance of the Load class. Got: {load!r}")
+            wavelengths, flux, errors, sn = load.get_data()
+            order_range = load.order_range
+
+        if order_range is None:
+            order_range = np.arange(len(wavelengths))
+
+        if len(order_range) != len(wavelengths):
+            raise ValueError("The length of the order_range must match the number of frames in the input data.")
+
+        config_dict = config.to_dict() if config is not None else {}
+
+        datalist = []
+        for order in order_range:
+            data = Data()
+            data.set_inputs(wavelengths[order], flux[order], errors[order], sn[order])
+            data.set_linelist(linelist=linelist)
+            data.velocities = velocities
+            config_dict["order"] = order
+            data.config = Config(**config_dict)
+            datalist.append(data)
+
+        return cls(datalist, save_dir=save_dir, verbose=verbose)
+
     def save(self, save_dir:str|None=None):
         d = {}
         self.save_dir = save_dir
@@ -870,9 +939,8 @@ class DataList:
     @save_dir.setter
     def save_dir(self, dir):
         if dir is None:
-            return # do not change save_dir
-        if not os.path.isdir(dir):
-            raise ValueError(f"save_dir must be a valid path to a directory to save the DataList, or None to not save to disk. Got: {dir}")
+            return None
+        os.mkdir(dir, exist_ok=True)
         self._save_dir = dir
 
 class LineList:
