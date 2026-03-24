@@ -4,7 +4,8 @@ Each function will load a data object that can be directly input into the ACID i
 """
 from __future__ import annotations
 from beartype import beartype
-from .data import Data
+import numpy as np
+from .data import Data, DataList
 from . import utils
 from .utils import Array2D
 from astropy.io import fits
@@ -33,9 +34,8 @@ class Load:
         blaze_profile : Array2D, optional
             Instead load the blaze profile yourself and input it here. This will override the blaze_file input if 
             both are provided. By default, None
-        
-        
         """
+        raise NotImplementedError("This class is still in development and not yet ready for use. Please check back later.")
 
         self.file = file
         self.blaze_file = blaze_file
@@ -86,18 +86,46 @@ class Load:
         elif blaze_file is not None:
             pass # TODO: load blaze file and save to self.data.blaze or tailor blaze files to each instrument
 
+    def to_datalist(self, **kwargs) -> DataList:
+        datalist = DataList.create(
+            wavelengths = self.wavelengths,
+            flux        = self.flux,
+            errors      = self.errors,
+            sn          = self.sn,
+            order_range = self.order_range,
+            **kwargs,
+        )
+        return datalist
+
     def HARPS(self):
         # La Silla HARPS spectra
         try:
             hdr = self.hdul[0].header
             data = self.hdul[0].data
+            wavelengths = self.hdul[1].data
         except Exception as e:
             raise ValueError(self.load_exception + str(e))
-            
-        pass
+
+
+        if self.blaze_profile is not None:
+            try:
+                blaze_hdu = fits.open(self.blaze_file)
+                blaze_profiles = np.array(blaze_hdu[0].data)
+                self.flux = data / blaze_profiles
+            except:
+                print("Error loading blaze profile. No blaze correction applied.")
+
+        return
 
     def HARPS_N(self):
-        # La Palma HARPS-N spectra
+        hdul = fits.open(self.file)
+        hdr = hdul[0].header
+        flux = hdul[1].data
+        errors = hdul[2].data
+        dq = hdul[3].data
+        wavelengths = hdul[5].data
+        sn = np.array([hdr[f"HIERARCH TNG QC ORDER{i+1} SNR"] for i in range(len(flux))])
+
         pass
 
     def GEMINI_GHOST(self):
