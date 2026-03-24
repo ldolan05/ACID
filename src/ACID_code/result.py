@@ -242,8 +242,8 @@ class Result:
             flux /= mdl
 
             # Check whether we can skip alpha by reusing the same alpha, only true if the wavelength grid is identical
-            condition = np.all(wavelengths==self.data.wavelengths["combined"])
-            alpha = self.data.alpha if condition is True else None
+            condition = np.array_equal(wavelengths, self.data.wavelengths["combined"])
+            alpha = self.data.alpha if condition else None
 
             LSD_profiles = LSD(self.data)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn, alpha=alpha)
