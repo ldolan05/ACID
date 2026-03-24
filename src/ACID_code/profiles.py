@@ -16,7 +16,7 @@ class Profiles:
             velocities : Array1D = None,
             flux       : Array1D = None,
             flux_err   : Array1D = None,
-            data       : Data    = None
+            data       : Data    = None,
         ) -> None:
         """Initializes the Profiles class with velocity, flux, and optional flux error data.
 
@@ -34,7 +34,7 @@ class Profiles:
         data : Data, optional
             A data instance to draw velocities, flux and flux errors. Will raise an
             exception if they do not exist within the class.
-            Must be provided if all three of the above inputs were not passed, by default None.
+            Must be provided if all three of the above inputs were not passed, by default None. 
         """
 
         if data is not None:
