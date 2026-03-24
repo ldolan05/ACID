@@ -89,9 +89,9 @@ class LSD:
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
         if len(wavelengths_linelist) == 0:
-            raise ValueError(f"No lines in linelist are within the wavelength range of the observed spectrum. "\
-                             f"Please check your linelist and input spectrum. You may have mismatched wavelengths "\
-                             f"units between linelist and spectrum or an empty linelist.")
+            raise ValueError(f"No lines in linelist are within the wavelength range of the observed spectrum. \n"\
+                             f"You may have mismatched wavelengths units between linelist and spectrum or an empty linelist.\n"\
+                             f"Please check your linelist and input spectrum.")
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
