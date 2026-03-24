@@ -767,8 +767,10 @@ class DataList:
             data_list = [data_list]
 
         if verbose is not None:
-            self.data[0].config.verbose = verbose # verbose in config is a property and has good validation
-            self.verbose = self.data[0].config.verbose
+            old_verbose = np.copy(data_list[0].config.verbose)
+            data_list[0].config.verbose = verbose # verbose in config is a property and has good validation
+            self.verbose = np.copy(data_list[0].config.verbose)
+            data_list[0].config.verbose = old_verbose # reset to old verbose
         else:
             self.verbose = np.max([data.config.verbose for data in data_list])
 
