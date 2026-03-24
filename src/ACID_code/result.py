@@ -553,7 +553,7 @@ class Result:
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
         ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        ax[1].plot(wavelengths, flux - model_flux, color='C0', linewidth=1, label='Residuals')
+        ax[1].plot(wavelengths, model_flux - flux, color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].set_title(labels["title"])
         ax[1].set_xlabel(labels["xlabel"])
