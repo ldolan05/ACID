@@ -162,13 +162,11 @@ class Result:
         # Obtain flattened samples
         flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
-        # Getting the final profile and continuum values - median of last 1000 steps
+        # Getting the final profile and continuum values
         nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
         errors = np.max(errors, axis=0) # why?
-        self.profile       = quartiles[1, :nvel]
-        self.profile_err   = errors[:nvel]
         self.poly_cos      = quartiles[1, nvel:]
         self.poly_cos_err  = errors[nvel:]  
 
@@ -191,7 +189,6 @@ class Result:
         n_samples, ncoeffs = coeffs.shape
         npix = powers.shape[0]
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 * 1e-9
-
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
             if self.config.verbose > 0:
