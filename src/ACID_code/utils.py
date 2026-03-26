@@ -321,6 +321,21 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
     robust_data = np.where(mask, data, np.nan)
     return np.nanmean(robust_data, axis=axis)
 
+@beartype
+def combine_profiles(
+    spectra : Array2D,
+    errors  : Array2D,
+    ) -> tuple[Array1D, Array1D]:
+    
+    spectra = np.asarray(spectra)
+    errors = np.asarray(errors)
+
+    weights = 1.0 / errors**2
+    combined_spectrum = np.sum(weights * spectra, axis=0) / np.sum(weights, axis=0)
+    combined_errors = np.sqrt(1.0 / np.sum(weights, axis=0))
+
+    return combined_spectrum, combined_errors
+
 def flux_to_od(flux=None, errors=None, linelist=None):
     """Converts flux, errors, and linelist to optical depth.
 
