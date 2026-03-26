@@ -996,12 +996,14 @@ class DataList:
     def combine_profiles(self, exclude:int|list):
         if isinstance(exclude, int):
             exclude = [exclude]
-        
+
         if not all(o in self.orders for o in exclude):
             raise ValueError("All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
-        
+
         profiles = [data.combined_profile[0] for data in self.data_list if data.config.order not in exclude]
         errors = [data.combined_profile[1] for data in self.data_list if data.config.order not in exclude]
+
+        return utils.combine_profiles(profiles, errors)
 
 class LineList:
     """A simple class to expose the linelist when called in Data"""

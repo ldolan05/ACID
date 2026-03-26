@@ -1106,54 +1106,6 @@ class Acid:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
 
-    @staticmethod
-    def combineprofiles(
-        spectra: Array2D,
-        errors: Array2D,
-        ):
-        spectra = np.asarray(spectra)
-        errors = np.asarray(errors)
-        if spectra.shape != errors.shape:
-            raise ValueError(f"Spectra and errors must have the same shape. Got {spectra.shape} and {errors.shape}.")
-
-        # idx = np.isnan(spectra)
-        # shape_og = spectra.shape
-        # if len(spectra[idx])>0:
-        #     spectra = spectra.reshape((len(spectra)*len(spectra[0]), ))
-        #     for n in range(len(spectra)):
-        #         if spectra[n] == np.nan:
-        #             spectra[n] = (spectra[n+1]+spectra[n-1])/2
-        #             if spectra[n] == np.nan:
-        #                 spectra[n] = 0.
-        # spectra = spectra.reshape(shape_og)
-        # errors = np.array(errors)
-
-        spectra_to_combine = []
-        weights=[]
-        for n in range(0, len(spectra)):
-            if np.sum(spectra[n])!=0:
-                spectra_to_combine.append(list(spectra[n]))
-                temp_err = np.array(errors[n, :])
-                weight = (1/temp_err**2)
-                weights.append(np.mean(weight))
-        weights = np.array(weights/sum(weights))
-
-        spectra_to_combine = np.array(spectra_to_combine)
-
-        length, width = np.shape(spectra_to_combine)
-        spectrum = np.zeros((1,width))
-        spec_errors = np.zeros((1,width))
-
-        for n in range(0, width):
-            temp_spec = spectra_to_combine[:, n]
-            spectrum[0,n]=sum(weights*temp_spec)/sum(weights)
-            spec_errors[0,n] = (np.std(temp_spec, ddof=1)**2) * np.sqrt(sum(weights**2))
-
-        spectrum = list(np.reshape(spectrum, (width,)))
-        spec_errors = list(np.reshape(spec_errors, (width,)))
-
-        return spectrum, spec_errors
-
 # All code below is just to ensure backward compatibility with previous ACID versions
 def ACID(*args, **kwargs):
     """Legacy ACID function
