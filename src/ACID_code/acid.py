@@ -326,7 +326,7 @@ class Acid:
             recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
             Only used if max_steps is set.
         tau_tol : float, optional
-            Tolerance for tau convergence in MCMC stopping criterion, by default 0.05. Only used if max_steps is set.
+            Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
         moves : list[tuple], optional
             A list of tuples specifying the moves for the MCMC sampler. The format
             tries to follow the emcee documentation as closely as possible.

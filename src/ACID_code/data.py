@@ -157,7 +157,7 @@ class Config:
         "check_interval" : 1000,
         "min_checks" : 1,
         "min_tau_factor" : 50,
-        "tau_tol" : 0.05,
+        "tau_tol" : 0.1,
         "moves" : [
             ("StretchMove", 0.20, {}),
             ("DESnookerMove", 0.1, {}),
