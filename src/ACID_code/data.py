@@ -885,7 +885,7 @@ class DataList:
         else:
             raise ValueError(f"orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
 
-        iterable = tqdm(orders, "Running ACID on orders", unit="orders") if self.verbose > 1 else orders
+        iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose > 1 else orders
         for order in iterable:
             if self.save_dir is not None:
                 # Define save location
