@@ -109,7 +109,7 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     if verbose > 0:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         if num_invalid > 0:
-            print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-finite/nan values, these will be replaced with NaN and dropped when necessary, \n"
+            print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values, which will be dropped when necessary, \n"
                   f"but it is still recommended to check your wavelength, spectrum and error arrays for bad pixels and make sure this is intentional.")
 
     if return_mask:
