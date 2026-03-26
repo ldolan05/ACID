@@ -552,14 +552,16 @@ class Data:
         del inputs # it was just a trick to do the input checks in a loop
 
         if inputs_already_exist:
-            if not all_inputs_not_none and any_inputs_not_none and self.config.verbose > 0:
-                print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
-                      f"Some of the inputs you provided are None. \n" \
-                      f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
-                      f"The current input wavelengths, flux, and errors will be kept.")
+            if not all_inputs_not_none and any_inputs_not_none:
+                if self.config.verbose > 0:
+                    print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
+                        f"Some of the inputs you provided are None. \n" \
+                        f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
+                        f"The current input wavelengths, flux, and errors will be kept.")
                 return
-            elif not any_inputs_not_none and self.config.verbose > 1:
-                print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
+            elif not any_inputs_not_none:
+                if self.config.verbose > 2:
+                    print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
                 return
             # Else continue with the rest of the function to update inputs, later on, the code will check if new inputs are 
             # different from the existing ones, if so, deletes variables that need to be recalculated.
