@@ -761,8 +761,10 @@ class Data:
 
 @beartype
 class DataList:
-    """A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
-    by result. This can map the order number of an instrument to the 0-indexed python list."""
+    """
+    A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
+    by result. This can map the order number of an instrument to the 0-indexed python list.
+    """
     def __init__(self, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|None=None):
         # All configs should have the same order_range so that they are internally aware. We just take the first one to 
         # generate the mapping of order to index in the list. The Load class will configure the correct order range based
@@ -790,7 +792,7 @@ class DataList:
         self.sort_by_order() # generates self.orders and self.o2i
 
         self._save_dir = None
-        self.save_dir = save_dir # property setter handles input
+        self.save_dir = save_dir if save_dir is not None else None
 
     def __iter__(self):
         yield from self.data_list
@@ -800,6 +802,9 @@ class DataList:
 
     def __repr__(self):
         return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"
+
+    def __call__(self, **kwargs):
+        return self.run_ACID(**kwargs)
 
     def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
         """Appends a Data instance to the data list
@@ -847,7 +852,8 @@ class DataList:
     def run_ACID(
         self,
         orders        : Array1D|int|str|None = None,
-        store_sampler : bool                 = True
+        store_sampler : bool                 = True,
+        allow_overwrite : bool                 = False,
         ) -> None:
         from .acid import Acid
 
@@ -869,11 +875,18 @@ class DataList:
             raise ValueError("orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
 
         for order in orders:
-            result = Acid(data=self.data_list[self.o2i[order]]).ACID()
             if self.save_dir is not None:
+                # Define save location
                 results_dir = os.path.join(self.save_dir, "results")
                 os.makedirs(results_dir, exist_ok=True)
                 save_path = os.path.join(results_dir, f"order_{order}.pkl")
+                if os.path.exists(save_path) and not allow_overwrite:
+                    raise ValueError(f"ACID result for order {order} already exists at {save_path}. \n" \
+                                    "If you want to overwrite it, set allow_overwrite=True in the run_ACID method.")
+
+            result = Acid(data=self.data_list[self.o2i[order]]).ACID()
+
+            if self.save_dir is not None:
                 result.save(save_path, store_sampler=store_sampler)
         return
 
@@ -894,6 +907,7 @@ class DataList:
         ) -> DataList:
 
         if load is not None:
+            raise NotImplementedError("The 'load' argument in DataList.create() is not yet implemented.")
             from .load import Load
             if not isinstance(load, Load):
                 raise ValueError("load must be an instance of the Load class. Got: {load!r}")
@@ -922,7 +936,8 @@ class DataList:
 
     def save(self, save_dir:str|None=None):
         d = {}
-        self.save_dir = save_dir
+        if save_dir is not None:
+            self.save_dir = save_dir
         if self.save_dir is None:
             raise ValueError("No save path provided and save_dir was not set.")
         d["dict_list"] = [data.to_dict() for data in self.data_list]
@@ -946,9 +961,20 @@ class DataList:
     @save_dir.setter
     def save_dir(self, dir):
         if dir is None:
-            return None
+            self._save_dir = None
+            return
         os.mkdir(dir, exist_ok=True)
         self._save_dir = dir
+
+    def combine_profiles(self, exclude:int|list):
+        if isinstance(exclude, int):
+            exclude = [exclude]
+        
+        if not all(o in self.orders for o in exclude):
+            raise ValueError("All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
+        
+        profiles = [data.combined_profile[0] for data in self.data_list if data.config.order not in exclude]
+        errors = [data.combined_profile[1] for data in self.data_list if data.config.order not in exclude]
 
 class LineList:
     """A simple class to expose the linelist when called in Data"""
