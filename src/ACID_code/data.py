@@ -1,11 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from beartype import beartype
+from tqdm import tqdm
+import traceback as tb
+from time import sleep
 from typing import Any, Dict, Optional
 from .utils import Array1D, c_kms
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import pickle, os
+import pickle, os, sys
 import numpy as np
 from . import utils
 from .utils import IntLike, Array1D, Array2D, Scalar
@@ -332,6 +335,12 @@ class Data:
     combined_profiles : Optional[np.ndarray] = None
     nsteps            : Optional[int]        = 0
     max_steps         : Optional[int]        = None
+
+    # The samples are stored as an array of shape (nwalkers, nsteps, ndim), and not as an emcee sampler object to save memory.
+    # It is already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
+    # they must store the sampler with the result object by configuring the output.
+    samples  : Optional[np.ndarray] = None # flatten with v = v.reshape(-1, *v.shape[2:])
+    complete : bool                 = False # is set to True when the profiles have been fully calculated
 
     # Other useful data and figures:
     initialisation_time : Optional[float] = None  # time taken for initialization
@@ -775,9 +784,9 @@ class DataList:
             data_list = [data_list]
 
         if verbose is not None:
-            old_verbose = np.copy(data_list[0].config.verbose)
+            old_verbose = int(np.copy(data_list[0].config.verbose))
             data_list[0].config.verbose = verbose # verbose in config is a property and has good validation
-            self.verbose = np.copy(data_list[0].config.verbose)
+            self.verbose = int(np.copy(data_list[0].config.verbose))
             data_list[0].config.verbose = old_verbose # reset to old verbose
         else:
             self.verbose = np.max([data.config.verbose for data in data_list])
@@ -855,7 +864,7 @@ class DataList:
         self,
         orders        : Array1D|int|str|None = None,
         store_sampler : bool                 = True,
-        allow_overwrite : bool                 = False,
+        allow_overwrite : bool               = False,
         ) -> None:
         from .acid import Acid
 
@@ -865,31 +874,47 @@ class DataList:
             if orders == "all":
                 orders = self.orders
             else:
-                raise ValueError("If orders is a string, it must be 'all' to run ACID on all orders. Got: {orders!r}")
+                raise ValueError(f"If orders is a string, it must be 'all' to run ACID on all orders. Got: {orders!r}")
         elif orders is None:
             orders = self.orders
-        elif isinstance(orders, list):
-            if not all(isinstance(o, int) for o in orders):
-                raise ValueError("If orders is a list, all elements must be integers. Got: {orders!r}")
+        elif isinstance(orders, (list, np.ndarray)):
+            if not all(isinstance(o, (int, np.integer)) for o in orders):
+                raise ValueError(f"If orders is a list, all elements must be integers. Got: {orders!r}")
             if not all(o in self.orders for o in orders):
-                raise ValueError("All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+                raise ValueError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
         else:
-            raise ValueError("orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
+            raise ValueError(f"orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
 
-        for order in orders:
+        iterable = tqdm(orders, "Running ACID on orders", unit="orders") if self.verbose > 1 else orders
+        for order in iterable:
             if self.save_dir is not None:
                 # Define save location
                 results_dir = os.path.join(self.save_dir, "results")
                 os.makedirs(results_dir, exist_ok=True)
                 save_path = os.path.join(results_dir, f"order_{order}.pkl")
                 if os.path.exists(save_path) and not allow_overwrite:
-                    raise ValueError(f"ACID result for order {order} already exists at {save_path}. \n" \
-                                    "If you want to overwrite it, set allow_overwrite=True in the run_ACID method.")
+                    if self.verbose > 1:
+                        print(f"ACID result for order {order} already exists at {save_path}. \n"
+                                f"Skipping this order. To overwrite existing results, set allow_overwrite=True.")
+                    continue
 
-            result = Acid(data=self.data_list[self.o2i[order]]).ACID()
+            try:
+                acid = Acid(data=self.data_list[self.o2i[order]])
+            except Exception:
+                print(f"Error initializing ACID on order {order}. Skipping this order. Error message:\n", flush=True)
+                tb.print_exc(limit=-3)
+                continue
+
+            try:
+                result = acid.ACID()
+            except Exception:
+                print(f"Error running ACID on order {order}. The Data instance will have updated upto the exception."
+                      f"\nSkipping this order. Error message:", flush=True)
+                tb.print_exc(limit=-3)
+                continue
 
             if self.save_dir is not None:
-                result.save(save_path, store_sampler=store_sampler)
+                result.save_result(save_path, store_sampler=store_sampler)
         return
 
     @classmethod
@@ -965,7 +990,7 @@ class DataList:
         if dir is None:
             self._save_dir = None
             return
-        os.mkdir(dir, exist_ok=True)
+        os.makedirs(dir, exist_ok=True)
         self._save_dir = dir
 
     def combine_profiles(self, exclude:int|list):
