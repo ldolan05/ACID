@@ -202,13 +202,12 @@ def deterministic_test():
 
         # run ACID function
         Acid = acid.Acid(velocities=velocities, linelist=linelist)
-        result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=nsteps, parallel=True, deterministic_profile=True, skips=skips)
+        result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=nsteps, parallel=True, deterministic_profile=False, skips=skips)
         result.plot_walkers()
         return result
     
-    res_deterministic_fit = deterministic_profile_fit(skips=3, nsteps=5000)
+    res_deterministic_fit = deterministic_profile_fit(skips=3, nsteps=2000)
     res = res_deterministic_fit
-    res.continue_sampling(nsteps=1000)
     res.plot_walkers()
     res.plot_profiles()
     res.plot_corner()
