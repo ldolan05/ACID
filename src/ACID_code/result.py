@@ -191,7 +191,7 @@ class Result:
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 * 1e-9
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
-            if self.config.verbose > 0:
+            if self.config.verbose > 1:
                 print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
                 "Calculating with a max of 1000 random samples instead.")
             indices_size = min(1000, n_samples)
