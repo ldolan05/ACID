@@ -542,10 +542,7 @@ class Result:
         profile = utils.flux_to_od(self.combined_profile[0])
 
         # Get flat_samples which are the same samples used to calculate the final profile
-        flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
-        nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
-        poly_samples = flat_samples[:, nvel:] # continuum polynomial samples
-        continuum_model = P.polyval(wavelengths*a+b, np.median(poly_samples, axis=0))
+        continuum_model = P.polyval(wavelengths*a+b, self.poly_cos)
         model_flux = np.exp(- (self.data.alpha @ profile)) * continuum_model
 
         # Plotting
@@ -815,7 +812,7 @@ class Result:
         self.model = MCMC_class.run_model_function
 
     @_require_data
-    @_require_sampler
+    @_require_sampler # TODO check if necessary
     def save_result(self, filename:str="result.pkl", store_sampler:bool=True) -> None:
         """Saves the Result object to a pickle file.
 
