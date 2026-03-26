@@ -11,7 +11,7 @@ from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
-from .data import Config
+from .data import Config, Data
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D
 
 @beartype
@@ -21,20 +21,20 @@ class LSD:
     for the initial parameters of the ACID mcmc run and for obtaining final profiles. It 
     can also be used as a standalone LSD implementation.
     """
-    def __init__(self, Data:object|None=None):
+    def __init__(self, data:object|None=None):
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
         Parameters
         ----------
-        Data : object | None, optional
+        data : object | None, optional
             A data instance to draw parameters and configs from, by default None
         """
         self.slurm            = "SLURM_JOB_ID" in os.environ
-        self.data             = Data if Data is not None else None
-        self.linelist         = Data.linelist if Data is not None else None
+        self.data             = data if data is not None else Data()
+        self.linelist         = data.linelist if data is not None else None
 
         try:
-            self.config = Data.config
+            self.config = data.config
         except:
             self.config = Config() # uses defaults
 
@@ -81,7 +81,11 @@ class LSD:
             raise ValueError("Input wavelengths, flux, and errors must be 1D arrays.")        
 
         self.data.velocities = velocities if velocities is not None else self.data.velocities
-        self.config.update_hipri(verbose=verbose, linelist=linelist) # Update config with new values, if not None, otherwise keep old values
+        if self.data.velocities is None:
+            raise ValueError("Velocities must be provided either as an argument to run_LSD or when initialising the class with an Acid instance.")
+
+        self.config.update_hipri(verbose=verbose) # Update config with new values, if not None, otherwise keep old values
+        self.data.set_linelist(linelist) # If None and linelist already set, this function skips
 
         # Unpack the linelist stored in data
         wavelengths_linelist, depths_linelist = self.data.linelist
