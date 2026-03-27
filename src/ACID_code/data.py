@@ -431,7 +431,7 @@ class Data:
             raise ValueError("No plotting variables found for residual_masking. ")
         if not all(
             attr in self.plotting_variables["residual_masking"] for attr in [
-                "mask", "residuals", "upper_clip", "lower_clip", "telluric_mask", "pix_mask", "profile_F"]
+                "mask", "residuals", "upper_clip", "lower_clip", "telluric_mask", "hydrogen_mask", "pix_mask", "profile_F"]
         ):
             raise ValueError("Not all required plotting variables found for residual_masking. ")
         if "masked" not in self.wavelengths and "masked" not in self.flux:
@@ -447,6 +447,7 @@ class Data:
         upper_clip = self.plotting_variables["residual_masking"]["upper_clip"]
         lower_clip = self.plotting_variables["residual_masking"]["lower_clip"]
         telluric_mask = self.plotting_variables["residual_masking"]["telluric_mask"]
+        hydrogen_mask = self.plotting_variables["residual_masking"]["hydrogen_mask"]
         pix_mask = self.plotting_variables["residual_masking"]["pix_mask"]
         profile_F = self.plotting_variables["residual_masking"]["profile_F"]
 
@@ -467,6 +468,15 @@ class Data:
         for i, (start, end) in enumerate(zip(starts, ends)):
             ax.axvspan((x[start]), (x[end-1]),
                         color='orange', alpha=0.3, label="Telluric masking" if i == 0 else None)
+        
+        # Show hydrogen masking regions
+        masked = hydrogen_mask
+        padded = np.concatenate(([False], masked, [False]))
+        starts = np.flatnonzero(~padded[:-1] & padded[1:])
+        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+        for i, (start, end) in enumerate(zip(starts, ends)):
+            ax.axvspan((x[start]), (x[end-1]),
+                        color='purple', alpha=0.3, label="Hydrogen masking" if i == 0 else None)
 
         # Show pix_chunk masked points:
         masked = pix_mask

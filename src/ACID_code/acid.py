@@ -889,6 +889,7 @@ class Acid:
         self.data.plotting_variables["residual_masking"]["upper_clip"] = upper_clip
         self.data.plotting_variables["residual_masking"]["lower_clip"] = lower_clip
         self.data.plotting_variables["residual_masking"]["telluric_mask"] = telluric_mask
+        self.data.plotting_variables["residual_masking"]["hydrogen_mask"] = hydrogen_mask
         self.data.plotting_variables["residual_masking"]["pix_mask"] = pix_mask
         self.data.plotting_variables["residual_masking"]["profile_F"] = LSD_masking.profile_F
         if self.config.verbose > 2:
