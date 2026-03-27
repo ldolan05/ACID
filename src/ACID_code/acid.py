@@ -296,7 +296,7 @@ class Acid:
             Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
             residuals between an inital model and the data. Regions that lie outside the median +- n_sig STDEVs are clipped.
             The clipped regions will be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
-            LSD is applied to obtain the final profiles, by default 1
+            LSD is applied to obtain the final profiles, by default 3
         skips : IntLike, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)

@@ -148,7 +148,7 @@ class Config:
         "bin_size" : 100,
         "pix_chunk" : 20,
         "dev_perc" : 25,
-        "n_sig" : 1,
+        "n_sig" : 3,
         "skips" : 1,
         "parallel" : True,
         "cores" : None,
