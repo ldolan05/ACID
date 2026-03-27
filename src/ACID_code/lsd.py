@@ -344,6 +344,34 @@ class LSD:
         else:
             return profile
 
+    @classmethod
+    def _convolve_profile(
+        cls,
+        velocities : np.ndarray,
+        profile : np.ndarray,
+        profile_errors : np.ndarray,
+        wavelengths : np.ndarray,
+        linelist_wavelengths : np.ndarray,
+        linelist_depths : np.ndarray,
+        alpha = None,
+        ):
+
+        linelist_depths = -np.log(1 - linelist_depths)
+        profile_errors /= profile
+        profile = -np.log(profile)
+
+        if alpha is None:
+            cls.__init__(cls)
+            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities, verbose=2)
+
+        model_spectrum = alpha @ profile
+        model_errors = np.sqrt((alpha**2) @ (profile_errors**2))
+
+        model_spectrum = np.exp(-model_spectrum)
+        model_errors *= model_spectrum
+
+        return model_spectrum, model_errors
+
     def get_wave(self, data, header):
 
         wave = np.array(data*0., dtype = 'longdouble')
