@@ -3,14 +3,14 @@ from dataclasses import dataclass, field, fields
 from beartype import beartype
 from tqdm import tqdm
 import traceback as tb
-from time import sleep
 from typing import Any, Dict, Optional
 from .utils import Array1D, c_kms
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import pickle, os, sys
+import pickle, os
 import numpy as np
 from . import utils
+from .errors import ContinuumError, LineListRangeError
 from .utils import IntLike, Array1D, Array2D, Scalar
 from .mcmc import MCMC
 
@@ -899,17 +899,15 @@ class DataList:
                     continue
 
             try:
-                acid = Acid(data=self.data_list[self.o2i[order]])
-            except Exception:
-                print(f"Error initializing ACID on order {order}. Skipping this order. Error message:\n", flush=True)
-                tb.print_exc(limit=-3)
+                result = Acid(data=self.data_list[self.o2i[order]]).ACID()
+            except LineListRangeError:
+                print(f"Error on order {order} due to line list range error. Your linelist is likely out of range of the wavelengths. Skipping this order.", flush=True)
                 continue
-
-            try:
-                result = acid.ACID()
+            except ContinuumError:
+                print(f"Error on order {order} due to continuum fitting error. The fitted continuum likely had negative values. Skipping this order.", flush=True)
+                continue
             except Exception:
-                print(f"Error running ACID on order {order}. The Data instance will have updated upto the exception."
-                      f"\nSkipping this order. Error message:", flush=True)
+                print(f"Error on order {order}. Skipping this order. Error message:\n", flush=True)
                 tb.print_exc(limit=-3)
                 continue
 

@@ -2,15 +2,14 @@ from __future__ import annotations
 import numpy as np
 from astropy.io import  fits
 import glob, psutil, os
-import scipy.constants as const
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.interpolate import LSQUnivariateSpline
 from tqdm import tqdm
-from numpy import integer as npint
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
+from .errors import LineListRangeError
 from .data import Config, Data
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D
 
@@ -93,7 +92,7 @@ class LSD:
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
         if len(wavelengths_linelist) == 0:
-            raise ValueError(f"No lines in linelist are within the wavelength range of the observed spectrum. \n"\
+            raise LineListRangeError(f"No lines in linelist are within the wavelength range of the observed spectrum. \n"\
                              f"You may have mismatched wavelengths units between linelist and spectrum or an empty linelist.\n"\
                              f"Please check your linelist and input spectrum.")
 

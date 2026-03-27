@@ -1,20 +1,18 @@
 from __future__ import annotations
-import contextlib
 import warnings
 warnings.filterwarnings("ignore")
-import sys, emcee, os, time, inspect, inspect
+import sys, emcee, os, time, inspect, inspect, contextlib
 from emcee import EnsembleSampler
 import numpy as np
 from math import log10, floor
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
-from . import utils
+from . import utils, mcmc
 from .lsd import LSD
-from . import mcmc
 from .result import Result
-from .data import Data, Config, MaskingLines, LineList
-from .data import DataList
+from .data import Data, Config, MaskingLines, LineList, DataList
+from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
 
 @beartype
@@ -789,7 +787,7 @@ class Acid:
             self.data.plot_continuum_fit(plot_type=plot_type)
 
         if np.any(flux_obs <= 0) or np.any(new_errors <= 0):
-            raise ValueError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
+            raise ContinuumError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
             "Consider adjusting the polynomial order or continuum percentile. Use verbose=3 to see the plot of the continuum fit.\n " \
             "Note that this will only work for interactive terminals or displays which work with plt.show()")
 
