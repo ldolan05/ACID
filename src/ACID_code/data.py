@@ -10,7 +10,7 @@ import matplotlib as mpl
 import pickle, os
 import numpy as np
 from . import utils
-from .errors import ContinuumError, LineListRangeError
+from .errors import *
 from .utils import IntLike, Array1D, Array2D, Scalar
 from .mcmc import MCMC
 
@@ -906,6 +906,9 @@ class DataList:
             except ContinuumError:
                 print(f"Error on order {order} due to continuum fitting error. The fitted continuum likely had negative values. Skipping this order.", flush=True)
                 continue
+            except SNCutError:
+                print(f"Error on order {order} due to S/N cut error. The S/N of the spectrum is likely too low, and no lines survived the cut. Skipping this order.", flush=True)
+                continue
             except Exception:
                 print(f"Error on order {order}. Skipping this order. Error message:\n", flush=True)
                 tb.print_exc(limit=-3)
@@ -957,11 +960,12 @@ class DataList:
         datalist = []
         for idx, order in enumerate(order_range):
             data = Data()
-            data.set_inputs(wavelengths[idx], flux[idx], errors[idx], sn[idx])
-            data.set_linelist(linelist=linelist)
-            data.velocities = velocities
             config_dict["order"] = order
             data.config = Config(**config_dict)
+            input_sn = sn[idx] if sn is not None else None
+            data.set_inputs(wavelengths[idx], flux[idx], errors[idx], input_sn)
+            data.set_linelist(linelist=linelist)
+            data.velocities = velocities
             datalist.append(data)
 
         return cls(datalist, save_dir=save_dir, verbose=verbose)

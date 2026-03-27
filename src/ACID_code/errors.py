@@ -9,3 +9,7 @@ class LineListRangeError(Exception):
 class ContinuumError(ValueError):
     """Custom error for when the continuum fit results in negative fluxes or errors."""
     pass
+
+class SNCutError(ValueError):
+    """Custom error for when the S/N cut results in no valid pixels."""
+    pass
