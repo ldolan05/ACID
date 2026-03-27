@@ -9,7 +9,7 @@ from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
-from .errors import LineListRangeError
+from .errors import LineListRangeError, SNCutError
 from .data import Config, Data
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D
 
@@ -148,11 +148,11 @@ class LSD:
         nrest = np.sum(idx)
         perc = 100 * nrest / (nrest + ncut)
         if nrest == 0:
-            raise ValueError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+            raise SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
         if self.config.verbose > 0:
             if perc < 5:
                 print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-            if self.config.verbose > 2 or perc < 5:
+            if self.config.verbose > 2:
                 print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist
 
