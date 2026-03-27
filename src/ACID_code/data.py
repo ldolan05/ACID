@@ -940,7 +940,14 @@ class DataList:
             order_range = load.order_range
 
         if order_range is None:
-            order_range = np.arange(len(wavelengths))
+            order_range = np.arange(len(wavelengths), dtype=np.int32)
+        else:
+            order_range = np.asarray(order_range)
+            if not np.all(np.isfinite(order_range)):
+                raise ValueError("order_range must only contain finite values.")
+            if not np.allclose(order_range, np.round(order_range)):
+                raise ValueError("order_range must contain integer-valued order labels.")
+            order_range = np.round(order_range).astype(np.int32)
 
         if len(order_range) != len(wavelengths):
             raise ValueError("The length of the order_range must match the number of frames in the input data.")
@@ -948,9 +955,9 @@ class DataList:
         config_dict = config.to_dict() if config is not None else {}
 
         datalist = []
-        for order in order_range:
+        for idx, order in enumerate(order_range):
             data = Data()
-            data.set_inputs(wavelengths[order], flux[order], errors[order], sn[order])
+            data.set_inputs(wavelengths[idx], flux[idx], errors[idx], sn[idx])
             data.set_linelist(linelist=linelist)
             data.velocities = velocities
             config_dict["order"] = order
