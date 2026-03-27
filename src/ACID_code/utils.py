@@ -75,7 +75,7 @@ def convert_moves_to_emcee(moves:list[tuple]):
         
     return emcee_moves
 
-def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
+def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
 
@@ -106,7 +106,7 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     f = np.where(mask, flux, fill_value)
     e = np.where(mask, errors, fill_value)
 
-    if verbose > 0:
+    if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         if num_invalid > 0:
             print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values, which will be dropped when necessary, \n"
@@ -116,7 +116,7 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
         return w, f, e, mask
     return w, f, e
 
-def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
+def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
     """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
     Parameters
@@ -144,7 +144,7 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=0):
     f = flux[mask]
     e = errors[mask]
 
-    if verbose > 0:
+    if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         if num_invalid > 0:
             print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0).")
