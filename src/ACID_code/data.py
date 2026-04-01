@@ -109,35 +109,42 @@ class Config:
         "verbose" : 2,
         "order" : 0,
         "order_range" : [0],
-        "telluric_width" : 21, # in km/s, if changed, change below default widths too
-        "telluric_lines" : {
-            "lines" : [
-                3820.33, # metal?
-                3933.66, # Ca II K
-                3968.47, # Ca II H
-                4307.90, # metal?
-                4327.74, # metal?
-                4383.55, # Fe 1
-                5183.62, # Mg I b triplet
-                5270.39, # Fe 1
-                5889.95, # Na I D2
-                5895.92, # Na I D1
-                7593.70, # O2 telluric
-                8226.96, # H2O telluric?
-            ],
-            "widths": None,
-        },
-        "hydrogen_width" : 1000, # in km/s, the default width to use when masking H lines
-        "hydrogen_lines" : {
-            "lines" : [
-                3835.38, # H eta (new)
-                3889.05, # H zeta (new)
-                4101.74, # H delta (new)
-                4340.47, # H gamma (new)
-                4861.34, # H beta
-                6562.81, # H alpha
-            ],
-            "widths" : None
+        "masking_lines" : {
+            "narrow" : {
+                "default_width" : 200,
+                "lines" : [
+                    3820.33, # metal?
+                    4307.90, # metal?
+                    4327.74, # metal?
+                    4383.55, # Fe 1
+                    5270.39, # Fe 1
+                    5889.95, # Na I D2
+                    5895.92, # Na I D1
+                    7593.70, # O2 telluric
+                    8226.96, # H2O telluric?
+                ]
+            },
+            "medium" : {
+                "default_width" : 1000,
+                "lines" : [
+                    3933.66, # Ca II K
+                    3968.47, # Ca II H
+                    5167.32, # Mg I b (1) triplet
+                    5172.68, # Mg I b (2) triplet
+                    5183.62, # Mg I b (3) triplet
+                ]
+            },
+            "wide" : {
+                "default_width" : 2000,
+                "lines" : [
+                    3835.38, # H eta (new)
+                    3889.05, # H zeta (new)
+                    4101.74, # H delta (new)
+                    4340.47, # H gamma (new)
+                    4861.34, # H beta
+                    6562.81, # H alpha
+                ]
+            },
         },
         "seed" : None,
 
@@ -233,28 +240,13 @@ class Config:
         self._verbose = value
 
     @property
-    def telluric_lines(self) -> MaskingLines:
-        default_lines = {"lines":np.array(self.defaults["telluric_lines"]), 
-                         "widths":np.array([self.defaults["telluric_width"] for _ in self.defaults["telluric_lines"]])}
-        return MaskingLines(self._telluric_lines if self._telluric_lines is not None else default_lines)
+    def masking_lines(self) -> MaskingLines:
+        return MaskingLines(self._masking_lines)
 
-    @telluric_lines.setter
-    def telluric_lines(self, telluric_lines:Array1D|Array2D|dict|MaskingLines|None) -> None:
-        if telluric_lines is not None:
-            lines, widths = MaskingLines.validate_lines(telluric_lines, self.defaults["telluric_width"])
-            self._telluric_lines = {"lines":np.array(lines), "widths":np.array(widths)}
-
-    @property
-    def hydrogen_lines(self) -> MaskingLines:
-        default_lines = {"lines":np.array(self.defaults["hydrogen_lines"]), 
-                         "widths":np.array([self.defaults["hydrogen_width"] for _ in self.defaults["hydrogen_lines"]])}
-        return MaskingLines(self._hydrogen_lines if self._hydrogen_lines is not None else default_lines)
-
-    @hydrogen_lines.setter
-    def hydrogen_lines(self, hydrogen_lines:Array1D|Array2D|dict|MaskingLines|None) -> None:
-        if hydrogen_lines is not None:
-            lines, widths = MaskingLines.validate_lines(hydrogen_lines, self.defaults["hydrogen_width"])
-            self._hydrogen_lines = {"lines":np.array(lines), "widths":np.array(widths)}
+    @masking_lines.setter
+    def masking_lines(self, masking_lines:dict) -> None:
+        # self._masking_lines is set in init, so should always exist as None
+        self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self._masking_lines
 
     def plot_masking_lines(self, line_type:str="all", return_fig:bool=False) -> None|tuple:
         """
