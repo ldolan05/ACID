@@ -33,10 +33,7 @@ class Acid:
         order           : IntLike|None                                       = None,   # Config
         order_range     : Array1D|None                                       = None,   # Config
         verbose         : IntLike|bool|str|None                              = None,   # Config
-        telluric_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple]|None = None,   # Config
-        telluric_width  : Scalar|None                                        = None,   # Config
-        hydrogen_lines  : Array1D|Array2D|dict|MaskingLines|list[tuple]|None = None,   # Config
-        hydrogen_width  : Scalar|None                                        = None,   # Config
+        masking_lines   : dict                                               = None,   # Config
         seed            : IntLike|None                                       = None,   # Config
         data            : Data|DataList|None                                 = None,   # Data
         config          : Config|None                                        = None,   # Config
@@ -102,7 +99,7 @@ class Acid:
             - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
             - Boolean: If True, defaults to 2. If False, defaults to 0.
             - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
-        telluric_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
+        masking_lines : dict, optional TBD!
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. For many types of inputs, widths are optional,
             and if not provided, the default telluric width is used (see below). The inputs must be of the following forms: 
             - 1D or 2D Array-like: Wavelengths at index 0, and optionally widths at index 1. The length of both indices must match if provided.
@@ -112,15 +109,6 @@ class Acid:
             - List of tuples: Each tuple should be in the format (line:float, width:Optional(float)). This format is useful for directly inputting
               lines with default width unless explicitly specified for some lines. Again, lines without the width provided will be set from the
               default telluric_width input.
-        telluric_width : Scalar, optional
-            The default telluric width if any widths are missing from the above inputs. For each inputted telluric line, if a width is not provided, 
-            this width is used. The default is 21 km/s, a typical width of telluric lines.
-        hydrogen_lines : Array1D | Array2D | dict | MaskingLines | list[tuple], optional
-            The exact same format as telluric_lines, but for hydrogen lines. The masking process is also identical, but the default widths can be different 
-            (see below).
-        hydrogen_width : Scalar, optional
-            Works the same way as telluric_width, but for hydrogen lines. The default is 1000 km/s, a typical width of hydrogen lines, it may be worth increasing 
-            for hotter stars.
         seed : IntLike, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
         data : Data | DataList, optional
@@ -180,11 +168,8 @@ class Acid:
         # Set linelist in the Data class, the property setter handles input validation
         self.data.set_linelist(linelist, linelist_wl, linelist_depths)
 
-        # Set the lines to mask, the telluric_lines and hydrogen_lines property setters in the config class handle input validation and None check
-        self.config.telluric_lines = telluric_lines
-        self.config.telluric_width = telluric_width if telluric_width is not None else self.config.telluric_width
-        self.config.hydrogen_lines = hydrogen_lines
-        self.config.hydrogen_width = hydrogen_width if hydrogen_width is not None else self.config.hydrogen_width
+        # Set the lines to mask, the property in the class handles input validation and None check
+        self.config.masking_lines = masking_lines
 
         # Set seed if not already done in config, in this way, seed is only explicitly set once
         if getattr(self.config, "seed", None) is None:
@@ -837,9 +822,9 @@ class Acid:
 
         # The code for telluric masking is contained without the MaskingLines class, which both telluric_lines
         # and hydrogen_lines are instances of.
-        telluric_mask = self.config.telluric_lines.get_mask(x)
-        hydrogen_mask = self.config.hydrogen_lines.get_mask(x)
-        yerr[telluric_mask | hydrogen_mask] = 1e12
+        line_mask = self.config.masking_lines.get_masks(x)
+        line_mask = np.all(line_mask, axis=0)
+        yerr[line_mask] = 1e12
 
         # Note that this is used to keep track of the residual masks for later use when processing the results
         self.data.residual_masks = tuple([yerr >= 1e12])
