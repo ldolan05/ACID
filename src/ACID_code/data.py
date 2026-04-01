@@ -22,83 +22,87 @@ class MaskingLines:
     __slots__ = ("lines",) # the only thing stored in this class is this dictionary
 
     def __init__(self, lines:dict) -> None:
-        self.lines = lines
-
-    def __iter__(self):
-        yield self.lines["lines"]
-        yield self.lines.get("widths", None)
+        self.lines = self.validate_lines(lines)
 
     def __getitem__(self, key):
-        if key == 0:
-            return self.lines["lines"]
-        if key == 1:
-            return self.lines.get("widths", None)
-        if isinstance(key, int):
-            raise IndexError("MaskingLines only has keys 0 and 1, or 'lines' and 'widths'")
+        # should work for int or str keys
         return self.lines[key]
 
-    def get_mask(self, x) -> np.ndarray:
-        lines = np.asarray(self.lines["lines"])
-        widths = np.asarray(self.lines["widths"])
+    def get_masks(self, x) -> list:
+        mask = []
+        for line_data in self.lines.values():
+            lines = np.asarray(line_data["lines"])
+            widths = np.asarray(line_data["widths"])
 
-        limits = 3 + (widths / c_kms) * lines
-        conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
-        mask = np.any(conditions, axis=0)
+            limits = 3 + (widths / c_kms) * lines
+            conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
+            mask.append(np.any(conditions, axis=0))
         return mask
 
     @staticmethod
-    def validate_lines(lines, default_width) -> tuple[np.ndarray, np.ndarray]:
+    def validate_lines(input_lines:dict) -> dict:
         length_mismatch_error = f"The number of lines and inputted widths must be the same if inputting widths.\n" \
         f"If you only wish to input the widths of certain lines, use a list of tuples, see the readthedocs for more details."
-        if isinstance(lines, (np.ndarray, list)):
-            if isinstance(lines[0], tuple):
-                lines = []
-                widths = []
-                for line in lines:
-                    if len(line) == 1:
-                        lines.append(line[0])
-                        widths.append(default_width)
-                    elif len(line) == 2:
-                        lines.append(line[0])
-                        widths.append(line[1])
-                    else:
-                        raise ValueError("If telluric_lines is a list or array of tuples, each tuple must have length 1 " \
-                        f"(line only) or 2 (line and width). \nGot tuple with length {len(line)}")          
-            else:
-                lines = np.array(lines)
-                if lines.size == 0:
-                    raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
-                if lines.ndim == 1:
-                    widths = [default_width for _ in lines]
-                elif lines.ndim == 2:
-                    widths = lines[1]
-                    lines = lines[0]
-                    if len(lines) != len(widths):
-                        raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
-                else:
-                    raise ValueError("lines must be a one- or two-dimensional array or list")
-        elif isinstance(lines, dict):
-            lines_dict = lines
-            if "lines" not in lines_dict:
-                raise ValueError("If lines is a dict, it must contain a 'lines' key with the list/array of lines to mask")
-            lines = lines_dict["lines"]
-            widths = lines_dict.get("widths", None)
-            if widths is not None:
-                if len(lines) != len(widths):
-                    raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
-            widths = widths if widths is not None else [default_width for _ in lines]
-        elif isinstance(lines, MaskingLines):
-            # Masking lines always has correct dimensions with lines and widths, so just unpack
-            widths = lines[1]
-            lines = lines[0]
-        else:
-            raise ValueError("The inputted teluric/hydrogen lines must be a list or numpy array of lines to " \
-            f"mask in angstroms. \n A dictionary can also be provided with " \
-            f"a 'lines' key containing the list/array of lines, \n and an optional 'widths' key containing the widths " \
-            f"of the lines for user reference. \n Got type: {type(lines)}")
+        default_width_error = "No default width was provided for the masking_lines of {}, see the documentation for masking_lines formats"
+        final_dict = {}
+        default_width = None
 
-        assert len(lines) == len(widths), f"lines and widths must be of same length, got: {len(lines)}, {len(widths)}"
-        return lines, widths
+        for name, line_object in input_lines.items():
+
+            if isinstance(line_object, dict):
+                if "default_width" in line_object:
+                    default_width = line_object["default_width"]
+                if "lines" not in line_object:
+                    raise ValueError(f"If the value for {name} is a dictionary, it must contain a 'lines' key with the list/array of lines to mask")
+                if "widths" in line_object:
+                    line_input = [(l, w) for l, w in zip(line_object["lines"], line_object["widths"])]
+                else:
+                    line_input = line_object["lines"]
+            else:
+                line_input = line_object
+
+            if isinstance(line_input, (np.ndarray, list)):
+                if isinstance(line_input[0], tuple):
+                    lines = []
+                    widths = []
+                    for line in line_input:
+                        if len(line) == 1:
+                            lines.append(line[0])
+                            if default_width is None:
+                                raise ValueError(default_width_error.format(name))
+                            widths.append(default_width)
+                        elif len(line) == 2:
+                            lines.append(line[0])
+                            widths.append(line[1])
+                        else:
+                            raise ValueError(f"If the masking_lines for {name} is a list or array of tuples, each tuple must have length 1 " \
+                            f"(line only) or 2 (line and width). \nGot tuple with length {len(line)}")          
+                else:
+                    lines = np.array(line_input)
+                    if lines.size == 0:
+                        raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
+                    if lines.ndim == 1:
+                        if default_width is None:
+                            raise ValueError(default_width_error.format(name))
+                        widths = [default_width for _ in lines]
+                    elif lines.ndim == 2:
+                        widths = lines[1]
+                        lines = lines[0]
+                        if len(lines) != len(widths):
+                            raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
+                    else:
+                        raise ValueError("lines must be a one- or two-dimensional array or list")
+            elif isinstance(line_input, MaskingLines):
+                # Masking lines always has correct dimensions with lines and widths, so just unpack
+                widths = line_input[name][1]
+                lines = line_input[name][0]
+            else:
+                raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see the doccumentation"
+                                 f"for masking_lines for more details. Got type {type(line_input)}.")
+
+            assert len(lines) == len(widths), f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}"
+            final_dict[name] = {"lines": np.array(lines), "widths": np.array(widths)}
+        return final_dict
 
 @beartype
 class Config:
