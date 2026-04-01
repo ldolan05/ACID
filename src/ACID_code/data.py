@@ -28,15 +28,22 @@ class MaskingLines:
         # should work for int or str keys
         return self.lines[key]
 
-    def get_masks(self, x) -> list:
-        mask = []
-        for line_data in self.lines.values():
+    def __iter__(self):
+        return iter(self.lines.items())
+
+    def get_masks(self, x, with_names=False) -> list | dict:
+        mask = [] if not with_names else {}
+        for name, line_data in self.lines.items():
             lines = np.asarray(line_data["lines"])
             widths = np.asarray(line_data["widths"])
 
             limits = 3 + (widths / c_kms) * lines
             conditions = np.abs(x[None, :] - lines[:, None]) <= limits[:, None]
-            mask.append(np.any(conditions, axis=0))
+            line_mask = np.any(conditions, axis=0)
+            if with_names:
+                mask[name] = line_mask
+            else:
+                mask.append(line_mask)
         return mask
 
     @staticmethod
@@ -114,7 +121,7 @@ class Config:
         "order" : 0,
         "order_range" : [0],
         "masking_lines" : {
-            "narrow" : {
+            "Narrow" : {
                 "default_width" : 200,
                 "lines" : [
                     3820.33, # metal?
@@ -128,7 +135,7 @@ class Config:
                     8226.96, # H2O telluric?
                 ]
             },
-            "medium" : {
+            "Medium" : {
                 "default_width" : 1000,
                 "lines" : [
                     3933.66, # Ca II K
@@ -138,7 +145,7 @@ class Config:
                     5183.62, # Mg I b (3) triplet
                 ]
             },
-            "wide" : {
+            "Wide" : {
                 "default_width" : 2000,
                 "lines" : [
                     3835.38, # H eta (new)
@@ -248,11 +255,11 @@ class Config:
         return MaskingLines(self._masking_lines)
 
     @masking_lines.setter
-    def masking_lines(self, masking_lines:dict) -> None:
+    def masking_lines(self, masking_lines:dict|None) -> None:
         # self._masking_lines is set in init, so should always exist as None
         self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self._masking_lines
 
-    def plot_masking_lines(self, line_type:str="all", return_fig:bool=False) -> None|tuple:
+    def plot_masking_lines(self, return_fig:bool=False) -> None|tuple:
         """
         Plots the telluric and/or hydrogen lines that will be masked in the residual masking step, with shaded regions indicating 
         the widths of the masks.
@@ -269,24 +276,15 @@ class Config:
         If return_fig is True, returns a tuple of (fig, ax) where fig is the matplotlib figure object and ax is the axis object.
         Otherwise, returns None and shows the plot.
         """
-        line_type = line_type.lower()
-        if line_type not in ["telluric", "hydrogen", "all"]:
-            raise ValueError("line_type must be one of 'telluric', 'hydrogen', or 'all'")
-
         fig, ax = plt.subplots(figsize=(10, 6))
-        if line_type in ["telluric", "all"]:
-            telluric_lines = self.telluric_lines
-            for line, width in zip(telluric_lines[0], telluric_lines[1]):
+        for i, (name, line_data) in enumerate(self.masking_lines):
+            for line, width in zip(line_data["lines"], line_data["widths"]):
                 delta_lambda = line * width / c_kms
-                ax.axvline(line, color='blue', linestyle='--', label='Telluric line' if line == telluric_lines[0][0] else None)
-                ax.axvspan(line - delta_lambda, line + delta_lambda, color='blue', alpha=0.1)
-        if line_type in ["hydrogen", "all"]:
-            hydrogen_lines = self.hydrogen_lines
-            for line, width in zip(hydrogen_lines[0], hydrogen_lines[1]):
-                delta_lambda = line * width / c_kms
-                ax.axvline(line, color='red', linestyle='--', label='Hydrogen line' if line == hydrogen_lines[0][0] else None)
-                ax.axvspan(line - delta_lambda, line + delta_lambda, color='red', alpha=0.1)
-        ax.set_title(f"{line_type.capitalize()} lines to be masked")
+                ax.axvline(line, linestyle='--', color=f'C{i+1}',
+                           label=f'{name.capitalize()} line' if line == line_data["lines"][0] else None)
+                ax.axvspan(line - delta_lambda, line + delta_lambda, alpha=0.1, color=f'C{i+1}')
+
+        ax.set_title("Lines to be masked")
         ax.set_xlabel("Wavelength (Angstroms)")
         ax.set_ylabel("Masking region")
         ax.legend()
@@ -427,7 +425,7 @@ class Data:
             raise ValueError("No plotting variables found for residual_masking. ")
         if not all(
             attr in self.plotting_variables["residual_masking"] for attr in [
-                "mask", "residuals", "upper_clip", "lower_clip", "telluric_mask", "hydrogen_mask", "pix_mask", "profile_F"]
+                "mask", "residuals", "upper_clip", "lower_clip", "pix_mask", "profile_F"]
         ):
             raise ValueError("Not all required plotting variables found for residual_masking. ")
         if "masked" not in self.wavelengths and "masked" not in self.flux:
@@ -442,8 +440,6 @@ class Data:
         residuals = self.plotting_variables["residual_masking"]["residuals"]
         upper_clip = self.plotting_variables["residual_masking"]["upper_clip"]
         lower_clip = self.plotting_variables["residual_masking"]["lower_clip"]
-        telluric_mask = self.plotting_variables["residual_masking"]["telluric_mask"]
-        hydrogen_mask = self.plotting_variables["residual_masking"]["hydrogen_mask"]
         pix_mask = self.plotting_variables["residual_masking"]["pix_mask"]
         profile_F = self.plotting_variables["residual_masking"]["profile_F"]
 
@@ -455,24 +451,16 @@ class Data:
         ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
         ax.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
         ax.axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
-        
-        # Show telluric masking regions
-        masked = telluric_mask
-        padded = np.concatenate(([False], masked, [False]))
-        starts = np.flatnonzero(~padded[:-1] & padded[1:])
-        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-        for i, (start, end) in enumerate(zip(starts, ends)):
-            ax.axvspan((x[start]), (x[end-1]),
-                        color='orange', alpha=0.3, label="Telluric masking" if i == 0 else None)
-        
-        # Show hydrogen masking regions
-        masked = hydrogen_mask
-        padded = np.concatenate(([False], masked, [False]))
-        starts = np.flatnonzero(~padded[:-1] & padded[1:])
-        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-        for i, (start, end) in enumerate(zip(starts, ends)):
-            ax.axvspan((x[start]), (x[end-1]),
-                        color='purple', alpha=0.3, label="Hydrogen masking" if i == 0 else None)
+
+        # Show line masking regions
+        line_mask = self.config.masking_lines.get_masks(x, with_names=True)
+        for i, (name, masks) in enumerate(line_mask.items()):
+            padded = np.concatenate(([False], masks, [False]))
+            starts = np.flatnonzero(~padded[:-1] & padded[1:])
+            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+            for j, (start, end) in enumerate(zip(starts, ends)):
+                ax.axvspan((x[start]), (x[end-1]), color=f'C{i+1}', alpha=0.3,
+                           label=f"{name} Line masks" if j == 0 else None)
 
         # Show pix_chunk masked points:
         masked = pix_mask
