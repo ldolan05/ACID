@@ -230,10 +230,8 @@ def guess_SNR(
     frame_flux = np.where(mask, frame_flux, np.nan)
     frame_errors = np.where(mask, frame_errors, np.nan)
 
-    # rms = np.sqrt(np.mean((cont - 1)**2))
-
     sn_per_pixel = frame_flux / frame_errors
-    return np.nanmedian(sn_per_pixel, axis=-1).squeeze()
+    return np.nanpercentile(sn_per_pixel, 99, axis=-1).squeeze()
 
 def collapse_SNR(sn, wavelengths):
     """Collapses the SN of a 1D or 2D wavelength and sn array to the median of the SNs
