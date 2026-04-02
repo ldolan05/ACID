@@ -233,6 +233,41 @@ def guess_SNR(
     sn_per_pixel = frame_flux / frame_errors
     return np.nanpercentile(sn_per_pixel, 99, axis=-1).squeeze()
 
+def guess_errors(
+    frame_wavelengths : Array1D | Array2D,
+    frame_flux        : Array1D | Array2D,
+    frame_sn          : Scalar | Array1D
+    ) -> np.ndarray:
+    """
+    Estimates errors for each frame based on the flux and S/N.
+    Fully vectorized so that all the frames can be passed at once.
+
+    Parameters
+    ----------
+    frame_wavelengths : Array1D | Array2D
+        Array/list of wavelengths for each frame.
+    frame_flux : Array1D | Array2D
+        Array/list of flux values for each frame.
+    frame_sn : Scalar | Array1D
+        Estimated signal-to-noise ratio for each frame. Can be a single value or an array of values for each frame.
+
+    Returns
+    -------
+    np.ndarray
+        Array of estimated error values for each frame. The dimensions will match those of frame_flux, with the same number of frames and pixels.
+    """
+    if np.any(frame_flux) <= 0 or np.any(frame_wavelengths <= 0) or np.any(frame_sn <= 0):
+        raise ValueError("Flux, wavelengths and sn must all be positive non-zero to estimate errors.")
+
+    frame_wavelengths = np.atleast_2d(frame_wavelengths)
+    frame_flux = np.atleast_2d(frame_flux)
+    frame_sn = np.atleast_1d(frame_sn)
+    if frame_sn.ndim > 1 or (frame_sn.ndim == 1 and frame_sn.size != frame_flux.shape[0]):
+        raise ValueError("S/N must be a single value or an array of values with the same length as the number of frames in frame_flux.")
+
+    errors = frame_flux / frame_sn[:, None]
+    return errors.squeeze()
+
 def collapse_SNR(sn, wavelengths):
     """Collapses the SN of a 1D or 2D wavelength and sn array to the median of the SNs
     on the central 2/3 wavelengths.
