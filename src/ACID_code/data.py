@@ -411,6 +411,18 @@ class Data:
         except:
             print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
             pass
+
+        # Plot the line masks
+        x = unnormalized_wavelengths
+        line_mask = self.config.masking_lines.get_masks(x, with_names=True)
+        for i, (name, masks) in enumerate(line_mask.items()):
+            padded = np.concatenate(([False], masks, [False]))
+            starts = np.flatnonzero(~padded[:-1] & padded[1:])
+            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
+            for j, (start, end) in enumerate(zip(starts, ends)):
+                ax.axvspan((x[start]), (x[end-1]), color=f'C{i+1}', alpha=0.3,
+                           label=f"{name} Line masks" if j == 0 else None)
+
         plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
         ax.set_title(plot_title)
         ax.legend()
