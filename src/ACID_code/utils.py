@@ -75,7 +75,7 @@ def convert_moves_to_emcee(moves:list[tuple]):
         
     return emcee_moves
 
-def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
+def mask_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
 
@@ -96,15 +96,15 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
     mask = (
         np.isfinite(wavelengths) &
         np.isfinite(flux) &
-        np.isfinite(errors) &
+        (np.isfinite(errors) if errors is not None else True) &
         (flux > 0) &
-        (errors > 0)
+        (errors > 0 if errors is not None else True)
     )
     fill_value = np.nan
 
     w = np.where(mask, wavelengths, fill_value)
     f = np.where(mask, flux, fill_value)
-    e = np.where(mask, errors, fill_value)
+    e = np.where(mask, errors, fill_value) if errors is not None else None
 
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
@@ -112,11 +112,11 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
             print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values, which will be dropped when necessary, \n"
                   f"but it is still recommended to check your wavelength, spectrum and error arrays for bad pixels and make sure this is intentional.")
 
-    if return_mask:
-        return w, f, e, mask
-    return w, f, e
+    output = (w, f, e) if errors is not None else (w, f)
+    output = output + (mask,) if return_mask else output
+    return output
 
-def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
+def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
     Parameters
@@ -136,22 +136,22 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
     mask = (
         np.isfinite(wavelengths) &
         np.isfinite(flux) &
-        np.isfinite(errors) &
+        (np.isfinite(errors) if errors is not None else True) &
         (flux > 0) &
-        (errors > 0)
+        ((errors > 0) if errors is not None else True)
     )
     w = wavelengths[mask]
     f = flux[mask]
-    e = errors[mask]
+    e = errors[mask] if errors is not None else None
 
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         if num_invalid > 0:
             print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0).")
 
-    if return_mask:
-        return w, f, e, mask
-    return w, f, e
+    output = (w, f, e) if errors is not None else (w, f)
+    output = output + (mask,) if return_mask else output
+    return output
 
 def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
     """Clips the linelist to only include lines within the wavelength range of the observed spectrum.
