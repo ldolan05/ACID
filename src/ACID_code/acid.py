@@ -444,6 +444,13 @@ class Acid:
             self.data.errors["combined"] = errors
             self.data.nanmask = nanmask
 
+        # Perform line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
+        # The code for telluric masking is contained without the MaskingLines class, which both telluric_lines
+        # and hydrogen_lines are instances of.
+        line_mask = self.config.masking_lines.get_masks(self.data.wavelengths["combined"])
+        line_mask = np.all(line_mask, axis=0)
+        self.data.errors["combined"][line_mask] = 1e12
+
         # Get the initial polynomial coefficents
         if not hasattr(self.data.wavelengths, "combined_normalized"):
             a, b = utils.get_normalisation_coeffs(self.data.wavelengths["combined"])
@@ -816,16 +823,6 @@ class Acid:
                 "or consider adjusting the pix_chunk and dev_perc parameters. If you are aware that you \n" \
                 "have bad spectra, then this can be ignored.")
 
-        ###############################################
-        #         TELLURIC AND HYDROGEN LINES         #   
-        ###############################################
-
-        # The code for telluric masking is contained without the MaskingLines class, which both telluric_lines
-        # and hydrogen_lines are instances of.
-        line_mask = self.config.masking_lines.get_masks(x)
-        line_mask = np.all(line_mask, axis=0)
-        yerr[line_mask] = 1e12
-
         # Note that this is used to keep track of the residual masks for later use when processing the results
         self.data.residual_masks = tuple([yerr >= 1e12])
 
@@ -873,7 +870,6 @@ class Acid:
         self.data.plotting_variables["residual_masking"]["residuals"] = residuals
         self.data.plotting_variables["residual_masking"]["upper_clip"] = upper_clip
         self.data.plotting_variables["residual_masking"]["lower_clip"] = lower_clip
-        self.data.plotting_variables["residual_masking"]["line_mask"] = line_mask
         self.data.plotting_variables["residual_masking"]["pix_mask"] = pix_mask
         self.data.plotting_variables["residual_masking"]["profile_F"] = LSD_masking.profile_F
         if self.config.verbose > 2:
