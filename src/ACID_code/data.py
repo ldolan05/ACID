@@ -557,7 +557,8 @@ class Data:
         inputs = {
             "wavelengths": input_wavelengths,
             "flux": input_flux,
-            "errors": input_errors,
+            # As of 1.5, SN or errors are guessed from the errors if one is not input, so treat them as a pair
+            "errors": input_errors if input_errors is not None else input_sn,
         }
         inputs_already_exist = all(
             getattr(self, attr).get("input", None) is not None for attr in input_keys
@@ -582,39 +583,51 @@ class Data:
             # different from the existing ones, if so, deletes variables that need to be recalculated.
         else:
             if not all_inputs_not_none:
-                raise ValueError("input_wavelengths, input_flux, and input_errors must be provided either as arguments " \
-                                 "or in a Data object.")
+                raise ValueError("input_wavelengths, input_flux, and (input_errors or input_sn) must be provided either as arguments " \
+                                 "or in the form of a Data object.")
 
         # Convert to arrays, squeeze to remove extra dimensions (as default in legacy inputs)
         input_wavelengths = np.array(input_wavelengths).squeeze()
         input_flux = np.array(input_flux).squeeze()
-        input_errors = np.array(input_errors).squeeze()
+        input_errors = np.array(input_errors).squeeze() if input_errors is not None else None
         input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
 
-        # Check all inputs have the same shape
-        if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
-            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
-
         # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
-        input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
+        if input_errors is not None:
+            input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
+        else:
+            input_wavelengths, input_flux = utils.mask_invalid(input_wavelengths, input_flux, verbose=self.config.verbose)
 
         # Check that none of the inputs are all nan
-        if np.all(np.isnan(input_wavelengths)) or np.all(np.isnan(input_flux)) or np.all(np.isnan(input_errors)):
-            raise ValueError("Any of the input wavelengths, spectra, and errors cannot be all NaN.")
+        if np.all(np.isnan(input_wavelengths)) or np.all(np.isnan(input_flux)) or (input_errors is not None and np.all(np.isnan(input_errors))):
+            raise ValueError("None of the input wavelengths, spectra, and errors can be all NaN. Check your inputs for invalid or negative values")
 
-        # Guess sn if input_sn not provided
-        if input_sn is None:
+        # Get SN or errors if one is not provided
+        if input_sn is None and input_errors is None:
+            raise ValueError("One of input_sn or input_errors must be provided.")
+        if input_sn is None and input_errors is not None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
             if self.config.verbose > 1:
-                print(f"No input_sn provided, guessed S/N values from the input spectra. Guessed value(s):\n {input_sn}")
+                print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
+        if input_errors is None and input_sn is not None:
+            input_errors = utils.guess_errors(input_wavelengths, input_flux, input_sn)
+            if self.config.verbose > 0:
+                print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
+                      f"It is highly recommended to obtain correct per-pixel errors.")
+
+        # Now validate these
+        if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
+            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
+        
+        # Ensure now that the SN becomes just a single value per frame
         if input_sn.ndim == input_flux.ndim:
             # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
             input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
         elif input_sn.ndim != input_flux.ndim-1:
             raise ValueError("input_sn must be either a single-valued list/array with the average S/N for each frame, " \
             f"or an array of S/N values for each pixel. \n" \
-            "The shape of the input input_sn does not match the number of frames in input_flux, \
-            nor does it have one more dimension than input_flux.")
+            "The shape of the input input_sn does not match the number of frames in input_flux, " \
+            "nor does it have one more dimension than input_flux.")
         assert input_sn.ndim == input_flux.ndim - 1, \
             f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}"
 
