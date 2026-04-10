@@ -1079,6 +1079,29 @@ class DataList:
 
     @classmethod
     def load(cls, path:str):
+        if os.path.isdir(path):
+            path_check = os.path.join(path, "datalist.pkl")
+            if not os.path.exists(path_check):
+                # Final attempt to directly load the result pickles
+                if path.endswith("results"):
+                    result_path = path
+                else:
+                    result_path = os.path.join(path, "results")
+                if os.path.exists(result_path) and os.path.isdir(result_path):
+                    result_files = [f for f in os.listdir(result_path) if f.endswith(".pkl")]
+                    if not len(result_files) > 0:
+                        raise ValueError(f"No datalist.pkl found in {path}, and no result pickles found in {result_path}.")
+                    data_list = []
+                    from .result import Result
+                    for result_file in result_files:
+                        result = Result.load_result(os.path.join(result_path, result_file))
+                        data_list.append(result.data)
+                    return cls(data_list, save_dir=path)
+                else:
+                    raise ValueError(f"No datalist.pkl found in {path}, and no results directory found to look for result pickles.")
+            else:
+                path = path_check
+
         with open(path, "rb") as f:
             d = pickle.load(f)
         data_list = [Data().from_dict(d) for d in d["dict_list"]]
