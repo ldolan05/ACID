@@ -107,7 +107,7 @@ class Profiles:
             y_fit_on_x = self.fit_on_x[model]
             y_err_lo, y_err_hi = self.fitted_yerr[model]
             ax[0].plot(self.fitted_x, y_fit, label=f'{model.capitalize()} Fit', color=f'C{i+1}')
-            ax[1].plot(self.velocities, y_fit_on_x - self.flux, label=f'{model.capitalize()} Residuals', color=f'C{i+1}')
+            ax[1].errorbar(self.velocities, y_fit_on_x - self.flux, yerr=self.flux_err, fmt='b.', label=f'{model.capitalize()} Residuals', color=f'C{i+1}')
         ax[1].set_xlabel('Velocity')
         ax[0].set_title('Profile Fit(s)')
         ax[1].set_ylabel('Flux')
