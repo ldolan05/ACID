@@ -900,6 +900,9 @@ class DataList:
         self._save_dir = None
         self.save_dir = save_dir if save_dir is not None else None
 
+        self._combined_profile = None
+        self.excluded_orders = []
+
     def __iter__(self):
         yield from self.data_list
 
@@ -1120,14 +1123,83 @@ class DataList:
         os.makedirs(dir, exist_ok=True)
         self._save_dir = dir
 
-    def combine_profiles(self, exclude:int|list):
+    @property
+    def combined_profile(self) -> tuple[Array1D, Array1D]|None:
+        """
+        Returns the combined profile and its errors. If the combined profile has not been calculated yet, 
+        it will attempt to combine the profiles without any exclusions.
+
+        Returns:
+            tuple[Array1D, Array1D]|None: The combined profile and its errors, or None if not available.
+        """
+        if self._combined_profile is None:
+            if self.verbose > 1:
+                print("No combined profile found. Attempting to combine profiles without exclusions.")
+            try:
+                self.combine_profiles()
+            except Exception as e:
+                raise ValueError(f"There was an exception trying to combine profiles: {e}")
+        return self._combined_profile
+
+    def combine_profiles(self, exclude:int|list|None=None) -> None:
+        """
+        Calculates the combined profile and its errors across all orders, excluding any orders specified in the exclude argument.
+        
+        Parameters
+        ----------
+        exclude : int | list[int] | None
+            Orders to exclude from the combined profile calculation.
+        """
         if isinstance(exclude, int):
             exclude = [exclude]
+        elif exclude is None:
+            exclude = []
 
         if not all(o in self.orders for o in exclude):
-            raise ValueError("All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
+            raise ValueError(f"All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
 
-        profiles = [data.combined_profile[0] for data in self.data_list if data.config.order not in exclude]
-        errors = [data.combined_profile[1] for data in self.data_list if data.config.order not in exclude]
+        profiles = [data.combined_profiles[0] for data in self.data_list if data.config.order not in exclude]
+        errors = [data.combined_profiles[1] for data in self.data_list if data.config.order not in exclude]
 
-        return utils.combine_profiles(profiles, errors)
+        self._combined_profile = utils.combine_profiles(profiles, errors)
+        self.excluded_orders = exclude
+        return
+
+    def plot_combined_profile(self, return_fig:bool=False):
+        """
+        Plots the combined profile across all orders
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+        for data in self.data_list:
+            if data.combined_profiles is None or data.config.order in self.excluded_orders:
+                continue # failed or excluded orders
+            ax.errorbar(self.velocities, data.combined_profiles[0], alpha=0.2, color="C0",
+                        label=f"All profiles" if data.config.order == self.orders[0] else None)
+
+        ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1], color="black", fmt=".-", ecolor="red", label="Combined profile")
+        ax.legend()
+        ax.set_xlabel("Velocity (km/s)")
+        ax.set_ylabel("Relative Flux")
+        ax.set_title("Combined ACID profiles")
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    def fit_profile(self, **kwargs):
+        """
+        Fits the combined profile across all orders.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Keyword arguments to pass to the Profiles.plot_fit() method.
+        """
+        from .profiles import Profiles
+        profiles = Profiles(self.velocities, self.combined_profile[0], self.combined_profile[1])
+        return profiles.plot_fit(**kwargs)
