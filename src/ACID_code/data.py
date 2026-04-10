@@ -887,6 +887,13 @@ class DataList:
         max_order_range_idx = np.argmax([len(data.config.order_range) for data in data_list])
         self.order_range = data_list[max_order_range_idx].config.order_range
 
+        # Check all velocity grids match, store velocities
+        v0 = data_list[0].velocities
+        for data in data_list:
+            if not np.array_equal(data.velocities, v0):
+                raise ValueError("All Data instances must have the same velocity grid.")
+        self.velocities = v0
+
         self.data_list = data_list
         self.sort_by_order() # generates self.orders and self.o2i
 
