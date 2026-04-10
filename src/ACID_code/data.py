@@ -789,6 +789,75 @@ class Data:
             return fig, ax
         plt.show()
 
+class LineList:
+    """A simple class to expose the linelist when called in Data"""
+    __slots__ = ("ll",) # the only thing stored in this class is the linelist
+    def __init__(self, ll: dict):
+        self.ll = ll
+
+    def __getitem__(self, k):
+        if k == 0:
+            return self.ll["wavelengths"]
+        if k == 1:
+            return self.ll["depths"]
+        if isinstance(k, int):
+            raise IndexError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
+        return self.ll[k]  # allow "wavelengths"/"depths"
+    
+    def __iter__(self):
+        yield self.ll["wavelengths"]
+        yield self.ll["depths"]
+
+    @staticmethod
+    def validate_linelist(linelist, linelist_wl, linelist_depths):
+        if (linelist_wl is None and linelist_depths is None) and linelist is None:
+            raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist' must be provided.")
+        elif linelist is None and (linelist_wl is None or linelist_depths is None):
+            raise ValueError("If 'linelist' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+        elif isinstance(linelist, str):
+            # VALD linelist code, will add more linelist formats in the future or if requested
+            full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
+            linelist_wl = full_linelist[:,0]
+            linelist_depths = full_linelist[:,1]
+        elif isinstance(linelist, LineList):
+            linelist_wl = linelist[0]
+            linelist_depths = linelist[1]
+        elif isinstance(linelist, dict):
+            if "wavelengths" not in linelist or "depths" not in linelist:
+                raise ValueError("If 'linelist' is a dict, it must contain keys 'wavelengths' and 'depths'")
+            linelist_wl = linelist["wavelengths"]
+            linelist_depths = linelist["depths"]
+        elif isinstance(linelist, (list, np.ndarray)):
+            if len(linelist) != 2:
+                raise ValueError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths and index 1 being depths")
+            linelist_wl = linelist[0]
+            linelist_depths = linelist[1]
+        elif linelist_wl is not None and linelist_depths is not None:
+            pass # linelist_wl and linelist_depths already set, will be processed below
+        else:
+            raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
+            "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
+        return linelist_wl, linelist_depths
+
+    @staticmethod
+    def validate_dimensions(wavelengths, depths):
+        if wavelengths.ndim != 1 or depths.ndim != 1:
+            raise ValueError("'wavelengths' and 'depths' must be a one-dimensional array or list")
+        if wavelengths.shape != depths.shape:
+            raise ValueError("'wavelengths' and 'depths' must have the same length and shape")
+
+    @staticmethod
+    def drop_NaNs(wavelengths, depths, return_mask=False, verbose=0):
+        mask = np.isfinite(wavelengths) & np.isfinite(depths)
+        count_dropped = np.count_nonzero(~mask)
+        mask &= (wavelengths > 0) & (depths > 0)
+        if verbose > 0 and count_dropped > 0:
+            print(f"Your linelist includes {count_dropped} non-finite/nan values, these will be removed, but it is still recommended to check your linelist.")
+
+        if return_mask:
+            return wavelengths[mask], depths[mask], mask
+        return wavelengths[mask], depths[mask]
+
 @beartype
 class DataList:
     """
@@ -1032,72 +1101,3 @@ class DataList:
         errors = [data.combined_profile[1] for data in self.data_list if data.config.order not in exclude]
 
         return utils.combine_profiles(profiles, errors)
-
-class LineList:
-    """A simple class to expose the linelist when called in Data"""
-    __slots__ = ("ll",) # the only thing stored in this class is the linelist
-    def __init__(self, ll: dict):
-        self.ll = ll
-
-    def __getitem__(self, k):
-        if k == 0:
-            return self.ll["wavelengths"]
-        if k == 1:
-            return self.ll["depths"]
-        if isinstance(k, int):
-            raise IndexError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
-        return self.ll[k]  # allow "wavelengths"/"depths"
-    
-    def __iter__(self):
-        yield self.ll["wavelengths"]
-        yield self.ll["depths"]
-
-    @staticmethod
-    def validate_linelist(linelist, linelist_wl, linelist_depths):
-        if (linelist_wl is None and linelist_depths is None) and linelist is None:
-            raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist' must be provided.")
-        elif linelist is None and (linelist_wl is None or linelist_depths is None):
-            raise ValueError("If 'linelist' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
-        elif isinstance(linelist, str):
-            # VALD linelist code, will add more linelist formats in the future or if requested
-            full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
-            linelist_wl = full_linelist[:,0]
-            linelist_depths = full_linelist[:,1]
-        elif isinstance(linelist, LineList):
-            linelist_wl = linelist[0]
-            linelist_depths = linelist[1]
-        elif isinstance(linelist, dict):
-            if "wavelengths" not in linelist or "depths" not in linelist:
-                raise ValueError("If 'linelist' is a dict, it must contain keys 'wavelengths' and 'depths'")
-            linelist_wl = linelist["wavelengths"]
-            linelist_depths = linelist["depths"]
-        elif isinstance(linelist, (list, np.ndarray)):
-            if len(linelist) != 2:
-                raise ValueError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths and index 1 being depths")
-            linelist_wl = linelist[0]
-            linelist_depths = linelist[1]
-        elif linelist_wl is not None and linelist_depths is not None:
-            pass # linelist_wl and linelist_depths already set, will be processed below
-        else:
-            raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
-            "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
-        return linelist_wl, linelist_depths
-
-    @staticmethod
-    def validate_dimensions(wavelengths, depths):
-        if wavelengths.ndim != 1 or depths.ndim != 1:
-            raise ValueError("'wavelengths' and 'depths' must be a one-dimensional array or list")
-        if wavelengths.shape != depths.shape:
-            raise ValueError("'wavelengths' and 'depths' must have the same length and shape")
-
-    @staticmethod
-    def drop_NaNs(wavelengths, depths, return_mask=False, verbose=0):
-        mask = np.isfinite(wavelengths) & np.isfinite(depths)
-        count_dropped = np.count_nonzero(~mask)
-        mask &= (wavelengths > 0) & (depths > 0)
-        if verbose > 0 and count_dropped > 0:
-            print(f"Your linelist includes {count_dropped} non-finite/nan values, these will be removed, but it is still recommended to check your linelist.")
-
-        if return_mask:
-            return wavelengths[mask], depths[mask], mask
-        return wavelengths[mask], depths[mask]
