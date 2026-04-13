@@ -371,7 +371,7 @@ def combine_profiles(
 
     return combined_spectrum, combined_errors
 
-def flux_to_od(flux=None, errors=None, linelist=None):
+def flux_to_od(flux=None, errors=None, linelist=None, cov_matrix=None):
     """Converts flux, errors, and linelist to optical depth.
 
     Parameters
@@ -382,6 +382,8 @@ def flux_to_od(flux=None, errors=None, linelist=None):
         Input errors array. Defaults to None.
     linelist : np.ndarray, optional
         Input linelist array. Defaults to None.
+    cov_matrix : np.ndarray, optional
+        Input covariance matrix, corresponding to errors. Defaults to None.
 
     Returns
     -------
@@ -405,10 +407,15 @@ def flux_to_od(flux=None, errors=None, linelist=None):
     if linelist is not None:
         out.append(-np.log(1 - linelist))
 
+    if cov_matrix is not None:
+        if flux_od is None:
+            raise ValueError("'flux' must be provided if 'cov_matrix' is provided.")
+        out.append(cov_matrix / (flux[:, np.newaxis] * flux[np.newaxis, :]))
+
     return tuple(out) if len(out) > 1 else out[0]
 
-def od_to_flux(od=None, errors=None, linelist=None):
-    """Converts optical depth to flux, errors, and linelist.
+def od_to_flux(od=None, errors=None, linelist=None, cov_matrix=None):
+    """Converts optical depth to flux, errors, linelist, and covariance matrix.
 
     Parameters
     ----------
@@ -418,11 +425,13 @@ def od_to_flux(od=None, errors=None, linelist=None):
         Input errors array. Defaults to None.
     linelist : np.ndarray, optional
         Input linelist array. Defaults to None.
+    cov_matrix : np.ndarray, optional
+        Input covariance matrix. Defaults to None.
 
     Returns
     -------
     tuple
-        A tuple containing the flux, errors, and linelist. The tuple length depends on which inputs were provided.
+        A tuple containing the flux, errors, linelist, and covariance matrix. The tuple length depends on which inputs were provided.
     """
     out = []
 
@@ -439,6 +448,11 @@ def od_to_flux(od=None, errors=None, linelist=None):
 
     if linelist is not None:
         out.append(1-np.exp(-linelist))
+    
+    if cov_matrix is not None:
+        if flux is None:
+            raise ValueError("'od' must be provided if 'cov_matrix' is provided.")
+        out.append(cov_matrix * (flux[:, np.newaxis] * flux[np.newaxis, :]))
 
     return tuple(out) if len(out) > 1 else out[0]
 

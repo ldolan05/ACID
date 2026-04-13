@@ -204,7 +204,8 @@ class Result:
         # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
         # If there is one frame, then the combined_profile is the same as the single frame profile.
         nframes = len(self.data.flux["input"])
-        self.profiles = np.zeros((nframes, 2, len(self.data.velocities)))
+        self.profiles = np.zeros((nframes, 3, len(self.data.velocities)))
+        self.profiles = [] # switch to list format to add covariance matrix to result
         for counter in range(nframes+1):
             if counter == 0:
                 flux = np.copy(self.data.flux["combined"])
@@ -246,11 +247,12 @@ class Result:
 
             profile_f = LSD_profiles.profile_F
             profile_errors_f = LSD_profiles.profile_errors_F
+            cov_z_f = LSD_profiles.cov_z_F
 
             if counter == 0:
-                self.combined_profile = [profile_f, profile_errors_f]
+                self.combined_profile = [profile_f, profile_errors_f, cov_z_f]
             else:
-                self.profiles[counter-1] = [profile_f, profile_errors_f]
+                self.profiles.append([profile_f, profile_errors_f, cov_z_f])
 
         self.data.profiles = self.profiles # point Data.profiles to Result.profiles to keep them in sync
         self.data.combined_profiles = self.combined_profile

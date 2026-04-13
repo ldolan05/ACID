@@ -13,10 +13,11 @@ class Profiles:
     """
     def __init__(
             self,
-            velocities : Array1D = None,
-            flux       : Array1D = None,
-            flux_err   : Array1D = None,
-            data       : Data    = None,
+            velocities : Array1D    = None,
+            flux       : Array1D    = None,
+            flux_err   : Array1D    = None,
+            cov_matrix : np.ndarray = None,
+            data       : Data       = None,
         ) -> None:
         """Initializes the Profiles class with velocity, flux, and optional flux error data.
 
@@ -31,10 +32,13 @@ class Profiles:
         flux_err : Array1D, optional
             The errors associated with the flux values, by default None. If not
             input, they won't be used in the fitting process.
+        cov_matrix : np.ndarray, optional
+            The covariance matrix associated with the flux values, by default None. If not
+            input, it won't be used in the fitting process. Inputting this overrides the errors when fitting.
         data : Data, optional
-            A data instance to draw velocities, flux and flux errors. Will raise an
+            A data instance to draw velocities, flux, flux errors, and covariance matrix. Will raise an
             exception if they do not exist within the class.
-            Must be provided if all three of the above inputs were not passed, by default None. 
+            Must be provided if all four of the above inputs were not passed, by default None. 
         """
 
         if data is not None:
@@ -43,6 +47,7 @@ class Profiles:
             velocities = data.velocities
             flux = data.profiles[0,0] # Subtract 1 to convert from normalized flux to absorption depth
             flux_err = data.profiles[0,1]
+            cov_matrix = data.profiles[0,2]
         else:
             if velocities is None or flux is None:
                 raise ValueError("If no data instance is provided, then at least velocities and flux must be provided.")
@@ -52,6 +57,7 @@ class Profiles:
         self.velocities = velocities
         self.flux = flux
         self.flux_err = flux_err
+        self.cov_matrix = cov_matrix
 
         self.fitted_y    = {}
         self.fitted_yerr = {}
@@ -78,6 +84,7 @@ class Profiles:
         Returns
         -------
         tuple | None
+            If return_fig is True, returns the (fig, ax) tuple. Otherwise, returns None.
         """
         models = ["voigt", "gaussian", "lorentzian", "none"]
         if model is not None:
@@ -114,9 +121,11 @@ class Profiles:
         ax[0].set_ylabel('Flux')
         ax[0].legend()
         ax[1].legend()
+        if return_fig:
+            return fig, ax
         plt.show()
 
-    def fit_voigt(self, x=None, y=None, yerr=None, p0=None, **kwargs):
+    def fit_voigt(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs):
         """Fits a Voigt profile to the given data.
 
         Parameters
@@ -127,6 +136,8 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         yerr : array_like, optional
             The y errors of the data. If None, uses self.flux_err.
+        cov_matrix : np.ndarray, optional
+            The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, sigma, gamma, offset], by default None.
         **kwargs : dict
@@ -137,7 +148,7 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr = self._copy_inputs(x, y, yerr)
+        x, y, yerr, cov_matrix = self._copy_inputs(x, y, yerr, cov_matrix)
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -147,10 +158,10 @@ class Profiles:
             offset = 0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
 
-        popt, pcov = self._fit_model("voigt", x, y, yerr, p0, **kwargs)
+        popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, **kwargs)
         return popt, pcov
 
-    def fit_gaussian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
+    def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs):
         """Fits a Gaussian profile to the given data.
 
         Parameters
@@ -161,6 +172,8 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         yerr : array_like, optional
             The y errors of the data. If None, uses self.flux_err.
+        cov_matrix : np.ndarray, optional
+            The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
         p0 : list, optional
             Initial guess for the parameters [amplitude, mean, stddev], by default None.
         **kwargs : dict
@@ -171,7 +184,7 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr = self._copy_inputs(x, y, yerr)
+        x, y, yerr, cov_matrix = self._copy_inputs(x, y, yerr, cov_matrix)
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -180,10 +193,10 @@ class Profiles:
             offset = 0
             p0 = [amplitude_guess, mean_guess, stddev_guess, offset]
 
-        popt, pcov = self._fit_model("gaussian", x, y, yerr, p0, **kwargs)
+        popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, **kwargs)
         return popt, pcov
 
-    def fit_lorentzian(self, x=None, y=None, yerr=None, p0=None, **kwargs):
+    def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs):
         """Fits a Lorentzian profile to the given data.
 
         Parameters
@@ -194,6 +207,8 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         yerr : array_like, optional
             The y errors of the data. If None, uses self.flux_err.
+        cov_matrix : np.ndarray, optional
+            The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, gamma, offset], by default None.
         **kwargs : dict
@@ -204,7 +219,7 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr = self._copy_inputs(x, y, yerr)
+        x, y, yerr, cov_matrix = self._copy_inputs(x, y, yerr, cov_matrix)
 
         if p0 is None:
             amplitude_guess = np.min(y)
@@ -213,10 +228,10 @@ class Profiles:
             offset = 0
             p0 = [amplitude_guess, centre_guess, gamma0, offset]
 
-        popt, pcov = self._fit_model("lorentzian", x, y, yerr, p0, **kwargs)
+        popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, **kwargs)
         return popt, pcov
 
-    def _copy_inputs(self, x, y, yerr):
+    def _copy_inputs(self, x, y, yerr, cov_matrix):
         """Internal method to copy input data or use class attributes.
 
         Parameters
@@ -227,18 +242,23 @@ class Profiles:
             The y values of the data. If None, uses self.flux.
         yerr : array_like | None
             The y errors of the data. If None, uses self.flux_err.
-
+        cov_matrix : np.ndarray | None
+            The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
+            
         Returns
         -------
         tuple
-            A tuple containing the copied x, y, and yerr arrays.
+            A tuple containing the copied x, y, yerr arrays, and the covariance matrix.
         """
         x    = np.copy(self.velocities) if x    is None else x
         y    = np.copy(self.flux)       if y    is None else y
-        yerr = self.flux_err   if yerr is None else yerr
-        return x, y, yerr
+        yerr = self.flux_err            if yerr is None else yerr
+        yerr_copy = np.copy(yerr) if yerr is not None else yerr
+        cov_matrix = self.cov_matrix if cov_matrix is None else cov_matrix
+        cov_matrix_copy = np.copy(cov_matrix) if cov_matrix is not None else cov_matrix
+        return x, y, yerr_copy, cov_matrix_copy
 
-    def _fit_model(self, model_name, x, y, yerr, p0, **kwargs):
+    def _fit_model(self, model_name, x, y, yerr, cov_matrix, p0, **kwargs):
         """Internal method to fit a specified model to the data.
 
         Parameters
@@ -251,6 +271,8 @@ class Profiles:
             The y values of the data.
         yerr : array_like
             The y errors of the data.
+        cov_matrix : np.ndarray
+            The covariance matrix associated with the flux values.
         p0 : list
             Initial guess for the parameters.
         **kwargs : dict
@@ -265,7 +287,8 @@ class Profiles:
         model_func = getattr(self, f"{model_name}_func")
 
         # Perform the curve fitting
-        popt, pcov = curve_fit(model_func, x, y, sigma=yerr, p0=p0, **kwargs)
+        sigma = yerr if cov_matrix is None else cov_matrix
+        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, absolute_sigma=True, **kwargs)
         self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
         self.fit_on_x[model_name] = model_func(x, *popt)
 
