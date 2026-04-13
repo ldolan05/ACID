@@ -93,11 +93,10 @@ class LSD:
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         scale = np.median(depths_linelist)
         ll_depths = np.copy(depths_linelist)
-        ll_depths = 1 - ll_depths
         if od is True:
             errors /= flux
             flux = - np.log(flux) # add -
-            ll_depths = - np.log(ll_depths)
+            ll_depths = - np.log(1-ll_depths)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, ll_depths)
@@ -391,11 +390,10 @@ class LSD:
         od = True,
         ):
         ll_depth = np.copy(linelist_depths)
-        ll_depth = 1 - ll_depth
         if od:
             profile_errors /= profile
             profile = -np.log(profile)
-            ll_depth = -np.log(ll_depth)
+            ll_depth = -np.log(1-ll_depth)
 
         if alpha is None:
             cls.__init__(cls)
