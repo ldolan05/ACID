@@ -47,7 +47,6 @@ class LSD:
         velocities  : np.ndarray      = None,
         verbose     : int|npint|None  = None,
         od          : bool            = True,
-        new_tau     : bool            = False,
         reconvert_to_flux : bool            = True,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
@@ -93,18 +92,15 @@ class LSD:
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
         scale = np.median(depths_linelist)
-        depths_linelist = 1 - depths_linelist
+        ll_depths = np.copy(depths_linelist)
+        ll_depths = 1 - ll_depths
         if od is True:
-            if new_tau:
-                errors /= flux
-                flux = np.log(flux) + 1
-            else:
-                errors /= flux
-                flux = - np.log(flux) # add -
-            depths_linelist = - np.log(depths_linelist)
+            errors /= flux
+            flux = - np.log(flux) # add -
+            ll_depths = - np.log(ll_depths)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
+        self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, ll_depths)
 
         # Now solve for profile using Cholesky decomposition
         self.c_factor = self.calc_cholesky(self.alpha, errors)
@@ -113,15 +109,8 @@ class LSD:
         self.profile, self.profile_errors = self.solve_z(self.alpha, flux, errors, self.c_factor)
 
         if od is True and reconvert_to_flux is True:
-            if new_tau:
-                self.profile = np.exp(self.profile-1)
-                self.profile_errors *= self.profile
-            else:
-                # tau0 = -np.log(1 - scale)
-                # self.profile *= tau0
-                # self.profile_errors *= tau0
-                self.profile = np.exp(-self.profile)
-                self.profile_errors *= self.profile
+            self.profile = np.exp(-self.profile)
+            self.profile_errors *= self.profile
 
         return
 
@@ -400,33 +389,23 @@ class LSD:
         linelist_depths : np.ndarray,
         alpha = None,
         od = True,
-        new_tau = False,
         ):
-
-        linelist_depths = 1 - linelist_depths
+        ll_depth = np.copy(linelist_depths)
+        ll_depth = 1 - ll_depth
         if od:
-            if new_tau:
-                profile_errors /= profile
-                profile = np.log(profile)+1
-                # linelist_depths = np.exp(-linelist_depths)
-            else:
-                profile_errors /= profile
-                profile = -np.log(profile)
-            linelist_depths = -np.log(linelist_depths)
+            profile_errors /= profile
+            profile = -np.log(profile)
+            ll_depth = -np.log(ll_depth)
 
         if alpha is None:
             cls.__init__(cls)
-            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities, verbose=2)
+            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, ll_depth, velocities, verbose=2)
 
         model_spectrum = alpha @ profile
         model_errors = np.sqrt((alpha**2) @ (profile_errors**2))
         if od:
-            if new_tau:
-                model_spectrum = np.exp(model_spectrum-1)
-                model_errors *= model_spectrum
-            else:
-                model_spectrum = np.exp(-model_spectrum)
-                model_errors *= model_spectrum
+            model_spectrum = np.exp(-model_spectrum)
+            model_errors *= model_spectrum
 
         return model_spectrum, model_errors
 
