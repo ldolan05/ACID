@@ -13,10 +13,8 @@ c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
 Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["ndim", IsEqual[0]]]
-NumericArray: TypeAlias = NDArray[np.number]
 Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
-ArrayAnyD: TypeAlias = NumericArray | list
 
 def convert_moves_to_emcee(moves:list[tuple]):
     """Converts a list of move specifications to emcee moves.

@@ -13,7 +13,7 @@ from . import mcmc
 from . import utils
 from .data import Data
 from .data import Config
-from .utils import FloatLike, IntLike, Scalar, Array1D, Array2D, ArrayAnyD
+from .utils import FloatLike, IntLike, Scalar, Array1D, Array2D
 
 warnings.filterwarnings("ignore")
 

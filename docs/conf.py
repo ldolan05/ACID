@@ -41,10 +41,8 @@ autodoc_type_aliases = {
     "FloatLike": "ACID_code.utils.FloatLike",
     "IntLike": "ACID_code.utils.IntLike",
     "Scalar": "ACID_code.utils.Scalar",
-    "NumericArray": "ACID_code.utils.NumericArray",
     "Array1D": "ACID_code.utils.Array1D",
     "Array2D": "ACID_code.utils.Array2D",
-    "ArrayAnyD": "ACID_code.utils.ArrayAnyD",
 }
 
 napoleon_preprocess_types = True
@@ -52,10 +50,8 @@ napoleon_type_aliases = {
     "FloatLike": "ACID_code.FloatLike",
     "IntLike": "ACID_code.IntLike",
     "Scalar": "ACID_code.Scalar",
-    "NumericArray": "ACID_code.NumericArray",
     "Array1D": "ACID_code.Array1D",
     "Array2D": "ACID_code.Array2D",
-    "ArrayAnyD": "ACID_code.ArrayAnyD",
 }
 
 templates_path = ['_templates']
@@ -68,19 +64,15 @@ _ALIAS_REPLACEMENTS = {
     "ACID_code.FloatLike": "FloatLike",
     "ACID_code.IntLike": "IntLike",
     "ACID_code.Scalar": "Scalar",
-    "ACID_code.NumericArray": "NumericArray",
     "ACID_code.Array1D": "Array1D",
     "ACID_code.Array2D": "Array2D",
-    "ACID_code.ArrayAnyD": "ArrayAnyD",
 
     # Old references
     "ACID_code.utils.FloatLike": "FloatLike",
     "ACID_code.utils.IntLike": "IntLike",
     "ACID_code.utils.Scalar": "Scalar",
-    "ACID_code.utils.NumericArray": "NumericArray",
     "ACID_code.utils.Array1D": "Array1D",
     "ACID_code.utils.Array2D": "Array2D",
-    "ACID_code.utils.ArrayAnyD": "ArrayAnyD",
 }
 
 
