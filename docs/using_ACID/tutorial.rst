@@ -1,6 +1,6 @@
 .. _tutorial:
 
-Tutorial - Using ACID
+Quickstart
 ======================
 
 These tutorials require use of the example data included in the example_ folder. See the repository cloning_ section to install the data.
@@ -14,8 +14,8 @@ The main method (ACID) of the Acid class is now a Result class with its own meth
 The legacy ACID and ACID_HARPS functions are still available for backwards compatibility, however it is recommended to use the Acid class for new applications.
 The tutorials below walk through how to use ACID for a variety of applications using the new class structure.
 
-Quickstart
----------------------
+Inputting a Single Spectrum
+----------------------------
 
 ACID returns LSD profiles based on input spectra. First, lets walk through an example for a single spectrum. 
 
