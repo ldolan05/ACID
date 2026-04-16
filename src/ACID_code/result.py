@@ -262,29 +262,41 @@ class Result:
         return
 
     @_require_profiles
-    def __getitem__(self, item) -> np.ndarray:
-        """Allows indexing into the profiles array directly from the Result object.
+    def __getitem__(self, item) -> list|np.ndarray:
+        """
+        Allows indexing into the profiles array directly from the Result object.
         """
         if isinstance(item, tuple):
+            # Tuples allow for array-like indexing of the list
             if len(item) == 3:
-                # Legacy support for indexing style
                 _order, frame, velocity = item
-                item = (frame, velocity)
+                return self.profiles[frame][velocity]
             elif len(item) == 2:
-                item = item
+                return self.profiles[item[0]][item[1]]
             elif len(item) == 1:
                 return self.combined_profile[item[0]]
+            else:
+                raise ValueError(f"Tuple indexing must be of length 1, 2, or 3. Got {len(item)} instead.")
         elif isinstance(item, int):
+            # Return just the profile or error (or cov_mat) for single int input
+            if item < 0 or item > 2:
+                raise ValueError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
             return self.combined_profile[item]
         elif isinstance(item, str):
-            if "combined" in item.lower():
-                return self.combined_profile
+            # Various different options for string inputs, why not
+            if "error" in item.lower():
+                return self.combined_profile[1]
+            elif "cov" in item.lower():
+                return self.combined_profile[2]
             elif "profile" in item.lower():
-                return self.profiles
-        return self.profiles[item]
+                return self.combined_profile[0]
+            else:
+                raise ValueError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
+        else:
+            raise ValueError(f"Invalid index type. Must be either a tuple, int, or str. Got {type(item)} instead.")
 
     @_require_profiles
-    def __iter__(self) -> np.ndarray:
+    def __iter__(self) -> list|np.ndarray:
         """Allows iterating over the profiles array directly from the Result object.
         """
         return iter(self.profiles)
