@@ -47,6 +47,17 @@ autodoc_type_aliases = {
     "ArrayAnyD": "ACID_code.utils.ArrayAnyD",
 }
 
+napoleon_preprocess_types = True
+napoleon_type_aliases = {
+    "FloatLike": "ACID_code.FloatLike",
+    "IntLike": "ACID_code.IntLike",
+    "Scalar": "ACID_code.Scalar",
+    "NumericArray": "ACID_code.NumericArray",
+    "Array1D": "ACID_code.Array1D",
+    "Array2D": "ACID_code.Array2D",
+    "ArrayAnyD": "ACID_code.ArrayAnyD",
+}
+
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
