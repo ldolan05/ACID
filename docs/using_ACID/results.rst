@@ -53,7 +53,7 @@ This method instead stores the Result internal dictionary as a pickle, including
 store_sampler=True (default is True). For this reason, if you try to open the dictionary yourself with pickle.load() and without using the class method, 
 you will run into errors. If the sampler is not stored, some of the methods when loading the result will not work (eg. plotting walkers).
 
-The Result class also handles the storing of the Data class (again, as a dictionary). See the Data class section for more info.
+The :py:class:`Result` class also handles the storing of the :py:class:`Data` class (again, as a dictionary). See the :ref:`data` for more info.
 
 Plotting
 ---------
