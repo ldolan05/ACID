@@ -7,6 +7,7 @@ from scipy.signal import find_peaks
 from scipy.interpolate import LSQUnivariateSpline
 from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
+from scipy.sparse import csc_matrix
 from beartype import beartype
 from . import utils
 from .errors import LineListRangeError, SNCutError
@@ -46,7 +47,7 @@ class LSD:
         linelist                   = None,
         velocities  : Array1D|None = None,
         verbose     : IntLike|None = None,
-        alpha       : Array2D|None = None,
+        alpha        = None,
         ):
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -105,6 +106,11 @@ class LSD:
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         if alpha is None:
             self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist)
+            alpha_dense = self.alpha
+            nnz = np.count_nonzero(alpha_dense)
+            frac = nnz / alpha_dense.size
+            print("alpha sparsity fraction:", frac)
+            self.alpha = csc_matrix(self.alpha)
         else:
             self.alpha = alpha
 
@@ -245,7 +251,7 @@ class LSD:
 
     @staticmethod
     def calc_cholesky(
-        alpha : Array2D,
+        alpha,
         error : Array1D,
         **kwargs,
         ):
@@ -270,7 +276,11 @@ class LSD:
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
 
         # M = αT V α,  b = αT V R
-        AVA = alpha.T @ (V[:, None] * alpha)
+        if hasattr(alpha, "multiply"):
+            AVA = alpha.T @ alpha.multiply(V[:, None])
+            AVA = AVA.toarray()
+        else:
+            AVA = alpha.T @ (V[:, None] * alpha)
 
         # Diangostics for common 1-th leading order linalg error
         # M = alpha.T @ (V[:, None] * alpha)
@@ -333,7 +343,11 @@ class LSD:
 
         # Find error, cov(z) = M⁻¹, take diagonal
         if return_error or return_cov:
-            AVA = alpha.T @ (V[:, None] * alpha)
+            if hasattr(alpha, "multiply"):
+                AVA = alpha.T @ alpha.multiply(V[:, None])
+                AVA = AVA.toarray()
+            else:
+                AVA = alpha.T @ (V[:, None] * alpha)
             cov_z = cho_solve(c_factor, np.eye(AVA.shape[0]), overwrite_b=False, **kwargs)
             profile_errors = np.sqrt(np.diag(cov_z))
             if return_cov:

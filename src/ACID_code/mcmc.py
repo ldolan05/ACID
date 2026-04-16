@@ -26,7 +26,7 @@ class MCMC:
             x_or_data   : np.ndarray|object,
             y           : np.ndarray|None = None,
             yerr        : np.ndarray|None = None,
-            alpha       : np.ndarray|None = None,
+            alpha        = None,
             velocities  : np.ndarray|None = None,
             c_factor                      = None,
             deterministic_profile : bool  = False,
@@ -86,7 +86,11 @@ class MCMC:
         # For deterministic model, the below variables are used, and are precomputed for speed
         err_od = self.yerr / self.y # independent of continuum, since it's a ratio
         V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
-        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
+        # self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
+        if hasattr(self.alpha, "multiply"):
+            self.AtV = self.alpha.T.multiply(V)
+        else:
+            self.AtV = self.alpha.T * V
 
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
