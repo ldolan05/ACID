@@ -45,17 +45,15 @@ class Profiles:
             if not getattr(data, 'velocities', None) or not getattr(data, 'profiles', None):
                 raise ValueError("Data instance must have attributes 'velocities' and 'profiles'. Try running ACID first.")
             velocities = data.velocities
-            flux = data.profiles[0,0] # Subtract 1 to convert from normalized flux to absorption depth
+            flux = data.profiles[0,0]
             flux_err = data.profiles[0,1]
             cov_matrix = data.profiles[0,2]
         else:
             if velocities is None or flux is None:
                 raise ValueError("If no data instance is provided, then at least velocities and flux must be provided.")
 
-        flux -= 1 # Subtract 1 to convert from normalized flux to absorption depth
-
         self.velocities = velocities
-        self.flux = flux
+        self.flux = flux-1 # Subtract 1 to convert from normalized flux to absorption depth
         self.flux_err = flux_err
         self.cov_matrix = cov_matrix
 
