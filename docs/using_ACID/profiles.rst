@@ -9,7 +9,7 @@ values yourself, please ensure the continuum sits at 0 simply by subtracting 1. 
 way because they do not need to then be transformed if we wish to directly dot the linelist with the profiles
 (in OD space!), even if the Result class plots them at a continuum of 0.
 
-There is simple class provided to fit the final Acid profiles, called ACID_code.Profiles.
+There is simple class provided to fit the final Acid profiles, called :py:class:`ACID_code.Profiles`.
 It can be initialised with a Data instance or directly withe the profile and velcoty values.
 If a Data instance is provided, only the first frame will be used.
 

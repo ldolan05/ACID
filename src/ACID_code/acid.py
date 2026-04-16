@@ -45,22 +45,21 @@ class Acid:
         """
         Notes
         -----
-        Initialises the Acid class with inputted parameters. The class keeps calculations stored in the Data class and run configurations
-        in the Config class (stored in Data for convenience). Both Data and the Result class (passed after ACID) have save and load 
-        methods which can save the result of any calculations, with the Result class naturally saving the Data class together. ACID is designed
-        now to be run on only one order at a time, for running and keeping track of multiple orders, please see the DataList class for a natural
+        Initialises the Acid class with inputted parameters. The class keeps calculations stored in the :py:class:`Data` class and run configurations
+        in the :py:class:`Config` class (stored in Data for convenience). Both :py:class:`Data` and the :py:class:`Result` class (passed after ACID) have save and load 
+        methods which can save the result of any calculations, with the :py:class:`Result` class handling saving the :py:class:`Data` class together. ACID is designed
+        now to be run on only one order at a time, for running and keeping track of multiple orders, please see the :py:class:`DataList` class for a natural
         implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
-        the results for each order. The DataList instance has been designed with parallelization on HPC's in mind, allowing orders (which are
-        independent) to be run by different jobs. See also the multiprocessing section of the Read the Docs:
-        (https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing).
+        the results for each order. The :py:class:`DataList` class has been designed with parallelization on HPC's in mind, allowing orders (which are
+        independent) to be run by different jobs. See also the multiprocessing section :ref:`multiprocessing`.
 
-        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
+        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default :py:class:`Config` and/or :py:class:`Data` values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
+        :py:class:`ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
         are also None, such as velocities, as this can be calculated from the input wavelengths.
 
-        Also shown is where each parameters is stored (either in the Data instance obtained from Acid.data) or in the Config instance (obtained from either
-        Acid.config or Acid.data.config, which should be the same). The Config instance is for runtime settings and the Data instance is for storing data and
+        Also shown is where each parameters is stored (either in the :py:class:`Data` instance obtained from Acid.data) or in the :py:class:`Config` instance (obtained from either
+        Acid.config or Acid.data.config, which should be the same). The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and
         any calculations. 
 
         Parameters
