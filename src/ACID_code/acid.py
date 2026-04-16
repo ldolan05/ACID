@@ -64,9 +64,9 @@ class Acid:
 
         Parameters
         ----------
-        velocities : Array1D, optional
-            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create. If None, a default grid
-            from -25 to 25 km/s with a spacing calculated by calc_deltav after the wavelengths are provided. It is highly recommended to 
+        velocities : :py:type:`Array1D`, optional
+            Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create one. If None, a default grid
+            from -25 to 25 km/s is used with a spacing calculated by calc_deltav after the wavelengths are provided. It is highly recommended to 
             choose your own velocity grid, by default None, stored in the Data instance.
         linelist : Array2D | str | LineList | dict, optional
             The linelist to use for LSD. The linelist should have wavelengths in angstroms and depths relative depths between 0 and 1.
