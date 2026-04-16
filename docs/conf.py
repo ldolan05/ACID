@@ -65,6 +65,15 @@ html_theme = 'sphinx_rtd_theme'
 
 
 _ALIAS_REPLACEMENTS = {
+    "ACID_code.FloatLike": "FloatLike",
+    "ACID_code.IntLike": "IntLike",
+    "ACID_code.Scalar": "Scalar",
+    "ACID_code.NumericArray": "NumericArray",
+    "ACID_code.Array1D": "Array1D",
+    "ACID_code.Array2D": "Array2D",
+    "ACID_code.ArrayAnyD": "ArrayAnyD",
+
+    # Old references
     "ACID_code.utils.FloatLike": "FloatLike",
     "ACID_code.utils.IntLike": "IntLike",
     "ACID_code.utils.Scalar": "Scalar",
@@ -73,6 +82,7 @@ _ALIAS_REPLACEMENTS = {
     "ACID_code.utils.Array2D": "Array2D",
     "ACID_code.utils.ArrayAnyD": "ArrayAnyD",
 }
+
 
 def _clean_signature_text(text: str | None) -> str | None:
     if text is None:
