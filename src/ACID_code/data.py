@@ -15,13 +15,18 @@ from .utils import IntLike, Array1D, Array2D, Scalar
 from .mcmc import MCMC
 
 class MaskingLines:
-    """A simple class to expose the telluric lines when called in Config. This will help
+    """
+    A simple class to expose the telluric lines when called in Config. This will help
     to store telluric lines as a dictionary. With a default itercall to list the line-wise elements,
     but a dictionary index to also store the width of the line, which can then allow for masking Hydrogen
-    lines with much wider masks."""
+    lines with much wider masks.
+    """
     __slots__ = ("lines",) # the only thing stored in this class is this dictionary
 
     def __init__(self, lines:dict) -> None:
+        """
+        Sets the lines attribute after validating the input lines dictionary. The format is specified in :py:class:`Acid`.
+        """
         self.lines = self.validate_lines(lines)
 
     def __getitem__(self, key):
@@ -32,6 +37,21 @@ class MaskingLines:
         return iter(self.lines.items())
 
     def get_masks(self, x, with_names=False) -> list | dict:
+        """
+        Generates masks for the given input array `x` based on the stored lines and widths.
+
+        Parameters
+        ----------
+        x : array-like
+            The input array for which to generate masks.
+        with_names : bool, optional
+            Whether to return a dictionary with line names as keys. Useful if plotting. Default is False.
+
+        Returns
+        -------
+        list | dict
+            A list of masks (ie list of 1D mask arrays) or a dictionary of masks keyed by line names.
+        """
         mask = [] if not with_names else {}
         for name, line_data in self.lines.items():
             lines = np.asarray(line_data["lines"])
@@ -47,15 +67,29 @@ class MaskingLines:
         return mask
 
     @staticmethod
-    def validate_lines(input_lines:dict) -> dict:
+    def validate_lines(input_lines:dict|MaskingLines) -> dict:
+        """
+        Standard method to validate linelist input, the format is quite flexible for convenience, but the output is always a standardised dictionary.
+        See :ref:`masking_lines`
+        """
+
+        # Skip validation if MaskingLines object is input, as it would have already been validated
+        if isinstance(input_lines, MaskingLines):
+            return input_lines.lines
+
+        # Set error messages for common errors to avoid repetition
         length_mismatch_error = f"The number of lines and inputted widths must be the same if inputting widths.\n" \
-        f"If you only wish to input the widths of certain lines, use a list of tuples, see the readthedocs for more details."
-        default_width_error = "No default width was provided for the masking_lines of {}, see the documentation for masking_lines formats"
+        f"If you only wish to input the widths of certain lines, use a list of tuples, see :ref:`masking_lines` for more details."
+        default_width_error = "No default width was provided for the masking_lines of {}, see :ref:`masking_lines` for more details."
+
+        # Set variables to be updated within the loop
         final_dict = {}
-        default_width = None
 
         for name, line_object in input_lines.items():
+        
+            default_width = None
 
+            # Allow first dict inputs, convert them first to a array format to be validated like any other array input
             if isinstance(line_object, dict):
                 if "default_width" in line_object:
                     default_width = line_object["default_width"]
@@ -69,6 +103,7 @@ class MaskingLines:
                 line_input = line_object
 
             if isinstance(line_input, (np.ndarray, list)):
+                # For lists of tuples, allow len 1 or 2 depending on if default_width was provided in the dictionary
                 if isinstance(line_input[0], tuple):
                     lines = []
                     widths = []
@@ -84,7 +119,9 @@ class MaskingLines:
                         else:
                             raise ValueError(f"If the masking_lines for {name} is a list or array of tuples, each tuple must have length 1 " \
                             f"(line only) or 2 (line and width). \nGot tuple with length {len(line)}")          
+
                 else:
+                    # For arrays or lists, convert to numpy array and check dimensions
                     lines = np.array(line_input)
                     if lines.size == 0:
                         raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
@@ -99,13 +136,10 @@ class MaskingLines:
                             raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
                     else:
                         raise ValueError("lines must be a one- or two-dimensional array or list")
-            elif isinstance(line_input, MaskingLines):
-                # Masking lines always has correct dimensions with lines and widths, so just unpack
-                widths = line_input[name][1]
-                lines = line_input[name][0]
+
             else:
-                raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see the doccumentation"
-                                 f"for masking_lines for more details. Got type {type(line_input)}.")
+                raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see :ref:`masking_lines`"
+                                 f" for more details. Got type {type(line_input)}.")
 
             assert len(lines) == len(widths), f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}"
             final_dict[name] = {"lines": np.array(lines), "widths": np.array(widths)}
@@ -113,7 +147,9 @@ class MaskingLines:
 
 @beartype
 class Config:
-    """A simple class to store the configuration of the ACID run."""
+    """
+    The main class for storing ACID configuration settings, with methods to plot and save/load the configuration state.
+    """
 
     defaults = {
         # INIT CONFIGURATION
@@ -121,7 +157,7 @@ class Config:
         "order" : 0,
         "order_range" : [0],
         "masking_lines" : {
-            "Narrow" : {
+            "narrow" : {
                 "default_width" : 200,
                 "lines" : [
                     3820.33, # metal?
@@ -135,7 +171,7 @@ class Config:
                     8226.96, # H2O telluric?
                 ]
             },
-            "Medium" : {
+            "medium" : {
                 "default_width" : 1000,
                 "lines" : [
                     3933.66, # Ca II K
@@ -145,13 +181,13 @@ class Config:
                     5183.62, # Mg I b (3) triplet
                 ]
             },
-            "Wide" : {
+            "wide" : {
                 "default_width" : 2000,
                 "lines" : [
-                    3835.38, # H eta (new)
-                    3889.05, # H zeta (new)
-                    4101.74, # H delta (new)
-                    4340.47, # H gamma (new)
+                    3835.38, # H eta
+                    3889.05, # H zeta
+                    4101.74, # H delta
+                    4340.47, # H gamma
                     4861.34, # H beta
                     6562.81, # H alpha
                 ]
@@ -186,16 +222,25 @@ class Config:
     }
 
     def __init__(self, **kwargs) -> None:
-        
+        """Initialise with the defaults, overwrite with any inputted kwargs"""
         # Set defaults
         self.update_hipri(**self.defaults) # Set defaults as hipri, so they can be overwritten by user inputs in kwargs
 
         # Override with any inputted kwargs
         self.update_hipri(**kwargs) # Set initial values, allowing overwriting and validation of properties
 
+    def __repr__(self) -> str:
+        full_dict = self.to_dict()
+        return f"Config({full_dict})"
+
+    def __str__(self) -> str:
+        """String representation of the Config object, showing all settings in a user-friendly format."""
+        full_dict = self.to_dict()
+        return f"Config with the following settings:\n" + "\n".join([f"{k}: {v}" for k, v in full_dict.items()])
+
     # --- Update methods ---
     def update_hipri(self, **kwargs: Any) -> None:
-        # Update and overwrite existing keys
+        """Update and overwrite existing keys"""
         for k, v in kwargs.items():
             if v is None:
                 # If input is None, and attribute does not exist, set to None
@@ -205,24 +250,27 @@ class Config:
                 setattr(self, k, v)
 
     def update_lowpri(self, **kwargs: Any) -> None:
-        # Update but do not overwrite existing keys
+        """Update but do not overwrite existing keys"""
         for k, v in kwargs.items():
             # Below also sets if None is input but attribute does not exist
             if getattr(self, k, None) is None:
                 setattr(self, k, v)
 
     def to_dict(self) -> dict:
+        """Convert the Config object to a dictionary."""
         return {k: v for k, v in self.__dict__.items()}
 
     # --- Properties ---
     @property
     def verbose(self) -> IntLike:
+        """The stored global verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
         if self._verbose is None:
             return self.defaults["verbose"]
         return self._verbose
 
     @verbose.setter
     def verbose(self, value:IntLike|str|bool|None) -> None:
+        """Set the global verbosity setting for ACID. Accepts an integer, boolean, or string indicating the verbosity level."""
         # Make verbosity always an int regardless of input type, and check correct range
         if value is None:
             return
@@ -252,10 +300,12 @@ class Config:
 
     @property
     def masking_lines(self) -> MaskingLines:
+        """The stored masking lines for ACID. See :ref:`masking_lines` for more details on how this is used in ACID."""
         return MaskingLines(self._masking_lines)
 
     @masking_lines.setter
-    def masking_lines(self, masking_lines:dict|None) -> None:
+    def masking_lines(self, masking_lines:dict|MaskingLines|None) -> None:
+        """Set the masking lines for ACID. Accepts a dictionary, a MaskingLines object, or None."""
         # self._masking_lines is set in init, so should always exist as None
         self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self._masking_lines
 
@@ -263,14 +313,12 @@ class Config:
         """
         Plots the telluric and/or hydrogen lines that will be masked in the residual masking step, with shaded regions indicating 
         the widths of the masks.
-        
+
         Parameters
         ----------
-        line_type : str, optional
-            The type of lines to plot, by default "all". Must be one of "telluric", "hydrogen", or "all".
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False.
-        
+
         Returns
         -------
         If return_fig is True, returns a tuple of (fig, ax) where fig is the matplotlib figure object and ax is the axis object.
@@ -292,63 +340,113 @@ class Config:
              return fig, ax
         plt.show()
 
+    @classmethod
+    def print_defaults(cls) -> None:
+        """Print the default configuration settings for ACID."""
+        print("Default configuration:")
+        for k, v in cls.defaults.items():
+            print(f"{k}: {v}")
+
 @dataclass(slots=True)
 class Data:
-    """Stores necessary data for the Acid class which can be conveniently updated and saved.
+    """
+    Stores necessary data for the Acid class which can be conveniently updated and saved.
     Allows ACID to handle data that has already been computed to avoid recalculation. This class
-    is designed to be lightweight in memory and hence does not store the sampler as an object.
+    is designed to be lightweight in memory and hence does not store the sampler as an object. This is handled in the Result class.
     Note that a Data class should only hold the data for ONE order or observation, but it can hold
-    the data for multiple frames of the same order."""
+    the data for multiple frames of the same order.
+    """
 
-    # Standard necessary inputs, stored in dictionaries so we can store their state at multiple different
+    # The standard necessary inputs, stored in dictionaries so we can store their state at multiple different
     # states of the calculations in Acid
+    # -------------------------------------------------------------------------------------------------------
+    #: The wavelengths for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     wavelengths : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The fluxes for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     flux        : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The errors for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     errors      : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The signal-to-noise ratio for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     sn          : Dict[str, np.ndarray] = field(default_factory=dict)
 
     # Cached products that are expensive or useful for resuming
-    alpha                  : Optional[np.ndarray] = None  # the alpha vector used in the linear model, used for solving the linear system in MCMC
-    c_factor               : Optional[tuple]      = None  # tuple generated by np.cho_factor, used for solving the linear system in MCMC
-    residual_masks         : Optional[np.ndarray] = None  # boolean 1D mask on "combined" grid, used in final process_results step
-    nanmask                : Optional[np.ndarray] = None  # boolean 1D mask on "combined" grid, used to mask out NaN values in combined spectra
-    velocities             : Optional[np.ndarray] = None  # velocities array, used throughout Acid and Results
-    initial_profile        : Optional[np.ndarray] = None  # initial profile generated in residual masking
-    initial_profile_errors : Optional[np.ndarray] = None  # corresponding errors
-    poly_inputs            : Optional[np.ndarray] = None  # polynomial inputs for just the continuum model
-    initial_model_inputs   : Optional[np.ndarray] = None  # The initial_model_inputs if needed for debugging, only set after model_inputs is modified in residual masking
-    model_inputs           : Optional[np.ndarray] = None  # the concatenated array of initial profile and poly coefficents, used as input to emcee
-    initial_state          : Optional[np.ndarray] = None  # the initial state of the MCMC walkers, used for resuming and debugging
+    # ---------------------------------------------------------
+    #: The alpha vector used in the linear model, used for solving the linear system in MCMC
+    alpha                  : Optional[np.ndarray] = None  
+    #: Tuple generated by np.cho_factor, used for solving the linear system in MCMC
+    c_factor               : Optional[tuple]      = None
+    #: Boolean 1D mask on "combined" grid, used in final process_results step
+    residual_masks         : Optional[np.ndarray] = None
+    #: Boolean 1D mask on "combined" grid, used to mask out NaN values in combined spectra
+    nanmask                : Optional[np.ndarray] = None
+    #: Velocities array, used throughout Acid and Results
+    velocities             : Optional[np.ndarray] = None
+    #: Initial profile generated in residual masking
+    initial_profile        : Optional[np.ndarray] = None
+    #: Corresponding errors for the initial profile
+    initial_profile_errors : Optional[np.ndarray] = None
+    #: Polynomial inputs for just the continuum model
+    poly_inputs            : Optional[np.ndarray] = None
+    #: The initial_model_inputs if needed for debugging, only set after model_inputs is modified in residual masking
+    initial_model_inputs   : Optional[np.ndarray] = None
+    #: The concatenated array of initial profile and poly coefficients, used as input to emcee
+    model_inputs           : Optional[np.ndarray] = None
+    #: The initial state of the MCMC walkers, used for resuming and debugging
+    initial_state          : Optional[np.ndarray] = None
 
     # Small cached products needed for MCMC if doing reruns
+    # -----------------------------------------------------
+    #: The number of walkers and dimensions for the MCMC sampler, used for reshaping the samples if resuming
     nwalkers : Optional[int]        = None
+    #: The number of dimensions for the MCMC sampler, used for reshaping the samples if resuming
     ndim     : Optional[int]        = None
 
     # Data required/calculated in results/after MCMC sampling
-    profiles          : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
+    # -------------------------------------------------------
+    #: The list to store all frames of the MCMC sampling, has dimensions (nframes, 3, nvel), where the 3 indexes are the profile, error, and covariance matrix
+    profiles          : Optional[list] = None
+    #: The list to store the combined frame of the MCMC sampling, has dimensions (3, nvel)
     combined_profiles : Optional[np.ndarray] = None
-    nsteps            : Optional[int]        = 0
-    max_steps         : Optional[int]        = None
+    #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
+    nsteps            : Optional[int]  = 0
 
-    # The samples are stored as an array of shape (nwalkers, nsteps, ndim), and not as an emcee sampler object to save memory.
-    # It is already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
-    # they must store the sampler with the result object by configuring the output.
+    #: The samples are stored as an array of shape (nwalkers, nsteps, ndim), and not as an emcee sampler object to save memory.
+    #: It has already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
+    #: they must store the sampler with the result object by configuring the output.
+    # TODO: samples not currently used in result, check again why I did the below
     samples  : Optional[np.ndarray] = None # flatten with v = v.reshape(-1, *v.shape[2:])
     complete : bool                 = False # is set to True when the profiles have been fully calculated
 
-    # Other useful data and figures:
-    initialisation_time : Optional[float] = None  # time taken for initialization
-    mcmc_time           : Optional[float] = None  # time taken for MCMC sampling
-    get_profiles_time   : Optional[float] = None  # time taken to get profiles
-    full_run_time       : Optional[float] = None  # total time for the full run
+    # Other useful data and figures
+    # -----------------------------
+    initialisation_time : Optional[float] = 0  # time taken for initialization
+    mcmc_time           : Optional[float] = 0  # time taken for MCMC sampling
+    get_profiles_time   : Optional[float] = 0  # time taken to get profiles
+    full_run_time       : Optional[float] = 0  # total time for the full run
     plotting_variables  : Dict[str, Any]  = field(default_factory=dict)
 
     # Initialise the properties
-    # Config data for convenience, it is very memory light so not an issue to also store in here
-    _config   : Config = field(default_factory=Config) # config stored as class, but converted to dict on save
+    # -------------------------
+    #: Config data for convenience as a class, but converted to a dictionary on save to avoid pickling issues
+    _config   : Config = field(default_factory=Config)
+    #: The linelist is stored as a dictionary but exposed as a :py:class:`LineList` object when the property is accessed.
     _linelist : Optional[Dict[str, np.ndarray]] = None
 
     def plot_continuum_fit(self, plot_type:str="initial", return_fig:bool=False, save_fig:str|None=None) -> None:
+        """
+        Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
+
+        Parameters
+        ----------
+        plot_type : str, optional
+            The type of continuum fit to plot, either "initial" for the initial continuum fit or
+            "masked" for the continuum fit after residual masking. Default is "initial".
+        return_fig : bool, optional
+            Whether to return the figure and axis objects instead of showing the plot, by default False.
+        save_fig : str or None, optional
+            If provided, the path to save the figure. If None, the figure will not be saved. Default is None.
+        """
+        # Check we have all inputs needed for plot
         if plot_type not in ["initial", "masked"]:
             raise ValueError("plot_type must be either 'initial' or 'masked'")
         if plot_type not in self.plotting_variables:
@@ -360,6 +458,7 @@ class Data:
             ):
             raise ValueError("To plot the continuum fit, the following attributes must be set: unnormalized_wavelengths, fluxes, fit, clipped_waves, clipped_flux, good")
 
+        # Unpack variables
         unnormalized_wavelengths = self.plotting_variables[plot_type]["unnormalized_wavelengths"]
         fluxes                   = self.plotting_variables[plot_type]["fluxes"]
         good                     = self.plotting_variables[plot_type]["good"]
@@ -367,13 +466,14 @@ class Data:
         clipped_waves            = self.plotting_variables[plot_type]["clipped_waves"]
         clipped_flux             = self.plotting_variables[plot_type]["clipped_flux"]
 
+        # Normalise wavelengths and plot flux and fit
         a, b = utils.get_normalisation_coeffs(unnormalized_wavelengths)
         fig, ax = plt.subplots(figsize=(15, 9))
         ax.plot(unnormalized_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
         ax.plot(unnormalized_wavelengths, fit, label='Fitted Continuum', color='red')
         ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
 
-        # Plot bad regions:
+        # Plot bad regions (chunk deviation masking):
         masked = ~good
         padded = np.concatenate(([False], masked, [False]))
         starts = np.flatnonzero(~padded[:-1] & padded[1:])
@@ -382,9 +482,10 @@ class Data:
             ax.axvspan((clipped_waves[start]-b)/a, (clipped_waves[end-1]-b)/a,
                         color='red', alpha=0.15, label="Bad regions" if i == 0 else None)
 
+        # Plot the linelist points, with a color corresponding to their depth in the linelist within the range
+        # Only plot the 20 strongest lines to avoid overcrowding.
         ll_wl = self.linelist["wavelengths"]
         ll_depths = self.linelist["depths"]
-
         ll_wl, ll_depths = utils.clip_wavelengths(unnormalized_wavelengths, ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
@@ -392,6 +493,8 @@ class Data:
         ll_wl = ll_wl[-20:]
         ll_depths = ll_depths[-20:]
 
+        # Try colouring them, but often the linelist points will be outside the wavelength range so just skip if 
+        # there's an error to avoid breaking the plot
         try:
             cmap = plt.cm.viridis_r
             norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
@@ -409,10 +512,11 @@ class Data:
             cbar = fig.colorbar(sm, ax=ax)
             cbar.set_label("Line depth")
         except:
-            print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
+            if self.config.verbose > 0:
+                print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
             pass
 
-        # Plot the line masks
+        # Plot the line masks with their names
         x = unnormalized_wavelengths
         line_mask = self.config.masking_lines.get_masks(x, with_names=True)
         for i, (name, masks) in enumerate(line_mask.items()):
@@ -423,6 +527,7 @@ class Data:
                 ax.axvspan((x[start]), (x[end-1]), color=f'C{i+1}', alpha=0.3,
                            label=f"{name} Line masks" if j == 0 else None)
 
+        # Add labels and legend, and save or show figure
         plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
         ax.set_title(plot_title)
         ax.legend()
@@ -433,6 +538,17 @@ class Data:
         plt.show()
 
     def plot_residual_masking(self, save_fig:str|None=None) -> None:
+        """
+        Creates 3 plots to show the result of the residual masking step, showing the residuals with the sigma clipping thresholds, 
+        the masked regions, and the initial profile after masking.
+
+        Parameters
+        ----------
+        save_fig : str or None, optional
+            If provided, a directory to save the figure, will create one if it does not exist. 
+            If None, the figure will not be saved. Default is None.
+        """
+        # Check we have all inputs needed for plot
         if "residual_masking" not in self.plotting_variables:
             raise ValueError("No plotting variables found for residual_masking. ")
         if not all(
@@ -446,6 +562,7 @@ class Data:
             if not os.path.isdir(save_fig):
                 raise ValueError(f"save_fig must be a valid path to a directory to save the figures, or None to show the figures. Got: {save_fig}")
 
+        # Unpack variables
         x = self.wavelengths["masked"]
         y = self.flux["masked"]
         mask = self.plotting_variables["residual_masking"]["mask"]
@@ -456,8 +573,10 @@ class Data:
         profile_F = self.plotting_variables["residual_masking"]["profile_F"]
 
         nremoved = np.sum(mask)
-        print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
+        if self.config.verbose > 1:
+            print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
 
+        # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
         ax.plot(x, residuals, label='Residuals', color='blue')
         ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
@@ -916,9 +1035,9 @@ class DataList:
         return self.run_ACID(**kwargs)
 
     def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
-        """Appends a Data instance to the data list
-        "Note that the order range of the class is kept, if you want to set a new order range, \n" \
-        "Use the set_order_range() method first to change it."
+        """
+        Appends a Data instance to the data list. Note that the order range of the class is kept, 
+        if you want to set a new order range, use the set_order_range() method first to change it.
         """
         if force_order is not None:
             data.config.order = force_order

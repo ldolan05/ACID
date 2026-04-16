@@ -1,4 +1,4 @@
-.. _results:
+.. _result:
 
 Results and Plotting
 ====================
