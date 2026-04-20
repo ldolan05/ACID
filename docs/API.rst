@@ -73,3 +73,8 @@ Type Aliases
    :canonical: numpy.ndarray | list[list[Scalar]] | list[Array1D]
 
    A two-dimensional numeric array or nested numeric lists. The 2D condition is enforced for all array types.
+
+.. py:type:: Array3D
+   :canonical: numpy.ndarray | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
+
+   A three-dimensional numeric array or nested numeric lists. The 3D condition is enforced for all array types.

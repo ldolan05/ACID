@@ -4,14 +4,13 @@ from beartype import beartype
 from tqdm import tqdm
 import traceback as tb
 from typing import Any, Dict, Optional
-from .utils import Array1D, c_kms
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pickle, os
 import numpy as np
 from . import utils
 from .errors import *
-from .utils import IntLike, Array1D, Array2D, Scalar
+from .utils import IntLike, Array1D, Array2D, Array3D, Scalar, c_kms
 from .mcmc import MCMC
 
 class MaskingLines:
@@ -334,7 +333,7 @@ class Data:
     # It is already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
     # they must store the sampler with the result object by configuring the output.
     samples  : Optional[np.ndarray] = None # flatten with v = v.reshape(-1, *v.shape[2:])
-    complete : bool                 = False # is set to True when the profiles have been fully calculated
+    complete : bool                 = False # is set to True when the profiles have been fully calculated, used in DataList
 
     # Other useful data and figures:
     initialisation_time : Optional[float] = None  # time taken for initialization
@@ -861,47 +860,176 @@ class LineList:
 @beartype
 class DataList:
     """
-    A class that stores Data instances in a list indexed by order. Holds some useful methods for analysis or to be called
-    by result. This can map the order number of an instrument to the 0-indexed python list.
+    A class that stores Data instances in a list indexed by order. The DataList is a useful class for running ACID over multiple orders with parallelization. 
+    Fundamentally this class holds Data instances (which ACID updates with the results per order) as a list and can map the true order number
+    from the instrument (stored in the config) to the index of the list. It handles missing/incomplete orders, and the ability to append new orders.
+    For more information and a full example on how to use the DataList, see :ref:`datalist' in the documentation. Note that the DataList is not 
+    strictly necessary to run ACID over multiple orders, you can handle the multiple instances yourself.
+
+    The DataList class works with a required root directory specified by the user to access to the same data across parallel processes, 
+    and also to save intermediate results and figures per order. It also can save the whole sampler if you specify save_sampler=True in the run_ACID method,
+    which will save the sampler to the save_dir after running ACID for each order but take up much more disk space.
     """
-    def __init__(self, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|None=None):
-        # All configs should have the same order_range so that they are internally aware. We just take the first one to 
-        # generate the mapping of order to index in the list. The Load class will configure the correct order range based
-        # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
+
+    def __init__(
+        self,
+        wavelengths      : Array3D|Array2D|None           = None,
+        flux             : Array3D|Array2D|None           = None,
+        errors           : Array3D|Array2D|None           = None,
+        sn               : Array2D|Array1D|None           = None,
+        order_range      : Array1D|None                   = None,
+        config           : Config|None                    = None,
+        linelist         : Array2D|None|str|LineList|dict = None,
+        velocities       : Array1D|None                   = None,
+        save_dir         : str|None                       = None,
+        verbose          : IntLike|bool|str|None          = None,
+        load                                              = None,
+        _data_list       : list[Data]|None                = None,
+        **kwargs,
+        ) -> DataList:
+        """
+        Initializes the DataList object. The DataList can be initialized in two ways: either by providing the wavelengths, flux, errors, and sn arrays directly in
+        the class initialization (here), or using the :py:classmethod:`DataList.from_datalist` method with a list of Data objects. 
+        The former is useful for quickly initializing a DataList from raw data, while the latter is useful 
+        for loading a saved DataList or for more fine-grained control over the initialization of each Data object.
+
+        Parameters
+        ----------
+        wavelengths : :py:type:`Array3D` | :py:type:`Array2D` | None, optional
+            A 2D or 3D array of wavelengths for the input spectra.
+            If a 2D array is provided, it is assumed to have shape (n_orders, n_pixels).
+            If a 3D array is provided, it is assumed to have shape (n_orders, n_frames, n_pixels). Default is None.
+            The format for the last 1 or 2 dimensions follows that of the "wavelengths" input in the :py:method:`Acid.ACID` method.
+            Sometimes, fits files store their frames in shape (n_frames, n_orders, n_pixels), you can swap the axes with np.swapaxes(wavelengths, 0, 1) 
+            to get them in the correct shape. It is also possible to input orders with different numbers of pixels, in which case the wavelengths should be a list
+            of 2D arrays/lists.
+        flux : :py:type:`Array3D` | :py:type:`Array2D` | None, optional
+            A 2D or 3D array of fluxes for the input spectra. Same shape assumptions as wavelengths. Default is None.
+        errors : :py:type:`Array3D` | :py:type:`Array2D` | None, optional
+            A 2D or 3D array of errors for the input spectra. Same shape assumptions as wavelengths. Default is None.
+        sn : :py:type:`Array2D` | :py:type:`Array1D` | None, optional
+            A 1D or 2D array of signal-to-noise ratios for the input spectra. If a 1D array is provided, it is assumed to have shape (n_orders,). 
+            If a 2D array is provided, it is assumed to have shape (n_orders, n_frames). Default is None. Follows the same logic as the "sn" input in 
+            the :py:method:`Acid.ACID` method, for approximating the errors (or vice versa) if one is not provided.
+        order_range : :py:type:`Array1D` | None, optional
+            A 1D array of order labels corresponding to the orders in the input data. 
+            If not provided, it is assumed to be a pythonic 0-indexed range of the same length as the number of orders in the input data. Default is None.
+        config : :py:class:`Config` | None, optional
+            A template Config object containing the configuration for the ACID run to be used for all the orders. 
+            If not provided, default values will be used. Default is None.
+        linelist : :py:type:`Array1D` | str | :py:class:`LineList` | dict | None, optional
+            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:method:`Acid.ACID` method.
+        velocities : :py:type:`Array1D` | None, optional
+            The velocity grid to be used for all the orders. This should be a 1D array of velocity values in km/s. Follows the same format as the "velocities" 
+            input in the :py:method:`Acid.ACID` method. Default is None.
+        save_dir : str | None, optional
+            The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
+        verbose : int | bool | str | None, optional
+            The verbosity level for printing information during the initialization. Follows the same format as the "verbose" input in the :py:class:`Config` class. 
+            Default is None.
+        load : Any, optional
+            Not yet implemented, do not use. The idea is that you can input a Load object which has its own tools to pull s2d data from common instruments 
+            such as ESPRESSO, HARPS, etc. If you want to use this feature, please open an issue or contribute a pull request with the implementation.
+        _data_list : list[Data] | None, optional
+            This is an internal argument used for initializing the DataList from a list of Data objects in the :py:classmethod:`DataList.from_datalist` method.
+        """
+
+        # Raise if load was used
+        if load is not None:
+            raise NotImplementedError(f"The 'load' argument is not yet implemented. \n"
+                                      f"The idea is that you can input a Load object which has its own tools to pull s2d data from common "\
+                                      f"instruments such as ESPRESSO, HARPS, etc. \nIf you want to use this feature, please open an issue or "\
+                                      f"contribute a pull request with the implementation.")
+            from .load import Load
+            if not isinstance(load, Load):
+                raise ValueError("load must be an instance of the Load class. Got: {load!r}")
+            wavelengths, flux, errors, sn = load.get_data()
+            order_range = load.order_range
+
+        # Configure verbosity
+        self.verbose = Config(verbose=verbose).verbose
+
+        # Configure velocities
+        self.velocities = velocities
+
+        # Configure order_range, creates one if not input from the shape of wavelengths
+        self.order_range = order_range # if None, will be set later, otherwise self.from_datalist handles the range from configs     
+
+        # Configure save_dir, for saving intermediate results and figures per order
+        self._save_dir = None
+        self.save_dir = save_dir if save_dir is not None else None
+
+        # Set empty class attributes
+        self._combined_profile = None
+        self.excluded_orders = []
+
+        if _data_list is not None:
+            self.data_list = _data_list # datalist property handles the rest
+            return
+
+        # From here, the array inputs must be provided
+        if order_range is None:
+            order_range = np.arange(len(wavelengths), dtype=np.int32)
+        else:
+            order_range = np.asarray(order_range)
+            if not np.all(np.isfinite(order_range)):
+                raise ValueError("order_range must only contain finite values.")
+            order_range = np.round(order_range).astype(np.int32)
+
+        if len(order_range) != len(wavelengths):
+            raise ValueError("The length of the order_range must match the number of frames in the input data.")
+
+        config_dict = config.to_dict() if config is not None else {}
+
+        datalist = []
+        for idx, order in enumerate(order_range):
+            data = Data()
+            config_dict["order"] = order
+            data.config = Config(**config_dict)
+            input_sn = sn[idx] if sn is not None else None
+            data.set_inputs(wavelengths[idx], flux[idx], errors[idx], input_sn)
+            data.set_linelist(linelist=linelist)
+            data.velocities = velocities
+            datalist.append(data)
+        
+        self.data_list = datalist # datalist property handles the rest
+
+    @classmethod
+    def from_datalist(cls, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|str|None=None):
+        """"""
         if isinstance(data_list, Data):
             data_list = [data_list]
 
-        if verbose is not None:
-            old_verbose = int(np.copy(data_list[0].config.verbose))
-            data_list[0].config.verbose = verbose # verbose in config is a property and has good validation
-            self.verbose = int(np.copy(data_list[0].config.verbose))
-            data_list[0].config.verbose = old_verbose # reset to old verbose
-        else:
-            self.verbose = np.max([data.config.verbose for data in data_list])
+        # Configure verbosity, if None, use highest verbosity in list
+        if verbose is None:
+            verbose = np.max([data.config.verbose for data in data_list])
 
+        # All configs should have the same order_range so that they are internally aware. We just take the first one to 
+        # generate the mapping of order to index in the list. The Load class will configure the correct order range based
+        # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
         order_range = data_list[0].config.order_range
-        if len(data_list) > 1 and self.verbose > 0:
+        if len(data_list) > 1 and verbose > 0:
             if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
                 print("Warning: Not all Data instances have the same order_range. Taking the longest order range.")
 
+        # Take the order range with the greatest length, 
         max_order_range_idx = np.argmax([len(data.config.order_range) for data in data_list])
-        self.order_range = data_list[max_order_range_idx].config.order_range
+        order_range = data_list[max_order_range_idx].config.order_range
 
         # Check all velocity grids match, store velocities
         v0 = data_list[0].velocities
         for data in data_list:
             if not np.array_equal(data.velocities, v0):
                 raise ValueError("All Data instances must have the same velocity grid.")
-        self.velocities = v0
+        velocities = v0
 
-        self.data_list = data_list
-        self.sort_by_order() # generates self.orders and self.o2i
-
-        self._save_dir = None
-        self.save_dir = save_dir if save_dir is not None else None
-
-        self._combined_profile = None
-        self.excluded_orders = []
+        return cls(
+            _data_list  = data_list, # skips initialisation of the empty datalist in __init__
+            save_dir    = save_dir,
+            verbose     = verbose,
+            order_range = order_range,
+            velocities  = velocities,
+        )
 
     def __iter__(self):
         yield from self.data_list
@@ -928,18 +1056,16 @@ class DataList:
             "If you want to overwrite it, set overwrite=True in the append method.")
         if order not in self.order_range:
             if not extend:
-                raise ValueError("The order of the appended data class does not match the rest of the list. \n" \
-                            "If you want to extend the order_range to append the new order, set extend=True. \n" \
-                            "Note that the order range of the class is kept, if you want to set a new order range, \n" \
-                            "Use the set_order_range() method first to change it.")
+                raise ValueError(f"The order of the appended data class does not match the rest of the list. \n" \
+                                 f"If you want to extend the order_range to append the new order, set extend=True.")
             else:
                 self.order_range = np.append(self.order_range, order).astype(np.int32)
         
-        if overwrite and data.config.order in self.orders:
+        if overwrite and order in self.orders:
             self.data_list[self.o2i[order]] = data
         else:
             self.data_list.append(data)
-        
+
         self.sort_by_order() # re-sorts the list and updates the o2i mapping
 
     def set_order_range(self, order_range:Array1D):
@@ -996,17 +1122,22 @@ class DataList:
                                 f"Skipping this order. To overwrite existing results, set allow_overwrite=True.")
                     continue
 
+            # The following try-except loops came from just testing ACID on a lot of different orders, stars, and instruments
             try:
                 result = Acid(data=self.data_list[self.o2i[order]]).ACID()
             except LineListRangeError:
-                print(f"Error on order {order} due to line list range error. Your linelist is likely out of range of the wavelengths. Skipping this order.", flush=True)
+                print(f"Error on order {order} due to line list range error. Your linelist is likely out of "\
+                      f"range of the wavelengths. Skipping this order.", flush=True)
                 continue
             except ContinuumError:
-                print(f"Error on order {order} due to continuum fitting error. The fitted continuum likely had negative values. Skipping this order.", flush=True)
+                print(f"Error on order {order} due to continuum fitting error. The fitted continuum likely "\
+                      f"had negative values. Skipping this order.", flush=True)
                 continue
             except SNCutError:
-                print(f"Error on order {order} due to S/N cut error. The S/N of the spectrum is likely too low, and no lines survived the cut. Skipping this order.", flush=True)
+                print(f"Error on order {order} due to S/N cut error. The S/N of the spectrum is likely too "\
+                      f"low, and no lines survived the cut. Skipping this order.", flush=True)
                 continue
+            # If no known exception arose, just print the last 3 calls in traceback for debugging and skip the order.
             except Exception:
                 print(f"Error on order {order}. Skipping this order. Error message:\n", flush=True)
                 tb.print_exc(limit=-3)
@@ -1015,58 +1146,6 @@ class DataList:
             if self.save_dir is not None:
                 result.save_result(save_path, store_sampler=store_sampler)
         return
-
-    @classmethod
-    def create(
-        cls,
-        wavelengths : Array2D                        = None,
-        flux        : Array2D                        = None,
-        errors      : Array2D                        = None,
-        sn          : Array1D                        = None,
-        order_range : Array1D|None                   = None,
-        load                                         = None,
-        config      : Config|None                    = None,
-        linelist    : Array2D|None|str|LineList|dict = None,
-        velocities  : Array1D|None                   = None,
-        save_dir    : str|None                       = None,
-        verbose     : IntLike|bool|None              = None,
-        ) -> DataList:
-
-        if load is not None:
-            raise NotImplementedError("The 'load' argument in DataList.create() is not yet implemented.")
-            from .load import Load
-            if not isinstance(load, Load):
-                raise ValueError("load must be an instance of the Load class. Got: {load!r}")
-            wavelengths, flux, errors, sn = load.get_data()
-            order_range = load.order_range
-
-        if order_range is None:
-            order_range = np.arange(len(wavelengths), dtype=np.int32)
-        else:
-            order_range = np.asarray(order_range)
-            if not np.all(np.isfinite(order_range)):
-                raise ValueError("order_range must only contain finite values.")
-            if not np.allclose(order_range, np.round(order_range)):
-                raise ValueError("order_range must contain integer-valued order labels.")
-            order_range = np.round(order_range).astype(np.int32)
-
-        if len(order_range) != len(wavelengths):
-            raise ValueError("The length of the order_range must match the number of frames in the input data.")
-
-        config_dict = config.to_dict() if config is not None else {}
-
-        datalist = []
-        for idx, order in enumerate(order_range):
-            data = Data()
-            config_dict["order"] = order
-            data.config = Config(**config_dict)
-            input_sn = sn[idx] if sn is not None else None
-            data.set_inputs(wavelengths[idx], flux[idx], errors[idx], input_sn)
-            data.set_linelist(linelist=linelist)
-            data.velocities = velocities
-            datalist.append(data)
-
-        return cls(datalist, save_dir=save_dir, verbose=verbose)
 
     def save(self, save_dir:str|None=None):
         d = {}
@@ -1140,6 +1219,19 @@ class DataList:
             except Exception as e:
                 raise ValueError(f"There was an exception trying to combine profiles: {e}")
         return self._combined_profile
+
+    @property
+    def data_list(self):
+        return self._data_list
+
+    @data_list.setter
+    def data_list(self, data_list):
+        if not isinstance(data_list, list):
+            raise ValueError("data_list must be a list of Data instances.")
+        if not all(isinstance(data, Data) for data in data_list):
+            raise ValueError("All elements in data_list must be instances of the Data class.")
+        self._data_list = data_list
+        self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
     def combine_profiles(self, exclude:int|list|None=None) -> None:
         """

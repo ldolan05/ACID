@@ -258,6 +258,7 @@ class Result:
         self.data.combined_profiles = self.combined_profile
         self.data.get_profiles_time = time() - t0
         self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
+        self.data.complete = True
 
         return
 

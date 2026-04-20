@@ -43,6 +43,7 @@ autodoc_type_aliases = {
     "Scalar": "ACID_code.utils.Scalar",
     "Array1D": "ACID_code.utils.Array1D",
     "Array2D": "ACID_code.utils.Array2D",
+    "Array3D": "ACID_code.utils.Array3D",
 }
 
 napoleon_preprocess_types = True
@@ -52,6 +53,7 @@ napoleon_type_aliases = {
     "Scalar": "ACID_code.Scalar",
     "Array1D": "ACID_code.Array1D",
     "Array2D": "ACID_code.Array2D",
+    "Array3D": "ACID_code.Array3D",
 }
 
 templates_path = ['_templates']
@@ -66,6 +68,7 @@ _ALIAS_REPLACEMENTS = {
     "ACID_code.Scalar": "Scalar",
     "ACID_code.Array1D": "Array1D",
     "ACID_code.Array2D": "Array2D",
+    "ACID_code.Array3D": "Array3D",
 
     # Old references
     "ACID_code.utils.FloatLike": "FloatLike",
@@ -73,6 +76,7 @@ _ALIAS_REPLACEMENTS = {
     "ACID_code.utils.Scalar": "Scalar",
     "ACID_code.utils.Array1D": "Array1D",
     "ACID_code.utils.Array2D": "Array2D",
+    "ACID_code.utils.Array3D": "Array3D",
 }
 
 
