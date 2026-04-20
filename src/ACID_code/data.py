@@ -1079,23 +1079,62 @@ class DataList:
         self.data_list.sort(key=lambda data: data.config.order)
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
         self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
-        self.orders = [data.config.order for data in self.data_list]
+        self.orders = np.array([data.config.order for data in self.data_list], dtype=np.int32)
 
         if len(np.unique(self.orders)) != len(self.orders):
             raise ValueError("All Data instances within the inputted list must have unique order numbers.")
 
     def run_ACID(
         self,
-        orders        : Array1D|int|str|None = None,
-        store_sampler : bool                 = True,
-        allow_overwrite : bool               = False,
+        orders            : Array1D|int|str|None = None,
+        use_index_mapping : bool                 = True,
+        worker            : IntLike|None         = None,
+        nworkers          : IntLike|None         = None,
+        store_sampler     : bool                 = False,
+        allow_overwrite   : bool                 = False,
         ) -> None:
-        from .acid import Acid
+        """
+        Runs ACID on the Data instances in the data list for the specified orders. The results are saved in the save_dir if it is not None, 
+        with one pickle file per order containing the Result object. The idea is that you can run ACID on any orders you choose
 
+        Parameters
+        ----------
+        orders : :py:type:`Array1D` | int | str | None, optional
+            The orders to run ACID on. This can be provided as a single integer for one order, a list of integers for multiple specific orders, 
+            the string "all" to run on all orders, or None to run on all orders. Default is None, which will run all orders.
+        use_index_mapping : bool, optional
+            If False, will not use the order to index mapping, instead orders are indexed directly. Default is True. Only applies for int or array inputs for orders.
+        worker : :py:type:`IntLike` | None, optional
+            Used in conjunction with nworkers. If an integer is provided, it specifies the worker number for this process. 
+            When both worker and nworkers are provided, all the orders specified in "orders" will be split evenly across the nworkers. 
+            For example, if there are 100 orders, and nworkers is 4, then worker 0 will run orders 0-24, worker 1 will run orders 25-49, etc. 
+            The workers are 0-indexed. Default is None, which means no splitting and all specified orders will be run in this process.
+        nworkers : :py:type:`IntLike` | None, optional
+            The total number of workers to use to split the orders. See the "worker" parameter for more details. Default is None.
+        store_sampler : bool, optional
+            If True, the sampler object from the ACID run will be stored in the result pickles. This will take up much more disk space, but allow
+            for use of the :py:class:`Result` methods requiring the sampler attribute. Default is False.
+        allow_overwrite : bool, optional
+            If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
+            that already have result pickles in the save_dir.
+        """
+        from .acid import Acid # local import to avoid circular imports, since Acid imports Data
+
+        # Validate worker and nworkers inputs for splitting orders across workers, and set defaults if not provided for easier logic below.
+        if worker is not None or nworkers is not None:
+            if worker is None or nworkers is None:
+                raise ValueError("Both worker and nworkers must be provided together to use the worker splitting functionality.")
+            if worker < 0 or worker >= nworkers:
+                raise ValueError(f"worker must be between 0 and nworkers-1. Got: worker={worker}, nworkers={nworkers}")
+        else:
+            nworkers = 1 # if no worker splitting, just set nworkers to 1 for the logic below to work
+
+        # Handle formats for orders input
         if isinstance(orders, int):
-            orders = [orders]
+            orders = orders if use_index_mapping else self.i2o[orders]
+            orders = np.array([orders], dtype=np.int32)
         elif isinstance(orders, str):
-            if orders == "all":
+            if orders.lower() == "all":
                 orders = self.orders
             else:
                 raise ValueError(f"If orders is a string, it must be 'all' to run ACID on all orders. Got: {orders!r}")
@@ -1104,10 +1143,20 @@ class DataList:
         elif isinstance(orders, (list, np.ndarray)):
             if not all(isinstance(o, (int, np.integer)) for o in orders):
                 raise ValueError(f"If orders is a list, all elements must be integers. Got: {orders!r}")
-            if not all(o in self.orders for o in orders):
-                raise ValueError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+            if use_index_mapping:
+                if not all(o in self.orders for o in orders):
+                    raise ValueError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+            else:
+                if not all(o in self.i2o for o in orders):
+                    raise ValueError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+                orders = [self.i2o[o] for o in orders] # converts from order to index if use_index_mapping is False, otherwise assumes orders are indexed directly
+            orders = np.array(orders, dtype=np.int32)
         else:
             raise ValueError(f"orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
+
+        # Now we split the orders across workers and select the orders for this worker
+        if nworkers > 1:
+            orders = np.array_split(orders, nworkers)[worker]
 
         iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose > 1 else orders
         for order in iterable:
@@ -1123,23 +1172,24 @@ class DataList:
                     continue
 
             # The following try-except loops came from just testing ACID on a lot of different orders, stars, and instruments
+            failed_msg = f"Order {order} (list index {self.o2i[order]}) failed with error:"
             try:
                 result = Acid(data=self.data_list[self.o2i[order]]).ACID()
             except LineListRangeError:
-                print(f"Error on order {order} due to line list range error. Your linelist is likely out of "\
+                print(f"{failed_msg} line list range error. Your linelist is likely out of "\
                       f"range of the wavelengths. Skipping this order.", flush=True)
                 continue
             except ContinuumError:
-                print(f"Error on order {order} due to continuum fitting error. The fitted continuum likely "\
+                print(f"{failed_msg} continuum fitting error. The fitted continuum likely "\
                       f"had negative values. Skipping this order.", flush=True)
                 continue
             except SNCutError:
-                print(f"Error on order {order} due to S/N cut error. The S/N of the spectrum is likely too "\
+                print(f"{failed_msg} S/N cut error. The S/N of the spectrum is likely too "\
                       f"low, and no lines survived the cut. Skipping this order.", flush=True)
                 continue
             # If no known exception arose, just print the last 3 calls in traceback for debugging and skip the order.
             except Exception:
-                print(f"Error on order {order}. Skipping this order. Error message:\n", flush=True)
+                print(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n", flush=True)
                 tb.print_exc(limit=-3)
                 continue
 
