@@ -1,8 +1,8 @@
 """
-Custom error classes for ACID.
+Custom error classes for ACID. To be used mainly for handling specific errors in the DataList run_ACID method.
 """
 
-class LineListRangeError(Exception):
+class LineListRangeError(ValueError):
     """Custom error for when no lines in the linelist are within the wavelength range of the observed spectrum."""
     pass
 
