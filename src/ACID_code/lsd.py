@@ -47,7 +47,7 @@ class LSD:
         wavelengths : Array1D,
         flux        : Array1D,
         errors      : Array1D,
-        sn          : Scalar|Array1D,
+        sn          : Scalar,
         linelist                   = None,
         velocities  : Array1D|None = None,
         verbose     : IntLike|None = None,
