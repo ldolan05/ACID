@@ -1302,8 +1302,9 @@ class DataList:
 
         profiles = [data.combined_profiles[0] for data in self.data_list if data.config.order not in exclude]
         errors = [data.combined_profiles[1] for data in self.data_list if data.config.order not in exclude]
+        covariances = [data.combined_profiles[2] for data in self.data_list if data.config.order not in exclude]
 
-        self._combined_profile = utils.combine_profiles(profiles, errors)
+        self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
         self.excluded_orders = exclude
         return
 
@@ -1343,5 +1344,5 @@ class DataList:
             Keyword arguments to pass to the Profiles.plot_fit() method.
         """
         from .profiles import Profiles
-        profiles = Profiles(self.velocities, self.combined_profile[0], self.combined_profile[1])
+        profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)

@@ -357,18 +357,61 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
 
 @beartype
 def combine_profiles(
-    spectra : Array2D,
-    errors  : Array2D,
-    ) -> tuple[Array1D, Array1D]:
+    spectra     : Array2D,
+    errors      : Array2D | None = None,
+    covariances : Array3D | None = None
+    ) -> tuple:
+    """
+    Combine multiple profiles into one.
+
+    Parameters
+    ----------
+    spectra : (n_profiles, n_pix) array
+        Input profiles.
+    errors : (n_profiles, n_pix) array, optional
+        1-sigma errors for each profile. Used only if covariances is None.
+    covariances : (n_profiles, n_pix, n_pix) array or list of (n_pix, n_pix) arrays, optional
+        Full covariance matrix for each profile.
+
+    Returns
+    -------
+    combined_profile : (n_pix,) array
+    combined_errors : (n_pix,) array
+        sqrt(diag(combined_covariance))
+    combined_covariance : (n_pix, n_pix) array
+        Only returned if covariances is provided.
+    """
+    from scipy.linalg import cho_factor, cho_solve
+
+    if covariances is not None:
+        n_profiles, n_pix = spectra.shape
+        cho_sum = np.zeros((n_pix, n_pix), dtype=float)
+        rhs = np.zeros(n_pix, dtype=float)
+        I = np.eye(n_pix)
+
+        for z, C in zip(spectra, covariances):
+            cf = cho_factor(C, check_finite=False)
+            cho_sum += cho_solve(cf, I, check_finite=False)
+            rhs += cho_solve(cf, z, check_finite=False)
+        cf_comb = cho_factor(cho_sum, check_finite=False)
+        combined_profile = cho_solve(cf_comb, rhs, check_finite=False)
+        combined_covariance = cho_solve(cf_comb, I, check_finite=False)
+        combined_errors = np.sqrt(np.diag(combined_covariance))
+        return combined_profile, combined_errors, combined_covariance
+
+    elif errors is not None:
+        spectra = np.asarray(spectra)
+        errors = np.asarray(errors)
+
+        weights = 1.0 / errors**2
+        combined_profile = np.sum(weights * spectra, axis=0) / np.sum(weights, axis=0)
+        combined_errors = np.sqrt(1.0 / np.sum(weights, axis=0))
+
+        return combined_profile, combined_errors
     
-    spectra = np.asarray(spectra)
-    errors = np.asarray(errors)
-
-    weights = 1.0 / errors**2
-    combined_spectrum = np.sum(weights * spectra, axis=0) / np.sum(weights, axis=0)
-    combined_errors = np.sqrt(1.0 / np.sum(weights, axis=0))
-
-    return combined_spectrum, combined_errors
+    else:
+        combined_profile = np.nanmean(spectra, axis=0)
+        return combined_profile
 
 def flux_to_od(flux=None, errors=None, linelist=None, cov_matrix=None):
     """Converts flux, errors, and linelist to optical depth.
