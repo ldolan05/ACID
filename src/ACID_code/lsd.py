@@ -20,17 +20,22 @@ class LSD:
     for the initial parameters of the ACID mcmc run and for obtaining final profiles. It 
     can also be used as a standalone LSD implementation.
     """
-    def __init__(self, data:object|None=None):
+    def __init__(self, data:object|None=None, OD=True):
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
         Parameters
         ----------
         data : object | None, optional
             A data instance to draw parameters and configs from, by default None
+        OD : bool, optional
+            Whether to perform LSD in optical depth space (True) or flux space (False), by default True.
+            We generally recommend always using optical depth as ACID was always intended, but you can set
+            this to False if you wish to do your own testing. See :ref:`LSD` in the documentation for more details.
         """
         self.slurm            = "SLURM_JOB_ID" in os.environ
         self.data             = data if data is not None else Data()
         self.linelist         = data.linelist if data is not None else None
+        self.OD               = OD
 
         try:
             self.config = data.config
@@ -100,7 +105,8 @@ class LSD:
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
 
         # Convert to optical depth space for the linelist and the spectrum (may move to own function)
-        flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
+        if self.OD:
+            flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         if alpha is None:
@@ -115,7 +121,10 @@ class LSD:
         self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_cov=True)
 
         # Convert profile back to flux if needed
-        self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
+        if self.OD:
+            self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
+        else:
+            self.profile_F, self.profile_errors_F, self.cov_z_F = self.profile, self.profile_errors, self.cov_z
 
         return
 
