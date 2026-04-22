@@ -769,6 +769,13 @@ class Data:
         self._config = value
 
     @property
+    def result(self):
+        if not self.complete:
+            raise ValueError("Results have not yet been calculated, cannot return results object. Please run the MCMC sampling and process the results first.")
+        from .result import Result
+        return Result(self)
+
+    @property
     def linelist(self) -> Dict[str, np.ndarray]:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
         return LineList(self._linelist)if self._linelist is not None else None
