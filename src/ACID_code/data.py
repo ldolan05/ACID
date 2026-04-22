@@ -748,6 +748,11 @@ class Data:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
         return LineList(self._linelist)if self._linelist is not None else None
 
+    @linelist.setter
+    def linelist(self, value) -> None:
+        self.set_linelist(linelist=value)
+        return
+
     def set_linelist(self, linelist=None, linelist_wl=None, linelist_depths=None) -> None:
         if self._linelist is not None:
             if linelist is None and linelist_wl is None and linelist_depths is None:
@@ -885,15 +890,15 @@ class DataList:
         flux             : Array3D|Array2D|None           = None,
         errors           : Array3D|Array2D|None           = None,
         sn               : Array2D|Array1D|None           = None,
+        velocities       : Array1D|None                   = None,
+        linelist         : Array2D|None|str|LineList|dict = None,
         order_range      : Array1D|None                   = None,
         config           : Config|None                    = None,
-        linelist         : Array2D|None|str|LineList|dict = None,
-        velocities       : Array1D|None                   = None,
         save_dir         : str|None                       = None,
         verbose          : IntLike|bool|str|None          = None,
         load                                              = None,
         _data_list       : list[Data]|None                = None,
-        **kwargs,
+        **config_kwargs,
         ) -> DataList:
         """
         Initializes the DataList object. The DataList can be initialized in two ways: either by providing the wavelengths, flux, errors, and sn arrays directly in
@@ -919,27 +924,36 @@ class DataList:
             A 1D or 2D array of signal-to-noise ratios for the input spectra. If a 1D array is provided, it is assumed to have shape (n_orders,). 
             If a 2D array is provided, it is assumed to have shape (n_orders, n_frames). Default is None. Follows the same logic as the "sn" input in 
             the :py:method:`Acid.ACID` method, for approximating the errors (or vice versa) if one is not provided.
+        velocities : :py:type:`Array1D` | None, optional
+            The velocity grid to be used for all the orders. This should be a 1D array of velocity values in km/s. Follows the same format as the "velocities" 
+            input in the :py:method:`Acid.ACID` method. Default is None.
+        linelist : :py:type:`Array1D` | str | :py:class:`LineList` | dict | None, optional
+            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:method:`Acid.ACID` method.
         order_range : :py:type:`Array1D` | None, optional
-            A 1D array of order labels corresponding to the orders in the input data. 
+            A 1D array of order labels corresponding to the orders in the input data.
+            The index of this array should match to the order of the index of the first dimension of the wavelengths, flux, errors, and sn arrays.
+            For example, if your input data has 3 orders and they correspond to orders 100, 101, and 102 in the instrument, then you should input order_range = [100, 101, 102].
             If not provided, it is assumed to be a pythonic 0-indexed range of the same length as the number of orders in the input data. Default is None.
         config : :py:class:`Config` | None, optional
             A template Config object containing the configuration for the ACID run to be used for all the orders. 
             If not provided, default values will be used. Default is None.
-        linelist : :py:type:`Array1D` | str | :py:class:`LineList` | dict | None, optional
-            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:method:`Acid.ACID` method.
-        velocities : :py:type:`Array1D` | None, optional
-            The velocity grid to be used for all the orders. This should be a 1D array of velocity values in km/s. Follows the same format as the "velocities" 
-            input in the :py:method:`Acid.ACID` method. Default is None.
         save_dir : str | None, optional
             The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
         verbose : int | bool | str | None, optional
-            The verbosity level for printing information during the initialization. Follows the same format as the "verbose" input in the :py:class:`Config` class. 
+            The verbosity level for printing information during the initialization. 
+            Follows the same format as the "verbose" input in the :py:class:`Config` class. 
             Default is None.
         load : Any, optional
             Not yet implemented, do not use. The idea is that you can input a Load object which has its own tools to pull s2d data from common instruments 
             such as ESPRESSO, HARPS, etc. If you want to use this feature, please open an issue or contribute a pull request with the implementation.
-        _data_list : list[Data] | None, optional
+        _data_list : list[:py:class:`Data`] | None, optional
             This is an internal argument used for initializing the DataList from a list of Data objects in the :py:classmethod:`DataList.from_datalist` method.
+        **config_kwargs : 
+            Additional keyword arguments to be passed to the Config object. 
+            Ie. you can input a Config object with all the configuration options you want and/or you pass it through these kwargs.
+            These kwargs will overwrite any existing keys in the Config object.
+            Inputting kwargs not part of the defaults in the Config class will cause an error.
+            Remember that these kwargs will be applied to all orders in the DataList, see :ref:`fromdatalist` to tailor your config per order.
         """
 
         # Raise if load was used
@@ -979,24 +993,26 @@ class DataList:
         if order_range is None:
             order_range = np.arange(len(wavelengths), dtype=np.int32)
         else:
-            order_range = np.asarray(order_range)
+            order_range = np.asarray(order_range, dtype=np.int32)
             if not np.all(np.isfinite(order_range)):
                 raise ValueError("order_range must only contain finite values.")
+            if len(order_range) != len(wavelengths):
+                raise ValueError("The length of the order_range must match the number of frames in the input data.")
             order_range = np.round(order_range).astype(np.int32)
-
-        if len(order_range) != len(wavelengths):
-            raise ValueError("The length of the order_range must match the number of frames in the input data.")
+        self.order_range = order_range
 
         config_dict = config.to_dict() if config is not None else {}
 
         datalist = []
-        for idx, order in enumerate(order_range):
-            data = Data()
-            config_dict["order"] = order
-            data.config = Config(**config_dict)
+        for idx, order in enumerate(self.order_range):
+            data = Data() # create data instance
+            data.config = Config(**config_dict) # create and set config instance with default config dict
+            data.config.update_hipri(**config_kwargs) # updates the config with any kwargs passed in the initialization of the DataList
+            data.config.update_hipri(order=order) # updates the config with the order number for this Data instance
+            input_errors = errors[idx] if errors is not None else None
             input_sn = sn[idx] if sn is not None else None
-            data.set_inputs(wavelengths[idx], flux[idx], errors[idx], input_sn)
-            data.set_linelist(linelist=linelist)
+            data.set_inputs(wavelengths[idx], flux[idx], input_errors, input_sn)
+            data.linelist = linelist # sets the linelist for this Data instance, which is shared across all orders in the DataList
             data.velocities = velocities
             datalist.append(data)
         
