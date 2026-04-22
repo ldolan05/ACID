@@ -196,6 +196,10 @@ class Config:
     def update_hipri(self, **kwargs: Any) -> None:
         # Update and overwrite existing keys
         for k, v in kwargs.items():
+            # Raise error if trying to set an attribute that is not in defaults,
+            # avoids silent errors and typos
+            if k not in self.defaults:
+                raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
                 # If input is None, and attribute does not exist, set to None
                 if not hasattr(self, k):
@@ -206,6 +210,10 @@ class Config:
     def update_lowpri(self, **kwargs: Any) -> None:
         # Update but do not overwrite existing keys
         for k, v in kwargs.items():
+            # Raise error if trying to set an attribute that is not in defaults,
+            # avoids silent errors and typos
+            if k not in self.defaults:
+                raise KeyError(f"Key '{k}' is not a valid configuration option.")
             # Below also sets if None is input but attribute does not exist
             if getattr(self, k, None) is None:
                 setattr(self, k, v)
