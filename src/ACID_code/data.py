@@ -184,20 +184,40 @@ class Config:
         "run_mcmc" : True,
     }
 
-    def __init__(self, **kwargs) -> None:
-        
-        # Set defaults
-        self.update_hipri(**self.defaults) # Set defaults as hipri, so they can be overwritten by user inputs in kwargs
+    #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
+    data_attributes = ["linelist", "velocities"]
+    data_attributes_input_str = "'{}' is a Data property and should not be set in the Config class, please set it directly with 'Data.{}={}' instead."
 
-        # Override with any inputted kwargs
+    def __init__(self, **kwargs) -> None:
+        """Initialise with the defaults, overwrite with any inputted kwargs"""
         self.update_hipri(**kwargs) # Set initial values, allowing overwriting and validation of properties
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        If an attribute is not found, check if it is in the defaults and 
+        return the default value if it is. Otherwise, raise an AttributeError.
+        """
+        if name in self.defaults:
+            return self.defaults[name]
+        raise AttributeError(f"'Config' object has no attribute '{name}'")
+
+    def __repr__(self) -> str:
+        full_dict = self.to_dict()
+        return f"Config({full_dict})"
+
+    def __str__(self) -> str:
+        """String representation of the Config object, showing all settings in a user-friendly format."""
+        full_dict = self.to_dict()
+        return f"Config instance with the following settings:\n" + "\n".join([f"{k}: {v}" for k, v in full_dict.items()])
 
     # --- Update methods ---
     def update_hipri(self, **kwargs: Any) -> None:
         # Update and overwrite existing keys
         for k, v in kwargs.items():
-            # Raise error if trying to set an attribute that is not in defaults,
-            # avoids silent errors and typos
+            # First raise error if Data attribute was input
+            if k in self.data_attributes:
+                raise AttributeError(self.data_attributes_input_str.format(k, k, v))
+            # Then raise error if trying to set an attribute that is not in defaults
             if k not in self.defaults:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
@@ -210,8 +230,10 @@ class Config:
     def update_lowpri(self, **kwargs: Any) -> None:
         # Update but do not overwrite existing keys
         for k, v in kwargs.items():
-            # Raise error if trying to set an attribute that is not in defaults,
-            # avoids silent errors and typos
+            # First raise error if Data attribute was input
+            if k in self.data_attributes:
+                raise AttributeError(self.data_attributes_input_str.format(k, k, v))
+            # Then raise error if trying to set an attribute that is not in defaults
             if k not in self.defaults:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             # Below also sets if None is input but attribute does not exist
