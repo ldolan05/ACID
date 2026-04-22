@@ -281,6 +281,9 @@ class Config:
 
     @property
     def masking_lines(self) -> MaskingLines:
+        """The stored masking lines for ACID. See :ref:`masking_lines` for more details on how this is used in ACID."""
+        if self._masking_lines is None:
+            return MaskingLines(self.defaults["masking_lines"])
         return MaskingLines(self._masking_lines)
 
     @masking_lines.setter
@@ -915,7 +918,7 @@ class DataList:
         velocities       : Array1D|None                   = None,
         linelist         : Array2D|None|str|LineList|dict = None,
         order_range      : Array1D|None                   = None,
-        config           : Config|None                    = None,
+        config           : Config|list[Config]|None       = None,
         save_dir         : str|None                       = None,
         verbose          : IntLike|bool|str|None          = None,
         load                                              = None,
@@ -956,9 +959,12 @@ class DataList:
             The index of this array should match to the order of the index of the first dimension of the wavelengths, flux, errors, and sn arrays.
             For example, if your input data has 3 orders and they correspond to orders 100, 101, and 102 in the instrument, then you should input order_range = [100, 101, 102].
             If not provided, it is assumed to be a pythonic 0-indexed range of the same length as the number of orders in the input data. Default is None.
-        config : :py:class:`Config` | None, optional
-            A template Config object containing the configuration for the ACID run to be used for all the orders. 
-            If not provided, default values will be used. Default is None.
+        config : :py:class:`Config` | list[:py:class:`Config`] | None, optional
+            A template Config object for all orders or a list of Config objects per order containing the configuration for the ACID run.
+            If inputting a list, the index and length of the list must match the first dimension of the input data arrays and the order_range.
+            These take higher priority than any config_kwargs passed in the initialization.
+            Setting 'order' will not have any effect as they will be overwritten by the order numbers in the order_range.
+            If not provided, default Config values will be used. Default is None.
         save_dir : str | None, optional
             The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
         verbose : int | bool | str | None, optional
@@ -971,11 +977,11 @@ class DataList:
         _data_list : list[:py:class:`Data`] | None, optional
             This is an internal argument used for initializing the DataList from a list of Data objects in the :py:classmethod:`DataList.from_datalist` method.
         **config_kwargs : 
-            Additional keyword arguments to be passed to the Config object. 
-            Ie. you can input a Config object with all the configuration options you want and/or you pass it through these kwargs.
-            These kwargs will overwrite any existing keys in the Config object.
+            Additional keyword arguments to be passed with low priority to all of the generated Config objects.
+            These kwargs will join with but NOT overwrite any existing keys in the input Config object(s).
+            Setting 'order' will not have any effect as they will be overwritten by the order numbers in the order_range.
             Inputting kwargs not part of the defaults in the Config class will cause an error.
-            Remember that these kwargs will be applied to all orders in the DataList, see :ref:`fromdatalist` to tailor your config per order.
+            If not provided, default Config values will be used.
         """
 
         # Raise if load was used
@@ -1022,15 +1028,29 @@ class DataList:
                 raise ValueError("The length of the order_range must match the number of frames in the input data.")
             order_range = np.round(order_range).astype(np.int32)
         self.order_range = order_range
-
-        config_dict = config.to_dict() if config is not None else {}
+        
+        # Convert config to dict(s) to be reinitialized in each Data instance
+        if isinstance(config, list):
+            if len(config) != len(order_range):
+                raise ValueError("If inputting a list of Config objects, the length of the list must match the length of the order_range and input arrays.\n" \
+                f"len(order_range): {len(order_range)}, len(wavelengths): {len(wavelengths)}, len(config): {len(config)}.")
+            config_dict = [cfg.to_dict() for cfg in config]
+        else:
+            config_dict = config.to_dict() if config is not None else {}
 
         datalist = []
         for idx, order in enumerate(self.order_range):
             data = Data() # create data instance
-            data.config = Config(**config_dict) # create and set config instance with default config dict
-            data.config.update_hipri(**config_kwargs) # updates the config with any kwargs passed in the initialization of the DataList
-            data.config.update_hipri(order=order) # updates the config with the order number for this Data instance
+
+            # If config_dict is a list, take the dict at the current index, otherwise use the same dict for all orders
+            config_dict_input = config_dict[idx] if isinstance(config_dict, list) else config_dict
+            data.config = Config(**config_dict_input) # create and set config instance with default config dict
+
+            # Update the config with any kwargs passed in the initialization of the DataList, and with the order number for this Data instance
+            data.config.update_lowpri(**config_kwargs)
+            data.config.update_hipri(order=order)
+
+            # Set the inputs for this Data instance, taking the idx'th element of the input arrays for this order. If errors or sn are not provided, they will be set to None and approximated in the Data class.
             input_errors = errors[idx] if errors is not None else None
             input_sn = sn[idx] if sn is not None else None
             data.set_inputs(wavelengths[idx], flux[idx], input_errors, input_sn)
@@ -1138,6 +1158,8 @@ class DataList:
         nworkers          : IntLike|None         = None,
         store_sampler     : bool                 = False,
         allow_overwrite   : bool                 = False,
+        overwrite_kwargs  : bool                 = False,
+        **kwargs,
         ) -> None:
         """
         Runs ACID on the Data instances in the data list for the specified orders. The results are saved in the save_dir if it is not None, 
@@ -1163,6 +1185,12 @@ class DataList:
         allow_overwrite : bool, optional
             If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
             that already have result pickles in the save_dir.
+        overwrite_kwargs : bool, optional
+            If True, any keys in the kwargs that are also in the config for the Data instance will be overwritten by the kwargs values.
+            Use with caution, by default False.
+        **kwargs :
+            Additional keyword arguments to be passed to the ACID method for each order. These will not overwrite any existing keys unless
+            overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
         """
         from .acid import Acid # local import to avoid circular imports, since Acid imports Data
 
@@ -1216,11 +1244,25 @@ class DataList:
                         print(f"ACID result for order {order} already exists at {save_path}. \n"
                                 f"Skipping this order. To overwrite existing results, set allow_overwrite=True.")
                     continue
+            
+            # Handling if any kwargs were input 
+            data = self.data_list[self.o2i[order]]
+            # Only overwrite if overwrite_kwargs is True, otherwise keep the existing linelist/velocities in the Data instance
+            if "linelist" in kwargs:
+                ll = kwargs.pop("linelist")
+                data.linelist = ll if overwrite_kwargs else data.linelist
+            if "velocities" in kwargs:
+                vel = kwargs.pop("velocities")
+                data.velocities = vel if overwrite_kwargs else data.velocities
+            if overwrite_kwargs:
+                data.config.update_hipri(**kwargs)
+            else:
+                data.config.update_lowpri(**kwargs)
 
             # The following try-except loops came from just testing ACID on a lot of different orders, stars, and instruments
             failed_msg = f"Order {order} (list index {self.o2i[order]}) failed with error:"
             try:
-                result = Acid(data=self.data_list[self.o2i[order]]).ACID()
+                result = Acid(data=data).ACID()
             except LineListRangeError:
                 print(f"{failed_msg} line list range error. Your linelist is likely out of "\
                       f"range of the wavelengths. Skipping this order.", flush=True)
