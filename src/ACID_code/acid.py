@@ -178,8 +178,6 @@ class Acid:
         # Determine if running in SLURM environment, independent of any previous configs
         self.slurm = "SLURM_JOB_ID" in os.environ
 
-        self.sampler = None # sampler is a uniquely ACID attribute, so set here as needed in Results class
-
         return
 
     # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
@@ -1032,8 +1030,9 @@ class Acid:
         sampler_verbosity = True if self.config.verbose>1 else False
         backend = None
         if state is None:
-            if not hasattr(self, 'sampler'):
-                raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
+            if self.sampler is None:
+                raise ValueError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
+                                 "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
             backend = self.sampler.backend # This includes previous seed
 
         if self.config.cores is None:
@@ -1063,11 +1062,10 @@ class Acid:
 
     def continue_sampling(
         self,
-        sampler,
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
         max_steps_kwards : dict|None    = None,
-        return_sampler   : bool         = True
+        return_sampler   : bool         = False,
         ) -> EnsembleSampler | None:
         """
         Continue MCMC sampling for additional steps. This should be called in Result class by the user.
@@ -1075,8 +1073,6 @@ class Acid:
 
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler
-            The existing MCMC sampler to continue sampling from.
         nsteps : :py:type:`IntLike`, optional
             Number of additional steps to run the MCMC for.
         max_steps : :py:type:`IntLike`, optional
@@ -1090,7 +1086,6 @@ class Acid:
         return_sampler : bool, optional
             Whether to return the sampler after continuing sampling. Default is True.
 
-
         Returns
         -------
         emcee.EnsembleSampler | None
@@ -1098,7 +1093,6 @@ class Acid:
         """
         assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
 
-        self.sampler = sampler
         self.config = self.data.config
 
         if max_steps is not None:
@@ -1131,6 +1125,14 @@ class Acid:
         if self is None:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
+
+    @property
+    def sampler(self):
+        return self.data.sampler
+
+    @sampler.setter
+    def sampler(self, value):
+        self.data.sampler = value
 
 # All code below is just to ensure backward compatibility with previous ACID versions
 def ACID(*args, **kwargs):

@@ -4,6 +4,8 @@ from beartype import beartype
 from tqdm import tqdm
 import traceback as tb
 from typing import Any, Dict, Optional
+from emcee import EnsembleSampler
+import emcee.backends.backend as emceebackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pickle, os
@@ -462,8 +464,8 @@ class Data:
     #: It has already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
     #: they must store the sampler with the result object by configuring the output.
     # TODO: samples not currently used in result, check again why I did the below
-    samples  : Optional[np.ndarray] = None # flatten with v = v.reshape(-1, *v.shape[2:])
-    complete : bool                 = False # is set to True when the profiles have been fully calculated, used in DataList
+    sampler  : Optional[EnsembleSampler] = None # stored ensemble sampler
+    complete : bool                      = False # is set to True when the profiles and combined_profiles have been fully calculated
 
     # Other useful data and figures
     # -----------------------------
@@ -851,7 +853,7 @@ class Data:
         self.errors["input"]      = input_errors
         self.sn["input"]          = input_sn
 
-    def save(self, filename:str="data.pkl") -> None:
+    def save(self, filename:str="data.pkl", store_sampler:bool=True) -> None:
         """
         Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
@@ -860,8 +862,11 @@ class Data:
         ----------
         filename : str
             The name of the file to save the data object to. This should be a .pkl file.
+        store_sampler : bool
+            Whether to store the MCMC sampler object in the data object. This is recommended for determinstic_profile=True as the sampler is
+            quite small, otherwise, you should disable this and avoid using Result methods requiring the sampler.
         """
-        payload = self.to_dict() # generates a dictionary of the data object for easy pickling
+        payload = self.to_dict(store_sampler) # generates a dictionary of the data object for easy pickling
 
         with open(filename, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -890,10 +895,15 @@ class Data:
         obj.from_dict(payload) # this method updates the data object from the dictionary payload
         return obj
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, store_sampler:bool=True) -> dict[str, Any]:
         """
         Converts the data object to a dictionary payload for saving. This is used internally in the save method, 
         but can also be used for debugging or other purposes.
+
+        Parameters
+        ----------
+        store_sampler : bool, optional
+            Whether to include the MCMC sampler in the dictionary payload, by default True.
         """
         payload: dict[str, Any] = {}
         for f in fields(self):
@@ -902,8 +912,11 @@ class Data:
 
             if name == "_config":
                 payload["config"] = val.to_dict() # store as dict in payload, but store as class in Data
+            elif name == "sampler" and store_sampler:
+                payload["sampler"] = dict(self.sampler.backend.__dict__)
             else:
                 payload[name] = val
+
         return payload
 
     def from_dict(self, payload: dict[str, Any]) -> None:
@@ -923,6 +936,15 @@ class Data:
             if name == "_config": # config stored as a dict in payload, but stored here as class
                 cfg_dict = payload.get("config", {})
                 setattr(self, "_config", Config(**cfg_dict))
+            elif name == "sampler":
+                if "sampler" not in payload:
+                    continue
+                # Reconstruct sampler from backend if in payload, avoids pickling issues
+                backend = emceebackend.Backend(dtype=np.float64)
+                backend.__dict__.update(payload.get("sampler", {}))
+                nwalkers, ndim = backend.shape
+                from .mcmc import MCMC
+                self.sampler = EnsembleSampler(nwalkers, ndim, log_prob_fn=MCMC(self), backend=backend) # dummy sampler to hold the backend
             else:
                 if name in payload:
                     setattr(self, name, payload[name])
