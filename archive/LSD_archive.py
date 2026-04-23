@@ -570,3 +570,361 @@ else:
                 # plt.plot(wavelengths, fluxes, label = 's1d')
                 # plt.legend()
                 # plt.show()
+
+
+# OLD LSD FUNCTIONS
+
+    def get_wave(self, data, header):
+
+        wave = np.array(data*0., dtype = 'longdouble')
+        no = data.shape[0]
+        npix = data.shape[1]
+        d = header['ESO DRS CAL TH DEG LL']
+        xx0 = np.arange(npix)
+        xx = []
+        for i in range(d+1):
+            xx.append(xx0**i)
+        xx = np.asarray(xx, dtype = 'longdouble')
+
+        for o in range(no):
+            for i in range(d+1):
+                idx = i + o * (d + 1)
+                par = np.longdouble(header['ESO DRS CAL TH COEFF LL%d' % idx])
+                wave[o, :] = wave[o, :] + par * xx[i, :]
+            #for x in range(npix):
+            #  wave[o,x]=wave[o,x]+par*xx[i,x]#float(x)**float(i)
+
+        return wave
+
+    def upper_envelope(self, x, y):
+        # from MM-LSD code - give credit if needed
+        # used to compute the tapas continuum. find peaks then fit spline to it.
+        peaks = find_peaks(y, height=0.2, distance=len(x) // 500)[0]
+        # t= knot positions
+        spl = LSQUnivariateSpline(x=x[peaks], y=y[peaks], t=x[peaks][5::10])
+        return spl(x)
+
+    def blaze_correct(self, file_type, spec_type, order, file, directory, masking, run_name, berv_opt):
+        #### Inputing spectrum depending on file_type and spec_type #####
+
+        if file_type == 's1d':
+            #### Finding min and max wavelength from e2ds for the specified order ######
+            file_e2ds = file.replace('s1d', 'e2ds')
+
+            hdu=fits.open('%s'%file_e2ds)
+            sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
+            spec = hdu[0].data
+            header = hdu[0].header
+            brv = header['ESO DRS BERV']
+
+            spec_check = spec[spec<=0]
+            # if len(spec_check)>0:
+                # print('WARNING NEGATIVE/ZERO FLUX - corrected')
+
+            where_are_zeros = (spec<=0)
+            spec[where_are_zeros] = 1e12
+            flux_error = np.sqrt(spec)
+
+            wave=self.get_wave(spec, header)*(1.+brv/2.99792458e5)
+            wavelengths_order = wave[order]
+            wavelength_min = np.min(wavelengths_order)
+            wavelength_max = np.max(wavelengths_order)
+
+            ## remove overlapping region (always remove the overlap at the start of the order, i.e the min_overlap)
+            last_wavelengths = wave[order-1]
+            next_wavelengths = wave[order+1]
+            min_overlap = np.max(last_wavelengths)
+            max_overlap = np.min(next_wavelengths)
+
+            # idx_ = tuple([wavelengths>min_overlap])
+            # wavelength_min = 5900
+            # wavelength_max = wavelength_min+200    ###### if you want to do a WAVELENGTH RANGE just input min and max here ######
+            hdu.close()
+
+            #### Now reading in s1d file ########
+            hdu=fits.open('%s'%file)
+            spec=hdu[0].data
+            header=hdu[0].header
+            spec_check = spec[spec<=0]
+            
+            wave=hdu[0].header['CRVAL1']+(np.arange(spec.shape[0]))*hdu[0].header['CDELT1']
+            
+            where_are_zeros = (spec<=0)
+            spec[where_are_zeros] = 1e12
+            flux_error = np.sqrt(spec)
+
+            if spec_type == 'order':
+                wavelengths=[]
+                fluxes=[]
+                errors = []
+                for value in range(0, len(wave)):
+                    l_wave=wave[value]
+                    l_flux=spec[value]
+                    l_error=flux_error[value]
+                    if l_wave>=wavelength_min and l_wave<=wavelength_max:
+                        wavelengths.append(l_wave)
+                        fluxes.append(l_flux)
+                        errors.append(l_error)
+                wavelengths = np.array(wavelengths)
+                fluxes = np.array(fluxes)
+                errors = np.array(errors)
+
+
+                if len(wavelengths)>5144:
+                    wavelengths = wavelengths[:5144]
+                    fluxes = fluxes[:5144]
+                    flux_error = errors[:5144]
+
+                spec_check = fluxes[fluxes<=0]
+                # if len(spec_check)>0:
+                #     print('WARNING NEGATIVE/ZERO FLUX - corrected')
+
+                # where_are_zeros = (spec<=0)
+                # spec[where_are_zeros] = 1e12
+                # flux_error = np.sqrt(spec)
+                
+                flux_error_order = flux_error
+                masked_waves = []
+                masked_waves = np.array(masked_waves)
+
+                if masking == 'masked':
+                    ## I've just been updating as I go through so it's not complete
+                    #if you want to add to it the just add an element of form: [min wavelength of masked region, max wavelength of masked region]
+                    masks_csv = np.genfromtxt('/home/lsd/Documents/HD189733b_masks.csv', delimiter=',')
+                    min_waves_mask = np.array(masks_csv[:,0])
+                    max_waves_mask = np.array(masks_csv[:,1])
+                    masks = []
+                    for mask_no in range(len(min_waves_mask)):
+                        masks.append([min_waves_mask[mask_no], max_waves_mask[mask_no]])
+
+                    masked_waves=[]
+
+                    for mask in masks:
+                        #print(np.max(mask), np.min(mask))
+                        idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
+                        #print(flux_error_order[idx])
+                        flux_error_order[idx] = 1e12
+                        #print(idx)
+                        if len(wavelengths[idx])>0:
+                            masked_waves.append(wavelengths[idx])
+
+                    #masks = []
+                    ### allows extra masking to be added ##
+
+                    plt.figure('masking')
+                    plt.plot(wavelengths, fluxes)
+                    if len(masked_waves)>0:
+                        for masked_wave in masked_waves:
+                            plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+                    #plt.show()
+
+                    #response = input('Are there any regions to be masked? y or n: ')
+                    response = 'y'
+                    if response == 'y':
+                        '''
+                        print('Take note of regions.')
+                        plt.figure('masking')
+                        plt.plot(wavelengths, fluxes)
+                        plt.show()
+                        '''
+                        #response1 = int(input('How many regions to mask?: '))
+                        response1 = 0
+                        for i in range(response1):
+                            min_wave = float(input('Minimum wavelength of region %s: '%i))
+                            max_wave = float(input('Maximum wavelength of region %s: '%i))
+                            masks.append([min_wave, max_wave])
+                        masked_waves=[]
+                        #print(masks)
+                        for mask in masks:
+
+                            idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
+
+                            flux_error_order[idx] = 1e12
+
+                            if len(wavelengths[idx])>0:
+                                masked_waves.append(wavelengths[idx])
+
+                        plt.figure('telluric masking')
+                        plt.title('Spectrum - after telluric masking')
+                        plt.plot(wavelengths, fluxes)
+                        for masked_wave in masked_waves:
+                            plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+                        plt.savefig('/home/lsd/Documents/LSD_Figures/masking_plots/order%s_masks_%s'%(order, run_name))
+
+                        plt.figure('errors')
+                        plt.plot(wavelengths, flux_error_order)
+                        plt.close('all')
+                        #plt.show()
+
+                elif masking == 'unmasked':
+                    masked_waves = []
+                    masked_waves = np.array(masked_waves)
+
+            elif spec_type == 'full':
+                ## not set up properly.
+                wavelengths = wave
+                fluxes = spec
+
+        elif file_type == 'e2ds':
+            hdu=fits.open('%s'%file)
+            spec=hdu[0].data
+            header=hdu[0].header
+            sn = hdu[0].header['HIERARCH ESO DRS SPE EXT SN%s'%order]
+
+            spec_check = spec[spec<=0]
+            # if len(spec_check)>0:
+            #     print('WARNING NEGATIVE/ZERO FLUX - corrected')
+
+
+            # where_are_NaNs = np.isnan(flux_error)
+            # flux_error[where_are_NaNs] = 1e12
+            where_are_zeros = (spec<=0)
+            spec[where_are_zeros] = 1e12
+            flux_error = np.sqrt(spec)
+            '''
+            flux_error1 = header['HIERARCH ESO DRS SPE EXT SN%s'%order]
+
+            flux_error = header['HIERARCH ESO DRS CAL TH RMS ORDER%s'%order]
+            print(flux_error, flux_error1)
+
+            flux_error = flux_error*np.ones(np.shape(spec))
+            '''
+            # file_ccf = fits.open(file.replace('e2ds', 'ccf_G2'))
+            # print(file_ccf[0].header['ESO DRS BERV'])
+            brv = np.longdouble(header['ESO DRS BERV'])
+            # print(brv)
+            wave_nonad = self.get_wave(spec, header)
+            # if berv_opt == 'y':
+            #     print('BERV corrected')
+            wave = wave_nonad*(1.+brv/2.99792458e5)
+            wave = np.array(wave, dtype = 'double')
+            # if berv_opt == 'n':
+            #     print('BERV not corrected')
+            # wave = wave_nonad
+        
+            # rv_drift=header['ESO DRS DRIFT RV'] 
+            # print(rv_drift)
+            wave_corr = (1.+brv/2.99792458e5)
+            # print(brv, (wave_corr-1)*2.99792458e5)
+
+            # inp = input('Enter to continue...')
+            '''
+            plt.figure('Spectrum directly from fits file')
+            plt.title('Spectrum directly from fits file')
+            plt.errorbar(wave[order], spec[order], yerr = flux_error[order])
+            plt.xlabel('wavelengths')
+            plt.ylabel('flux')
+            plt.show()
+            '''
+
+            blaze_file = glob.glob('tests/data/*blaze_B*.fits')
+
+            blaze_file = blaze_file[0]
+            # try:
+            #     blaze_file = glob.glob('./**blaze_A*.fits')
+            #     # print('%sblaze_folder/**blaze_A*.fits'%(directory))
+            #     # print(blaze_file)
+            #     blaze_file = blaze_file[0]
+            # except: 
+            #     try:
+            #         blaze_file = glob.glob('/Users/lucydolan/Starbase/problem_frames/**blaze_A*.fits')
+            #         blaze_file = blaze_file[0]
+            #     except:
+            #         blaze_file = glob.glob('tests/data/**blaze_A*.fits')
+            blaze = fits.open('%s'%blaze_file)
+            blaze_func = blaze[0].data
+            min_rows = min(spec.shape[0], blaze_func.shape[0], flux_error.shape[0])
+            spec, blaze_func, flux_error = spec[:min_rows], blaze_func[:min_rows], flux_error[:min_rows]
+            spec = spec/blaze_func
+            flux_error = flux_error/blaze_func
+
+            fluxes = spec[order]
+            flux_error_order = flux_error[order]
+            wavelengths = wave[order]
+
+            if masking == 'masked':
+                ## I've just been updating as I go through so it's not complete
+                #if you want to add to it the just add an element of form: [min wavelength of masked region, max wavelength of masked region]
+                masks_csv = np.genfromtxt('/home/lsd/Documents/HD189733b_masks.csv', delimiter=',')
+                min_waves_mask = np.array(masks_csv[:,0])
+                max_waves_mask = np.array(masks_csv[:,1])
+                masks = []
+                for mask_no in range(len(min_waves_mask)):
+                    masks.append([min_waves_mask[mask_no], max_waves_mask[mask_no]])
+
+                masked_waves=[]
+
+                for mask in masks:
+                    #print(np.max(mask), np.min(mask))
+                    idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
+                    #print(flux_error_order[idx])
+                    flux_error_order[idx] = 1e12
+                    #print(idx)
+                    if len(wavelengths[idx])>0:
+                        masked_waves.append(wavelengths[idx])
+
+                #masks = []
+                ### allows extra masking to be added ##
+
+                plt.figure('masking')
+                plt.plot(wavelengths, fluxes)
+                if len(masked_waves)>0:
+                    for masked_wave in masked_waves:
+                        plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+                #plt.show()
+
+                #response = input('Are there any regions to be masked? y or n: ')
+                response = 'y'
+                if response == 'y':
+                    '''
+                    print('Take note of regions.')
+                    plt.figure('masking')
+                    plt.plot(wavelengths, fluxes)
+                    plt.show()
+                    '''
+                    #response1 = int(input('How many regions to mask?: '))
+                    response1 = 0
+                    for i in range(response1):
+                        min_wave = float(input('Minimum wavelength of region %s: '%i))
+                        max_wave = float(input('Maximum wavelength of region %s: '%i))
+                        masks.append([min_wave, max_wave])
+                    masked_waves=[]
+                    #print(masks)
+                    for mask in masks:
+                        #print(np.max(mask), np.min(mask))
+                        idx = np.logical_and(wavelengths>=np.min(mask), wavelengths<=np.max(mask))
+                        #print(flux_error_order[idx])
+                        flux_error_order[idx] = 1e12
+
+                        if len(wavelengths[idx])>0:
+                            masked_waves.append(wavelengths[idx])
+
+                    plt.figure('Telluric masking')
+                    plt.title('Spectrum - telluric masking')
+                    plt.plot(wavelengths, fluxes)
+                    # print(masked_waves)
+                    for masked_wave in masked_waves:
+                        plt.axvspan(np.min(masked_wave), np.max(masked_wave), alpha=0.5, color='red')
+                    #print('new version')
+                    plt.savefig('/home/lsd/Documents/LSD_Figures/masking_plots/order%s_masks_%s'%(order, run_name))
+                    plt.ylabel('flux')
+                    plt.xlabel('wavelength')
+
+                if response == 'n':
+                    print('yay!')
+
+
+            elif masking == 'unmasked':
+                masked_waves = []
+                masked_waves = np.array(masked_waves)
+
+            else: print('WARNING - masking not catching - must be either "masked" or "unmasked"')
+
+            hdu.close()
+
+        #flux_error_order = (flux_error_order)/(np.max(fluxes)-np.min(fluxes))
+        #print('flux error: %s'%flux_error_order)
+        #fluxes = (fluxes - np.min(fluxes))/(np.max(fluxes)-np.min(fluxes))
+        #idx = tuple([fluxes>0])
+
+        return np.array(fluxes), np.array(wavelengths), np.array(flux_error_order), sn ## for just LSD

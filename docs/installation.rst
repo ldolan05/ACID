@@ -27,6 +27,8 @@ Once the environment has been activated ACID can be installed using pip_:
 
 This will install ACID into your environment with all of its dependencies.
 
+.. _cloning:
+
 Cloning the repository
 ------------------------
 In order to use the example data (for the tutorials) or the test suite, ACID will need to be installed from the source (i.e. directly from the GitHub repository).

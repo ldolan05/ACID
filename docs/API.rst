@@ -46,40 +46,43 @@ These functions are retained for backwards compatibility with ACID v1.
    ACID_HARPS
 
 
+.. _aliases:
+
 Type Aliases
 ----------------
 
 .. py:type:: FloatLike
    :canonical: float | numpy.floating
 
-   A floating-point scalar.
+   Any pythonic or numpy floating-point scalar.
 
 .. py:type:: IntLike
    :canonical: int | numpy.integer
 
-   An integer scalar.
+   Any pythonic or numpy integer scalar.
 
 .. py:type:: Scalar
    :canonical: FloatLike | IntLike | numpy.ndarray
 
    A scalar numeric value, including 0D NumPy arrays.
-
-.. py:type:: NumericArray
-   :canonical: numpy.typing.NDArray[numpy.number]
-
-   A NumPy numeric array of any dimension.
+   The 0D condition is enforced if the value is a 0D NumPy array.
 
 .. py:type:: Array1D
    :canonical: numpy.ndarray | list[Scalar]
 
-   A one-dimensional numeric array or a list of scalar numeric values.
+   A one-dimensional numpy numeric array or a list of scalar numeric values.
+   The 1D condition is enforced for all array types.
 
 .. py:type:: Array2D
    :canonical: numpy.ndarray | list[list[Scalar]] | list[Array1D]
 
-   A two-dimensional numeric array or nested numeric lists.
+   A two-dimensional numpy numeric array or nested numeric lists. 
+   Can also mix numpy arrays and lists, ie. a list of 1D numpy arrays, or a list of lists of scalar numeric values, etc.
+   The 2D condition is enforced for all array types.
 
-.. py:type:: ArrayAnyD
-   :canonical: NumericArray | list
+.. py:type:: Array3D
+   :canonical: numpy.ndarray | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
 
-   Any-dimensional numeric array or list-like container.
+   A three-dimensional numpy numeric array or nested numeric lists. 
+   Can also mix numpy arrays and lists, ie. a list of 2D numpy arrays, or a list of lists of 1D numpy arrays, etc.
+   The 3D condition is enforced for all array types.
