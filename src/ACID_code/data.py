@@ -1154,7 +1154,7 @@ class DataList:
 
     The DataList class works with a required root directory specified by the user to access to the same data across parallel processes, 
     and also to save intermediate results and figures per order. It also can save the whole sampler if you specify save_sampler=True in the run_ACID method,
-    which will save the sampler to the save_dir after running ACID for each order but take up much more disk space.
+    which will save the sampler with Data in result to the save_dir after running ACID for each order but take up much more disk space.
     """
 
     def __init__(
@@ -1185,7 +1185,7 @@ class DataList:
             A 2D or 3D array of wavelengths for the input spectra.
             If a 2D array is provided, it is assumed to have shape (n_orders, n_pixels).
             If a 3D array is provided, it is assumed to have shape (n_orders, n_frames, n_pixels). Default is None.
-            The format for the last 1 or 2 dimensions follows that of the "wavelengths" input in the :py:method:`Acid.ACID` method.
+            The format for the last 1 or 2 dimensions follows that of the "wavelengths" input in the :py:function:`Acid.ACID` method.
             Sometimes, fits files store their frames in shape (n_frames, n_orders, n_pixels), you can swap the axes with np.swapaxes(wavelengths, 0, 1) 
             to get them in the correct shape. It is also possible to input orders with different numbers of pixels, in which case the wavelengths should be a list
             of 2D arrays/lists.
@@ -1196,12 +1196,12 @@ class DataList:
         sn : :py:type:`Array2D` | :py:type:`Array1D` | None, optional
             A 1D or 2D array of signal-to-noise ratios for the input spectra. If a 1D array is provided, it is assumed to have shape (n_orders,). 
             If a 2D array is provided, it is assumed to have shape (n_orders, n_frames). Default is None. Follows the same logic as the "sn" input in 
-            the :py:method:`Acid.ACID` method, for approximating the errors (or vice versa) if one is not provided.
+            the :py:function:`Acid.ACID` method, for approximating the errors (or vice versa) if one is not provided.
         velocities : :py:type:`Array1D` | None, optional
             The velocity grid to be used for all the orders. This should be a 1D array of velocity values in km/s. Follows the same format as the "velocities" 
-            input in the :py:method:`Acid.ACID` method. Default is None.
+            input in the :py:function:`Acid.ACID` method. Default is None.
         linelist : :py:type:`Array1D` | str | :py:class:`LineList` | dict | None, optional
-            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:method:`Acid.ACID` method.
+            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:function:`Acid.ACID` method.
         order_range : :py:type:`Array1D` | None, optional
             A 1D array of order labels corresponding to the orders in the input data.
             The index of this array should match to the order of the index of the first dimension of the wavelengths, flux, errors, and sn arrays.
@@ -1393,11 +1393,11 @@ class DataList:
         return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"
 
     def __call__(self, **kwargs):
-        """Runs and returns the results of the :py:method:`DataList.run_ACID` method, which runs ACID on the Data instances in the list for the specified orders.
+        """Runs and returns the results of the :py:function:`DataList.run_ACID` method, which runs ACID on the Data instances in the list for the specified orders.
         
         Parameters
         ----------
-        See :py:method:`DataList.run_ACID` for the accepted parameters and their descriptions.
+        See :py:function:`DataList.run_ACID` for the accepted parameters and their descriptions.
         """
         return self.run_ACID(**kwargs)
 
@@ -1493,7 +1493,7 @@ class DataList:
         nworkers : :py:type:`IntLike` | None, optional
             The total number of workers to use to split the orders. See the "worker" parameter for more details. Default is None.
         store_sampler : bool, optional
-            If True, the sampler object from the ACID run will be stored in the result pickles. This will take up much more disk space, but allow
+            If True, the sampler object from the ACID run will be stored in the data pickles. This will take up much more disk space, but allow
             for use of the :py:class:`Result` methods requiring the sampler attribute. Default is False.
         allow_overwrite : bool, optional
             If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
@@ -1784,7 +1784,7 @@ class DataList:
         Parameters
         ----------
         **kwargs : dict
-            Keyword arguments to pass to the :py:method:`Profiles.plot_fit` method.
+            Keyword arguments to pass to the :py:function:`Profiles.plot_fit` method.
         
         Returns
         -------

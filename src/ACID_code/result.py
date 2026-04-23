@@ -323,7 +323,7 @@ class Result:
     def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler|None=None, **kwargs) -> None:
         """
         Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
-        :py:method:`Acid.continue_sampling` for more details on the parameters that can be passed.
+        :py:function:`Acid.continue_sampling` for more details on the parameters that can be passed.
 
         Parameters
         ----------

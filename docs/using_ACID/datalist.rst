@@ -89,7 +89,7 @@ we can also input it. We can also change order-specific configurations by inputt
 Creating a DataList from a list of Data instances
 -------------------------------------------------
 
-The DataList can also be initialized by inputting a list of :py:class:`ACID_code.Data` instances by using the :py:method:`ACID_code.DataList.from_datalist` class method.
+The DataList can also be initialized by inputting a list of :py:class:`ACID_code.Data` instances by using the :py:function:`ACID_code.DataList.from_datalist` class method.
 This is useful for loading in previously saved Data instances (see :ref:`data` for how to save and load Data instances).
 
 .. code-block:: python
@@ -114,8 +114,8 @@ This is useful for loading in previously saved Data instances (see :ref:`data` f
 Using the DataList results
 ----------------------------
 
-Once ACID has been run on the DataList with the :py:method:`ACID_code.DataList.run_ACID` method, 
-the results for each order are stored in the DataList instance and can be accessed with the :py:method:`ACID_code.Data.result` property.
+Once ACID has been run on the DataList with the :py:function:`ACID_code.DataList.run_ACID` method, 
+the results for each order are stored in the DataList instance and can be accessed with the :py:function:`ACID_code.Data.result` property.
 
 .. code-block:: python
 
