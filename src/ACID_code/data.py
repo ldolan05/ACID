@@ -220,6 +220,9 @@ class Config:
         "run_mcmc" : True,
     }
 
+    #: Property list for error handling
+    properties = ["_verbose", "_masking_lines"]
+
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
     data_attributes = ["linelist", "velocities"]
     data_attributes_input_str = "'{}' is a Data property and should not be set in the Config class, please set it directly with 'Data.{}={}' instead."
@@ -266,7 +269,7 @@ class Config:
             if k in self.data_attributes:
                 raise AttributeError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
-            if k not in self.defaults:
+            if k not in self.defaults and k not in self.properties:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
                 # If input is None, continue, None always makes no change to current value/default
@@ -293,7 +296,7 @@ class Config:
             if k in self.data_attributes:
                 raise AttributeError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
-            if k not in self.defaults:
+            if k not in self.defaults and k not in self.properties:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             # Below also sets if None is input but attribute does not exist or is currently None
             if getattr(self, k, None) is None:
