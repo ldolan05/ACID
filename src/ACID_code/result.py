@@ -150,7 +150,7 @@ class Result:
         # From this point, a Data instance is provided and can be drawn from, but sampler may or may not be provided.
         # All frames must be available as a Result class variable due to legacy behaviour. Once created, we can point
         # Data.profiles to Result.profiles to keep them in sync.
-        if process_results:
+        if process_results and self.data is not None and not self.data.complete:
             self.process_results() # sets self.data.profiles, and points self.profiles to self.data.profiles
         else:
             if self.config.verbose>0:

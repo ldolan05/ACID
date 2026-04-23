@@ -1172,7 +1172,7 @@ class DataList:
         load                                              = None,
         _data_list       : list[Data]|None                = None,
         **config_kwargs,
-        ) -> DataList:
+        ) -> None:
         """
         Initializes the DataList object. The DataList can be initialized in two ways: either by providing the wavelengths, flux, errors, and sn arrays directly in
         the class initialization (here), or using the :py:classmethod:`DataList.from_datalist` method with a list of Data objects. 
@@ -1686,7 +1686,7 @@ class DataList:
         self._save_dir = dir
 
     @property
-    def combined_profile(self) -> tuple[Array1D, Array1D]|None:
+    def combined_profile(self) -> tuple|None:
         """
         Returns the combined profile and its errors. If the combined profile has not been calculated yet, 
         it will attempt to combine the profiles without any exclusions.
