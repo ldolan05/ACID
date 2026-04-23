@@ -6,9 +6,11 @@ Using the Data class
 Getting the Data class
 -----------------------
 
-The Data class stores the data for all calculations done in ACID, including the final resulting profiles. It is used to work
-seamlessly with the Acid, LSD, and Results classes as their internal ways to get configuration and stored Data.
+The :py:class:`ACID_code.Data` class stores the data for all calculations done in ACID, including the final resulting profiles. It is used to work
+seamlessly with the :py:class:`ACID_code.Acid`, :py:class:`ACID_code.LSD`, and :py:class:`ACID_code.Result` classes to get configuration and store data.
 The most useful examples of the usage of the class are shown below if desired by the user.
+
+Remember that all attributes and methods of Data can be found in the :py:class:`ACID_code.Data` API.
 
 .. code-block:: python
 
@@ -23,7 +25,7 @@ The most useful examples of the usage of the class are shown below if desired by
    linelist = 'example_linelist.txt' # Insert path to line list
 
    Acid = acid.Acid(velocities=velocities, linelist=linelist)
-   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
+   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=5000)
 
    data = result.data  # Acid and Result share the Data class, so this is the same as Acid.data
 
@@ -57,7 +59,8 @@ You can also extract run times:
 Saving and Loading
 -------------------
 
-You can also save and load the data class using its method (It's not recommended to directly pickle yourself).
+You can also save and load the data class using its method (It's not recommended to directly pickle yourself, 
+see "Saving the Result" in :ref:`result` for an explanation why).
 
 .. code-block:: python
 
@@ -71,7 +74,7 @@ The loaded data can now be directly input into Acid to load the previous configu
     # Load into a new Acid instance
     Acid = acid.Acid(data=new_data)
 
-    # Or load into a Results instance (not that the sampler will not be available)
+    # Or load into a Results instance (note that the sampler will not be available)
     result = acid.Result(new_data)
 
     # Or see the next section on DataLists for putting Data instances into lists for running Acid on echelle spectra

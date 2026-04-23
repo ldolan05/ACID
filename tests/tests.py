@@ -31,7 +31,7 @@ def legacy_test():
         velocities = np.arange(-25, 25, deltav)
 
         # run ACID function
-        result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000)
+        result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000, parallel=False)
 
         # extract profile and errors
         profile = result[0, 0]
@@ -327,6 +327,67 @@ def test_edge_cases():
     # Own telluric lines
     pass
 
+def test_data_and_datalist():
+    # Test that the data class can be initialized with a datalist, 
+    # and that the datalist is correctly stored in the data class
+    files = glob.glob('example/sample_spec_*.fits')
+    wavelengths = []
+    spectra = []
+    errors = []
+    sn = []
+    for file in files:
+        spec_file = fits.open('%s'%file)
+        wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
+        spectra.append(spec_file[1].data)        # Spectral Flux
+        errors.append(spec_file[2].data)         # Spectral Flux Errors
+        sn.append(spec_file[3].data)
+    linelist = 'example/example_linelist.txt'
+    velocities = np.arange(-25, 25, acid.calc_deltav(wavelengths[0]))
+    datalist = acid.DataList(wavelengths, spectra, errors, sn, velocities, linelist, skips=skips)
+    order_range = [20,21,22]
+    configs = acid.Config(max_steps=5000)
+    configs = [acid.Config(max_steps=5000) for _ in range(3)]
+    configs[1].update_hipri(poly_ord=4)
+    datalist = acid.DataList(
+        wavelengths,
+        spectra,
+        errors,
+        sn,
+        velocities,
+        linelist,
+        verbose=2,
+        save_dir="tests/test_data/datalist/",
+        order_range=order_range,
+        config=configs,
+        cores=10,
+        )
+    datalist[22].config.update_hipri(poly_ord=4)
+    datalist.run_ACID(allow_overwrite=True)
+    datalist[22].result.plot_profiles()
+    datalist.combine_profiles(exclude=21)
+    datalist.plot_combined_profile()
+    datalist.fit_profile()
+    datalist.save()
+
+# def saves_and_loads():
+
+#     spec_file = fits.open('example/sample_spec_1.fits')
+#     wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
+#     spectrum = spec_file[1].data[::skips]     # Spectral Flux
+#     error = spec_file[2].data[::skips]        # Spectral Flux Errors
+#     sn = spec_file[3].data           # SN of Spectrum
+#     linelist = 'example/example_linelist.txt' # Insert path to line list
+#     deltav = acid.calc_deltav(wavelength)
+#     velocities = np.arange(-25, 25, deltav)
+#     result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000)
+#     result.save_result("tests/test_data/result_test.pkl")
+#     result.load_result("tests/test_data/result_test.pkl")
+#     result.plot_profiles()
+#     sys.exit()
+
+#     datalist = acid.DataList.load("tests/test_data/datalist/")
+#     datalist.plot_combined_profile()
+
 print("Starting tests, this will take a 4-6 minutes to run, and a bunch of output will be printed.")
 
 # The first five tests use legacy ACID inputs and calls
@@ -347,6 +408,11 @@ data_and_convergence_test()
 # Test edge cases, including no parallelization
 test_edge_cases()
 
+# Test datalist and data class integration
+test_data_and_datalist()
+
+# # Test saves and loads
+# saves_and_loads()
 
 print("All tests passed!")
 print(f"Total time: {time() - start:.2f} seconds")

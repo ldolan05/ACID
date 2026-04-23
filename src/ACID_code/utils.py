@@ -13,10 +13,9 @@ c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
 Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["ndim", IsEqual[0]]]
-NumericArray: TypeAlias = NDArray[np.number]
 Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
-ArrayAnyD: TypeAlias = NumericArray | list
+Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
 
 def convert_moves_to_emcee(moves:list[tuple]):
     """Converts a list of move specifications to emcee moves.
@@ -75,7 +74,7 @@ def convert_moves_to_emcee(moves:list[tuple]):
         
     return emcee_moves
 
-def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
+def mask_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
 
@@ -96,15 +95,15 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
     mask = (
         np.isfinite(wavelengths) &
         np.isfinite(flux) &
-        np.isfinite(errors) &
+        (np.isfinite(errors) if errors is not None else True) &
         (flux > 0) &
-        (errors > 0)
+        (errors > 0 if errors is not None else True)
     )
     fill_value = np.nan
 
     w = np.where(mask, wavelengths, fill_value)
     f = np.where(mask, flux, fill_value)
-    e = np.where(mask, errors, fill_value)
+    e = np.where(mask, errors, fill_value) if errors is not None else None
 
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
@@ -112,11 +111,11 @@ def mask_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
             print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values, which will be dropped when necessary, \n"
                   f"but it is still recommended to check your wavelength, spectrum and error arrays for bad pixels and make sure this is intentional.")
 
-    if return_mask:
-        return w, f, e, mask
-    return w, f, e
+    output = (w, f, e) if errors is not None else (w, f)
+    output = output + (mask,) if return_mask else output
+    return output
 
-def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
+def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
     Parameters
@@ -136,22 +135,22 @@ def drop_invalid(wavelengths, flux, errors, return_mask=False, verbose=2):
     mask = (
         np.isfinite(wavelengths) &
         np.isfinite(flux) &
-        np.isfinite(errors) &
+        (np.isfinite(errors) if errors is not None else True) &
         (flux > 0) &
-        (errors > 0)
+        ((errors > 0) if errors is not None else True)
     )
     w = wavelengths[mask]
     f = flux[mask]
-    e = errors[mask]
+    e = errors[mask] if errors is not None else None
 
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         if num_invalid > 0:
             print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0).")
 
-    if return_mask:
-        return w, f, e, mask
-    return w, f, e
+    output = (w, f, e) if errors is not None else (w, f)
+    output = output + (mask,) if return_mask else output
+    return output
 
 def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
     """Clips the linelist to only include lines within the wavelength range of the observed spectrum.
@@ -182,11 +181,15 @@ def calc_deltav(wavelengths:Array1D)->Scalar:
 
     Calculates the velocity pixel size for the LSD velocity grid based off the spectral wavelengths.
 
-    Args:
-        wavelengths (np.ndarray): Wavelengths for Acid input spectrum (in Angstroms), must be a 1D array of positive values.
+    Parameters
+    ----------
+    wavelengths : :py:type:`Array1D`
+        Wavelengths for Acid input spectrum (in Angstroms), must be a 1D array of positive values.
 
-    Returns:
-        float: Velocity pixel size in km/s
+    Returns
+    -------
+    :py:type:`float`
+        Velocity pixel size in km/s
     """
     if wavelengths.ndim != 1:
         raise ValueError("Input wavelengths must be a 1D array.")
@@ -200,22 +203,22 @@ def guess_SNR(
         frame_wavelengths : Array1D | Array2D,
         frame_flux        : Array1D | Array2D,
         frame_errors      : Array1D | Array2D
-        ) -> np.ndarray:
+        ) -> Array1D | Scalar:
     """Estimates S/N for each frame. Takes the median S/N in the central two-thirds of the
     wavelength range. Fully vectorized so that all the frames can be passed at once.
 
     Parameters
     ----------
-    frame_wavelengths : Array1D | Array2D
+    frame_wavelengths : :py:type:`Array1D | Array2D`
         Array/list of wavelengths for each frame.
-    frame_flux : Array1D | Array2D
+    frame_flux : :py:type:`Array1D | Array2D`
         Array/list of flux values for each frame.
-    frame_errors : Array1D | Array2D
+    frame_errors : :py:type:`Array1D | Array2D`
         Array/list of error values for each frame.
 
     Returns
     -------
-    np.ndarray
+    :py:type:`Array1D | Scalar`
         Array of estimated signal-to-noise ratios for each frame.
     """
     if np.any(frame_flux) <= 0 or np.any(frame_errors) <= 0 or np.any(frame_wavelengths <= 0):
@@ -231,11 +234,61 @@ def guess_SNR(
     frame_errors = np.where(mask, frame_errors, np.nan)
 
     sn_per_pixel = frame_flux / frame_errors
-    return np.nanmedian(sn_per_pixel, axis=-1).squeeze()
+    return np.nanpercentile(sn_per_pixel, 99, axis=-1).squeeze()
 
-def collapse_SNR(sn, wavelengths):
-    """Collapses the SN of a 1D or 2D wavelength and sn array to the median of the SNs
+@beartype
+def guess_errors(
+    frame_wavelengths : Array1D | Array2D,
+    frame_flux        : Array1D | Array2D,
+    frame_sn          : Scalar  | Array1D
+    ) -> Array1D | Array2D:
+    """
+    Estimates errors for each frame based on the flux and S/N.
+    Fully vectorized so that all the frames can be passed at once.
+
+    Parameters
+    ----------
+    frame_wavelengths : :py:type:`Array1D | Array2D`
+        Array/list of wavelengths for each frame.
+    frame_flux : :py:type:`Array1D | Array2D`
+        Array/list of flux values for each frame.
+    frame_sn : :py:type:`Scalar | Array1D`
+        Estimated signal-to-noise ratio for each frame. Can be a single value or an array of values for each frame.
+
+    Returns
+    -------
+    :py:type:`Array1D | Array2D`
+        Array of estimated error values for each frame. The dimensions will match those of frame_flux, with the same number of frames and pixels.
+    """
+    if np.any(frame_flux) <= 0 or np.any(frame_wavelengths <= 0) or np.any(frame_sn <= 0):
+        raise ValueError("Flux, wavelengths and sn must all be positive non-zero to estimate errors.")
+
+    frame_wavelengths = np.atleast_2d(frame_wavelengths)
+    frame_flux = np.atleast_2d(frame_flux)
+    frame_sn = np.atleast_1d(frame_sn)
+    if frame_sn.ndim > 1 or (frame_sn.ndim == 1 and frame_sn.size != frame_flux.shape[0]):
+        raise ValueError("S/N must be a single value or an array of values with the same length as the number of frames in frame_flux.")
+
+    errors = frame_flux / frame_sn[:, None]
+    return errors.squeeze()
+
+@beartype
+def collapse_SNR(sn:Array1D | Array2D, wavelengths:Array1D | Array2D) -> Array1D|Scalar:
+    """
+    Collapses the SN of a 1D or 2D wavelength and sn array to the median of the SNs
     on the central 2/3 wavelengths.
+
+    Parameters
+    ----------
+    sn : :py:type:`Array1D | Array2D`
+        Signal-to-noise ratio array.
+    wavelengths : :py:type:`Array1D | Array2D`
+        Wavelength array.
+
+    Returns
+    -------
+    :py:type:`Array1D | Scalar`
+        Collapsed signal-to-noise ratio.
     """
     sn = np.atleast_2d(sn)
     wavelengths = np.atleast_2d(wavelengths)
@@ -262,7 +315,7 @@ def get_normalisation_coeffs(wl:Array1D)->tuple[Scalar, Scalar]:
     b = 1 - a * np.nanmax(wl)
     return a, b
 
-def set_dict_defaults(input_dict, default_dict):
+def set_dict_defaults(input_dict: dict | None, default_dict: dict) -> dict:
     """Sets default values in a dictionary if they are not already present.
 
     Parameters
@@ -282,8 +335,21 @@ def set_dict_defaults(input_dict, default_dict):
         input_dict.setdefault(key, value)
     return input_dict
 
-def findfiles(directory, file_type):
+def findfiles(directory:str, file_type:str) -> list[str]:
+    """Finds files in a directory matching a specific file type, excluding corrected spectra.
 
+    Parameters
+    ----------
+    directory : str
+        The directory to search for files.
+    file_type : str
+        The file type to search for.
+
+    Returns
+    -------
+    list[str]
+        A list of files matching the specified file type, excluding corrected spectra.
+    """
     filelist_corrected = glob.glob('%s/*/*%s**A_corrected*.fits'%(directory, file_type)) #finding corrected spectra
     filelist = glob.glob('%s/*/*%s**A*.fits'%(directory, file_type)) #finding all A band spectra
 
@@ -323,21 +389,84 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
 
 @beartype
 def combine_profiles(
-    spectra : Array2D,
-    errors  : Array2D,
-    ) -> tuple[Array1D, Array1D]:
-    
+    spectra     : Array2D,
+    errors      : Array2D | None = None,
+    covariances : Array3D | None = None,
+    ) -> tuple:
+    """
+    Combine multiple profiles into one.
+
+    Parameters
+    ----------
+    spectra : :py:class:`Array2D`
+        Input profiles, should have dimensions (n_profiles, n_pix).
+    errors : :py:class:`Array2D`, optional
+        1-sigma errors for each profile. Used only if covariances is None. Should have dimensions (n_profiles, n_pix).
+    covariances : :py:class:`Array3D` or list of :py:class:`Array2D`, optional
+        Full covariance matrix for each profile. Should have dimensions (n_profiles, n_pix, n_pix). 
+        If provided, this is used instead of errors for the combination, and the combined covariance matrix is also returned.
+
+    Returns
+    -------
+    combined_profile : :py:class:`Array1D`
+    combined_errors : :py:class:`Array1D`
+        sqrt(diag(combined_covariance))
+    combined_covariance : :py:class:`Array2D`
+        Only returned if covariances is provided.
+    """
+    from scipy.linalg import cho_factor, cho_solve
     spectra = np.asarray(spectra)
-    errors = np.asarray(errors)
 
-    weights = 1.0 / errors**2
-    combined_spectrum = np.sum(weights * spectra, axis=0) / np.sum(weights, axis=0)
-    combined_errors = np.sqrt(1.0 / np.sum(weights, axis=0))
+    if covariances is not None:
+        errors = np.asarray(errors)
+        covariances = np.asarray(covariances)
 
-    return combined_spectrum, combined_errors
+        # We are solving the equations:
+        # z_combined ​= (∑​C_i^{−1}*​z_i​) / (∑C_i^−1)
+        # And the denominator is the inverse of the combined covariance matrix, so we can get that as well.
+        n_profiles, n_pix = spectra.shape
+        cho_sum = np.zeros((n_pix, n_pix), dtype=float)
+        rhs = np.zeros(n_pix, dtype=float)
+        I = np.eye(n_pix)
 
-def flux_to_od(flux=None, errors=None, linelist=None):
-    """Converts flux, errors, and linelist to optical depth.
+        for z, C in zip(spectra, covariances):
+            cf = cho_factor(C, check_finite=False)
+            cho_sum += cho_solve(cf, I, check_finite=False)
+            rhs += cho_solve(cf, z, check_finite=False)
+        cf_comb = cho_factor(cho_sum, check_finite=False)
+        combined_profile = cho_solve(cf_comb, rhs, check_finite=False)
+        combined_covariance = cho_solve(cf_comb, I, check_finite=False)
+        combined_errors = np.sqrt(np.diag(combined_covariance))
+        return combined_profile, combined_errors, combined_covariance
+
+    elif errors is not None:
+        errors = np.asarray(errors)
+
+        # Otherwise we do a simple weighted average using the errors, which is equivalent 
+        # to the above if the covariance matrices are diagonal.
+        weights = 1.0 / errors**2
+        combined_profile = np.sum(weights * spectra, axis=0) / np.sum(weights, axis=0)
+        combined_errors = np.sqrt(1.0 / np.sum(weights, axis=0))
+
+        return combined_profile, combined_errors
+
+    else:
+        combined_profile = np.nanmean(spectra, axis=0)
+        return combined_profile
+
+@beartype
+def flux_to_od(
+    flux       : np.ndarray = None,
+    errors     : np.ndarray = None,
+    linelist   : np.ndarray = None,
+    cov_matrix : np.ndarray = None
+    ) -> tuple | np.ndarray:
+    """Converts flux, errors, linelist, and covariance matrix to optical depth.
+    The formula used for the conversion is:
+    - Optical depth (od) is calculated as -log(flux).
+    - Errors in optical depth are calculated as errors / flux.
+    - Linelist in optical depth is calculated as -log(1 - linelist).
+    - Covariance matrix in optical depth is calculated as cov_matrix / (flux[:, np.newaxis] * flux[np.newaxis, :]).
 
     Parameters
     ----------
@@ -347,12 +476,18 @@ def flux_to_od(flux=None, errors=None, linelist=None):
         Input errors array. Defaults to None.
     linelist : np.ndarray, optional
         Input linelist array. Defaults to None.
+    cov_matrix : np.ndarray, optional
+        Input covariance matrix, corresponding to errors. Defaults to None.
 
     Returns
     -------
     tuple
-        A tuple containing the flux in optical depth, errors in optical depth,
-        and linelist in optical depth. The tuple length depends on which inputs were provided.
+        A tuple containing any of the following, depending on which inputs were provided:
+        - the flux in optical depth
+        - errors in optical depth
+        - linelist in optical depth
+        - covariance matrix in optical depth
+        The function appends the above inputs in the respective order to the output tuple if they were input.
     """
     out = []
 
@@ -370,10 +505,27 @@ def flux_to_od(flux=None, errors=None, linelist=None):
     if linelist is not None:
         out.append(-np.log(1 - linelist))
 
+    if cov_matrix is not None:
+        if flux_od is None:
+            raise ValueError("'flux' must be provided if 'cov_matrix' is provided.")
+        out.append(cov_matrix / (flux[:, np.newaxis] * flux[np.newaxis, :]))
+
     return tuple(out) if len(out) > 1 else out[0]
 
-def od_to_flux(od=None, errors=None, linelist=None):
-    """Converts optical depth to flux, errors, and linelist.
+@beartype
+def od_to_flux(
+    od         : np.ndarray = None,
+    errors     : np.ndarray = None,
+    linelist   : np.ndarray = None,
+    cov_matrix : np.ndarray = None
+    ) -> tuple | np.ndarray:
+    """
+    Converts optical depth to flux, errors, linelist, and covariance matrix.
+    The formula used for the conversion is:
+    - Flux is calculated as exp(-od).
+    - Errors in flux are calculated as errors * flux.
+    - Linelist in flux is calculated as 1 - exp(-linelist).
+    - Covariance matrix in flux is calculated as cov_matrix * (flux[:, np.newaxis] * flux[np.newaxis, :]).
 
     Parameters
     ----------
@@ -383,11 +535,18 @@ def od_to_flux(od=None, errors=None, linelist=None):
         Input errors array. Defaults to None.
     linelist : np.ndarray, optional
         Input linelist array. Defaults to None.
+    cov_matrix : np.ndarray, optional
+        Input covariance matrix. Defaults to None.
 
     Returns
     -------
     tuple
-        A tuple containing the flux, errors, and linelist. The tuple length depends on which inputs were provided.
+        A tuple containing any of the following, depending on which inputs were provided:
+        - the flux in flux units
+        - errors in flux units
+        - linelist in flux units
+        - covariance matrix in flux units
+        The function appends the above inputs in the respective order to the output tuple if they were input.
     """
     out = []
 
@@ -404,11 +563,18 @@ def od_to_flux(od=None, errors=None, linelist=None):
 
     if linelist is not None:
         out.append(1-np.exp(-linelist))
+    
+    if cov_matrix is not None:
+        if flux is None:
+            raise ValueError("'od' must be provided if 'cov_matrix' is provided.")
+        out.append(cov_matrix * (flux[:, np.newaxis] * flux[np.newaxis, :]))
 
     return tuple(out) if len(out) > 1 else out[0]
 
 def configure_mp_environ(os):
-    """Configures the multiprocessing environment variables for optimal performance.
+    """
+    Configures the multiprocessing environment variables to check for SLURM and set appropriate thread limits.
+    See :ref:`multiprocessing` section of the documentation for more details on why this is done.
 
     Parameters
     ----------
@@ -427,7 +593,8 @@ def configure_mp_environ(os):
         os.environ["MKL_NUM_THREADS"] = "1"
 
 def next_pow_2(n):
-    """Calculates the next power of 2 greater than or equal to n.
+    """
+    Calculates the next power of 2 greater than or equal to n.
 
     Parameters
     ----------
@@ -439,6 +606,7 @@ def next_pow_2(n):
     int
         The next power of 2 greater than or equal to n.
     """
+    n = int(n)
     if n < 0:
         raise ValueError("Input must be a non-negative integer.")
     return 1 if n == 0 else 2**(n - 1).bit_length()
@@ -474,16 +642,16 @@ def autocorr_func_1d(x, norm=True):
     return acf
 
 def autocorr_gw2010(y, c=5.0):
-    # Goodman & Weare (2010) autocorrelation estimate from emcee documentation
+    """Goodman & Weare (2010) autocorrelation estimate from emcee documentation"""
     f = autocorr_func_1d(np.mean(y, axis=0))
     taus = 2.0 * np.cumsum(f) - 1.0
     window = auto_window(taus, c)
     return taus[window]
 
 def autocorr_new(y, c=5.0):
-    # "New" integrated autocorrelation time estimate from emcee documentation
+    """New integrated autocorrelation time estimate from emcee documentation"""
+    
     # Average ACF across walkers
-    # Apply sokal windowing on cumulative sum
     assert y.ndim == 2, "Expects y with shape (nwalkers, nsteps)"
     nwalkers, nsteps = y.shape
 
@@ -491,6 +659,8 @@ def autocorr_new(y, c=5.0):
     for walker in range(nwalkers):
         f += autocorr_func_1d(y[walker], norm=True)
     f /= nwalkers
+
+    # Apply sokal windowing on cumulative sum
     taus = 2.0 * np.cumsum(f) - 1.0
     window = auto_window(taus, c)
     return float(taus[window])

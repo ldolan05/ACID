@@ -41,10 +41,19 @@ autodoc_type_aliases = {
     "FloatLike": "ACID_code.utils.FloatLike",
     "IntLike": "ACID_code.utils.IntLike",
     "Scalar": "ACID_code.utils.Scalar",
-    "NumericArray": "ACID_code.utils.NumericArray",
     "Array1D": "ACID_code.utils.Array1D",
     "Array2D": "ACID_code.utils.Array2D",
-    "ArrayAnyD": "ACID_code.utils.ArrayAnyD",
+    "Array3D": "ACID_code.utils.Array3D",
+}
+
+napoleon_preprocess_types = True
+napoleon_type_aliases = {
+    "FloatLike": "ACID_code.FloatLike",
+    "IntLike": "ACID_code.IntLike",
+    "Scalar": "ACID_code.Scalar",
+    "Array1D": "ACID_code.Array1D",
+    "Array2D": "ACID_code.Array2D",
+    "Array3D": "ACID_code.Array3D",
 }
 
 templates_path = ['_templates']
@@ -54,14 +63,22 @@ html_theme = 'sphinx_rtd_theme'
 
 
 _ALIAS_REPLACEMENTS = {
+    "ACID_code.FloatLike": "FloatLike",
+    "ACID_code.IntLike": "IntLike",
+    "ACID_code.Scalar": "Scalar",
+    "ACID_code.Array1D": "Array1D",
+    "ACID_code.Array2D": "Array2D",
+    "ACID_code.Array3D": "Array3D",
+
+    # Old references
     "ACID_code.utils.FloatLike": "FloatLike",
     "ACID_code.utils.IntLike": "IntLike",
     "ACID_code.utils.Scalar": "Scalar",
-    "ACID_code.utils.NumericArray": "NumericArray",
     "ACID_code.utils.Array1D": "Array1D",
     "ACID_code.utils.Array2D": "Array2D",
-    "ACID_code.utils.ArrayAnyD": "ArrayAnyD",
+    "ACID_code.utils.Array3D": "Array3D",
 }
+
 
 def _clean_signature_text(text: str | None) -> str | None:
     if text is None:

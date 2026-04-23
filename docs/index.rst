@@ -41,17 +41,13 @@ User Guide
 ----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
+   :caption: Contents:
 
-   Installation and Setup <1_installation>
-   Tutorial - Using ACID <2_using_ACID>
-   Results and Plotting <3_results_and_plotting>
-   Multiprocessing <4_multiprocessing>
-   Using the Data class <5_using_the_data_class>
-   The DataList and loading FITS files <6_datalists>
-   Analysing the Final Profiles <7_profiles>
-   Other ACID Functions <8_other_functions>
-   ACID API <ACID_API>
+   installation
+   using_ACID
+   API
+   development
 
 License and Attribution
 -----------------------
