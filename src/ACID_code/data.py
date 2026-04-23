@@ -324,7 +324,7 @@ class Config:
             value = self.defaults["verbose"]
         elif value is False:
             value = 0
-        elif isinstance(value, int):
+        elif isinstance(value, (int, np.integer)):
             if value < 0 or value > 3:
                 raise ValueError("verbose must be an integer between 0 and 3")
         elif isinstance(value, str):
