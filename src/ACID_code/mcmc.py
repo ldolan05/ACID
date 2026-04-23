@@ -6,9 +6,7 @@ from .utils import Array1D, Array2D
 from beartype import beartype
 from numpy.polynomial import polynomial as P
 from scipy.linalg import cho_solve
-
-if TYPE_CHECKING:
-    from .data import Data
+from .data import Data
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -34,7 +32,7 @@ class MCMC:
     @beartype
     def __init__(
             self,
-            x_or_data             : Array1D|Array2D|"Data",
+            x_or_data             : Array1D|Array2D|Data,
             y                     : Array1D|None = None,
             yerr                  : Array1D|None = None,
             alpha                 : Array2D|None = None,
@@ -66,8 +64,6 @@ class MCMC:
         deterministic_profile : bool, optional
             Whether to fit the full profile (True) or use the fast model (False), by default True.
         """
-
-        from .data import Data
 
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!

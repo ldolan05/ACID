@@ -11,7 +11,6 @@ import numpy as np
 from . import utils
 from .errors import *
 from .utils import IntLike, Array1D, Array2D, Array3D, Scalar, c_kms
-from .mcmc import MCMC
 
 class MaskingLines:
     """
@@ -675,6 +674,7 @@ class Data:
         plt.show()
 
         # Finally plot the forward model
+        from .mcmc import MCMC
         forward_masked, _ = MCMC(self).deterministic_model(self.poly_inputs)
         fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
         ax[0].plot(x, y, label='Original data', color='black', linewidth=1)

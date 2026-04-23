@@ -517,7 +517,7 @@ class Acid:
             self.residual_mask()
 
         # Setting number of walkers and their start values(pos)
-        self.data.ndim = len(self.data.model_inputs)
+        self.data.ndim = len(self.data.model_inputs) if not self.config.deterministic_profile else self.config.poly_ord + 1
         # emcee recommendation is 3 times the number of dimensions, but can be overridden by user input
         self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
         rng = np.random.default_rng(self.config.seed)
@@ -525,25 +525,19 @@ class Acid:
         # Starting values of walkers with independent variation
         sigma = 0.8 * 0.005
         initial_state = []
-        for i in range(0, self.data.ndim):
+        for i in range(0, len(self.data.model_inputs)):
             if i < len(self.data.velocities):
-                pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+                if not self.config.deterministic_profile:
+                    pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+                else:
+                    continue
             else:
                 x1 = self.data.model_inputs[i]
                 rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
                 sigma = abs(rounded_sigma) / 10
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
             initial_state.append(pos)
-        initial_state = np.array(initial_state)
-
-        # Configure the nwalkers for the deterministic option (now default as of 1.4)
-        if self.config.deterministic_profile is True:
-            self.data.ndim = self.config.poly_ord + 1
-            self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
-            initial_state = initial_state[-self.data.ndim:, :self.data.nwalkers]
-
-        # Transpose initial state to have shape (nwalkers, ndim) for emcee
-        self.data.initial_state = initial_state.T # Saved for debugging if needed, otherwise class variable not used for now
+        initial_state = np.array(initial_state).T
 
         ### ACID initialialised ###
         self.data.initialisation_time += time.time() - init_t0
