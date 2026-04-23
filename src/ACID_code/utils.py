@@ -460,7 +460,7 @@ def flux_to_od(
     errors     : np.ndarray = None,
     linelist   : np.ndarray = None,
     cov_matrix : np.ndarray = None
-    ) -> tuple:
+    ) -> tuple | np.ndarray:
     """Converts flux, errors, linelist, and covariance matrix to optical depth.
     The formula used for the conversion is:
     - Optical depth (od) is calculated as -log(flux).
@@ -518,7 +518,7 @@ def od_to_flux(
     errors     : np.ndarray = None,
     linelist   : np.ndarray = None,
     cov_matrix : np.ndarray = None
-    ) -> tuple:
+    ) -> tuple | np.ndarray:
     """
     Converts optical depth to flux, errors, linelist, and covariance matrix.
     The formula used for the conversion is:
