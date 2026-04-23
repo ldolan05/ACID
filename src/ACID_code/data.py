@@ -205,6 +205,7 @@ class Config:
         "skips" : 1,
         "parallel" : True,
         "cores" : None,
+        "nwalkers" : None,
         "nsteps" : 10000,
         "max_steps" : None,
         "check_interval" : 1000,
@@ -269,9 +270,8 @@ class Config:
             if k not in self.defaults:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
-                # If input is None, and attribute does not exist, set to None
-                if not hasattr(self, k):
-                    setattr(self, k, None)
+                # If input is None, continue, None always makes no change to current value/default
+                continue
             else:
                 setattr(self, k, v)
 
@@ -308,7 +308,7 @@ class Config:
     @property
     def verbose(self) -> IntLike:
         """The stored global verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
-        if self._verbose is None:
+        if getattr(self, "_verbose", None) is None:
             return self.defaults["verbose"]
         return self._verbose
 
@@ -345,7 +345,7 @@ class Config:
     @property
     def masking_lines(self) -> MaskingLines:
         """The stored masking lines for ACID. See :ref:`masking_lines` for more details on how this is used in ACID."""
-        if self._masking_lines is None:
+        if getattr(self, "_masking_lines", None) is None:
             return MaskingLines(self.defaults["masking_lines"])
         return MaskingLines(self._masking_lines)
 
@@ -353,7 +353,7 @@ class Config:
     def masking_lines(self, masking_lines:dict|MaskingLines|None) -> None:
         """Set the masking lines for ACID. Accepts a dictionary, a MaskingLines object, or None."""
         # self._masking_lines is set in init, so should always exist as None
-        self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self._masking_lines
+        self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self.masking_lines
 
     def plot_masking_lines(self, return_fig:bool=False) -> None|tuple:
         """
