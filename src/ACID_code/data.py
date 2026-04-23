@@ -353,7 +353,10 @@ class Data:
     initial_state          : Optional[np.ndarray] = None  # the initial state of the MCMC walkers, used for resuming and debugging
 
     # Small cached products needed for MCMC if doing reruns
+    # -----------------------------------------------------
+    #: The number of walkers and dimensions for the MCMC sampler, used for reshaping the samples if resuming
     nwalkers : Optional[int]        = None
+    #: The number of dimensions for the MCMC sampler, used for reshaping the samples if resuming
     ndim     : Optional[int]        = None
 
     # Data required/calculated in results/after MCMC sampling

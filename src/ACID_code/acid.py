@@ -207,6 +207,7 @@ class Acid:
         skips                 : IntLike|None                = None,   # Config
         parallel              : bool|None                   = None,   # Config
         cores                 : IntLike|None                = None,   # Config
+        nwalkers              : IntLike|None                = None,   # Config
         nsteps                : IntLike|None                = None,   # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
         max_steps             : IntLike|None                = None,   # Config
         check_interval        : IntLike|None                = None,   # Config
@@ -375,6 +376,7 @@ class Acid:
             "n_sig"                 : n_sig,
             "parallel"              : parallel,
             "cores"                 : cores,
+            "nwalkers"              : nwalkers,
             "deterministic_profile" : deterministic_profile,
             "nsteps"                : nsteps,
             "max_steps"             : max_steps,
@@ -509,8 +511,8 @@ class Acid:
 
         ## Setting number of walkers and their start values(pos)
         self.data.ndim = len(self.data.model_inputs)
-        factor = 3 # emcee recommendation
-        self.data.nwalkers = self.data.ndim * factor
+        # emcee recommendation is 3 times the number of dimensions, but can be overridden by user input
+        self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
         rng = np.random.default_rng(self.config.seed)
 
         ### starting values of walkers with independent variation
@@ -525,11 +527,12 @@ class Acid:
                 sigma = abs(rounded_sigma) / 10
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
             initial_state.append(pos)
+        initial_state = np.array(initial_state)
 
         if self.config.deterministic_profile is True:
             self.data.ndim = self.config.poly_ord + 1
-            self.data.nwalkers = self.data.ndim * factor
-            initial_state = np.array(initial_state)[-self.data.ndim:, :self.data.nwalkers]
+            self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
+            initial_state = initial_state[-self.data.ndim:, :self.data.nwalkers]
 
         # Transpose initial state to have shape (nwalkers, ndim) for emcee
         initial_state = np.transpose(np.array(initial_state))
