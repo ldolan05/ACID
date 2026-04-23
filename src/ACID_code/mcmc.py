@@ -34,7 +34,7 @@ class MCMC:
     @beartype
     def __init__(
             self,
-            x_or_data             : Array1D|Array2D|Data,
+            x_or_data             : Array1D|Array2D|"Data",
             y                     : Array1D|None = None,
             yerr                  : Array1D|None = None,
             alpha                 : Array2D|None = None,
@@ -66,6 +66,8 @@ class MCMC:
         deterministic_profile : bool, optional
             Whether to fit the full profile (True) or use the fast model (False), by default True.
         """
+
+        from .data import Data
 
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
