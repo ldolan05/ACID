@@ -1,21 +1,22 @@
 .. _tutorial:
 
 Quickstart
-======================
+==========
 
-These tutorials require use of the example data included in the example_ folder. See the repository cloning_ section to install the data.
+These tutorials make use of the example data included in the example_ folder. See the repository :ref:`cloning` section to install the data.
 You can find the script in example/tutorial_code.py
 
 .. _example: https://github.com/ldolan05/ACID/tree/main/example
-.. _cloning: https://acid-code.readthedocs.io/en/stable/installation.html#cloning-the-repository
 
-The architecture of ACID is slightly different to the original ACID code. ACID now works under the hood as a class (called Acid), rather than previously as a function.
+The architecture of ACID is slightly different to the original ACID code written by Lucy Dolan.
+ACID now works under the hood as a class (called Acid), rather than previously as a function.
 The main method (ACID) of the Acid class is now a Result class with its own methods and attributes that allow useful analysis.
-The legacy ACID and ACID_HARPS functions are still available for backwards compatibility, however it is recommended to use the Acid class for new applications.
+The legacy ACID function is still available for backwards compatibility, however it is recommended to use the Acid class for new applications.
 The tutorials below walk through how to use ACID for a variety of applications using the new class structure.
+The ACID_HARPS funciton was deprecated as of 2.0, instead, you should refer to the :ref:`datalist` tutorial for running on multiple orders.
 
 Inputting a Single Spectrum
-----------------------------
+---------------------------
 
 ACID returns LSD profiles based on input spectra. First, lets walk through an example for a single spectrum. 
 
@@ -28,15 +29,16 @@ In the 'example' directory we can set up our inputs are follows:
 
    spec_file = fits.open('sample_spec_1.fits')
 
+   # Extract wavelength, spectrum, error and SN from the example fits file
    wavelength = spec_file[0].data   # Wavelengths in Angstroms
    spectrum = spec_file[1].data     # Spectral Flux
    error = spec_file[2].data        # Spectral Flux Errors
    sn = spec_file[3].data           # SN of Spectrum
 
-   linelist = 'example_linelist.txt' # Insert path to line list
+   linelist = 'example_linelist.txt' # You can use a path to a VALD linelist
 
-The stellar line list can also be obtained from VALD_ using their 'Extract Stellar' feature. You should input stellar parameters that correspond to your object and ensure that the wavelength range input covers the entire wavelength range of your spectrum. 
-The detection threshold input to VALD must be less than 1/(3*SN) where SN is the signal-to-noise of the spectrum.
+The stellar line list can be obtained from VALD_ using their 'Extract Stellar' feature. 
+You should input stellar parameters that correspond to your object and ensure that the wavelength range input covers the entire wavelength range of your spectrum.
 
 .. _VALD: http://vald.astro.uu.se/ 
 
@@ -54,18 +56,23 @@ We can then run ACID and plot the final results:
    # Initiate Acid
    Acid = acid.Acid(velocities=velocities, linelist=linelist)
    # Run ACID
-   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000)
+   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=5000)
 
    # Plot your final profile
    result.plot_profiles() # See documentation for more plot kwarg options
 
-   # You can also plot walkers, corner plots, etc. See documentation.
+   # Obtain your profiles directly as arrays with:
+   profile_flux  = result[0]
+   profile_error = result[1]
+   profile_cov   = result[2]
 
    # If you feel the need to continue sampling, you can do so with:
-   # result.continue_sampling(nsteps=2000) # And plot walkers to see the difference!
+   # result.continue_sampling(nsteps=2000) # And then plot walkers to see the difference!
+
+See :ref:`result` for more analysis available on the Result object.
 
 Multiple frames
----------------------
+---------------
 
 Multiple frames of data can be input to directly to ACID. ACID adjusts these frames and performs the continuum fit on a combined spectrum (constructed from all frames).
 For this reason, frames must be from the same observation night where little variation is expected in the spectral continuum.
@@ -83,7 +90,7 @@ As in the previous example, we must first read in the data:
    wavelengths = []
    spectra = []
    errors = []
-   sns = []
+   sn = []
 
    for file in files:
       spec_file = fits.open('%s'%file)
@@ -91,11 +98,11 @@ As in the previous example, we must first read in the data:
       wavelengths.append(spec_file[0].data)    # Wavelengths in Angstroms
       spectra.append(spec_file[1].data)        # Spectral Flux
       errors.append(spec_file[2].data)         # Spectral Flux Errors
-      sns.append(float(spec_file[3].data))     # SN of Spectrum
+      sn.append(spec_file[3].data)             # SN of Spectrum
 
    linelist = 'example_linelist.txt' # Insert path to line list
 
-Once the inputs have been constructed ACID can be applied and the results plotted. 
+Once the inputs have been constructed, ACID can be applied and the results plotted. 
 
 .. code-block:: python
 
@@ -103,29 +110,38 @@ Once the inputs have been constructed ACID can be applied and the results plotte
    import numpy as np
 
    # choose a velocity grid for the final profile(s)
-   deltav = acid.calc_deltav(wavelength)  
-   velocities = np.arange(-25, 25, deltav)  
+   # velocity pixel size must not be smaller than the spectral pixel size,
+   # you can use acid.calc_deltav function if unsure what this would be.
+   deltav = acid.calc_deltav(wavelengths[0])
+   velocities = np.arange(-25, 25, deltav)
 
    # run ACID function
    Acid = acid.Acid(velocities=velocities, linelist=linelist)
-   result = Acid.ACID(wavelengths, spectra, errors, sns, nsteps=2000)
+   result = Acid.ACID(wavelengths, spectra, errors, sn, nsteps=5000)
 
    # plot results
    result.plot_profiles()
 
-   # Remember you can obtain the entire result array via:
-   all_frames = result[:] # Which converts it to a numpy array of shape (frames, orders, 2, pixels)
-   # or you can do
-   all_frames = result.all_frames
+   # Remember you can obtain the combined profiles list via:
+   profile_flux = result[0]
+   profile_error = result[1]
+   profile_cov = result[2]
+   # Or the per-frame profile
+   frame_flux = result[0,0]  # frame 0 flux
+   frame_error = result[0,1] # frame 0 error
+   frame_cov = result[0,2]   # frame 0 covariance matrix
+   # Or the full frame profile list
+   full_profiles = result.profiles # Is a 3D list of shape (n_frames, 3, n_velocities) containing the flux, error and covariance profiles for each frame.
 
 Multiple Orders
 ---------------
 
 As of ACID 1.4, the Acid class is designed to only handle a single order of ACID. This change was made to better handle the parallel processing of multiple
-orders on a computer cluster. If you would like to run ACID for a full observation of an echelle spectrograph, see the Echelle Spectra section.
+orders on a computer cluster. If you would like to run ACID for a full observation of an echelle spectrograph, see the :ref:`datalist` section for full tutorial on
+how to put multiple Data objects into a list and run ACID on each order separately.
 
 If you wish to run ACID for different wavelength ranges, then you can simply save the Result object for each wavelength range and process them separately. See
-the Results and Plotting section.
+the :ref:`result` section.
 
 Using Deterministic profile in MCMC fitting
 -------------------------------------------
@@ -140,10 +156,9 @@ The feature can be disabled by setting deterministic_profile=False when calling 
 .. code-block:: python
 
    # ... same code as before to set up data and run ACID ...
-
    Acid = acid.Acid(velocities=velocities, linelist=linelist)
-   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, deterministic_profile=True)
-   # Now runs ACID with deterministic profile points inferred from the continuum parameters.
+   result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, deterministic_profile=False)
+   # Now runs ACID without inferring the profile points from the continuum parameters.
 
 Running ACID until convergence (section below) shows the vast improvement in convergence times with this setting.
 
@@ -172,22 +187,21 @@ by passing them to the ACID function:
       recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
       Only used if max_steps is set.
    tau_tol : float, optional
-      Tolerance for tau convergence in MCMC stopping criterion, by default 0.05. Only used if max_steps is set.
+      Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
 
 .. code-block:: python
 
    # ... same code as before to set up data and run ACID ...
-
    Acid = acid.Acid(velocities=velocities, linelist=linelist)
-   result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000)
+   result = Acid.ACID(wavelength, spectrum, error, sn, max_steps=5000, deterministic_profile=False)
 
 .. code-block:: text
 
-   Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 227.45it/s]
-   Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 234.49it/s]
-   Iteration 3/5, last tolerance: 0.5674>0.05, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 219.90it/s]
-   Iteration 4/5, last tolerance: 0.3913>0.05, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 228.78it/s]
-   Iteration 5/5, last tolerance: 0.2756>0.05, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 222.20it/s]
+   Iteration 1/5, last tolerance: inf>0.1, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 227.45it/s]
+   Iteration 2/5, last tolerance: inf>0.1, neff: 0.00<50: 100% 1000/1000 [00:04<00:00, 234.49it/s]
+   Iteration 3/5, last tolerance: 0.5674>0.1, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 219.90it/s]
+   Iteration 4/5, last tolerance: 0.3913>0.1, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 228.78it/s]
+   Iteration 5/5, last tolerance: 0.2756>0.1, neff: 7.00<50: 100% 1000/1000 [00:04<00:00, 222.20it/s]
    Not converged after reaching max steps of 5000. Final effective sample size: 7.00, final tolerance: 0.3184.
    Consider increasing max_steps.
 
@@ -202,8 +216,7 @@ The sampler will give the following warning however:
    The max autocorrelation time is 651.30, therefore the minimum number of steps should be roughly 32565.
    Disabling burnin from autocorrelation time, instead using burnin=steps-1000
 
-
-If we turn on the deterministic profile feature, we see a significant improvement in convergence:
+If we turn back on the deterministic profile feature, we see a significant improvement in convergence:
 
 .. code-block:: python
 
@@ -214,8 +227,8 @@ If we turn on the deterministic profile feature, we see a significant improvemen
 
 .. code-block:: text
 
-   Iteration 1/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:03<00:00, 282.63it/s]
-   Iteration 2/5, last tolerance: inf>0.05, neff: 0.00<50: 100% 1000/1000 [00:03<00:00, 284.76it/s]
-   Iteration 3/5, last tolerance: 0.0793>0.05, neff: 26.00<50: 100% 1000/1000 [00:03<00:00, 286.68it/s]
-   Iteration 4/5, last tolerance: 0.0181<0.05, neff: 38.00<50: 100% 1000/1000 [00:03<00:00, 286.20it/s]
+   Iteration 1/5, last tolerance: inf>0.1, neff: 0.00<50: 100% 1000/1000 [00:03<00:00, 282.63it/s]
+   Iteration 2/5, last tolerance: inf>0.1, neff: 0.00<50: 100% 1000/1000 [00:03<00:00, 284.76it/s]
+   Iteration 3/5, last tolerance: 0.0793<0.1, neff: 26.00<50: 100% 1000/1000 [00:03<00:00, 286.68it/s]
+   Iteration 4/5, last tolerance: 0.0181<0.1, neff: 38.00<50: 100% 1000/1000 [00:03<00:00, 286.20it/s]
    Converged at step 4000. Final tolerance: 0.0066, final effective sample size: 51.00.

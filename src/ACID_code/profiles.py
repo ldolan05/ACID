@@ -4,38 +4,40 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
 from scipy.special import wofz
-from .utils import Array1D
+from .utils import Array1D, Array2D
 from .data import Data
 
 @beartype
 class Profiles:
-    """A class for fitting spectral line profiles such as Voigt and Gaussian profiles.
+    """
+    A class for fitting spectral line profiles to Voigt, Gaussian, and Lorentzian models.
     """
     def __init__(
             self,
-            velocities : Array1D    = None,
-            flux       : Array1D    = None,
-            flux_err   : Array1D    = None,
-            cov_matrix : np.ndarray = None,
-            data       : Data       = None,
+            velocities : Array1D = None,
+            flux       : Array1D = None,
+            flux_err   : Array1D = None,
+            cov_matrix : Array2D = None,
+            data       : Data    = None,
         ) -> None:
-        """Initializes the Profiles class with velocity, flux, and optional flux error data.
+        """
+        Initializes the Profiles class with velocity, flux, and optional flux error data.
 
         Parameters
         ----------
-        velocities : Array1D
+        velocities : :py:type:`Array1D`, optional
             The velocity values corresponding to the spectral line profile.
             Must be provided if no data instance is passed, by default None.
-        flux : Array1D
+        flux : :py:type:`Array1D`, optional
             The flux values of the spectral line profile
             Must be provided if no data instance is passed, by default None.
-        flux_err : Array1D, optional
+        flux_err : :py:type:`Array1D`, optional
             The errors associated with the flux values, by default None. If not
             input, they won't be used in the fitting process.
-        cov_matrix : np.ndarray, optional
+        cov_matrix : :py:type:`Array2D`, optional
             The covariance matrix associated with the flux values, by default None. If not
             input, it won't be used in the fitting process. Inputting this overrides the errors when fitting.
-        data : Data, optional
+        data : :py:class:`Data`, optional
             A data instance to draw velocities, flux, flux errors, and covariance matrix. Will raise an
             exception if they do not exist within the class.
             Must be provided if all four of the above inputs were not passed, by default None. 
@@ -64,7 +66,7 @@ class Profiles:
         self.fitted_x = np.linspace(np.min(velocities), np.max(velocities), 1000)
         pass
 
-    def plot_fit(self, model:str|None='voigt', return_fig=False, **kwargs):
+    def plot_fit(self, model:str|None='voigt', return_fig=False, **kwargs) -> tuple|None:
         """Plots the original data and the fitted profile if available.
         
         Parameters
@@ -123,7 +125,7 @@ class Profiles:
             return fig, ax
         plt.show()
 
-    def fit_voigt(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs):
+    def fit_voigt(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
         """Fits a Voigt profile to the given data.
 
         Parameters
@@ -159,7 +161,7 @@ class Profiles:
         popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, **kwargs)
         return popt, pcov
 
-    def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs):
+    def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
         """Fits a Gaussian profile to the given data.
 
         Parameters
@@ -194,7 +196,7 @@ class Profiles:
         popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, **kwargs)
         return popt, pcov
 
-    def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs):
+    def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
         """Fits a Lorentzian profile to the given data.
 
         Parameters
@@ -229,7 +231,7 @@ class Profiles:
         popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, **kwargs)
         return popt, pcov
 
-    def _copy_inputs(self, x, y, yerr, cov_matrix):
+    def _copy_inputs(self, x, y, yerr, cov_matrix) -> tuple:
         """Internal method to copy input data or use class attributes.
 
         Parameters
@@ -256,7 +258,7 @@ class Profiles:
         cov_matrix_copy = np.copy(cov_matrix) if cov_matrix is not None else cov_matrix
         return x, y, yerr_copy, cov_matrix_copy
 
-    def _fit_model(self, model_name, x, y, yerr, cov_matrix, p0, **kwargs):
+    def _fit_model(self, model_name, x, y, yerr, cov_matrix, p0, **kwargs) -> tuple:
         """Internal method to fit a specified model to the data.
 
         Parameters
@@ -299,7 +301,7 @@ class Profiles:
         return popt, pcov
 
     @staticmethod
-    def voigt_func(x, amplitude, centre, sigma, gamma, offset=0):
+    def voigt_func(x, amplitude, centre, sigma, gamma, offset=0) -> Array1D:
         """Calculates the Voigt profile at given x values.
 
         Parameters
@@ -327,7 +329,7 @@ class Profiles:
         return voigt_profile + offset
 
     @staticmethod
-    def gaussian_func(x, amplitude, mean, stddev, offset=0):
+    def gaussian_func(x, amplitude, mean, stddev, offset=0) -> Array1D:
         """Calculates the Gaussian profile at given x values.
 
         Parameters
@@ -351,7 +353,7 @@ class Profiles:
         return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + offset
     
     @staticmethod
-    def lorentzian_func(x, amplitude, centre, gamma, offset=0):
+    def lorentzian_func(x, amplitude, centre, gamma, offset=0) -> Array1D:
         """Calculates the Lorentzian profile at given x values.
 
         Parameters

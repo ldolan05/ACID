@@ -14,13 +14,18 @@ from .utils import IntLike, Array1D, Array2D, Array3D, Scalar, c_kms
 from .mcmc import MCMC
 
 class MaskingLines:
-    """A simple class to expose the telluric lines when called in Config. This will help
+    """
+    A simple class to expose the telluric lines when called in Config. This will help
     to store telluric lines as a dictionary. With a default itercall to list the line-wise elements,
     but a dictionary index to also store the width of the line, which can then allow for masking Hydrogen
-    lines with much wider masks."""
+    lines with much wider masks.
+    """
     __slots__ = ("lines",) # the only thing stored in this class is this dictionary
 
     def __init__(self, lines:dict) -> None:
+        """
+        Sets the lines attribute after validating the input lines dictionary. The format is specified in :py:class:`Acid`.
+        """
         self.lines = self.validate_lines(lines)
 
     def __getitem__(self, key):
@@ -31,6 +36,21 @@ class MaskingLines:
         return iter(self.lines.items())
 
     def get_masks(self, x, with_names=False) -> list | dict:
+        """
+        Generates masks for the given input array `x` based on the stored lines and widths.
+
+        Parameters
+        ----------
+        x : array-like
+            The input array for which to generate masks.
+        with_names : bool, optional
+            Whether to return a dictionary with line names as keys. Useful if plotting. Default is False.
+
+        Returns
+        -------
+        list | dict
+            A list of masks (ie list of 1D mask arrays) or a dictionary of masks keyed by line names.
+        """
         mask = [] if not with_names else {}
         for name, line_data in self.lines.items():
             lines = np.asarray(line_data["lines"])
@@ -46,15 +66,29 @@ class MaskingLines:
         return mask
 
     @staticmethod
-    def validate_lines(input_lines:dict) -> dict:
+    def validate_lines(input_lines:dict|MaskingLines) -> dict:
+        """
+        Standard method to validate linelist input, the format is quite flexible for convenience, but the output is always a standardised dictionary.
+        See :ref:`masking_lines`
+        """
+
+        # Skip validation if MaskingLines object is input, as it would have already been validated
+        if isinstance(input_lines, MaskingLines):
+            return input_lines.lines
+
+        # Set error messages for common errors to avoid repetition
         length_mismatch_error = f"The number of lines and inputted widths must be the same if inputting widths.\n" \
-        f"If you only wish to input the widths of certain lines, use a list of tuples, see the readthedocs for more details."
-        default_width_error = "No default width was provided for the masking_lines of {}, see the documentation for masking_lines formats"
+        f"If you only wish to input the widths of certain lines, use a list of tuples, see :ref:`masking_lines` for more details."
+        default_width_error = "No default width was provided for the masking_lines of {}, see :ref:`masking_lines` for more details."
+
+        # Set variables to be updated within the loop
         final_dict = {}
-        default_width = None
 
         for name, line_object in input_lines.items():
+        
+            default_width = None
 
+            # Allow first dict inputs, convert them first to a array format to be validated like any other array input
             if isinstance(line_object, dict):
                 if "default_width" in line_object:
                     default_width = line_object["default_width"]
@@ -68,6 +102,7 @@ class MaskingLines:
                 line_input = line_object
 
             if isinstance(line_input, (np.ndarray, list)):
+                # For lists of tuples, allow len 1 or 2 depending on if default_width was provided in the dictionary
                 if isinstance(line_input[0], tuple):
                     lines = []
                     widths = []
@@ -83,7 +118,9 @@ class MaskingLines:
                         else:
                             raise ValueError(f"If the masking_lines for {name} is a list or array of tuples, each tuple must have length 1 " \
                             f"(line only) or 2 (line and width). \nGot tuple with length {len(line)}")          
+
                 else:
+                    # For arrays or lists, convert to numpy array and check dimensions
                     lines = np.array(line_input)
                     if lines.size == 0:
                         raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
@@ -98,29 +135,28 @@ class MaskingLines:
                             raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
                     else:
                         raise ValueError("lines must be a one- or two-dimensional array or list")
-            elif isinstance(line_input, MaskingLines):
-                # Masking lines always has correct dimensions with lines and widths, so just unpack
-                widths = line_input[name][1]
-                lines = line_input[name][0]
+
             else:
-                raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see the doccumentation"
-                                 f"for masking_lines for more details. Got type {type(line_input)}.")
+                raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see :ref:`masking_lines`"
+                                 f" for more details. Got type {type(line_input)}.")
 
             assert len(lines) == len(widths), f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}"
             final_dict[name] = {"lines": np.array(lines), "widths": np.array(widths)}
         return final_dict
 
+#TODO: Tests for config updates, attribute access and error handling
 @beartype
 class Config:
-    """A simple class to store the configuration of the ACID run."""
+    """The main class for storing ACID configuration settings, with methods to plot and save/load the configuration state."""
 
+    #: The default configuration settings for ACID, used if not set by the user. See :py:class:`Acid` for more details on how these are used in ACID.
     defaults = {
         # INIT CONFIGURATION
         "verbose" : 2,
         "order" : 0,
         "order_range" : [0],
         "masking_lines" : {
-            "Narrow" : {
+            "narrow" : {
                 "default_width" : 200,
                 "lines" : [
                     3820.33, # metal?
@@ -134,7 +170,7 @@ class Config:
                     8226.96, # H2O telluric?
                 ]
             },
-            "Medium" : {
+            "medium" : {
                 "default_width" : 1000,
                 "lines" : [
                     3933.66, # Ca II K
@@ -144,13 +180,13 @@ class Config:
                     5183.62, # Mg I b (3) triplet
                 ]
             },
-            "Wide" : {
+            "wide" : {
                 "default_width" : 2000,
                 "lines" : [
-                    3835.38, # H eta (new)
-                    3889.05, # H zeta (new)
-                    4101.74, # H delta (new)
-                    4340.47, # H gamma (new)
+                    3835.38, # H eta
+                    3889.05, # H zeta
+                    4101.74, # H delta
+                    4340.47, # H gamma
                     4861.34, # H beta
                     6562.81, # H alpha
                 ]
@@ -212,7 +248,19 @@ class Config:
 
     # --- Update methods ---
     def update_hipri(self, **kwargs: Any) -> None:
-        # Update and overwrite existing keys
+        """Updates but does not overwrite existing keys.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Keyword arguments corresponding to the configuration settings to be updated. 
+            The keys must be valid configuration options as defined in the `defaults` class variable.
+        
+        Raises
+        ------
+        KeyError
+            If any key in `kwargs` is not a valid configuration option as defined in the `defaults` class variable.
+        """
         for k, v in kwargs.items():
             # First raise error if Data attribute was input
             if k in self.data_attributes:
@@ -228,7 +276,19 @@ class Config:
                 setattr(self, k, v)
 
     def update_lowpri(self, **kwargs: Any) -> None:
-        # Update but do not overwrite existing keys
+        """Updates but does not overwrite existing keys.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Keyword arguments corresponding to the configuration settings to be updated. 
+            The keys must be valid configuration options as defined in the `defaults` class variable.
+
+        Raises
+        ------
+        KeyError
+            If any key in `kwargs` is not a valid configuration option as defined in the `defaults` class variable.
+        """
         for k, v in kwargs.items():
             # First raise error if Data attribute was input
             if k in self.data_attributes:
@@ -236,22 +296,25 @@ class Config:
             # Then raise error if trying to set an attribute that is not in defaults
             if k not in self.defaults:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
-            # Below also sets if None is input but attribute does not exist
+            # Below also sets if None is input but attribute does not exist or is currently None
             if getattr(self, k, None) is None:
                 setattr(self, k, v)
 
     def to_dict(self) -> dict:
+        """Convert the Config object to a dictionary."""
         return {k: v for k, v in self.__dict__.items()}
 
     # --- Properties ---
     @property
     def verbose(self) -> IntLike:
+        """The stored global verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
         if self._verbose is None:
             return self.defaults["verbose"]
         return self._verbose
 
     @verbose.setter
     def verbose(self, value:IntLike|str|bool|None) -> None:
+        """Set the global verbosity setting for ACID. Accepts an integer, boolean, or string indicating the verbosity level."""
         # Make verbosity always an int regardless of input type, and check correct range
         if value is None:
             return
@@ -287,7 +350,8 @@ class Config:
         return MaskingLines(self._masking_lines)
 
     @masking_lines.setter
-    def masking_lines(self, masking_lines:dict|None) -> None:
+    def masking_lines(self, masking_lines:dict|MaskingLines|None) -> None:
+        """Set the masking lines for ACID. Accepts a dictionary, a MaskingLines object, or None."""
         # self._masking_lines is set in init, so should always exist as None
         self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self._masking_lines
 
@@ -295,14 +359,12 @@ class Config:
         """
         Plots the telluric and/or hydrogen lines that will be masked in the residual masking step, with shaded regions indicating 
         the widths of the masks.
-        
+
         Parameters
         ----------
-        line_type : str, optional
-            The type of lines to plot, by default "all". Must be one of "telluric", "hydrogen", or "all".
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False.
-        
+
         Returns
         -------
         If return_fig is True, returns a tuple of (fig, ax) where fig is the matplotlib figure object and ax is the axis object.
@@ -324,33 +386,59 @@ class Config:
              return fig, ax
         plt.show()
 
+    @classmethod
+    def print_defaults(cls) -> None:
+        """Print the default configuration settings for ACID."""
+        print("Default configuration:")
+        for k, v in cls.defaults.items():
+            print(f"{k}: {v}")
+
 @dataclass(slots=True)
 class Data:
-    """Stores necessary data for the Acid class which can be conveniently updated and saved.
+    """
+    Stores necessary data for the Acid class which can be conveniently updated and saved.
     Allows ACID to handle data that has already been computed to avoid recalculation. This class
-    is designed to be lightweight in memory and hence does not store the sampler as an object.
+    is designed to be lightweight in memory and hence does not store the sampler as an object. This is handled in the Result class.
     Note that a Data class should only hold the data for ONE order or observation, but it can hold
-    the data for multiple frames of the same order."""
+    the data for multiple frames of the same order.
+    """
 
-    # Standard necessary inputs, stored in dictionaries so we can store their state at multiple different
+    # The standard necessary inputs, stored in dictionaries so we can store their state at multiple different
     # states of the calculations in Acid
+    # -------------------------------------------------------------------------------------------------------
+    #: The wavelengths for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     wavelengths : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The fluxes for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     flux        : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The errors for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     errors      : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The signal-to-noise ratio for each frame, stored as a dictionary with frame names as keys and 1D numpy arrays as values.
     sn          : Dict[str, np.ndarray] = field(default_factory=dict)
 
     # Cached products that are expensive or useful for resuming
-    alpha                  : Optional[np.ndarray] = None  # the alpha vector used in the linear model, used for solving the linear system in MCMC
-    c_factor               : Optional[tuple]      = None  # tuple generated by np.cho_factor, used for solving the linear system in MCMC
-    residual_masks         : Optional[np.ndarray] = None  # boolean 1D mask on "combined" grid, used in final process_results step
-    nanmask                : Optional[np.ndarray] = None  # boolean 1D mask on "combined" grid, used to mask out NaN values in combined spectra
-    velocities             : Optional[np.ndarray] = None  # velocities array, used throughout Acid and Results
-    initial_profile        : Optional[np.ndarray] = None  # initial profile generated in residual masking
-    initial_profile_errors : Optional[np.ndarray] = None  # corresponding errors
-    poly_inputs            : Optional[np.ndarray] = None  # polynomial inputs for just the continuum model
-    initial_model_inputs   : Optional[np.ndarray] = None  # The initial_model_inputs if needed for debugging, only set after model_inputs is modified in residual masking
-    model_inputs           : Optional[np.ndarray] = None  # the concatenated array of initial profile and poly coefficents, used as input to emcee
-    initial_state          : Optional[np.ndarray] = None  # the initial state of the MCMC walkers, used for resuming and debugging
+    # ---------------------------------------------------------
+    #: The alpha vector used in the linear model, used for solving the linear system in MCMC
+    alpha                  : Optional[np.ndarray] = None  
+    #: Tuple generated by np.cho_factor, used for solving the linear system in MCMC
+    c_factor               : Optional[tuple]      = None
+    #: Boolean 1D mask on "combined" grid, used in final process_results step
+    residual_masks         : Optional[np.ndarray] = None
+    #: Boolean 1D mask on "combined" grid, used to mask out NaN values in combined spectra
+    nanmask                : Optional[np.ndarray] = None
+    #: Velocities array, used throughout Acid and Results
+    velocities             : Optional[np.ndarray] = None
+    #: Initial profile generated in residual masking
+    initial_profile        : Optional[np.ndarray] = None
+    #: Corresponding errors for the initial profile
+    initial_profile_errors : Optional[np.ndarray] = None
+    #: Polynomial inputs for just the continuum model
+    poly_inputs            : Optional[np.ndarray] = None
+    #: The initial_model_inputs if needed for debugging, only set after model_inputs is modified in residual masking
+    initial_model_inputs   : Optional[np.ndarray] = None
+    #: The concatenated array of initial profile and poly coefficients, used as input to emcee
+    model_inputs           : Optional[np.ndarray] = None
+    #: The initial state of the MCMC walkers, used for resuming and debugging
+    initial_state          : Optional[np.ndarray] = None
 
     # Small cached products needed for MCMC if doing reruns
     # -----------------------------------------------------
@@ -360,30 +448,51 @@ class Data:
     ndim     : Optional[int]        = None
 
     # Data required/calculated in results/after MCMC sampling
-    profiles          : Optional[np.ndarray] = None  # the array to store all frames of the MCMC sampling
-    combined_profiles : Optional[np.ndarray] = None
-    nsteps            : Optional[int]        = 0
-    max_steps         : Optional[int]        = None
+    # -------------------------------------------------------
+    #: The list to store all frames of the MCMC sampling, has dimensions (nframes, 3, nvel), where the 3 indexes are the profile, error, and covariance matrix
+    profiles          : Optional[list] = None
+    #: The list to store the combined frame of the MCMC sampling, has dimensions (3, nvel)
+    combined_profiles : Optional[list] = None
+    #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
+    nsteps            : Optional[int]  = 0
 
-    # The samples are stored as an array of shape (nwalkers, nsteps, ndim), and not as an emcee sampler object to save memory.
-    # It is already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
-    # they must store the sampler with the result object by configuring the output.
+    #: The samples are stored as an array of shape (nwalkers, nsteps, ndim), and not as an emcee sampler object to save memory.
+    #: It has already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
+    #: they must store the sampler with the result object by configuring the output.
+    # TODO: samples not currently used in result, check again why I did the below
     samples  : Optional[np.ndarray] = None # flatten with v = v.reshape(-1, *v.shape[2:])
     complete : bool                 = False # is set to True when the profiles have been fully calculated, used in DataList
 
-    # Other useful data and figures:
-    initialisation_time : Optional[float] = None  # time taken for initialization
-    mcmc_time           : Optional[float] = None  # time taken for MCMC sampling
-    get_profiles_time   : Optional[float] = None  # time taken to get profiles
-    full_run_time       : Optional[float] = None  # total time for the full run
+    # Other useful data and figures
+    # -----------------------------
+    initialisation_time : Optional[float] = 0  # time taken for initialization
+    mcmc_time           : Optional[float] = 0  # time taken for MCMC sampling
+    get_profiles_time   : Optional[float] = 0  # time taken to get profiles
+    full_run_time       : Optional[float] = 0  # total time for the full run
     plotting_variables  : Dict[str, Any]  = field(default_factory=dict)
 
     # Initialise the properties
-    # Config data for convenience, it is very memory light so not an issue to also store in here
-    _config   : Config = field(default_factory=Config) # config stored as class, but converted to dict on save
+    # -------------------------
+    #: Config data for convenience as a class, but converted to a dictionary on save to avoid pickling issues
+    _config   : Config = field(default_factory=Config)
+    #: The linelist is stored as a dictionary but exposed as a :py:class:`LineList` object when the property is accessed.
     _linelist : Optional[Dict[str, np.ndarray]] = None
 
     def plot_continuum_fit(self, plot_type:str="initial", return_fig:bool=False, save_fig:str|None=None) -> None:
+        """
+        Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
+
+        Parameters
+        ----------
+        plot_type : str, optional
+            The type of continuum fit to plot, either "initial" for the initial continuum fit or
+            "masked" for the continuum fit after residual masking. Default is "initial".
+        return_fig : bool, optional
+            Whether to return the figure and axis objects instead of showing the plot, by default False.
+        save_fig : str or None, optional
+            If provided, the path to save the figure. If None, the figure will not be saved. Default is None.
+        """
+        # Check we have all inputs needed for plot
         if plot_type not in ["initial", "masked"]:
             raise ValueError("plot_type must be either 'initial' or 'masked'")
         if plot_type not in self.plotting_variables:
@@ -395,6 +504,7 @@ class Data:
             ):
             raise ValueError("To plot the continuum fit, the following attributes must be set: unnormalized_wavelengths, fluxes, fit, clipped_waves, clipped_flux, good")
 
+        # Unpack variables
         unnormalized_wavelengths = self.plotting_variables[plot_type]["unnormalized_wavelengths"]
         fluxes                   = self.plotting_variables[plot_type]["fluxes"]
         good                     = self.plotting_variables[plot_type]["good"]
@@ -402,13 +512,14 @@ class Data:
         clipped_waves            = self.plotting_variables[plot_type]["clipped_waves"]
         clipped_flux             = self.plotting_variables[plot_type]["clipped_flux"]
 
+        # Normalise wavelengths and plot flux and fit
         a, b = utils.get_normalisation_coeffs(unnormalized_wavelengths)
         fig, ax = plt.subplots(figsize=(15, 9))
         ax.plot(unnormalized_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
         ax.plot(unnormalized_wavelengths, fit, label='Fitted Continuum', color='red')
         ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
 
-        # Plot bad regions:
+        # Plot bad regions (chunk deviation masking):
         masked = ~good
         padded = np.concatenate(([False], masked, [False]))
         starts = np.flatnonzero(~padded[:-1] & padded[1:])
@@ -417,9 +528,10 @@ class Data:
             ax.axvspan((clipped_waves[start]-b)/a, (clipped_waves[end-1]-b)/a,
                         color='red', alpha=0.15, label="Bad regions" if i == 0 else None)
 
+        # Plot the linelist points, with a color corresponding to their depth in the linelist within the range
+        # Only plot the 20 strongest lines to avoid overcrowding.
         ll_wl = self.linelist["wavelengths"]
         ll_depths = self.linelist["depths"]
-
         ll_wl, ll_depths = utils.clip_wavelengths(unnormalized_wavelengths, ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
@@ -427,6 +539,8 @@ class Data:
         ll_wl = ll_wl[-20:]
         ll_depths = ll_depths[-20:]
 
+        # Try colouring them, but often the linelist points will be outside the wavelength range so just skip if 
+        # there's an error to avoid breaking the plot
         try:
             cmap = plt.cm.viridis_r
             norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
@@ -444,10 +558,11 @@ class Data:
             cbar = fig.colorbar(sm, ax=ax)
             cbar.set_label("Line depth")
         except:
-            print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
+            if self.config.verbose > 0:
+                print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
             pass
 
-        # Plot the line masks
+        # Plot the line masks with their names
         x = unnormalized_wavelengths
         line_mask = self.config.masking_lines.get_masks(x, with_names=True)
         for i, (name, masks) in enumerate(line_mask.items()):
@@ -458,6 +573,7 @@ class Data:
                 ax.axvspan((x[start]), (x[end-1]), color=f'C{i+1}', alpha=0.3,
                            label=f"{name} Line masks" if j == 0 else None)
 
+        # Add labels and legend, and save or show figure
         plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
         ax.set_title(plot_title)
         ax.legend()
@@ -468,6 +584,17 @@ class Data:
         plt.show()
 
     def plot_residual_masking(self, save_fig:str|None=None) -> None:
+        """
+        Creates 3 plots to show the result of the residual masking step, showing the residuals with the sigma clipping thresholds, 
+        the masked regions, and the initial profile after masking.
+
+        Parameters
+        ----------
+        save_fig : str or None, optional
+            If provided, a directory to save the figure, will create one if it does not exist. 
+            If None, the figure will not be saved. Default is None.
+        """
+        # Check we have all inputs needed for plot
         if "residual_masking" not in self.plotting_variables:
             raise ValueError("No plotting variables found for residual_masking. ")
         if not all(
@@ -481,6 +608,7 @@ class Data:
             if not os.path.isdir(save_fig):
                 raise ValueError(f"save_fig must be a valid path to a directory to save the figures, or None to show the figures. Got: {save_fig}")
 
+        # Unpack variables
         x = self.wavelengths["masked"]
         y = self.flux["masked"]
         mask = self.plotting_variables["residual_masking"]["mask"]
@@ -491,8 +619,10 @@ class Data:
         profile_F = self.plotting_variables["residual_masking"]["profile_F"]
 
         nremoved = np.sum(mask)
-        print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
+        if self.config.verbose > 1:
+            print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
 
+        # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
         ax.plot(x, residuals, label='Residuals', color='blue')
         ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
@@ -588,6 +718,7 @@ class Data:
         skips : int, optional
             Number of pixels to skip when processing the spectra, by default 1 (no skipping)
         """
+        # Check if inputs already exist, use a key to name dictionary map to get boolean for if any/all exist for following logic checks
         input_keys = ["wavelengths", "flux", "errors"]
         inputs = {
             "wavelengths": input_wavelengths,
@@ -602,6 +733,7 @@ class Data:
         any_inputs_not_none = any(inputs[attr] is not None for attr in input_keys)
         del inputs # it was just a trick to do the input checks in a loop
 
+        # Handle logic for already existing inputs, more or less described in the print statements
         if inputs_already_exist:
             if not all_inputs_not_none and any_inputs_not_none:
                 if self.config.verbose > 0:
@@ -650,10 +782,10 @@ class Data:
                 print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
                       f"It is highly recommended to obtain correct per-pixel errors.")
 
-        # Now validate these
+        # Check they have matching shape
         if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
-        
+
         # Ensure now that the SN becomes just a single value per frame
         if input_sn.ndim == input_flux.ndim:
             # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
@@ -682,12 +814,13 @@ class Data:
         input_flux = np.take_along_axis(input_flux, sort_idx, axis=-1)
         input_errors = np.take_along_axis(input_errors, sort_idx, axis=-1)
 
-        # Apply skips
+        # Apply skips, this just skips some data for testing and faster runs, but real runs should always leave skips=1
         input_wavelengths = input_wavelengths[:, ::skips]
         input_flux       = input_flux[:, ::skips]
         input_errors     = input_errors[:, ::skips]
 
         # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
+        # This checks basically if self.wavelengths["input"] is the same as input_wavelengths, and same for flux and errors, if they exist. 
         reset = False
         for check in input_keys:
             if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
@@ -696,6 +829,7 @@ class Data:
                     continue
                 if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}")):
                     reset = True
+        # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
         if reset:
             if self.config.verbose > 0:
                 print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
@@ -715,7 +849,8 @@ class Data:
         self.sn["input"]          = input_sn
 
     def save(self, filename:str="data.pkl") -> None:
-        """Saves the data object to a file using pickling. This will store just the dictionary of the class, 
+        """
+        Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
 
         Parameters
@@ -729,17 +864,34 @@ class Data:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, filename: str):
+    def load(cls, filename: str) -> Data:
+        """
+        Loads a data object from a file using pickling. This will read the dictionary from the file and 
+        then use it to initialise a new Data class.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file to load the data object from. This should be a .pkl file.
+        
+        Returns
+        -------
+        Data
+            The loaded data object.
+        """
         with open(filename, "rb") as f:
             payload = pickle.load(f)
 
         obj = cls()
 
-        obj.from_dict(payload)
+        obj.from_dict(payload) # this method updates the data object from the dictionary payload
         return obj
 
     def to_dict(self) -> dict[str, Any]:
-        """Converts the data object to a dictionary payload for saving. This is used internally in the save method, but can also be used for debugging or other purposes."""
+        """
+        Converts the data object to a dictionary payload for saving. This is used internally in the save method, 
+        but can also be used for debugging or other purposes.
+        """
         payload: dict[str, Any] = {}
         for f in fields(self):
             name = f.name
@@ -752,7 +904,17 @@ class Data:
         return payload
 
     def from_dict(self, payload: dict[str, Any]) -> None:
-        """Updates the data object from a dictionary payload. This is used internally in the load method, but can also be used for debugging or other purposes."""
+        """
+        Updates the data object from a dictionary payload. This is used internally in the 
+        load method, but can also be used for debugging or other purposes.
+
+        Parameters
+        ----------
+        payload : dict
+            The dictionary payload to update the data object from. This should have the same keys as the
+            attributes of the data class. The "config" key should be a dictionary 
+            that can be used to initialise a Config class.
+        """
         for f in fields(self):
             name = f.name
             if name == "_config": # config stored as a dict in payload, but stored here as class
@@ -762,6 +924,7 @@ class Data:
                 if name in payload:
                     setattr(self, name, payload[name])
 
+    # Store config as a property for handling it to/from dictionary on saving
     @property
     def config(self) -> Config:
         """Returns the internally stored config object, which contains the configuration of the ACID run."""
@@ -769,6 +932,7 @@ class Data:
 
     @config.setter
     def config(self, value: Config) -> None:
+        """Sets the internally stored config object."""
         self._config = value
 
     @property
@@ -789,30 +953,45 @@ class Data:
         return
 
     def set_linelist(self, linelist=None, linelist_wl=None, linelist_depths=None) -> None:
+        """
+        Sets the linelist for the data object. The linelist formats follows that of the doccumentation in the :py:class:`Acid` class,
+        which then internally uses this function to set the linelist in the data object. The linelist is stored as a dictionary with 
+        keys "wavelengths" and "depths", but is exposed as a :py:class:`LineList` object when accessed through the property. The LineList
+        class allows for easy access to plotting, indexing, and validation.
+
+        Parameters
+        ----------
+        See :py:class:`Acid` for the accepted linelist formats and parameters.
+        """
+        # Check if linelist already exists, override with new inputs if provided
         if self._linelist is not None:
             if linelist is None and linelist_wl is None and linelist_depths is None:
                 return
             # else: override with new inputs below, with validation
 
+        # The method names are self explaining, see the respective methods for more details
         linelist_wl, linelist_depths = LineList.validate_linelist(linelist, linelist_wl, linelist_depths)
-        linelist_wl = np.array(linelist_wl)
-        linelist_depths = np.array(linelist_depths)
-        linelist_wl, linelist_depths = LineList.drop_NaNs(linelist_wl, linelist_depths)
-        LineList.validate_dimensions(linelist_wl, linelist_depths)
+        linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
+        LineList.validate_dimensions(linelist_wl, linelist_depths) # ensures same shape and are 1D
         self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
     def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
         """
         Plots the linelist points with their corresponding depths as delta-function lines.
-        
+
         Parameters
         ----------
-        min_depth : Scalar
-            The minimum depth for plotting the linelist points.
+        min_depth : :py:type:`Scalar`, optional
+            The minimum depth for plotting the linelist points. By default 0.2.
         bounds : tuple or list, optional
             The wavelength bounds for clipping the linelist. If None, no clipping is applied.
         return_fig : bool, optional
             If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple or None
+            If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
         """
         if self.linelist is None:
             raise ValueError("No linelist found. Please set a linelist before trying to plot it.")
@@ -826,6 +1005,7 @@ class Data:
         wl = wl[depths >= min_depth]
         depths = depths[depths >= min_depth]
 
+        # Plot linelist
         fig, ax = plt.subplots(figsize=(15, 9))
         ax.vlines(wl, 0, depths, color='C0', )
         ax.set_title('Line List')
@@ -837,9 +1017,11 @@ class Data:
         plt.show()
 
 class LineList:
-    """A simple class to expose the linelist when called in Data"""
+    """
+    A class to expose the linelist when called in Data. Has validation methods and easy indexing for plotting and other uses.
+    """
     __slots__ = ("ll",) # the only thing stored in this class is the linelist
-    def __init__(self, ll: dict):
+    def __init__(self, ll: dict) -> None:
         self.ll = ll
 
     def __getitem__(self, k):
@@ -856,9 +1038,30 @@ class LineList:
         yield self.ll["depths"]
 
     @staticmethod
-    def validate_linelist(linelist, linelist_wl, linelist_depths):
+    def validate_linelist(linelist, linelist_wl, linelist_depths) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist wavelengths 
+        and depths as numpy arrays. This is used internally in the set_linelist method.
+
+        Parameters
+        ----------
+        linelist : str, dict, LineList, list, or np.ndarray
+            See :py:class:`Acid`.
+        linelist_wl : array-like, optional
+            See :py:class:`Acid`.
+        linelist_depths : array-like, optional
+            See :py:class:`Acid`.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            The validated linelist wavelengths and depths as numpy arrays.
+        """
+
+        # Run through every possible input type and issue, I'm not going to comment everything but the logic is fairly
+        # self-explanatory, and the error messages should be helpful for debugging if the input is not in the correct format.
         if (linelist_wl is None and linelist_depths is None) and linelist is None:
-            raise ValueError("One of ('linelist_wl' and 'linelist_depths') or 'linelist' must be provided.")
+            raise ValueError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
         elif linelist is None and (linelist_wl is None or linelist_depths is None):
             raise ValueError("If 'linelist' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
         elif isinstance(linelist, str):
@@ -884,23 +1087,55 @@ class LineList:
         else:
             raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
-        return linelist_wl, linelist_depths
+        return np.array(linelist_wl), np.array(linelist_depths)
 
     @staticmethod
-    def validate_dimensions(wavelengths, depths):
+    def validate_dimensions(wavelengths, depths) -> None:
+        """Validates that the wavelengths and depths are 1D arrays of the same shape. 
+        This is used internally in the set_linelist method."""
         if wavelengths.ndim != 1 or depths.ndim != 1:
             raise ValueError("'wavelengths' and 'depths' must be a one-dimensional array or list")
         if wavelengths.shape != depths.shape:
             raise ValueError("'wavelengths' and 'depths' must have the same length and shape")
 
     @staticmethod
-    def drop_NaNs(wavelengths, depths, return_mask=False, verbose=0):
+    def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False, verbose:IntLike|bool|str=None) -> tuple:
+        """Removes NaN, non-finite, negative, and greater than 1 values from the wavelengths and depths arrays.
+        This is used internally in the set_linelist method.
+
+        Parameters
+        ----------
+        wavelengths : np.ndarray
+            The array of linelist wavelengths.
+        depths : np.ndarray
+            The array of linelist depths.
+        return_mask : bool, optional
+            If True, also returns the boolean mask of valid lines. Default is False.
+        verbose : int, bool, or str, optional
+            The verbosity level for printing warnings about dropped lines. Same format as :py:class:`Acid`.
+            Default is 2 as per config defaults.
+
+        Returns
+        -------
+        tuple or np.ndarray
+            If return_mask is True, returns a tuple of (wavelengths, depths, mask).
+            Otherwise, returns a tuple of (wavelengths, depths) with invalid lines removed.
+        """
+        # Set verbose level using config verbose validation, handles a verbose=None input
+        verbose = Config(verbose=verbose).verbose
+
+        # Get mask
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
+        mask &= (depths >= 0) & (depths <= 1)
+
+        # Count the number of dropped lines for verbose output
         count_dropped = np.count_nonzero(~mask)
         mask &= (wavelengths > 0) & (depths > 0)
         if verbose > 0 and count_dropped > 0:
-            print(f"Your linelist includes {count_dropped} non-finite/nan values, these will be removed, but it is still recommended to check your linelist.")
+            print(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
+                  f"These will be removed, but it is still recommended to check your linelist.")
 
+        # Apply mask and return results
         if return_mask:
             return wavelengths[mask], depths[mask], mask
         return wavelengths[mask], depths[mask]
@@ -1048,6 +1283,7 @@ class DataList:
         else:
             config_dict = config.to_dict() if config is not None else {}
 
+        # --- Create datalist of Data instances for each order ---
         datalist = []
         for idx, order in enumerate(self.order_range):
             data = Data() # create data instance
@@ -1058,21 +1294,43 @@ class DataList:
 
             # Update the config with any kwargs passed in the initialization of the DataList, and with the order number for this Data instance
             data.config.update_lowpri(**config_kwargs)
-            data.config.update_hipri(order=order)
+            data.config.update_hipri(order=order) # order must be overwritten and set last by us to ensure it matches with the order of the input data for this index
 
             # Set the inputs for this Data instance, taking the idx'th element of the input arrays for this order. If errors or sn are not provided, they will be set to None and approximated in the Data class.
             input_errors = errors[idx] if errors is not None else None
             input_sn = sn[idx] if sn is not None else None
             data.set_inputs(wavelengths[idx], flux[idx], input_errors, input_sn)
+
+            # Set linelist and velocities, which always should be same for all orders
             data.linelist = linelist # sets the linelist for this Data instance, which is shared across all orders in the DataList
             data.velocities = velocities
-            datalist.append(data)
-        
+            
+            datalist.append(data) # finally append to the datalist
+
         self.data_list = datalist # datalist property handles the rest
 
     @classmethod
-    def from_datalist(cls, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|str|None=None):
-        """"""
+    def from_datalist(cls, data_list:list[Data]|Data, save_dir:str|None=None, verbose:IntLike|bool|str|None=None) -> DataList:
+        """
+        Load a DataList from a list of Data objects. This is useful for loading a saved DataList or for more fine-grained 
+        control over the initialization of each Data object. All Data objects should be already properly initialised with linelists, velocities,
+        configs and inputs, and the DataList will check for consistency across the list (e.g. all orders should have the same velocity grid, etc.).
+
+        Parameters
+        ----------
+        data_list : list[:py:class:`Data`] | :py:class:`Data`
+            A list of Data objects to initialize the DataList from. If a single Data object is provided, it will be converted to a list with one element.
+        save_dir : str | None, optional
+            The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
+        verbose : int | bool | str | None, optional
+            The verbosity level for printing information during the initialization. Follows the same format as the "verbose" input in the 
+            :py:class:`Config` class. Default is None.
+
+        Returns
+        -------
+        :py:class:`DataList`
+            A DataList object initialized from the provided list of Data objects.
+        """
         if isinstance(data_list, Data):
             data_list = [data_list]
 
@@ -1111,18 +1369,51 @@ class DataList:
         yield from self.data_list
 
     def __getitem__(self, k):
+        """
+        Allows for indexing the DataList with the order number, e.g. datalist[order_number] 
+        will return the Data instance with that order number. Uses the internal order to index mapping to find 
+        the correct index in the data list.
+
+        Parameters
+        ----------
+        k : int
+            The order number to index the DataList with.
+        
+        Returns
+        -------
+        :py:class:`Data`
+            The Data instance with the specified order number.
+        """
         return self.data_list[self.o2i[k]]
 
     def __repr__(self):
         return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"
 
     def __call__(self, **kwargs):
+        """Runs and returns the results of the :py:method:`DataList.run_ACID` method, which runs ACID on the Data instances in the list for the specified orders.
+        
+        Parameters
+        ----------
+        See :py:method:`DataList.run_ACID` for the accepted parameters and their descriptions.
+        """
         return self.run_ACID(**kwargs)
 
     def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
-        """Appends a Data instance to the data list
-        "Note that the order range of the class is kept, if you want to set a new order range, \n" \
-        "Use the set_order_range() method first to change it."
+        """
+        Appends a Data instance to the data list. Note that the order range of the class is kept, 
+        if you want to set a new order range, use the set_order_range() method first to change it.
+
+        Parameters
+        ----------
+        data : :py:class:`Data`
+            The Data instance to append to the data list. The order of the Data instance is taken from its config, 
+            but can be overridden with the force_order argument.
+        overwrite : bool, optional
+            If True, will overwrite an existing Data instance with the same order number. Default is False.
+        extend : bool, optional
+            If True, will extend the order range to include the new order if it is not already present. Default is False.
+        force_order : int, optional
+            If provided, will set the order of the Data instance to this value, overriding its config. Default is None.
         """
         if force_order is not None:
             data.config.order = force_order
@@ -1144,14 +1435,23 @@ class DataList:
 
         self.sort_by_order() # re-sorts the list and updates the o2i mapping
 
-    def set_order_range(self, order_range:Array1D):
-        "A list or numpy array of the order range"
+    def set_order_range(self, order_range:Array1D) -> None:
+        """Sets the order range for the DataList. The new range must be a superset of the already saved orders in the list, 
+        otherwise a ValueError is raised.
+        
+        Parameters
+        ----------
+        order_range : :py:type:`Array1D`
+            The new order range to set for the DataList. This should be a 1D array of order numbers. 
+        """
         if np.any([o not in order_range for o in self.orders]):
             raise ValueError("The already saved orders must be a subset of the inputted order_range.")
         self.order_range = np.array(order_range, dtype=np.int32)
 
-    def sort_by_order(self):
-        """Sorts the data list by order number, and updates the o2i mapping accordingly."""
+    def sort_by_order(self) -> None:
+        """
+        Sorts the data list by order number, and updates the o2i mapping accordingly. Internally called whenever self.data_list is updated.
+        """
         self.data_list.sort(key=lambda data: data.config.order)
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
         self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
@@ -1201,6 +1501,7 @@ class DataList:
         **kwargs :
             Additional keyword arguments to be passed to the ACID method for each order. These will not overwrite any existing keys unless
             overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
+            The kwargs passed also allow you to add/overwrite the linelist and velocities in the Data instance with the same overwrite logic.
         """
         from .acid import Acid # local import to avoid circular imports, since Acid imports Data
 
@@ -1272,7 +1573,7 @@ class DataList:
             # The following try-except loops came from just testing ACID on a lot of different orders, stars, and instruments
             failed_msg = f"Order {order} (list index {self.o2i[order]}) failed with error:"
             try:
-                result = Acid(data=data).ACID()
+                result = Acid(data=data).ACID() # All params are stored in Data and Config (in Data)
             except LineListRangeError:
                 print(f"{failed_msg} line list range error. Your linelist is likely out of "\
                       f"range of the wavelengths. Skipping this order.", flush=True)
@@ -1295,7 +1596,18 @@ class DataList:
                 result.save_result(save_path, store_sampler=store_sampler)
         return
 
-    def save(self, save_dir:str|None=None):
+    def save(self, save_dir:str|None=None) -> None:
+        """
+        Saves the DataList to a pickle file. 
+        The pickle file contains a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
+        The filename is "datalist.pkl". If save_dir is not provided, self.save_dir is used. If that is also None, a ValueError is raised.
+
+        Parameters
+        ----------
+        save_dir : str | None, optional
+            The directory to save the DataList pickle file. If None, self.save_dir is used. Default is None.
+        """
+        # TODO: Add DataList handling in tests.py
         d = {}
         if save_dir is not None:
             self.save_dir = save_dir
@@ -1304,11 +1616,27 @@ class DataList:
         d["dict_list"] = [data.to_dict() for data in self.data_list]
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
         d["save_dir"] = self.save_dir
+        d["verbose"] = self.verbose
         with open(save_loc, "wb") as f:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, path:str):
+    def load(cls, path:str) -> DataList:
+        """
+        Loads a DataList from a pickle file. The pickle file should contain a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
+        Will attempt to load from datalist.pkl in the provided path if it is a directory, otherwise will attempt to load from the provided path directly. 
+        If neither of those work, it will attempt to load from result pickles in a results directory within the provided path.
+
+        Parameters
+        ----------
+        path : str
+            The path to the pickle file or directory to search for the pickle file.
+
+        Returns
+        -------
+        DataList
+            The loaded DataList object.
+        """
         if os.path.isdir(path):
             path_check = os.path.join(path, "datalist.pkl")
             if not os.path.exists(path_check):
@@ -1326,16 +1654,20 @@ class DataList:
                     for result_file in result_files:
                         result = Result.load_result(os.path.join(result_path, result_file))
                         data_list.append(result.data)
-                    return cls(data_list, save_dir=path)
+                    return cls.from_datalist(data_list, save_dir=path)
                 else:
                     raise ValueError(f"No datalist.pkl found in {path}, and no results directory found to look for result pickles.")
             else:
                 path = path_check
+        else:
+            if not os.path.exists(path):
+                raise ValueError(f"No pickle file found at {path} to load the DataList from.")
 
         with open(path, "rb") as f:
             d = pickle.load(f)
         data_list = [Data().from_dict(d) for d in d["dict_list"]]
-        obj = cls(data_list, d["save_dir"])
+        verbose = d["verbose"] if "verbose" in d else None
+        obj = cls.from_datalist(data_list, save_dir=d["save_dir"], verbose=verbose)
         return obj
 
     @property
@@ -1374,6 +1706,10 @@ class DataList:
 
     @data_list.setter
     def data_list(self, data_list):
+        """
+        Sets the data list and ensures that it is a list of Data instances. 
+        Also sorts the list by order and updates the order to index mapping.
+        """
         if not isinstance(data_list, list):
             raise ValueError("data_list must be a list of Data instances.")
         if not all(isinstance(data, Data) for data in data_list):
@@ -1406,7 +1742,7 @@ class DataList:
         self.excluded_orders = exclude
         return
 
-    def plot_combined_profile(self, return_fig:bool=False):
+    def plot_combined_profile(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
         Plots the combined profile across all orders
 
@@ -1414,6 +1750,12 @@ class DataList:
         ----------
         return_fig : bool
             If True, returns the figure and axis objects instead of displaying the plot.
+        
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+
         """
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
@@ -1432,14 +1774,19 @@ class DataList:
             return fig, ax
         plt.show()
 
-    def fit_profile(self, **kwargs):
+    def fit_profile(self, **kwargs) -> None|tuple[plt.Figure, plt.Axes]:
         """
         Fits the combined profile across all orders.
 
         Parameters
         ----------
         **kwargs : dict
-            Keyword arguments to pass to the Profiles.plot_fit() method.
+            Keyword arguments to pass to the :py:method:`Profiles.plot_fit` method.
+        
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects from the profile fit plot if return_fig is True, otherwise None.
         """
         from .profiles import Profiles
         profiles = Profiles(self.velocities, *self.combined_profile)

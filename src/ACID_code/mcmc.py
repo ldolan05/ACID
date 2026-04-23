@@ -1,9 +1,14 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import numpy as np
 from . import utils
+from .utils import Array1D, Array2D
 from beartype import beartype
 from numpy.polynomial import polynomial as P
 from scipy.linalg import cho_solve
+
+if TYPE_CHECKING:
+    from .data import Data
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -20,36 +25,43 @@ def _mp_log_probability(theta):
 
 class MCMC:
 
+    """
+    Class for handling the MCMC fitting process. Since this is the most computationally intensive part of the code, 
+    it is designed to be as efficient as possible. Hence, no beartype checks are performed except in initialization, and we
+    have tried to precomputed as many variables as possible to avoid as much recalculation during sampling as possible. 
+    """
+
     @beartype
     def __init__(
             self,
-            x_or_data   : np.ndarray|object,
-            y           : np.ndarray|None = None,
-            yerr        : np.ndarray|None = None,
-            alpha       : np.ndarray|None = None,
-            velocities  : np.ndarray|None = None,
-            c_factor                      = None,
-            deterministic_profile : bool  = False,
-        ):
-        """Initialise MCMC functions with necessary data.
+            x_or_data             : Array1D|Array2D|Data,
+            y                     : Array1D|None = None,
+            yerr                  : Array1D|None = None,
+            alpha                 : Array2D|None = None,
+            velocities            : Array1D|None = None,
+            c_factor                             = None,
+            deterministic_profile : bool         = False,
+        ) -> None:
+        """
+        Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
 
         Parameters
         ----------
-        x_or_data : np.ndarray|object
-            Wavelength array or Data object. If a Data object is provided, takes all 
-            the arguments below from there. If a Data object is provided, all other 
+        x_or_data : :py:type:`Array1D` | :py:type:`Array2D` | :py:class:`Data`
+            Wavelength array or :py:class:`Data` instance. If a :py:class:`Data` instance is provided, takes all 
+            the arguments below from there. If a :py:class:`Data` instance is provided, all other 
             arguments are ignored.
-        y : np.ndarray, optional
-            Observed flux array, required if x_or_data is a np.ndarray.
-        yerr : np.ndarray, optional
-            Observed flux error array, required if x_or_data is a np.ndarray.
-        alpha : np.ndarray, optional
-            Precomputed alpha matrix, required if x_or_data is a np.ndarray.
-        velocities : np.ndarray|None, optional
+        y : :py:type:`Array1D`, optional
+            Observed flux array, required if x_or_data is a :py:type:`Array1D` or :py:type:`Array2D`.
+        yerr : :py:type:`Array1D`, optional
+            Observed flux error array, required if x_or_data is a :py:type:`Array1D` or :py:type:`Array2D`.
+        alpha : :py:type:`Array2D`, optional
+            Precomputed alpha matrix, required if x_or_data is a :py:type:`Array1D` or :py:type:`Array2D`.
+        velocities : :py:type:`Array1D` | None, optional
             Velocity grid for LSD profile, only needed when calling log-probability
             function, by default None.
-        c_factor : optional
+        c_factor : tuple, optional
             Precomputed c_factor for LSD profile calculation, by default None.
         deterministic_profile : bool, optional
             Whether to fit the full profile (True) or use the fast model (False), by default True.
@@ -57,7 +69,7 @@ class MCMC:
 
         # No checks are performed here - assume data is valid from ACID class checks,
         # else user is on their own!
-        if not isinstance(x_or_data, np.ndarray):
+        if isinstance(x_or_data, Data):
             data = x_or_data
             self.x = data.wavelengths["masked"]
             self.y = data.flux["masked"]
@@ -66,7 +78,6 @@ class MCMC:
             self.velocities = data.velocities
             self.c_factor = data.c_factor
             self.deterministic_profile = data.config.deterministic_profile
-
         else:
             self.x = x_or_data
             self.y = y
@@ -81,7 +92,7 @@ class MCMC:
         # Precompute normalization coefficients these are used to adjust the wavelengths to
         # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
         a, b = utils.get_normalisation_coeffs(self.x)
-        self.u = (a * self.x) + b
+        self.u = (a * self.x) + b # These are the normalized wavelengths used throughout the fitting process
 
         # For deterministic model, the below variables are used, and are precomputed for speed
         err_od = self.yerr / self.y # independent of continuum, since it's a ratio
@@ -90,6 +101,7 @@ class MCMC:
 
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
+            #: The model function can be called to directly run the model based on the deterministic_profile flag from initialization
             self.model_function = self.full_model # include profile fitting
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
@@ -99,12 +111,13 @@ class MCMC:
         return self.log_probability(*args, **kwargs)
 
     def full_model(self, theta):
-        """Full model for mcmc - takes all inputs (profile points + continuum coefficents)
+        """
+        Full model for mcmc - takes all inputs (profile points + continuum coefficents)
         to create a model spectrum.
 
         Parameters
         ----------
-        theta : array-like
+        theta : np.ndarray
             Model parameters: first k_max values are profile points (z),
             followed by continuum polynomial coefficients and scale factor.
         
@@ -129,7 +142,8 @@ class MCMC:
         return mdl, z
 
     def deterministic_model(self, theta):
-        """Deterministic model for mcmc - takes only continuum coefficents and scale factor
+        """
+        Deterministic model for mcmc - takes only continuum coefficents and scale factor
         to create a model spectrum, solving for the profile points (z) directly.
 
         Parameters
@@ -162,18 +176,9 @@ class MCMC:
 
         return forward, z
 
-    def run_model_function(self, *args, **kwargs):
-        """Runs the selected model function (full or fast) with given arguments.
-
-        Returns
-        -------
-        tuple
-            Model spectrum and profile points (z).
-        """
-        return self.model_function(*args, **kwargs)
-
     def log_prior(self, z):
-        """Calculates the log prior probability of the profile points (z) and imposes the prior
+        """
+        Calculates the log prior probability of the profile points (z) and imposes the prior
         restrictions on the inputs - rejects if profile point is less than -0.4 or greater than 1.6.
 
         Parameters
@@ -208,7 +213,8 @@ class MCMC:
         return 0 
 
     def log_probability(self, theta):
-        """Calculates log probability depending on which model (full or fast).
+        """
+        Calculates log probability depending on which model (full or fast).
         
         Parameters
         ----------
@@ -221,7 +227,7 @@ class MCMC:
             Log probability.
         """
         forward, z = self.model_function(theta)
-    
+
         lp = self.log_prior(z)
         if not np.isfinite(lp):
             return -np.inf
@@ -231,10 +237,10 @@ class MCMC:
         return lp + ll
 
     @staticmethod
-    def get_mcmc_stopping_criterion(tau_list, step_number, min_checks, min_tau_factor, tau_rel_tol):
+    def _get_mcmc_stopping_criterion(tau_list, step_number, min_checks, min_tau_factor, tau_rel_tol):
+        """Determines whether the MCMC sampling has converged based on the list of tau estimates and the current step number."""
         # --- always try to compute a tolerance metric as early as possible ---
         tol_metric = np.nan  # show NaN until computable
-        tol_converged = False
         n_eff = 0
 
         if len(tau_list) >= 2:
@@ -279,7 +285,8 @@ class MCMC:
         return (tol_metric < tau_rel_tol), tol_metric, n_eff
 
     @staticmethod
-    def get_tqdm_desc(last_tolerance, last_neff, config):
+    def _get_tqdm_desc(last_tolerance, last_neff, config):
+        """Formats the tqdm description string with the current tolerance and effective sample size metrics."""
         tol_str = "<" if last_tolerance < config.tau_tol else ">"
         tol_str = f"{last_tolerance:.4f}{tol_str}{config.tau_tol}"
         neff_str = ">" if last_neff > config.min_tau_factor else "<"

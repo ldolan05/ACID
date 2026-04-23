@@ -21,7 +21,7 @@ class Acid:
     Accurate Continuum fItting and Deconvolution (ACID) class. This class contains the ACID method 
     which fits the continuum of spectra and performs Least Squares Deconvolution (LSD) to obtain
     LSD profiles for each spectrum. It also contains many internal methods used within the main ACID 
-    function. See Dolan et al (2024) for more details on the ACID method and its applications.
+    method. See Dolan et al (2024) for more details on the ACID method and its applications.
     """
 
     def __init__(
@@ -31,7 +31,7 @@ class Acid:
         order           : IntLike|None                                       = None,   # Config
         order_range     : Array1D|None                                       = None,   # Config
         verbose         : IntLike|bool|str|None                              = None,   # Config
-        masking_lines   : dict                                               = None,   # Config
+        masking_lines   : dict|MaskingLines|None                             = None,   # Config
         seed            : IntLike|None                                       = None,   # Config
         data            : Data|DataList|None                                 = None,   # Data
         config          : Config|None                                        = None,   # Config
@@ -42,20 +42,19 @@ class Acid:
         -----
         Initialises the Acid class with inputted parameters. The class keeps calculations stored in the :py:class:`Data` class and run configurations
         in the :py:class:`Config` class (stored in Data for convenience). Both :py:class:`Data` and the :py:class:`Result` class (passed after ACID) have save and load 
-        methods which can save the result of any calculations, with the :py:class:`Result` class handling saving the :py:class:`Data` class together. ACID is designed
-        now to be run on only one order at a time, for running and keeping track of multiple orders, please see the :py:class:`DataList` class for a natural
+        methods which can save their state, with the :py:class:`Result` class handling saving the :py:class:`Data` class together, see :ref:`result`.
+        
+        As of 2.0, ACID is now designed to be run on one order at a time, for running and keeping track of multiple orders, please see the :py:class:`DataList` class for a natural
         implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
         the results for each order. The :py:class:`DataList` class has been designed with parallelization on HPC's in mind, allowing orders (which are
-        independent) to be run by different jobs. See also the multiprocessing section :ref:`multiprocessing`.
+        independent) to be run by different jobs. See also the :ref:`multiprocessing` and :ref:`datalists` sections.
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default :py:class:`Config` and/or :py:class:`Data` values or
-        any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        :py:class:`ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
-        are also None, such as velocities, as this can be calculated from the input wavelengths.
+        any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed via 
+        :py:attr:`ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and run_acid).
 
-        Also shown is where each parameters is stored (either in the :py:class:`Data` instance obtained from Acid.data) or in the :py:class:`Config` instance (obtained from either
-        Acid.config or Acid.data.config, which should be the same). The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and
-        any calculations. 
+        All parameters below and in run_ACID are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
+        The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
 
         Parameters
         ----------
@@ -63,24 +62,24 @@ class Acid:
             Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create one. If None, a default grid
             from -25 to 25 km/s is used with a spacing calculated by calc_deltav after the wavelengths are provided. It is highly recommended to 
             choose your own velocity grid, by default None, stored in the Data instance.
-        linelist : Array2D | str | LineList | dict, optional
-            The linelist to use for LSD. The linelist should have wavelengths in angstroms and depths relative depths between 0 and 1.
+        linelist : :py:type:`Array2D | str` | :py:class:`LineList` | dict`, optional
+            The linelist to use for LSD. The linelist should have wavelengths in angstroms and relative depths between 0 and 1.
             This is a required parameter if linelist_wl and linelist_depths are not provided. It can be of the forms:
             - String: A path to a VALD linelist in string format. Support for other linelists may be added in the future or on request.
-            - Array2D: A 2D array-like object indexed such that index 0 is wavelengths and index 1 is depths.
+            - :py:type:`Array2D`: A 2D array-like object indexed such that 0 is wavelengths and 1 is depths.
             - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
-            - LineList: The LineList class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
-            - If None, linelist_wl and linelist_depths must be provided (see below), by default None
+            - :py:class:`LineList`: The :py:class:`LineList` class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
+            - If None, linelist_wl and linelist_depths must be provided (see below), by default None, stored in the Data instance.
         order : :py:type:`IntLike`, optional
             If this ACID instance is intended as a run on a specific order, then you can designate this instance for that order. This will allow
             the resulting Data instance to track of which order the profiles correspond to. Note that orders can be indexed by the correct indexing
             of the spectrograph (ie. some spectrographs start at order ~20). By default 0.
-        order_range : Array1D, optional
+        order_range : :py:type:`Array1D`, optional
             Optionally also give ACID the full order range of the spectograph for the observation. ACID only ever runs on one order at a time,
             but this will allows ACID and eventually the DataList to keep track of which orders have been run and which haven't, and will be 
-            used in the future for plotting and saving results. As with order (above), the orders can be indexed to the spectrograph orders.
+            used in the future for plotting and saving results. As with order (above), the orders can be indexed to the spectrograph orders. 
             By default [0]
-        verbose : bool | IntLike | str, optional
+        verbose : :py:type:`bool | IntLike | str`, optional
             The verbosity for printing and plotting the progress and warnings of ACID. The verbosities are natively stored as integers corresponding to:
             0: No printing or plotting, all warnings are ignored.
             1: Only printing warnings.
@@ -90,31 +89,29 @@ class Acid:
             - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
             - Boolean: If True, defaults to 2. If False, defaults to 0.
             - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
-        masking_lines : dict, optional TBD!
-            Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. For many types of inputs, widths are optional,
-            and if not provided, the default telluric width is used (see below). The inputs must be of the following forms: 
-            - 1D or 2D Array-like: Wavelengths at index 0, and optionally widths at index 1. The length of both indices must match if provided.
-            - Dictionary: with keys "lines" and optionally "widths" (both array-like), length of both must match if provided.
-            - MaskingLines class: The MaskingLines class is used to expose the linelist for masking or getting/plotting the Masked lines. You can input
-              an instance if you have one.
-            - List of tuples: Each tuple should be in the format (line:float, width:Optional(float)). This format is useful for directly inputting
-              lines with default width unless explicitly specified for some lines. Again, lines without the width provided will be set from the
-              default telluric_width input.
-        seed : IntLike, optional
+        masking_lines : :py:type:`dict` | :py:class:`MaskingLines`, optional
+            Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. Unless you'd like to change the default masking
+            lines, we recommend just using the defaults (leaving this as None), which are based on telluric lines and strong hydrogen/metal lines in the 
+            optical and near infrared. For a guide on using your own/modifying the defaults, see :ref:`masking_lines`. By default None, stored in the Config instance.
+        seed : :py:type:`IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
-        data : Data | DataList, optional
-            An optional backend Data object to use for storing data. Allows previously calculated results to be used skipped.
-            If None, a new Data object is created. Please note that if the Data class already has a saved ACID config
-            class, then any inputs to the Acid initialisation and ACID method will overwrite these config values. If a 
-            DataList instance is inputted, the data instance corresponding to the inputted order is used.
-        config : Config, optional
-            An optional Config object to use for storing the configuration. Allows you to override the config values stored in the Data object,
-            otherwise, inputs to the initialisation here and the ACID method will overwrite these config values again (if entered).
-        **kwargs : dict, optional
-            Unused, mainly only to catch if users use the "linelist_path" input rather than the now "linelist" input.
+        data : :py:class:`Data` | :py:class:`DataList`, optional
+            An optional backend :py:class:`Data` object to use for storing data. Allows previously calculated results to be used skipped.
+            If None, a new :py:class:`Data` object is created. Please note that if the :py:class:`Data` class already has a saved ACID config
+            class, then any inputs to the :py:class:`Acid` initialisation and ACID method will overwrite these config values. If a 
+            :py:class:`DataList` instance is inputted, the :py:class:`Data` instance corresponding to the inputted order is used.
+        config : :py:class:`Config`, optional
+            An optional :py:class:`Config` object to use for storing the configuration. Allows you to override the config values stored in 
+            the :py:class:`Data` object, otherwise, inputs to the initialisation here and the ACID method will overwrite these config values again (if entered).
+            If None, an empty Config is created and stored in the Data instance.
+        **kwargs : :py:type:`dict`, optional
+            Unused except to catch if users use the "linelist_path" input rather than the now "linelist" input.
+
+        Raises
+        ------
+        BeartypeError
+            See :ref:`type_validation` to understand input validation errors.
         """
-        # TODO write docstring for all defaults, and all new features docstring them please
-        # TODO: update readthedocs with examples for using own linelists and using own masking lines, and also eventually using the Datalist object
         # Initialise the data class to store calculations in ACID        
         if data is not None:
             if isinstance(data, DataList):
@@ -170,7 +167,6 @@ class Acid:
                 np.random.seed(self.config.seed) # In principle this is only ever called once
             # else: user may define a seed at the top of their seed, so can use that
         # else: seed already in config, so seed would already have been set when put in
-        # I may make seed a property of the config class in the future
 
         # Default order range for ACID, can be updated in ACID_HARPS. Eventually will add option to add this to inputs
         self.config.order_range = order_range if order_range is not None else self.config.order_range
@@ -207,7 +203,7 @@ class Acid:
         skips                 : IntLike|None                = None,   # Config
         parallel              : bool|None                   = None,   # Config
         cores                 : IntLike|None                = None,   # Config
-        nwalkers              : IntLike|None                = None,   # Config
+        nwalkers              : IntLike|None                = None,   # Config, then Data just before MCMC
         nsteps                : IntLike|None                = None,   # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
         max_steps             : IntLike|None                = None,   # Config
         check_interval        : IntLike|None                = None,   # Config
@@ -227,81 +223,90 @@ class Acid:
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and run_acid). Note that some of the defaults in the config
-        are also None, such as velocities, as this can be calculated from the input wavelengths.
+        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and the ACID method).
+
+        All parameters below are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
+        The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
 
         Parameters
         ----------
-        wavelengths : Array1D | Array2D, optional
+        wavelengths : :py:type:`Array1D | Array2D`, optional
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2D array such that
             wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
-            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
-        flux : Array1D | Array2D, optional
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
+        flux : :py:type:`Array1D | Array2D`, optional
             An array of spectral frames (in flux). For multiple frames this should be a 2D array such that 
             flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
-            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
-        errors : Array1D | Array2D, optional
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
+        errors : :py:type:`Array1D | Array2D`, optional
             Errors for each frame (in flux). For multiple frames this should be a 2D array such that
-            errors[i] corresponds to the spectral errors for the ith frame. Can only be None if a data instance was 
-            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None
-        sn : Scalar | IntLike | Array1D, optional
+            errors[i] corresponds to the spectral errors for the ith frame. If a 2D array is provided, they are treated as multiple frames (not 
+            orders). If no errors are provided, but the SN is provided, the errors will be estimated from the flux and SN, but we highly recommend 
+            providing errors if possible, by default None, stored in the Data instance.
+        sn : :py:type:`Scalar | IntLike | Array1D`, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1D array such that
-            sn[i] corresponds to the S/N for the ith frame. If None, the S/N will be estimated from the input
-            spectra, by default None
+            sn[i] corresponds to the S/N for the ith frame. If you prefer to use a per-pixel SN value, ACID will use the :py:function:`utils.collapse_SNR` 
+            function to calculate a single S/N value for each frame from the central 2/3rds of the input spectra. In which case, a 2D array can be 
+            If None, the S/N will be estimated from the input spectra and errors, by default None, stored in the Data instance.
         deterministic_profile : bool, optional
             If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
             profile is inferred from the continuum fit. This is a new feature that has been set to the default as it significantly
             decrease convergence time and computation time per step, while fully maintaining accuracy. Setting this to False will 
             match legacy behaviour, by default True.
-        poly_ord : IntLike, optional
+        poly_ord : :py:type:`IntLike`, optional
             Order of polynomial to fit as the continuum, by default 3
-        continuum_percentile : IntLike, optional
+        continuum_percentile : :py:type:`IntLike`, optional
             The percentile to use when fitting the continuum, by default 90. For example, if 90, the continuum fit will be performed
             on the points in the spectra that are above the 90th percentile in flux in each spectral bin (determined by bin_size below).
-        bin_size : IntLike, optional
+        bin_size : :py:type:`IntLike`, optional
             The size of bins to use when performing the continuum fit. The spectra are split into bins with this number of pixels, and 
             the continuum is fit to the median wavelength and the specified percentile of flux in each bin. By default 100 pixels.
-        pix_chunk : IntLike, optional
+        pix_chunk : :py:type:`IntLike`, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
             and the data. If the residuals deviate by a specified percentage (see dev_perc below) for this number (pix_chunk) of pixels,
             then this chunk of pixels are masked in the spectra. By default 20
-        dev_perc : IntLike, optional
+        dev_perc : :py:type:`IntLike`, optional
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
             and the data. If a residual deviates by this percentage for a specified number of pixels,
             then this chunk of pixels are masked in the spectra. By default 25
-        n_sig : IntLike, optional
+        n_sig : :py:type:`IntLike`, optional
             Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
             residuals between an inital model and the data. Regions that lie outside the median +- n_sig STDEVs are clipped.
             The clipped regions will be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 3
-        skips : IntLike, optional
+        skips : :py:type:`IntLike`, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
-        parallel : bool, optional
+        parallel : :py:type:`bool`, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, see
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
-        cores : IntLike, optional
+        cores : :py:type:`IntLike`, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
-        nsteps : IntLike, optional
-            Number of steps for the MCMC to run, by default 10000
-        max_steps : IntLike, optional
+        nwalkers : :py:type:`IntLike`, optional
+            A manual override for the number of walkers for the MCMC sampler. By default, uses the emcee recommendation which is 3 times the number of
+            dimensions. For the deterministic model, this is just the poly_ord + 1, for the non-deterministic model, it is poly_ord + 1 + nvelocity points.
+        nsteps : :py:type:`IntLike`, optional
+            Number of steps for the MCMC to run, by default 10000, the initial steps are stored in the config as nsteps, 
+            but the true count of steps taken is stored in the Data instance as Data.nsteps, which can be higher than this if 
+            continue_sampling is used to continue sampling after the initial run.
+        max_steps : :py:type:`IntLike`, optional
             If set, the sampler will run until max_steps or convergence is reached by estimation using the emcee autocorrelation 
             time (tau). The sampler will check for convergence every 'check_interval' steps, and will require a minimum number 
             of checks ('min_checks') and a minimum tau factor ('min_tau_factor') before it can stop. The stopping criterion 
             is met when the change in tau is less than 'tau_tol' for all parameters. By default None, which means no maximum. 
             If a value is inputted, the nsteps parameter is ignored. The continue_sampling method in Result or Acid can still
             be used normally to continue sampling after either stopping criterion is reached.
-        check_interval : IntLike, optional
+        check_interval : :py:type:`IntLike`, optional
             Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 1000. 
             Only used if max_steps is set.
-        min_checks : IntLike, optional
+        min_checks : :py:type:`IntLike`, optional
             Minimum number of checks before MCMC can be stopped, by default 1. Only used if max_steps is set.
-        min_tau_factor : IntLike, optional
+        min_tau_factor : :py:type:`IntLike`, optional
             Minimum tau factor for MCMC stopping criterion, by default 50, which is the emcee recommendation, it's not
             recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
             Only used if max_steps is set.
-        tau_tol : float, optional
+        tau_tol : :py:type:`float`, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
         moves : list[tuple], optional
             A list of tuples specifying the moves for the MCMC sampler. The format
@@ -320,31 +325,32 @@ class Acid:
               "KDEMove", "DEMove", "DESnookerMove", "MHMove",
               and "GaussianMove". Refer to the emcee documentation for more
               details on each move type. Input move names are checked against the
-              "emcee.moves" module, so other moves from that module may also work,
-              although not all have been tested with ACID.
+              "emcee.moves" module, so other moves from that module will work.
             - "fraction" is the fraction of walkers to which this move should be applied.
             - "move_kwargs" is an optional dictionary of keyword arguments passed to
               the move class initialisation.
-        run_mcmc : bool, optional
+        run_mcmc : :py:type:`bool`, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
-            If True, the method returns a Result object, and if False, the method returns None, but attributes are updated.
-        **kwargs : dict, optional
-            Unused, only used to catch accidental inputs of initialisation arguments into the ACID method and warn if so.
+            If True, the method returns a :py:class:`Result` object, and if False, the method returns None, but attributes are updated.
+        **kwargs : :py:type:`dict`, optional
+            Unused except to catch accidental inputs of initialisation arguments into the ACID method and warn if so.
 
         Returns
         -------
         Result | None
-            A Result object containing the LSD profiles and associated data.
-            See the Result class for available methods and attributes.
+            A :py:class:`Result` object containing the LSD profiles and associated data.
+            See the :py:class:`Result` class for available methods and attributes.
 
             If "run_mcmc" is False, "None" is returned, but the class
             attributes are still updated.
 
         Raises
         ------
+        BeartypeError
+                See :ref:`type_validation` to understand input validation errors.
         ValueError
-            If any input arguments do not conform to the expected formats and requirements.
+            If other input arguments do not conform to the expected formats and requirements.
         """
         init_t0 = time.time()
         if self.config.verbose>1:
@@ -473,6 +479,7 @@ class Acid:
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
 
+        # Get the initial LSD profile and set the alpha matrix (unchanged from masking) and model_inputs
         if all((
             self.data.model_inputs is not None,
             self.data.alpha is not None
@@ -494,9 +501,9 @@ class Acid:
             self.data.model_inputs = np.concatenate((self.data.initial_profile, self.data.poly_inputs))
 
         # Masking based off residuals
-        # Inputs: self.x, self.y, self.yerr, self.data.model_inputs, self.poly
+        # Requires: self.x, self.y, self.yerr, self.data.model_inputs, self.poly
         # Sets: self.c_factor, self.residual_masks
-        # Modifies: self.yerr, and as of 1.5, 
+        # Modifies: self.yerr, and as of 1.5, self.data.model_inputs
         # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
         if all((
             self.data.residual_masks is not None,
@@ -507,15 +514,15 @@ class Acid:
         else:
             if self.config.verbose>1:
                 print('Residual masking...')
-            self.residual_mask() # will eventually add options for this
+            self.residual_mask()
 
-        ## Setting number of walkers and their start values(pos)
+        # Setting number of walkers and their start values(pos)
         self.data.ndim = len(self.data.model_inputs)
         # emcee recommendation is 3 times the number of dimensions, but can be overridden by user input
         self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
         rng = np.random.default_rng(self.config.seed)
 
-        ### starting values of walkers with independent variation
+        # Starting values of walkers with independent variation
         sigma = 0.8 * 0.005
         initial_state = []
         for i in range(0, self.data.ndim):
@@ -529,17 +536,18 @@ class Acid:
             initial_state.append(pos)
         initial_state = np.array(initial_state)
 
+        # Configure the nwalkers for the deterministic option (now default as of 1.4)
         if self.config.deterministic_profile is True:
             self.data.ndim = self.config.poly_ord + 1
             self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
             initial_state = initial_state[-self.data.ndim:, :self.data.nwalkers]
 
         # Transpose initial state to have shape (nwalkers, ndim) for emcee
-        initial_state = np.transpose(np.array(initial_state))
-        self.data.initial_state = initial_state # Saved for debugging if needed, otherwise class variable not used for now
+        self.data.initial_state = initial_state.T # Saved for debugging if needed, otherwise class variable not used for now
 
         ### ACID initialialised ###
-        self.data.initialisation_time = time.time() - init_t0
+        self.data.initialisation_time += time.time() - init_t0
+        mcmc_t0 = time.time()
         if self.config.verbose>1:
             print('Initialised in %ss'%round((self.data.initialisation_time), 3))
         if self.config.verbose>2:
@@ -560,9 +568,8 @@ class Acid:
                 if self.config.verbose > 1:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
                 self.run_mcmc_until_converged(self.config.max_steps, initial_state)
-
                 self.data.nsteps = self.step_number
-            self.data.mcmc_time = time.time() - init_t0 - self.data.initialisation_time
+            self.data.mcmc_time += time.time() - mcmc_t0
             return Result(self)
 
         else:
@@ -571,6 +578,11 @@ class Acid:
             return None
 
     def ACID_HARPS(self, *args, **kwargs):
+        """
+        This method is no longer supported in ACID. Please use the ACID function with the appropriate inputs for HARPS spectra instead. 
+        Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. 
+        If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code==1.4.5
+        """
         raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
@@ -584,17 +596,20 @@ class Acid:
         frame_sns:         Array1D|Array2D|None = None,
         output:            bool                 = True
         ) -> tuple | None:
-        """Combines multiple spectral frames into one spectrum
+        """
+        Combines the multiple inputted spectral frames into one spectrum, or just passes through the single frame if only one was input. 
+        The frames are interpolated onto a common wavelength grid of the spectrum with the highest S/N, and then a weighted average is used based on the errors. 
+        The S/N of the combined spectrum is also calculated based on the input S/N and the weights.
 
         Parameters
         ----------
-        frame_wavelengths : Array1D | Array2D, optional
+        frame_wavelengths : :py:type:`Array1D` | :py:type:`Array2D`, optional
             Wavelengths for the spectral frames, by default None
-        frame_flux : Array1D | Array2D, optional
+        frame_flux : :py:type:`Array1D` | :py:type:`Array2D`, optional
             Fluxes for the spectral frames, by default None
-        frame_errors : Array1D | Array2D, optional
+        frame_errors : :py:type:`Array1D` | :py:type:`Array2D`, optional
             Errors for the spectral frames, by default None
-        frame_sns : Array1D | Array2D, optional
+        frame_sns : :py:type:`Array1D` | :py:type:`Array2D`, optional
             Signal-to-noise ratio for the spectral frames, by default None
         output : bool, optional
             Whether to output the combined spectrum, by default True
@@ -602,11 +617,11 @@ class Acid:
         Returns
         -------
         tuple | None, if output is True, containing:
-            combined_wavelengths : Array1D
+            combined_wavelengths : np.ndarray
                 Wavelengths for the combined spectrum
-            combined_spectrum : Array1D
+            combined_spectrum : np.ndarray
                 Fluxes for the combined spectrum
-            combined_errors : Array1D
+            combined_errors : np.ndarray
                 Errors for the combined spectrum
             combined_sn : float
                 Signal-to-noise ratio for the combined spectrum
@@ -726,26 +741,30 @@ class Acid:
             - Normalized flux: The flux values normalized by the fitted continuum.
             - Normalized errors: The error values normalized by the fitted continuum.
         """
+        # Normalise wavelengths
         a, b = utils.get_normalisation_coeffs(wavelengths)
         unnormalized_wavelengths = np.copy(wavelengths)
         wavelengths = (wavelengths*a)+b
 
+        # Sort to ensure smooth binning and fitting
         idx = np.argsort(wavelengths)
         w = wavelengths[idx]
         f = fluxes[idx]
         e = errors[idx]
 
+        # Get nbins and bin_size, reshape into 2D array of bins
         binsize = self.config.bin_size
         n = len(w) // binsize  # full bins only
-
         w2 = w[:n*binsize].reshape(n, binsize)
         f2 = f[:n*binsize].reshape(n, binsize)
         e2 = e[:n*binsize].reshape(n, binsize)
 
+        # Get the median wavelength, specified percentile flux, and median error in each bin
         clipped_flux = np.nanpercentile(f2, self.config.continuum_percentile, axis=1)
         clipped_waves = np.nanmedian(w2, axis=1)
         clipped_errs = np.nanmedian(e2, axis=1)
 
+        # Remove bad points for the polynomial fit, defined as non-finite values or errors that are non-positive or above 1e11
         good = (
             np.isfinite(clipped_waves)
             & np.isfinite(clipped_flux)
@@ -754,11 +773,16 @@ class Acid:
             & (clipped_errs < 1e11) # 1e12 is the default mask error value, which can be picked up in the median error binning
         )
 
+        # Fit with np.polyfit
         coeffs = np.polyfit(clipped_waves[good], clipped_flux[good], poly_ord, w=1/clipped_errs[good])
         poly = np.poly1d(coeffs)
         fit = poly(wavelengths)
+
+        # Get the model fitted flux and errors from the fit
         flux_obs = fluxes / fit
         new_errors = errors / fit
+
+        # Flip coefficients for use in MCMC (ordered from lowest degree to highest)
         poly_coeffs = np.flip(coeffs)
 
         # Save to Data the required variables for the plot
@@ -781,18 +805,26 @@ class Acid:
         return poly_coeffs, flux_obs, new_errors
 
     def residual_mask(self) -> None:
-        """Masks regions of the spectrum based on residuals from an initial model fit. A purely class method not to be used elsewhere."""
+        """
+        Masks regions of the spectrum based on residuals from an initial model fit. A purely class method not to be used elsewhere.
+        This function is really only supposed to be used in the class, so no inputs are accepted. It is only used once in ACID 
+        and could be put directly in the method, but this allows a clearer checkpoint which segments saving the result of the mask for analysis.
+        """
 
-        ## Residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
+        # Residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
         # Set standard variables
         x = self.data.wavelengths["combined"]
         y = self.data.flux["combined"]
         yerr = self.data.errors["combined"]
         sn = self.data.sn["combined"]
-        forward, _ = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
 
+        # Use the initial LSD run to get the forward model and scaled residuals
+        forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
         residuals = (y - forward) / forward
+
+        # Chunk masking based on deviation from residuals
+        # -----------------------------------------------
 
         # Get bad pixels that deviate by a percentage greater than dev_perc
         bad_idx = np.abs(residuals) > (self.config.dev_perc / 100)
@@ -821,9 +853,8 @@ class Acid:
         # Note that this is used to keep track of the residual masks for later use when processing the results
         self.data.residual_masks = tuple([yerr >= 1e12])
 
-        ###################################
-        ###      sigma clip masking     ###
-        ###################################
+        # Sigma clipping
+        # --------------
 
         # Get median, sigma, and clip limits
         m = np.median(residuals)
@@ -836,7 +867,7 @@ class Acid:
         mask = (residuals <= lower_clip) | (residuals >= upper_clip)
         yerr[mask] = 1e12
 
-        # Now do another continuum fit with masked yerr
+        # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
         poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(y, x, yerr, self.config.poly_ord,
                                                    plot_result=self.config.verbose > 2,
                                                    plot_type="masked")
@@ -845,20 +876,22 @@ class Acid:
         LSD_masking = LSD(self.data)
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
+        # alpha is only dependent on wavelengths and linelist, which are unchanged
         LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
 
-        ### Update and set new variables
+        # Update and set new variables
         self.data.c_factor = LSD_masking.c_factor
         self.data.initial_model_inputs = np.copy(self.data.model_inputs) # Save the initial model inputs before masking for later use if needed
         self.data.model_inputs = np.concatenate((LSD_masking.profile, poly_inputs))
 
+        # Set masked variables
         self.data.wavelengths["masked"] = x
         self.data.flux["masked"]        = y # x and y dont change in this func
         self.data.errors["masked"]      = yerr # yerr is modified in this func
         self.data.sn["masked"]          = np.copy(self.data.sn["combined"]) # SN is not changed in this func
         # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
 
-        # Set required variables for plotting
+        # Set required variables for plotting in the Data class
         if "residual_masking" not in self.data.plotting_variables:
             self.data.plotting_variables["residual_masking"] = {}
         self.data.plotting_variables["residual_masking"]["mask"] = mask
@@ -877,7 +910,13 @@ class Acid:
         nsteps:IntLike,
         state = None,        
         ) -> None:
+        """
+        Runs MCMC for a specified number of steps. A purely class method that I do not recommend you use directly. Use
+        Acid.ACID(run_mcmc=True) to run MCMC for the first pass if not already done, which will skip already performed calculations.
+        Otherwise, use Acid.continue_sampling or Result.continue_sampling if you have already run MCMC and want to continue.
+        """
 
+        # Get default sampler kwargs from initial state
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
 
         if self.config.parallel:
@@ -905,10 +944,19 @@ class Acid:
         max_steps:IntLike,
         state=None,
         ) -> None:
+        """
+        Runs MCMC until convergence is reached. A purely class method that I do not recommend you use directly. Use
+        Acid.ACID(run_mcmc=True) to run MCMC for the first pass if not already done, which will skip already performed calculations.
+        Otherwise, use Acid.continue_sampling or Result.continue_sampling if you have already run MCMC and want to continue.
+        """
 
+        # Get sampler kwargs for the first run based on initial state, then update nsteps in mcmc_kwargs for subsequent runs
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
+
+        # Set the stopping arguments to save space
         stopping_criterion_args = (self.config.min_checks, self.config.min_tau_factor, self.config.tau_tol)
 
+        # Set variables to be updated within the convergence loop
         step_number = 0
         tau_list = []
         max_samples = max_steps // self.config.check_interval
@@ -917,13 +965,13 @@ class Acid:
 
         if self.config.parallel:
 
-            utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
-            
+            utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing, mainly only for HPC environments
+
             ctx = mp.get_context("fork")
             with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
                 self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
                 for i in range(max_samples):
-                    tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
+                    tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
                     desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                     mcmc_kwargs["progress_kwargs"] = desc_dict
                     self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
@@ -933,35 +981,35 @@ class Acid:
 
                     try:
                         # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
+                        # It scales with the number of steps, so thin by the number of steps taken divided by 
+                        # the check interval to keep the same number of samples for get_autocorr_time to process.
                         with open(os.devnull, "w") as devnull, \
                             contextlib.redirect_stdout(devnull), \
-                            contextlib.redirect_stderr(devnull):
+                            contextlib.redirect_stderr(devnull): # Suppresses outputs from get_autocorr_time
                             tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
                     except emcee.autocorr.AutocorrError:
                         continue
 
                     tau_list.append(tau)
-                    condition, last_tolerance, last_neff = mcmc.MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
+                    # The stopping criterion function below handles the logic for determining stopping condition
+                    condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
                     if condition is True and self.config.verbose > 1:
                         print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                         break
-                if self.config.verbose > 1 and condition is False:
-                    print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
-                          f"Consider increasing max_steps.")
         else:
+            # Comments for the non-parallel version are mostly the same as for the parallel version, see the above if confused
             MCMC = mcmc.MCMC(self.data)
             self.sampler = EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
 
             for i in range(max_samples):
-                tol_str, neff_str = mcmc.MCMC.get_tqdm_desc(last_tolerance, last_neff, self.config)
+                tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
                 desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                 mcmc_kwargs["progress_kwargs"] = desc_dict
                 self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
-                mcmc_kwargs["initial_state"] = None # only use initial state for first run
+                mcmc_kwargs["initial_state"] = None
                 step_number += self.config.check_interval
 
                 try:
-                    # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
                     with open(os.devnull, "w") as devnull, \
                         contextlib.redirect_stdout(devnull), \
                         contextlib.redirect_stderr(devnull):
@@ -970,14 +1018,17 @@ class Acid:
                     continue
 
                 tau_list.append(tau)
-                condition, last_tolerance, last_neff = MCMC.get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
+                condition, last_tolerance, last_neff = MCMC._get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
                 if condition is True and self.config.verbose > 1:
                     print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                     break
-            if self.config.verbose > 1 and condition is False:
-                    print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
-                          f"Consider increasing max_steps.")
         
+        # Warn if convergence not reached after either parallel or non-parallel version
+        if self.config.verbose > 1 and condition is False:
+                print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
+                        f"Consider increasing max_steps.")
+        
+        # Update step_number once mcmc has finished in both cases
         self.step_number = step_number
 
     def _get_sampler_kwargs(self, nsteps, state=None):
@@ -997,7 +1048,8 @@ class Acid:
             else:
                 self.config.cores = os.cpu_count()
 
-        # Configure moves based on config
+        # Configure moves based on config, this function converts a Config moves dictionary format to a class format
+        # accepted for emcee moves.
         moves = utils.convert_moves_to_emcee(self.config.moves)
 
         sampler_kwargs = {
@@ -1020,18 +1072,20 @@ class Acid:
         sampler,
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
-        max_steps_kwards : dict|None = None
-        ) -> EnsembleSampler:
-        """Continue MCMC sampling for additional steps. This should be called in Result class by the user.
+        max_steps_kwards : dict|None    = None,
+        return_sampler   : bool         = True
+        ) -> EnsembleSampler | None:
+        """
+        Continue MCMC sampling for additional steps. This should be called in Result class by the user.
         This necessarily requires a Data instance to have been put into the ACID init.
 
         Parameters
         ----------
         sampler : emcee.EnsembleSampler
             The existing MCMC sampler to continue sampling from.
-        nsteps : int
+        nsteps : :py:type:`IntLike`, optional
             Number of additional steps to run the MCMC for.
-        max_steps : int, optional
+        max_steps : :py:type:`IntLike`, optional
             Maximum number of steps to run the MCMC for in total (including previous steps).
             If specified, the MCMC will stop if this number of steps is reached even if convergence has not been reached, by default None.
             If input, nsteps is ignored.
@@ -1039,11 +1093,14 @@ class Acid:
             Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
             The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
             ignored.
+        return_sampler : bool, optional
+            Whether to return the sampler after continuing sampling. Default is True.
+
 
         Returns
         -------
-        emcee.EnsembleSampler
-            The MCMC sampler after running for the additional steps.
+        emcee.EnsembleSampler | None
+            The MCMC sampler after running for the additional steps, or None if return_sampler is False.
         """
         assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
 
@@ -1059,18 +1116,19 @@ class Acid:
             self.run_mcmc(nsteps, state=None) # continue from current state
             self.data.nsteps += nsteps
 
-        return self.sampler
+        if return_sampler:
+            return self.sampler
 
     def get_result(
         self=None,
         ) -> Result:
         """Return a Result object for this instance or one passed explicitly.
-        
+
         Parameters
         ----------
         self : Acid instance, optional
             The Acid instance to get the Result for. If None, must be called on an instance of Acid.
-        
+
         Returns
         -------
         Result
@@ -1086,7 +1144,7 @@ def ACID(*args, **kwargs):
 
     This function runs the legacy ACID code. This is provided for backwards compatibility with previous versions of ACID.
     It is recommended to use the ACID class and its methods for new code. The args and kwargs passing follows the original
-    v1 version of ACID, which can be found in https://github.com/ldolan05/ACID
+    pre-2.0 version of ACID, which can be found in the earlier releases in https://github.com/ldolan05/ACID
 
     Parameters
     ----------
@@ -1134,7 +1192,7 @@ def ACID(*args, **kwargs):
     return acid.ACID(**run_kwargs)
 
 def ACID_HARPS(*args, **kwargs):
-    """Legacy ACID_HARPS function, depracated after 1.4.5.
+    """Legacy ACID_HARPS function, deprecated after 1.4.5.
     """
     raise NotImplementedError(f"ACID_HARPS is no longer supported. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"

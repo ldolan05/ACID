@@ -70,12 +70,14 @@ def _require_sampler(method):
 
         return method(self, *args, **kwargs)
     return wrapper
-
+# TODO: fix what is going on with _require_sampler/data/profiles, recent updates have made some of these redundant
 @beartype
 class Result:
-    """Class to handle the results from the Acid MCMC sampling, and results processing. Fundamentally, this
+    """
+    Class to handle the results from the Acid MCMC sampling, and results processing. Fundamentally, this
     class requires two objects to run, the Sampler object and the Data object, both of which can be obtained
-    from the Acid object. If one or the other is not provided, some methods will not work."""
+    from the Acid object. If one or the other is not provided, some methods will not work.
+    """
 
     def __init__(
             self,
@@ -84,17 +86,18 @@ class Result:
             process_results         : bool                  = True,
             verbose                 : IntLike|bool|str|None = None,
         ) -> None:
-        """Initiate the Result class
+        """
+        Initialize the Result class
 
         Parameters
         ----------
-        Acid_or_Data_or_Sampler : Acid | Data | emcee.EnsembleSampler
+        Acid_or_Data_or_Sampler : :py:class:`Acid` | :py:class:`Data` | :py:class:`emcee.EnsembleSampler`
             An Acid object, Data object (contained in Acid class), or sampler object. If an Acid 
             object is provided, all other arguments are taken from there. If a Data object is 
             provided, a sampler can be provided in the second argument. If a sampler object 
             is provided, it will be used as the sampler, but all other attributes will need 
             to be set manually for the Result object to be fully functional.
-        sampler : emcee.EnsembleSampler, optional
+        sampler : :py:class:`emcee.EnsembleSampler`, optional
             A sampler object to use if the Data object was provided. If an Acid object 
             was provided, the sampler will be taken from there. If a sampler object was
             provided in the first argument, this will be ignored (with a warning), by default None
@@ -106,21 +109,22 @@ class Result:
             continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
             and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
             By default, None.
-        verbose : int | bool | str, optional
-            Verbosity level, works exactly the same as Acid verbosity, if not provided
-            defaults to provided Acid class verbosity otherwise defaults to 2.
-        # production_run : bool, optional
-        #     Whether Acid was run in production mode, by default False
+        verbose : :py:type:`IntLike | bool | str`, optional
+            Verbosity level, works exactly the same as :py:class:`Acid`, if not provided
+            defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2)
         """
+
+        # Set class variables
         obj = Acid_or_Data_or_Sampler
         self.sampler    = None
         self.data       = None
-        self.profiles = None
+        self.profiles   = None
         self.config     = Config() # default config, will be updated if Acid or Data object is provided
         self.slurm      = "SLURM_JOB_ID" in os.environ
 
-        self.config.verbose = verbose
+        self.config.verbose = verbose # property overwrites or handles if verbose input was None
 
+        # Handle the different possible cases for 1st argument input
         if hasattr(obj, "data") and hasattr(obj, "config") and hasattr(obj, "sampler"):
             # The above line is only all true if an Acid object (as they are set in initialisation), 
             # the sampler and data classes do not store all 3
@@ -156,7 +160,13 @@ class Result:
     @_require_data
     @_require_sampler
     def process_results(self) -> None:
-        """Processes the MCMC sampler results to obtain the final LSD profiles and continuum fit, and errors on both."""
+        """
+        Processes the MCMC sampler results to obtain the final LSD profiles and continuum fit, and errors on both.
+        This is effectively the final step in the ACID pipeline, and must be run before the profiles attribute is available. 
+        This is automatically called if process_results is True during :py:class:`Acid` initialization.
+        This function is stored here instead of the Acid class because it is not necessary to have the final profiles to use some of the
+        methods contained within this class.
+        """
         t0 = time()
 
         # Obtain flattened samples
@@ -297,26 +307,29 @@ class Result:
             raise ValueError(f"Invalid index type. Must be either a tuple, int, or str. Got {type(item)} instead.")
 
     @_require_profiles
-    def __iter__(self) -> list|np.ndarray:
-        """Allows iterating over the profiles array directly from the Result object.
-        """
+    def __iter__(self):
+        """Allows iterating over the profiles array directly from the Result object."""
         return iter(self.profiles)
 
     def __repr__(self):
         # Only print out the sampler and data attributes, and whether profiles is available, to avoid printing large arrays
         return f"Result object with sampler={self.sampler}, data={self.data}, profiles={'available' if self.profiles is not None else 'not available'}"
 
+    def __str__(self):
+        return self.__repr__()
+
     @_require_data
     @_require_sampler
     def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler|None=None, **kwargs) -> None:
-        """Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
-        Acid.continue_sampling() for more details on the parameters that can be passed.
+        """
+        Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
+        :py:method:`Acid.continue_sampling` for more details on the parameters that can be passed.
 
         Parameters
         ----------
-        nsteps : int | None, optional
+        nsteps : :py:type:`IntLike`, optional
             Number of additional MCMC steps to run. Passed to Acid.continue_sampling with the stored sampler.
-        max_steps : int | None, optional
+        max_steps : :py:type:`IntLike`, optional
             Maximum number of MCMC steps to run, by default None. Passed to Acid.continue_sampling with the stored sampler.
         max_steps_kwards : dict, optional
             Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
@@ -329,9 +342,12 @@ class Result:
             Optionally provide a different sampler to continue sampling from, otherwise,
             takes the sampler from the Result object, by default None
         """
+        # Note that sampler input updates the sampler stored using the @_require_sampler decorator
+        
         if type(process_results) is int:
             raise ValueError("The process_results attribute must be a boolean, not an integer. Did you mean to set nsteps? If so, specificy nsteps=nsteps.")
 
+        # Continue sampling using the Acid method
         from .acid import Acid
         acid = Acid(data=self.data) # includes config data
         self.sampler = acid.continue_sampling(self.sampler, **kwargs)
@@ -358,12 +374,12 @@ class Result:
 
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler, optional
+        sampler : :py:class:`emcee.EnsembleSampler`, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        burnin : int | None, optional
+        burnin : :py:type:`IntLike`, optional
             Optionally define the number of burnin steps, by default uses the burnin calculated when the sampler was initiated.
-        thin : int | None, optional
+        thin : :py:type:`IntLike`, optional
             Optionally define the number of thinning steps, by default uses the thinning calculated when the sampler was initiated.
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
@@ -372,14 +388,14 @@ class Result:
         ----------
         If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing, else None
         """
-
+        # Set burnin and thin to defaults if not provided
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
         samples = self.sampler.get_chain(thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin
 
+        # Setup plot and plot the walkers for the default parameters
         naxes = len(self.default_params)
-
         fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
         for i in range(naxes):
             ax[i].plot(steps, samples[:, :, self.default_params[i]], "k", alpha=0.3)
@@ -418,10 +434,11 @@ class Result:
         If return_fig is True, returns the figure object containing the corner plot, else None
         """
 
+        # Get samples and thin and burnin from the class variables
         samples = self.sampler.get_chain()
-
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, self.default_params]
 
+        # Use corner.corner to handle corner plot
         fig = corner.corner(samples, labels=self.default_param_labels, show_title=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
@@ -486,6 +503,7 @@ class Result:
         else:
             fig, ax = fig_ax
 
+        # Iterate through and plot frames
         for f, frame in enumerate(self.profiles):
             x, y, yerr = self.data.velocities, frame[0], frame[1]
             label_default = f"Frame {f+1}" if nframes > 1 else None
@@ -494,6 +512,7 @@ class Result:
                 errorbar_kwargs["label"] = label_default
             ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
 
+        # Add labels and titles
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
         ax.set_ylabel(labels["ylabel"])
@@ -513,7 +532,8 @@ class Result:
         return_fig      :bool      = False,
         subplot_kwargs  :dict|None = None,
         ) -> None | tuple:
-        """Plots the forward model calculated from the final profiles to the combined input spectrum.
+        """
+        Plots the forward model calculated from the final profiles to the combined input spectrum.
 
         Parameters
         ----------
@@ -587,8 +607,6 @@ class Result:
     def plot_autocorrelation(
         self,
         sampler        : EnsembleSampler|None = None,
-        burnin         : IntLike|None         = None,
-        thin           : IntLike|None         = None,
         n_grid         : IntLike              = 12,
         c              : float                = 5.0,
         return_fig     : bool                 = False,
@@ -604,12 +622,10 @@ class Result:
 
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler | None, optional
+        sampler : :py:class:`emcee.EnsembleSampler` | None, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        burnin, thin : int | None, optional
-            Optional overrides. Defaults to self.burnin/self.thin from the sampler.
-        n_grid : int, optional
+        n_grid : :py:type:`IntLike`, optional
             Number of N values (prefix lengths) to evaluate, by default 12.
         c : float, optional
             Sokal window constant, by default 5.0.
@@ -617,7 +633,7 @@ class Result:
             Whether to return the figure and axes objects, by default False
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
-        min_steps : int, optional
+        min_steps : :py:type:`IntLike`, optional
             Minimum number of post-burnin samples required to attempt autocorrelation estimation, by default 100
             If you decrease this, you may get unreliable estimates or errors from the autocorrelation time estimation.
 
@@ -655,8 +671,8 @@ class Result:
         # Reference line tau = N/50
         ax.loglog(Ns, Ns / 50.0, "--", label=r"$\tau = N/50$")
 
-        ax.set_xlabel("number of post-burnin samples per walker (N)")
-        ax.set_ylabel(r"estimated integrated autocorrelation time $\tau$")
+        ax.set_xlabel("Number of post-burnin samples per walker (N)")
+        ax.set_ylabel(r"Estimated integrated autocorrelation time $\tau$")
         ax.set_title("Autocorrelation time estimates vs chain length")
         ax.legend()
         ax.grid(True, which="both")
@@ -680,10 +696,10 @@ class Result:
         
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler, optional
+        sampler : :py:class:`emcee.EnsembleSampler`, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        max_lag : int, optional
+        max_lag : :py:type:`IntLike`, optional
             Maximum lag to plot, by default None (plots up to min(5000, nsteps-1))
         return_fig : bool, optional
             Whether to return the figure and axes objects, by default False
@@ -732,11 +748,12 @@ class Result:
         plt.show()
 
     def initiate_sampler(self, sampler:EnsembleSampler|None) -> None:
-        """Initiates the sampler attribute from an external sampler.
+        """
+        Initiates the sampler attribute from an external sampler.
 
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler
+        sampler : :py:class:`emcee.EnsembleSampler`
             An emcee EnsembleSampler object to set as the sampler attribute.
         """
         self.sampler = sampler if sampler is not None else self.sampler
@@ -801,7 +818,7 @@ class Result:
             max_profile_idx = np.argmax(samples[:,:,:-n_poly_params].mean(axis=(0,1)))
             poly_params.extend([-5, max_profile_idx, 1])
             poly_labels.extend(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
-        
+
         self.default_params = poly_params
         self.default_param_labels = poly_labels
 
@@ -810,7 +827,7 @@ class Result:
 
         Parameters
         ----------
-        data : Data
+        data : :py:class:`Data`
             A Data object to set as the data attribute.
         """
         self.data = data if data is not None else getattr(self, "data", None)
@@ -824,7 +841,7 @@ class Result:
 
         # For convenience, let the user call the model without needing to input all required args
         MCMC_class = mcmc.MCMC(self.data)
-        self.model = MCMC_class.run_model_function
+        self.model = MCMC_class.model_function
 
     @_require_data
     @_require_sampler # TODO check if necessary
@@ -854,17 +871,17 @@ class Result:
             print(f"Result object saved to {filename}")
 
     @classmethod
-    def load_result(cls, result_object:str|object="result.pkl"):
+    def load_result(cls, result_object:str|Result="result.pkl") -> Result:
         """Loads a Result object from a pickle file or from an object with the same attributes as a saved Result object.
 
         Parameters
         ----------
-        result_object : str | object, optional
+        result_object : str | :py:class:`Result`, optional
             A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
 
         Returns
         ----------
-        Result
+        :py:class:`Result`
             A Result object loaded from the pickle file or from the provided object.
         """
         if isinstance(result_object, str):
