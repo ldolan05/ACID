@@ -27,9 +27,7 @@ class Acid:
     def __init__(
         self,
         velocities      : Array1D|None                                       = None,   # Data
-        linelist        : Array2D|None|str|LineList|dict                     = None,   # Data
-        linelist_wl     : Array1D|None                                       = None,   # Data
-        linelist_depths : Array1D|None                                       = None,   # Data
+        linelist        : Array2D|str|LineList|dict|None                     = None,   # Data
         order           : IntLike|None                                       = None,   # Config
         order_range     : Array1D|None                                       = None,   # Config
         verbose         : IntLike|bool|str|None                              = None,   # Config
@@ -73,13 +71,7 @@ class Acid:
             - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
             - LineList: The LineList class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
             - If None, linelist_wl and linelist_depths must be provided (see below), by default None
-        linelist_wl : Array1D, optional
-            Wavelengths of lines in linelist (in Angstroms). Only necessary if linelist is not provided. 
-            Must be same length as linelist_depths. If None, linelist must be provided (see above), by default None
-        linelist_depths : Array1D, optional
-            Relative depths of lines in linelist (between 0 and 1). Only necessary if linelist is not provided. 
-            Must be same length as linelist_wl. If None, linelist must be provided (see above), by default None
-        order : IntLike, optional
+        order : :py:type:`IntLike`, optional
             If this ACID instance is intended as a run on a specific order, then you can designate this instance for that order. This will allow
             the resulting Data instance to track of which order the profiles correspond to. Note that orders can be indexed by the correct indexing
             of the spectrograph (ie. some spectrographs start at order ~20). By default 0.
@@ -150,14 +142,15 @@ class Acid:
         # Verbosity validation handled in config property setter
         self.config.verbose = verbose
 
-        # Catch for the linelist_path argument, which was old way to input a linelist
+        # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
         if "linelist_path" in kwargs:
-            if linelist is not None or linelist_wl is not None or linelist_depths is not None:
-                raise ValueError("Use either 'linelist', or legacy 'linelist_path', not both. See the API for more details.")
             linelist = kwargs.pop("linelist_path")
             if self.config.verbose > 0:
                 print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
                 f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
+        if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
+            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy arguments for inputting a linelist, " \
+                             "please use 'linelist' instead.")
         # Anything left in kwargs is invalid
         if kwargs:
             raise TypeError(
@@ -165,7 +158,7 @@ class Acid:
             )
 
         # Set linelist in the Data class, the property setter handles input validation
-        self.data.set_linelist(linelist, linelist_wl, linelist_depths)
+        self.data.linelist = linelist
 
         # Set the lines to mask, the property in the class handles input validation and None check
         self.config.masking_lines = masking_lines
