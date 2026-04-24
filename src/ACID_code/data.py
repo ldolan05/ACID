@@ -1618,7 +1618,7 @@ class DataList:
                 continue
 
             if self.save_dir is not None:
-                result.save_result(save_path, store_sampler=store_sampler)
+                result.save(save_path, store_sampler=store_sampler)
         return
 
     def save(self, save_dir:str|None=None) -> None:
@@ -1677,7 +1677,7 @@ class DataList:
                     data_list = []
                     from .result import Result
                     for result_file in result_files:
-                        result = Result.load_result(os.path.join(result_path, result_file))
+                        result = Result.load(os.path.join(result_path, result_file))
                         data_list.append(result.data)
                     return cls.from_datalist(data_list, save_dir=path)
                 else:
