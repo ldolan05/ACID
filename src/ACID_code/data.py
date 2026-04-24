@@ -416,6 +416,7 @@ class Config:
         for k, v in cls.defaults.items():
             print(f"{k}: {v}")
 
+@beartype
 @dataclass(slots=True)
 class Data:
     """
@@ -941,7 +942,7 @@ class Data:
 
         return payload
 
-    def from_dict(self, payload: dict[str, Any]) -> None:
+    def from_dict(self, payload: dict[str, Any]) -> Data:
         """
         Updates the data object from a dictionary payload. This is used internally in the 
         load method, but can also be used for debugging or other purposes.
@@ -992,13 +993,13 @@ class Data:
         return Result(self)
 
     @property
-    def linelist(self) -> Dict[str, np.ndarray]:
+    def linelist(self) -> LineList|None:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
         return LineList(self._linelist)if self._linelist is not None else None
 
     @linelist.setter
-    def linelist(self, value) -> None:
-        self.set_linelist(linelist=value)
+    def linelist(self, value: Array2D|str|LineList|dict[str,Array1D]|None) -> None:
+        self.set_linelist(value)
         return
 
     def set_linelist(self, linelist=None, linelist_wl=None, linelist_depths=None) -> None:
@@ -1012,16 +1013,16 @@ class Data:
         ----------
         See :py:class:`Acid` for the accepted linelist formats and parameters.
         """
+        # TODO: depracate linelist_wl and depths
         # Check if linelist already exists, override with new inputs if provided
         if self._linelist is not None:
             if linelist is None and linelist_wl is None and linelist_depths is None:
                 return
             # else: override with new inputs below, with validation
-
         # The method names are self explaining, see the respective methods for more details
         linelist_wl, linelist_depths = LineList.validate_linelist(linelist, linelist_wl, linelist_depths)
-        linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
         LineList.validate_dimensions(linelist_wl, linelist_depths) # ensures same shape and are 1D
+        linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
         self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
     def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
@@ -1081,7 +1082,7 @@ class LineList:
         if isinstance(k, int):
             raise IndexError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
         return self.ll[k]  # allow "wavelengths"/"depths"
-    
+
     def __iter__(self):
         yield self.ll["wavelengths"]
         yield self.ll["depths"]
@@ -1176,13 +1177,16 @@ class LineList:
         # Get mask
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
         mask &= (depths >= 0) & (depths <= 1)
+        mask &= (wavelengths > 0)
 
         # Count the number of dropped lines for verbose output
         count_dropped = np.count_nonzero(~mask)
-        mask &= (wavelengths > 0) & (depths > 0)
+        if count_dropped == len(wavelengths):
+            raise ValueError(f"All lines in the linelist are non-finite, nan, negative, or greater than 1.\n" \
+            "Please check your linelist for invalid values.")
         if verbose > 0 and count_dropped > 0:
             print(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
-                  f"These will be removed, but it is still recommended to check your linelist.")
+                  f"These will be removed, but it is still recommended to check your linelist for why this happened.")
 
         # Apply mask and return results
         if return_mask:
@@ -1817,6 +1821,7 @@ class DataList:
         ax.set_xlabel("Velocity (km/s)")
         ax.set_ylabel("Relative Flux")
         ax.set_title("Combined ACID profiles")
+        ax.grid(True)
         if return_fig:
             return fig, ax
         plt.show()
