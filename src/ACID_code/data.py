@@ -223,11 +223,11 @@ class Config:
     }
 
     #: Property list for error handling
-    properties = ["_verbose", "_masking_lines"]
+    properties = ["verbose", "masking_lines"]
 
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
     data_attributes = ["linelist", "velocities"]
-    data_attributes_input_str = "'{}' is a Data property and should not be set in the Config class, please set it directly with 'Data.{}={}' instead."
+    data_attributes_input_str = "'{}' is a Data property and should not be set in the Config class.\nSet it directly with 'Data.{}={}' instead."
 
     def __init__(self, **kwargs) -> None:
         """Initialise with the defaults, overwrite with any inputted kwargs"""
@@ -235,7 +235,7 @@ class Config:
 
     def __getattr__(self, name: str) -> Any:
         """
-        If an attribute is not found, check if it is in the defaults and 
+        If an attribute is not found, check if it is in the defaults or properties and 
         return the default value if it is. Otherwise, raise an AttributeError.
         """
         if name in self.defaults:
@@ -253,7 +253,7 @@ class Config:
 
     # --- Update methods ---
     def update_hipri(self, **kwargs: Any) -> None:
-        """Updates but does not overwrite existing keys.
+        """Updates and overwrites existing keys if their values are not None.
         
         Parameters
         ----------
@@ -271,7 +271,7 @@ class Config:
             if k in self.data_attributes:
                 raise AttributeError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
-            if k not in self.defaults and k not in self.properties:
+            if k not in self.defaults:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
                 # If input is None, continue, None always makes no change to current value/default
@@ -280,7 +280,7 @@ class Config:
                 setattr(self, k, v)
 
     def update_lowpri(self, **kwargs: Any) -> None:
-        """Updates but does not overwrite existing keys.
+        """Updates but does not overwrite existing stored keys.
 
         Parameters
         ----------
@@ -298,21 +298,40 @@ class Config:
             if k in self.data_attributes:
                 raise AttributeError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
-            if k not in self.defaults and k not in self.properties:
+            if k not in self.defaults:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
-            # Below also sets if None is input but attribute does not exist or is currently None
-            if getattr(self, k, None) is None:
+
+            if v is None:
+                continue
+
+            stored_name = "_" + k if k in self.properties else k # Add the _ for properties
+            if stored_name not in self.__dict__ or self.__dict__[stored_name] is None:
                 setattr(self, k, v)
 
     def to_dict(self) -> dict:
-        """Convert the Config object to a dictionary."""
+        """Convert the Config object to a dictionary of only the stored/modified attributes,
+        if you want the full dictionary including defaults, use `to_full_dict`."""
         return {k: v for k, v in self.__dict__.items()}
+
+    def to_full_dict(self) -> dict:
+        """Convert the Config object to a dictionary including all defaults and stored/modified attributes."""
+        out = {}
+
+        for k in self.defaults:
+            value = getattr(self, k)
+
+            if k == "masking_lines" and hasattr(value, "to_dict"):
+                value = value.to_dict()
+
+            out[k] = value
+
+        return out
 
     # --- Properties ---
     @property
     def verbose(self) -> IntLike:
         """The stored global verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
-        if getattr(self, "_verbose", None) is None:
+        if self.__dict__.get("_verbose", None) is None:
             return self.defaults["verbose"]
         return self._verbose
 
@@ -349,15 +368,15 @@ class Config:
     @property
     def masking_lines(self) -> MaskingLines:
         """The stored masking lines for ACID. See :ref:`masking_lines` for more details on how this is used in ACID."""
-        if getattr(self, "_masking_lines", None) is None:
+        if self.__dict__.get("_masking_lines", None) is None:
             return MaskingLines(self.defaults["masking_lines"])
         return MaskingLines(self._masking_lines)
 
     @masking_lines.setter
     def masking_lines(self, masking_lines:dict|MaskingLines|None) -> None:
         """Set the masking lines for ACID. Accepts a dictionary, a MaskingLines object, or None."""
-        # self._masking_lines is set in init, so should always exist as None
-        self._masking_lines = MaskingLines.validate_lines(masking_lines) if masking_lines is not None else self.masking_lines
+        if masking_lines is not None:
+            self._masking_lines = MaskingLines.validate_lines(masking_lines)
 
     def plot_masking_lines(self, return_fig:bool=False) -> None|tuple:
         """
