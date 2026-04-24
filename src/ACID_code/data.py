@@ -893,10 +893,8 @@ class Data:
         with open(filename, "rb") as f:
             payload = pickle.load(f)
 
-        obj = cls()
-
-        obj.from_dict(payload) # this method updates the data object from the dictionary payload
-        return obj
+        # Initialise a new Data object and update it with the payload dictionary
+        return cls().from_dict(payload)
 
     def to_dict(self, store_sampler:bool=True) -> dict[str, Any]:
         """
@@ -915,8 +913,10 @@ class Data:
 
             if name == "_config":
                 payload["config"] = val.to_dict() # store as dict in payload, but store as class in Data
-            elif name == "sampler" and store_sampler:
-                payload["sampler"] = dict(self.sampler.backend.__dict__)
+            elif name == "sampler":
+                if store_sampler and self.sampler is not None:
+                    # Store the sampler as its backend dictionary to avoid pickling issues
+                    payload["sampler"] = dict(self.sampler.backend.__dict__)
             else:
                 payload[name] = val
 
@@ -940,17 +940,19 @@ class Data:
                 cfg_dict = payload.get("config", {})
                 setattr(self, "_config", Config(**cfg_dict))
             elif name == "sampler":
-                if "sampler" not in payload:
+                sampler = payload.get("sampler", None)
+                if sampler is None:
                     continue
                 # Reconstruct sampler from backend if in payload, avoids pickling issues
                 backend = emceebackend.Backend(dtype=np.float64)
-                backend.__dict__.update(payload.get("sampler", {}))
+                backend.__dict__.update(sampler)
                 nwalkers, ndim = backend.shape
                 from .mcmc import MCMC
                 self.sampler = EnsembleSampler(nwalkers, ndim, log_prob_fn=MCMC(self), backend=backend) # dummy sampler to hold the backend
             else:
                 if name in payload:
                     setattr(self, name, payload[name])
+        return self
 
     # Store config as a property for handling it to/from dictionary on saving
     @property
@@ -1720,12 +1722,10 @@ class DataList:
             tuple[Array1D, Array1D]|None: The combined profile and its errors, or None if not available.
         """
         if self._combined_profile is None:
-            if self.verbose > 1:
-                print("No combined profile found. Attempting to combine profiles without exclusions.")
             try:
                 self.combine_profiles()
             except Exception as e:
-                raise ValueError(f"There was an exception trying to combine profiles: {e}")
+                raise ValueError(f"An attempt was made to combine profiles, as they did not already exist, but there was an exception:\n{e}")
         return self._combined_profile
 
     @property
