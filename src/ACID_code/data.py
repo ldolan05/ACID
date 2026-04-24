@@ -456,7 +456,9 @@ class Data:
     #: The list to store all frames of the MCMC sampling, has dimensions (nframes, 3, nvel), where the 3 indexes are the profile, error, and covariance matrix
     profiles          : Optional[list] = None
     #: The list to store the combined frame of the MCMC sampling, has dimensions (3, nvel)
-    combined_profiles : Optional[list] = None
+    combined_profile  : Optional[list] = None
+    #: The final fitted continuum model and errors
+    continuum_model   : Optional[np.ndarray] = None
     #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
     nsteps            : Optional[int]  = 0
 
@@ -465,7 +467,8 @@ class Data:
     #: they must store the sampler with the result object by configuring the output.
     # TODO: samples not currently used in result, check again why I did the below
     sampler  : Optional[EnsembleSampler] = None # stored ensemble sampler
-    complete : bool                      = False # is set to True when the profiles and combined_profiles have been fully calculated
+    #: A flag for whether the profiles have been fully calculated to avoid recalculating
+    complete : bool                      = False # is set to True when the profiles and combined_profile have been fully calculated
 
     # Other useful data and figures
     # -----------------------------
@@ -1759,9 +1762,9 @@ class DataList:
         if not all(o in self.orders for o in exclude):
             raise ValueError(f"All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
 
-        profiles = [data.combined_profiles[0] for data in self.data_list if data.config.order not in exclude]
-        errors = [data.combined_profiles[1] for data in self.data_list if data.config.order not in exclude]
-        covariances = [data.combined_profiles[2] for data in self.data_list if data.config.order not in exclude]
+        profiles = [data.combined_profile[0] for data in self.data_list if data.config.order not in exclude]
+        errors = [data.combined_profile[1] for data in self.data_list if data.config.order not in exclude]
+        covariances = [data.combined_profile[2] for data in self.data_list if data.config.order not in exclude]
 
         self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
         self.excluded_orders = exclude
@@ -1785,9 +1788,9 @@ class DataList:
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
         for data in self.data_list:
-            if data.combined_profiles is None or data.config.order in self.excluded_orders:
+            if data.combined_profile is None or data.config.order in self.excluded_orders:
                 continue # failed or excluded orders
-            ax.errorbar(self.velocities, data.combined_profiles[0], alpha=0.2, color="C0",
+            ax.errorbar(self.velocities, data.combined_profile[0], alpha=0.2, color="C0",
                         label=f"All profiles" if data.config.order == self.orders[0] else None)
 
         ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1], color="black", fmt=".-", ecolor="red", label="Combined profile")

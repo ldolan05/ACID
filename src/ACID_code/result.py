@@ -141,9 +141,9 @@ class Result:
         nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
-        errors = np.max(errors, axis=0) # why?
-        self.poly_cos      = quartiles[1, nvel:]
-        self.poly_cos_err  = errors[nvel:]  
+        errors = np.max(errors, axis=0)
+        poly_cos      = quartiles[1, nvel:]
+        poly_cos_err  = errors[nvel:] # unused for now
 
         if self.config.verbose > 1:
             print('Getting the final profiles...')
@@ -206,7 +206,7 @@ class Result:
             # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl = P.polyval(norm_wavelengths, self.poly_cos)
+            mdl = P.polyval(norm_wavelengths, poly_cos)
 
             # correcting continuum
             error = np.sqrt((error/mdl)**2 + (continuum_error/mdl)**2)
@@ -224,12 +224,12 @@ class Result:
             cov_z_f = LSD_profiles.cov_z_F
 
             if counter == 0:
-                self.combined_profile = [profile_f, profile_errors_f, cov_z_f]
+                self.data.combined_profile = [profile_f, profile_errors_f, cov_z_f]
+                self.data.continuum_model = mdl
             else:
                 profiles.append([profile_f, profile_errors_f, cov_z_f])
 
         self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
-        self.data.combined_profiles = self.combined_profile
         self.data.get_profiles_time = time() - t0
         self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
         self.data.complete = True
@@ -536,18 +536,16 @@ class Result:
         wavelengths = self.data.wavelengths["combined"]
         flux = self.data.flux["combined"]
 
-        a, b = utils.get_normalisation_coeffs(wavelengths)
-        profile = utils.flux_to_od(self.combined_profile[0])
-
-        # Get flat_samples which are the same samples used to calculate the final profile
-        continuum_model = P.polyval(wavelengths*a+b, self.poly_cos)
-        model_flux = np.exp(- (self.data.alpha @ profile)) * continuum_model
+        # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
+        # so convert profile back to OD and reconvert to flux for forward model
+        profile = utils.flux_to_od(self.data.combined_profile[0])
+        model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
-        ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
+        ax[0].plot(wavelengths, self.data.continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
         ax[1].plot(wavelengths, model_flux - flux, color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].set_title(labels["title"])
@@ -778,7 +776,7 @@ class Result:
         poly_labels = [alph[i] for i in range(n_poly_params)]
         
         samples = self.sampler.get_chain(thin=self.thin, discard=self.burnin)
-        if not self.config.deterministic:
+        if not self.config.deterministic_profile:
             max_profile_idx = np.argmax(samples[:,:,:-n_poly_params].mean(axis=(0,1)))
             poly_params.extend([-5, max_profile_idx, 1])
             poly_labels.extend(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
