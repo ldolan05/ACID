@@ -1064,7 +1064,10 @@ class Acid:
         self,
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
-        max_steps_kwards : dict|None    = None,
+        max_steps_kwargs : dict|None    = None,
+        parallel         : bool         = None,
+        cores            : int          = None,
+        moves            : dict         = None,
         return_sampler   : bool         = False,
         ) -> EnsembleSampler | None:
         """
@@ -1079,10 +1082,17 @@ class Acid:
             Maximum number of steps to run the MCMC for in total (including previous steps).
             If specified, the MCMC will stop if this number of steps is reached even if convergence has not been reached, by default None.
             If input, nsteps is ignored.
-        max_steps_kwards : dict, optional
+        max_steps_kwargs : dict, optional
             Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
             The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
             ignored.
+        parallel : bool, optional
+            Overwrites config with whether to run the MCMC in parallel. If None, uses already existing configuration. Default is None.
+        cores : int, optional
+            Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
+        moves : dict, optional
+            Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
+            Default is None. See :py:function:`Acid.ACID` for format.
         return_sampler : bool, optional
             Whether to return the sampler after continuing sampling. Default is True.
 
@@ -1091,13 +1101,12 @@ class Acid:
         emcee.EnsembleSampler | None
             The MCMC sampler after running for the additional steps, or None if return_sampler is False.
         """
-        assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
-
-        self.config = self.data.config
+        # Update config with any new parallel, cores, or moves settings for the continued sampling
+        self.config.update_hipri(parallel=parallel, cores=cores, moves=moves)
 
         if max_steps is not None:
-            if max_steps_kwards is not None:
-                self.config.update_hipri(**max_steps_kwards)
+            if max_steps_kwargs is not None:
+                self.config.update_hipri(**max_steps_kwargs)
             self.run_mcmc_until_converged(max_steps, state=None) # continue from current state
             self.data.nsteps += self.step_number
         else:

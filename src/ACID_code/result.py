@@ -56,11 +56,9 @@ class Result:
     from the Acid object. If one or the other is not provided, some methods will not work.
     """
 
-    from .acid import Acid # importing here to avoid circular imports, as Acid also imports Result
-
     def __init__(
             self,
-            data                    : Data|Acid,
+            data                    : Data|object,
             sampler                 : EnsembleSampler|None  = None,
             process_results         : bool                  = True,
             verbose                 : IntLike|bool|str|None = None,
@@ -91,12 +89,14 @@ class Result:
             defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2).
             Overwrites any value passed trough the Data object.
         """
-
         # Handle the different possible cases for 1st argument input
-        if isinstance(data, self.Acid):
+        from .acid import Acid
+        if isinstance(data, Acid):
             self.data = data.data
         elif isinstance(data, Data):
             self.data = data
+        else:
+            raise ValueError(f"First argument must be either an Acid or Data object. Got {type(data)} instead.")
 
         # Handle config and verbose options
         self.config = self.data.config # point Result.config to Data.config to keep them in sync
@@ -290,30 +290,36 @@ class Result:
 
         Parameters
         ----------
-        nsteps : :py:type:`IntLike`, optional
-            Number of additional MCMC steps to run. Passed to Acid.continue_sampling with the stored sampler.
-        max_steps : :py:type:`IntLike`, optional
-            Maximum number of MCMC steps to run, by default None. Passed to Acid.continue_sampling with the stored sampler.
-        max_steps_kwards : dict, optional
-            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
-            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
-            ignored. Passed to Acid.continue_sampling with the stored sampler.
         process_results : bool, optional
             Whether to process the results after continuing sampling, by default True.
             If False, the profiles attribute will not be updated until Result.process_results() is called.
         sampler : emcee.EnsembleSampler | None, optional
             Optionally provide a different sampler to continue sampling from, otherwise,
             takes the sampler from the Result object, by default None
+        nsteps : :py:type:`IntLike`, optional
+            Number of additional MCMC steps to run. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        max_steps : :py:type:`IntLike`, optional
+            Maximum number of MCMC steps to run, by default None. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        max_steps_kwargs : dict, optional
+            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
+            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
+            ignored. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        parallel : bool, optional
+            Overwrites config with whether to run the MCMC in parallel. If None, uses already existing configuration. Default is None.
+            Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        cores : int, optional
+            Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
+            Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        moves : dict, optional
+            Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
+            Default is None. See :py:function:`Acid.ACID` for format. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
         """
         # Note that sampler input updates the sampler stored using the @_require_sampler decorator
-        
-        if type(process_results) is int:
-            raise ValueError("The process_results attribute must be a boolean, not an integer. Did you mean to set nsteps? If so, specificy nsteps=nsteps.")
 
         # Continue sampling using the Acid method
         from .acid import Acid
         acid = Acid(data=self.data) # includes config data
-        acid.continue_sampling(self.sampler, **kwargs) # updates self.data.sampler (or self.sampler)
+        acid.continue_sampling(**kwargs) # updates self.data.sampler (or self.sampler)
 
         self.initiate_sampler(self.sampler) # update internal variables to match new sampler
 
