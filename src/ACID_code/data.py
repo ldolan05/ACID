@@ -449,8 +449,6 @@ class Data:
     residual_masks         : Optional[np.ndarray] = None
     #: Boolean 1D mask on "combined" grid, used to mask out NaN values in combined spectra
     nanmask                : Optional[np.ndarray] = None
-    #: Velocities array, used throughout Acid and Results
-    velocities             : Optional[np.ndarray] = None
     #: Initial profile generated in residual masking
     initial_profile        : Optional[np.ndarray] = None
     #: Corresponding errors for the initial profile
@@ -504,6 +502,61 @@ class Data:
     _config   : Config = field(default_factory=Config)
     #: The linelist is stored as a dictionary but exposed as a :py:class:`LineList` object when the property is accessed.
     _linelist : Optional[Dict[str, np.ndarray]] = None
+    #: The velocities are stored as a 1D numpy array
+    _velocities : Optional[np.ndarray] = None
+
+    @property
+    def velocities(self):
+        """The velocity grid to perform LSD on."""
+        return self._velocities
+
+    @velocities.setter
+    def velocities(self, value:Array1D|None) -> None:
+        """Sets and overwrites the velocity grid if the value is not None.
+        If overwriting, resets the Data instance as calculations are dependent on velocities."""
+        if value is not None:
+            overwriting = self._velocities is not None # boolean flag for whether we are overwriting the existing velocities
+            
+            velocities = np.array(value)
+            if not np.all(np.isfinite(velocities)):
+                raise ValueError("The velocity grid you are trying to set must all be finite and not contain NaNs")
+            self._velocities = np.array(value)
+            
+            if overwriting:
+                print("Warning: Overwriting existing velocities in Data. The Data instance will be reset to clear calculations that depend on the velocities.\n" \
+                "The linelist, config, and original data inputs will not be reset.")
+                self.reset()
+
+    def reset(self) -> None:
+        """Resets all data attributes to their default empty states, except for the array inputs, linelist, velocities, and config."""
+        self.alpha = None
+        self.c_factor = None
+        self.residual_masks = None
+        self.nanmask = None
+        self.initial_profile = None
+        self.initial_profile_errors = None
+        self.poly_inputs = None
+        self.initial_model_inputs = None
+        self.model_inputs = None
+        self.nwalkers = None
+        self.ndim = None
+        self.profiles = None
+        self.combined_profile = None
+        self.continuum_model = None
+        self.nsteps = 0
+        self.sampler = None
+        self.complete = False
+        self.plotting_variables = {}
+        if "input" in self.wavelengths and self.wavelengths["input"] is not None:
+            self.wavelengths = {"input": self.wavelengths["input"]}
+            self.flux = {"input": self.flux["input"]}
+            self.errors = {"input": self.errors["input"]}
+            self.sn = {"input": self.sn["input"]}
+        else:
+            self.wavelengths = {}
+            self.flux = {}
+            self.errors = {}
+            self.sn = {}
 
     def plot_continuum_fit(self, plot_type:str="initial", return_fig:bool=False, save_fig:str|None=None) -> None:
         """
@@ -849,32 +902,24 @@ class Data:
 
         # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
         # This checks basically if self.wavelengths["input"] is the same as input_wavelengths, and same for flux and errors, if they exist. 
-        reset = False
+        overwriting = False
         for check in input_keys:
             if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
-                if not np.array_equal(getattr(self, check)["input"], eval(f"input_{check}")):
-                    reset = True
-                    continue
-                if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}")):
-                    reset = True
-        # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
-        if reset:
-            if self.config.verbose > 0:
-                print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
-                "Resetting variables that need to be recalculated. The velocity grid will not be reset.")
-            self.alpha          = None
-            self.c_factor       = None
-            self.residual_masks = None
-            self.wavelengths    = {"input": input_wavelengths}
-            self.flux           = {"input": input_flux}
-            self.errors         = {"input": input_errors}
-            self.sn             = {"input": input_sn}
+                if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}"), equal_nan=True):
+                    overwriting = True
 
-        # Set inputs to class variables
+        # Set inputs to class variables, the self.reset() cleans all arrays except for the inputs, so this is safe
         self.wavelengths["input"] = input_wavelengths
         self.flux["input"]        = input_flux
         self.errors["input"]      = input_errors
         self.sn["input"]          = input_sn
+
+        # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
+        if overwriting:
+            if self.config.verbose > 0:
+                print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
+                f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.")
+            self.reset()
 
     def save(self, filename:str="data.pkl", store_sampler:bool=True) -> None:
         """
@@ -1015,15 +1060,20 @@ class Data:
         """
         # TODO: depracate linelist_wl and depths
         # Check if linelist already exists, override with new inputs if provided
-        if self._linelist is not None:
-            if linelist is None and linelist_wl is None and linelist_depths is None:
-                return
-            # else: override with new inputs below, with validation
-        # The method names are self explaining, see the respective methods for more details
-        linelist_wl, linelist_depths = LineList.validate_linelist(linelist, linelist_wl, linelist_depths)
-        LineList.validate_dimensions(linelist_wl, linelist_depths) # ensures same shape and are 1D
-        linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
-        self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+        if linelist is not None:
+            overwriting = self._linelist is not None
+            # The method names are self explaining, see the respective methods for more details
+            linelist_wl, linelist_depths = LineList.validate_linelist(linelist, linelist_wl, linelist_depths)
+            LineList.validate_dimensions(linelist_wl, linelist_depths) # ensures same shape and are 1D
+            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
+            self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+
+            # If overwriting, reset variables
+            if overwriting:
+                if self.config.verbose > 0:
+                    print("Warning: the input linelist has been modified. \n" \
+                    f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
+                self.reset()
 
     def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
         """
