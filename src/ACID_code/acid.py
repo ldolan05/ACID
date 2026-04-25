@@ -146,8 +146,8 @@ class Acid:
                 print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
                 f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
         if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
-            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy arguments for inputting a linelist, " \
-                             "please use 'linelist' instead.")
+            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
+                             "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
         # Anything left in kwargs is invalid
         if kwargs:
             raise TypeError(

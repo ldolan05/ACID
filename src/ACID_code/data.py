@@ -511,7 +511,7 @@ class Data:
     _velocities : Optional[np.ndarray] = None
 
     @property
-    def velocities(self):
+    def velocities(self) -> Array1D|None:
         """The velocity grid to perform LSD on."""
         return self._velocities
 
@@ -1052,11 +1052,7 @@ class Data:
         return LineList(self._linelist) if self._linelist is not None else None
 
     @linelist.setter
-    def linelist(self, value: Array2D|str|LineList|dict[str,Array1D]|None) -> None:
-        self.set_linelist(value)
-        return
-
-    def set_linelist(self, linelist=None, linelist_wl=None, linelist_depths=None) -> None:
+    def linelist(self, linelist:Array2D|str|LineList|dict[str,Array1D]|None) -> None:
         """
         Sets the linelist for the data object. The linelist formats follows that of the doccumentation in the :py:class:`Acid` class,
         which then internally uses this function to set the linelist in the data object. The linelist is stored as a dictionary with 
@@ -1067,14 +1063,12 @@ class Data:
         ----------
         See :py:class:`Acid` for the accepted linelist formats and parameters.
         """
-        # TODO: depracate linelist_wl and depths
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
             overwriting = self._linelist is not None
-            # The method names are self explaining, see the respective methods for more details
-            linelist_wl, linelist_depths = LineList.validate_linelist(linelist, linelist_wl, linelist_depths)
-            LineList.validate_dimensions(linelist_wl, linelist_depths) # ensures same shape and are 1D
-            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
+            # The method names are self explaining, see the respective methods for more details on their process
+            linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
+            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
             self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
             # If overwriting, reset variables
@@ -1147,7 +1141,7 @@ class LineList:
         yield self.ll["depths"]
 
     @staticmethod
-    def validate_linelist(linelist, linelist_wl, linelist_depths) -> tuple[np.ndarray, np.ndarray]:
+    def validate_linelist(linelist) -> tuple[np.ndarray, np.ndarray]:
         """
         Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist wavelengths 
         and depths as numpy arrays. This is used internally in the set_linelist method.
@@ -1169,10 +1163,9 @@ class LineList:
 
         # Run through every possible input type and issue, I'm not going to comment everything but the logic is fairly
         # self-explanatory, and the error messages should be helpful for debugging if the input is not in the correct format.
-        if (linelist_wl is None and linelist_depths is None) and linelist is None:
+        if linelist is None:
             raise ValueError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
-        elif linelist is None and (linelist_wl is None or linelist_depths is None):
-            raise ValueError("If 'linelist' is not provided, both 'linelist_wl' and 'linelist_depths' must be provided.")
+        # All loops below set linelist_wl and linelist_depths from their own type sof input
         elif isinstance(linelist, str):
             # VALD linelist code, will add more linelist formats in the future or if requested
             full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
@@ -1196,16 +1189,18 @@ class LineList:
         else:
             raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
-        return np.array(linelist_wl), np.array(linelist_depths)
 
-    @staticmethod
-    def validate_dimensions(wavelengths, depths) -> None:
-        """Validates that the wavelengths and depths are 1D arrays of the same shape. 
-        This is used internally in the set_linelist method."""
-        if wavelengths.ndim != 1 or depths.ndim != 1:
+        # Finally, convert to numpy arrays to ensure their dimensions are correct
+        try:
+            linelist_wl = np.array(linelist_wl)
+            linelist_depths = np.array(linelist_depths)
+        except Exception as e:
+            raise ValueError(f"Failed to convert linelist inputs into numpy arrays with exception:\n{e}")
+        if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
             raise ValueError("'wavelengths' and 'depths' must be a one-dimensional array or list")
-        if wavelengths.shape != depths.shape:
+        if linelist_wl.shape != linelist_depths.shape:
             raise ValueError("'wavelengths' and 'depths' must have the same length and shape")
+        return linelist_wl, linelist_depths
 
     @staticmethod
     def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False, verbose:IntLike|bool|str=None) -> tuple:
