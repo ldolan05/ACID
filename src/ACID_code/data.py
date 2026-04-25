@@ -532,6 +532,235 @@ class Data:
                 "The linelist, config, and original data inputs will not be reset.")
                 self.reset()
 
+    @property
+    def linelist(self) -> LineList|None:
+        """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
+        return LineList(self._linelist) if self._linelist is not None else None
+
+    @linelist.setter
+    def linelist(self, linelist:Array2D|str|LineList|dict[str,Array1D]|None) -> None:
+        """
+        Sets the linelist for the data object. The linelist formats follows that of the doccumentation in the :py:class:`Acid` class,
+        which then internally uses this function to set the linelist in the data object. The linelist is stored as a dictionary with 
+        keys "wavelengths" and "depths", but is exposed as a :py:class:`LineList` object when accessed through the property. The LineList
+        class allows for easy access to plotting, indexing, and validation.
+
+        Parameters
+        ----------
+        See :py:class:`Acid` for the accepted linelist formats and parameters.
+        """
+        # Check if linelist already exists, override with new inputs if provided
+        if linelist is not None:
+            overwriting = self._linelist is not None
+            # The method names are self explaining, see the respective methods for more details on their process
+            linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
+            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
+            self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+
+            # If overwriting, reset variables
+            if overwriting:
+                if self.config.verbose > 0:
+                    print("Warning: the input linelist has been modified. \n" \
+                    f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
+                self.reset()
+
+    def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
+        """
+        Plots the linelist points with their corresponding depths as delta-function lines.
+
+        Parameters
+        ----------
+        min_depth : :py:type:`Scalar`, optional
+            The minimum depth for plotting the linelist points. By default 0.2.
+        bounds : tuple or list, optional
+            The wavelength bounds for clipping the linelist. If None, no clipping is applied.
+        return_fig : bool, optional
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple or None
+            If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
+        """
+        if self.linelist is None:
+            raise ValueError("No linelist found. Please set a linelist before trying to plot it.")
+        wl = self.linelist["wavelengths"]
+        depths = self.linelist["depths"]
+
+        # Clip the linelist to the specified bounds if provided, and to the min_depth
+        if bounds is not None:
+            wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
+            depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
+        wl = wl[depths >= min_depth]
+        depths = depths[depths >= min_depth]
+
+        # Plot linelist
+        fig, ax = plt.subplots(figsize=(15, 9))
+        ax.vlines(wl, 0, depths, color='C0', )
+        ax.set_title('Line List')
+        ax.set_xlabel('Wavelength (Angstroms)')
+        ax.set_ylabel('Relative Line Depth')
+        ax.legend()
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    # Store config as a property for handling it to/from dictionary on saving
+    @property
+    def config(self) -> Config:
+        """Returns the internally stored config object, which contains the configuration of the ACID run."""
+        return self._config
+
+    @config.setter
+    def config(self, value: Config) -> None:
+        """Sets the internally stored config object."""
+        self._config = value
+
+    def set_inputs(
+        self,
+        input_wavelengths: Optional[np.ndarray] = None,
+        input_flux:        Optional[np.ndarray] = None,
+        input_errors:      Optional[np.ndarray] = None,
+        input_sn:          Optional[np.ndarray] = None,
+        skips:             int                  = 1,
+    ) -> None:
+        """Sets the input data for the ACID class. This is used to initialize the data object with the raw spectra,
+        and to validate the arguments (previously done within the ACID function).
+        Parameters
+        ----------
+        input_wavelengths : np.ndarray, optional
+            Wavelength array for the input spectra, by default None
+        input_flux : np.ndarray, optional
+            Flux array for the input spectra, by default None
+        input_errors : np.ndarray, optional
+            Error array for the input spectra, by default None
+        input_sn : np.ndarray, optional
+            Signal-to-noise array for the input spectra, by default None
+        skips : int, optional
+            Number of pixels to skip when processing the spectra, by default 1 (no skipping)
+        """
+        # Check if inputs already exist, use a key to name dictionary map to get boolean for if any/all exist for following logic checks
+        input_keys = ["wavelengths", "flux", "errors"]
+        inputs = {
+            "wavelengths": input_wavelengths,
+            "flux": input_flux,
+            # As of 1.5, SN or errors are guessed from the errors if one is not input, so treat them as a pair
+            "errors": input_errors if input_errors is not None else input_sn,
+        }
+        inputs_already_exist = all(
+            getattr(self, attr).get("input", None) is not None for attr in input_keys
+        )
+        all_inputs_not_none = all(inputs[attr] is not None for attr in input_keys)
+        any_inputs_not_none = any(inputs[attr] is not None for attr in input_keys)
+        del inputs # it was just a trick to do the input checks in a loop
+
+        # Handle logic for already existing inputs, more or less described in the print statements
+        if inputs_already_exist:
+            if not all_inputs_not_none and any_inputs_not_none:
+                if self.config.verbose > 0:
+                    print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
+                        f"Some of the inputs you provided are None. \n" \
+                        f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
+                        f"The current input wavelengths, flux, and errors will be kept.")
+                return
+            elif not any_inputs_not_none:
+                if self.config.verbose > 2:
+                    print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
+                return
+            # Else continue with the rest of the function to update inputs, later on, the code will check if new inputs are 
+            # different from the existing ones, if so, deletes variables that need to be recalculated.
+        else:
+            if not all_inputs_not_none:
+                raise ValueError("input_wavelengths, input_flux, and (input_errors or input_sn) must be provided either as arguments " \
+                                 "or in the form of a Data object.")
+
+        # Convert to arrays, squeeze to remove extra dimensions (as default in legacy inputs)
+        input_wavelengths = np.array(input_wavelengths).squeeze()
+        input_flux = np.array(input_flux).squeeze()
+        input_errors = np.array(input_errors).squeeze() if input_errors is not None else None
+        input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
+
+        # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
+        if input_errors is not None:
+            input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
+        else:
+            input_wavelengths, input_flux = utils.mask_invalid(input_wavelengths, input_flux, verbose=self.config.verbose)
+
+        # Check that none of the inputs are all nan
+        if np.all(np.isnan(input_wavelengths)) or np.all(np.isnan(input_flux)) or (input_errors is not None and np.all(np.isnan(input_errors))):
+            raise ValueError("None of the input wavelengths, spectra, and errors can be all NaN. Check your inputs for invalid or negative values")
+
+        # Get SN or errors if one is not provided
+        if input_sn is None and input_errors is None:
+            raise ValueError("One of input_sn or input_errors must be provided.")
+        if input_sn is None and input_errors is not None:
+            input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
+            if self.config.verbose > 1:
+                print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
+        if input_errors is None and input_sn is not None:
+            input_errors = utils.guess_errors(input_wavelengths, input_flux, input_sn)
+            if self.config.verbose > 0:
+                print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
+                      f"It is highly recommended to obtain correct per-pixel errors.")
+
+        # Check they have matching shape
+        if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
+            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
+
+        # Ensure now that the SN becomes just a single value per frame
+        if input_sn.ndim == input_flux.ndim:
+            # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
+            input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
+        elif input_sn.ndim != input_flux.ndim-1:
+            raise ValueError("input_sn must be either a single-valued list/array with the average S/N for each frame, " \
+            f"or an array of S/N values for each pixel. \n" \
+            "The shape of the input input_sn does not match the number of frames in input_flux, " \
+            "nor does it have one more dimension than input_flux.")
+        assert input_sn.ndim == input_flux.ndim - 1, \
+            f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}"
+
+        # Ensure all inputs are at least 2D (with the first dimension being the frame number), 
+        # to ensure consistent handling of single-frame and multi-frame inputs. 
+        input_wavelengths = np.atleast_2d(input_wavelengths)
+        input_flux = np.atleast_2d(input_flux)
+        input_errors = np.atleast_2d(input_errors)
+        input_sn = np.atleast_1d(input_sn)
+
+        if input_sn.shape[0] != input_flux.shape[0]:
+            raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
+
+        # Ensure data is sorted by wavelength
+        sort_idx = np.argsort(input_wavelengths, axis=-1)
+        input_wavelengths = np.take_along_axis(input_wavelengths, sort_idx, axis=-1)
+        input_flux = np.take_along_axis(input_flux, sort_idx, axis=-1)
+        input_errors = np.take_along_axis(input_errors, sort_idx, axis=-1)
+
+        # Apply skips, this just skips some data for testing and faster runs, but real runs should always leave skips=1
+        input_wavelengths = input_wavelengths[:, ::skips]
+        input_flux       = input_flux[:, ::skips]
+        input_errors     = input_errors[:, ::skips]
+
+        # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
+        # This checks basically if self.wavelengths["input"] is the same as input_wavelengths, and same for flux and errors, if they exist. 
+        overwriting = False
+        for check in input_keys:
+            if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
+                if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}"), equal_nan=True):
+                    overwriting = True
+
+        # Set inputs to class variables, the self.reset() cleans all arrays except for the inputs, so this is safe
+        self.wavelengths["input"] = input_wavelengths
+        self.flux["input"]        = input_flux
+        self.errors["input"]      = input_errors
+        self.sn["input"]          = input_sn
+
+        # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
+        if overwriting:
+            if self.config.verbose > 0:
+                print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
+                f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.")
+            self.reset()
+
     def reset(self) -> None:
         """Resets all data attributes to their default empty states, except for the array inputs, linelist, velocities, and config."""
         self.alpha = None
@@ -785,151 +1014,6 @@ class Data:
             plt.savefig(f"{save_fig}/forward_model.png")
         plt.show()
 
-    def set_inputs(
-        self,
-        input_wavelengths: Optional[np.ndarray] = None,
-        input_flux:        Optional[np.ndarray] = None,
-        input_errors:      Optional[np.ndarray] = None,
-        input_sn:          Optional[np.ndarray] = None,
-        skips:             int                  = 1,
-    ) -> None:
-        """Sets the input data for the ACID class. This is used to initialize the data object with the raw spectra,
-        and to validate the arguments (previously done within the ACID function).
-        Parameters
-        ----------
-        input_wavelengths : np.ndarray, optional
-            Wavelength array for the input spectra, by default None
-        input_flux : np.ndarray, optional
-            Flux array for the input spectra, by default None
-        input_errors : np.ndarray, optional
-            Error array for the input spectra, by default None
-        input_sn : np.ndarray, optional
-            Signal-to-noise array for the input spectra, by default None
-        skips : int, optional
-            Number of pixels to skip when processing the spectra, by default 1 (no skipping)
-        """
-        # Check if inputs already exist, use a key to name dictionary map to get boolean for if any/all exist for following logic checks
-        input_keys = ["wavelengths", "flux", "errors"]
-        inputs = {
-            "wavelengths": input_wavelengths,
-            "flux": input_flux,
-            # As of 1.5, SN or errors are guessed from the errors if one is not input, so treat them as a pair
-            "errors": input_errors if input_errors is not None else input_sn,
-        }
-        inputs_already_exist = all(
-            getattr(self, attr).get("input", None) is not None for attr in input_keys
-        )
-        all_inputs_not_none = all(inputs[attr] is not None for attr in input_keys)
-        any_inputs_not_none = any(inputs[attr] is not None for attr in input_keys)
-        del inputs # it was just a trick to do the input checks in a loop
-
-        # Handle logic for already existing inputs, more or less described in the print statements
-        if inputs_already_exist:
-            if not all_inputs_not_none and any_inputs_not_none:
-                if self.config.verbose > 0:
-                    print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
-                        f"Some of the inputs you provided are None. \n" \
-                        f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
-                        f"The current input wavelengths, flux, and errors will be kept.")
-                return
-            elif not any_inputs_not_none:
-                if self.config.verbose > 2:
-                    print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
-                return
-            # Else continue with the rest of the function to update inputs, later on, the code will check if new inputs are 
-            # different from the existing ones, if so, deletes variables that need to be recalculated.
-        else:
-            if not all_inputs_not_none:
-                raise ValueError("input_wavelengths, input_flux, and (input_errors or input_sn) must be provided either as arguments " \
-                                 "or in the form of a Data object.")
-
-        # Convert to arrays, squeeze to remove extra dimensions (as default in legacy inputs)
-        input_wavelengths = np.array(input_wavelengths).squeeze()
-        input_flux = np.array(input_flux).squeeze()
-        input_errors = np.array(input_errors).squeeze() if input_errors is not None else None
-        input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
-
-        # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
-        if input_errors is not None:
-            input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
-        else:
-            input_wavelengths, input_flux = utils.mask_invalid(input_wavelengths, input_flux, verbose=self.config.verbose)
-
-        # Check that none of the inputs are all nan
-        if np.all(np.isnan(input_wavelengths)) or np.all(np.isnan(input_flux)) or (input_errors is not None and np.all(np.isnan(input_errors))):
-            raise ValueError("None of the input wavelengths, spectra, and errors can be all NaN. Check your inputs for invalid or negative values")
-
-        # Get SN or errors if one is not provided
-        if input_sn is None and input_errors is None:
-            raise ValueError("One of input_sn or input_errors must be provided.")
-        if input_sn is None and input_errors is not None:
-            input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
-            if self.config.verbose > 1:
-                print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
-        if input_errors is None and input_sn is not None:
-            input_errors = utils.guess_errors(input_wavelengths, input_flux, input_sn)
-            if self.config.verbose > 0:
-                print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
-                      f"It is highly recommended to obtain correct per-pixel errors.")
-
-        # Check they have matching shape
-        if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
-            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
-
-        # Ensure now that the SN becomes just a single value per frame
-        if input_sn.ndim == input_flux.ndim:
-            # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
-            input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
-        elif input_sn.ndim != input_flux.ndim-1:
-            raise ValueError("input_sn must be either a single-valued list/array with the average S/N for each frame, " \
-            f"or an array of S/N values for each pixel. \n" \
-            "The shape of the input input_sn does not match the number of frames in input_flux, " \
-            "nor does it have one more dimension than input_flux.")
-        assert input_sn.ndim == input_flux.ndim - 1, \
-            f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}"
-
-        # Ensure all inputs are at least 2D (with the first dimension being the frame number), 
-        # to ensure consistent handling of single-frame and multi-frame inputs. 
-        input_wavelengths = np.atleast_2d(input_wavelengths)
-        input_flux = np.atleast_2d(input_flux)
-        input_errors = np.atleast_2d(input_errors)
-        input_sn = np.atleast_1d(input_sn)
-
-        if input_sn.shape[0] != input_flux.shape[0]:
-            raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
-
-        # Ensure data is sorted by wavelength
-        sort_idx = np.argsort(input_wavelengths, axis=-1)
-        input_wavelengths = np.take_along_axis(input_wavelengths, sort_idx, axis=-1)
-        input_flux = np.take_along_axis(input_flux, sort_idx, axis=-1)
-        input_errors = np.take_along_axis(input_errors, sort_idx, axis=-1)
-
-        # Apply skips, this just skips some data for testing and faster runs, but real runs should always leave skips=1
-        input_wavelengths = input_wavelengths[:, ::skips]
-        input_flux       = input_flux[:, ::skips]
-        input_errors     = input_errors[:, ::skips]
-
-        # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
-        # This checks basically if self.wavelengths["input"] is the same as input_wavelengths, and same for flux and errors, if they exist. 
-        overwriting = False
-        for check in input_keys:
-            if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
-                if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}"), equal_nan=True):
-                    overwriting = True
-
-        # Set inputs to class variables, the self.reset() cleans all arrays except for the inputs, so this is safe
-        self.wavelengths["input"] = input_wavelengths
-        self.flux["input"]        = input_flux
-        self.errors["input"]      = input_errors
-        self.sn["input"]          = input_sn
-
-        # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
-        if overwriting:
-            if self.config.verbose > 0:
-                print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
-                f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.")
-            self.reset()
-
     def save(self, filename:str="data.pkl", store_sampler:bool=True) -> None:
         """
         Saves the data object to a file using pickling. This will store just the dictionary of the class, 
@@ -1028,96 +1112,12 @@ class Data:
                     setattr(self, name, payload[name])
         return self
 
-    # Store config as a property for handling it to/from dictionary on saving
-    @property
-    def config(self) -> Config:
-        """Returns the internally stored config object, which contains the configuration of the ACID run."""
-        return self._config
-
-    @config.setter
-    def config(self, value: Config) -> None:
-        """Sets the internally stored config object."""
-        self._config = value
-
     @property
     def result(self):
         if not self.complete:
             raise ValueError("Results have not yet been calculated, cannot return results object. Please run the MCMC sampling and process the results first.")
         from .result import Result
         return Result(self)
-
-    @property
-    def linelist(self) -> LineList|None:
-        """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
-        return LineList(self._linelist) if self._linelist is not None else None
-
-    @linelist.setter
-    def linelist(self, linelist:Array2D|str|LineList|dict[str,Array1D]|None) -> None:
-        """
-        Sets the linelist for the data object. The linelist formats follows that of the doccumentation in the :py:class:`Acid` class,
-        which then internally uses this function to set the linelist in the data object. The linelist is stored as a dictionary with 
-        keys "wavelengths" and "depths", but is exposed as a :py:class:`LineList` object when accessed through the property. The LineList
-        class allows for easy access to plotting, indexing, and validation.
-
-        Parameters
-        ----------
-        See :py:class:`Acid` for the accepted linelist formats and parameters.
-        """
-        # Check if linelist already exists, override with new inputs if provided
-        if linelist is not None:
-            overwriting = self._linelist is not None
-            # The method names are self explaining, see the respective methods for more details on their process
-            linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
-            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
-            self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
-
-            # If overwriting, reset variables
-            if overwriting:
-                if self.config.verbose > 0:
-                    print("Warning: the input linelist has been modified. \n" \
-                    f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
-                self.reset()
-
-    def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
-        """
-        Plots the linelist points with their corresponding depths as delta-function lines.
-
-        Parameters
-        ----------
-        min_depth : :py:type:`Scalar`, optional
-            The minimum depth for plotting the linelist points. By default 0.2.
-        bounds : tuple or list, optional
-            The wavelength bounds for clipping the linelist. If None, no clipping is applied.
-        return_fig : bool, optional
-            If True, returns the figure and axis objects instead of displaying the plot.
-
-        Returns
-        -------
-        tuple or None
-            If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
-        """
-        if self.linelist is None:
-            raise ValueError("No linelist found. Please set a linelist before trying to plot it.")
-        wl = self.linelist["wavelengths"]
-        depths = self.linelist["depths"]
-
-        # Clip the linelist to the specified bounds if provided, and to the min_depth
-        if bounds is not None:
-            wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
-            depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
-        wl = wl[depths >= min_depth]
-        depths = depths[depths >= min_depth]
-
-        # Plot linelist
-        fig, ax = plt.subplots(figsize=(15, 9))
-        ax.vlines(wl, 0, depths, color='C0', )
-        ax.set_title('Line List')
-        ax.set_xlabel('Wavelength (Angstroms)')
-        ax.set_ylabel('Relative Line Depth')
-        ax.legend()
-        if return_fig:
-            return fig, ax
-        plt.show()
 
 class LineList:
     """

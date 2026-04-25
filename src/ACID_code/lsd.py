@@ -100,7 +100,7 @@ class LSD:
         self.data.velocities = velocities if velocities is not None else self.data.velocities
         if self.data.velocities is None:
             raise ValueError("Velocities must be provided either as an argument to run_LSD or when initialising the class with an Acid instance.")
-        self.data.set_linelist(linelist) # Raises if no linelist available, overwrites if input
+        self.data.linelist = linelist # Raises if no linelist available, overwrites if input
 
         # Unpack the linelist stored in data
         wavelengths_linelist, depths_linelist = self.data.linelist
