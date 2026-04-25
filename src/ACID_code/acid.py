@@ -538,10 +538,10 @@ class Acid:
         initial_state = np.array(initial_state).T
 
         ### ACID initialialised ###
-        self.data.initialisation_time += time.time() - init_t0
+        self.data.setup_time += time.time() - init_t0
         mcmc_t0 = time.time()
         if self.config.verbose>1:
-            print('Initialised in %ss'%round((self.data.initialisation_time), 3))
+            print('Initialised in %ss'%round((self.data.setup_time), 3))
         if self.config.verbose>2:
             print('ACID Configuration before MCMC run:')
             print(f"Polynomial order: {self.config.poly_ord}")

@@ -490,11 +490,16 @@ class Data:
 
     # Other useful data and figures
     # -----------------------------
-    initialisation_time : Optional[float] = 0  # time taken for initialization
-    mcmc_time           : Optional[float] = 0  # time taken for MCMC sampling
-    get_profiles_time   : Optional[float] = 0  # time taken to get profiles
-    full_run_time       : Optional[float] = 0  # total time for the full run
-    plotting_variables  : Dict[str, Any]  = field(default_factory=dict)
+    #: Internal variables used for plotting the continuum_fit and the residual masks
+    plotting_variables : Dict[str, Any]  = field(default_factory=dict)
+    #: setup_time (float) - The time taken for initialization
+    setup_time         : Optional[float] = 0  # time taken for initialization
+    #: mcmc_time (float) - The time taken for MCMC sampling
+    mcmc_time          : Optional[float] = 0  # time taken for 
+    #: results_time (float) - The time taken to get the final profiles
+    results_time       : Optional[float] = 0 
+    #: total_time (float) - The total time for the full run
+    total_time         : Optional[float] = 0  
 
     # Initialise the properties
     # -------------------------
@@ -547,6 +552,10 @@ class Data:
         self.sampler = None
         self.complete = False
         self.plotting_variables = {}
+        self.setup_time = 0
+        self.mcmc_time = 0
+        self.results_time = 0
+        self.total_time = 0
         if "input" in self.wavelengths and self.wavelengths["input"] is not None:
             self.wavelengths = {"input": self.wavelengths["input"]}
             self.flux = {"input": self.flux["input"]}
@@ -1040,7 +1049,7 @@ class Data:
     @property
     def linelist(self) -> LineList|None:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
-        return LineList(self._linelist)if self._linelist is not None else None
+        return LineList(self._linelist) if self._linelist is not None else None
 
     @linelist.setter
     def linelist(self, value: Array2D|str|LineList|dict[str,Array1D]|None) -> None:

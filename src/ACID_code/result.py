@@ -230,8 +230,8 @@ class Result:
                 profiles.append([profile_f, profile_errors_f, cov_z_f])
 
         self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
-        self.data.get_profiles_time = time() - t0
-        self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
+        self.data.results_time = time() - t0
+        self.data.full_run_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
         self.data.complete = True
 
         return
