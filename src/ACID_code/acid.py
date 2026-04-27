@@ -193,6 +193,7 @@ class Acid:
         dev_perc              : IntLike|None                = None,   # Config
         n_sig                 : IntLike|None                = None,   # Config
         skips                 : IntLike|None                = None,   # Config
+        sampler_type          : str|None                    = None,   # Config
         parallel              : bool|None                   = None,   # Config
         cores                 : IntLike|None                = None,   # Config
         nwalkers              : IntLike|None                = None,   # Config, then Data just before MCMC
@@ -373,6 +374,7 @@ class Acid:
             "dev_perc"              : dev_perc,
             "n_sig"                 : n_sig,
             "skips"                 : skips,
+            "sampler_type"          : sampler_type,
             "parallel"              : parallel,
             "cores"                 : cores,
             "nwalkers"              : nwalkers,
@@ -520,22 +522,25 @@ class Acid:
         self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
         rng = np.random.default_rng(self.config.seed)
 
-        # Starting values of walkers with independent variation
-        sigma = 0.8 * 0.005
-        initial_state = []
-        for i in range(0, len(self.data.model_inputs)):
-            if i < len(self.data.velocities):
-                if not self.config.deterministic_profile:
-                    pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+        # Starting values of walkers with independent variation#
+        if self.config.sampler_type == "emcee":
+            sigma = 0.8 * 0.005
+            initial_state = []
+            for i in range(0, len(self.data.model_inputs)):
+                if i < len(self.data.velocities):
+                    if not self.config.deterministic_profile:
+                        pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+                    else:
+                        continue
                 else:
-                    continue
-            else:
-                x1 = self.data.model_inputs[i]
-                rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
-                sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
-            initial_state.append(pos)
-        initial_state = np.array(initial_state).T
+                    x1 = self.data.model_inputs[i]
+                    rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
+                    sigma = abs(rounded_sigma) / 10
+                    pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+                initial_state.append(pos)
+            initial_state = np.array(initial_state).T
+        else:
+            initial_state = None
 
         ### ACID initialialised ###
         self.data.setup_time += time.time() - init_t0
