@@ -520,13 +520,24 @@ class Data:
         """Sets and overwrites the velocity grid if the value is not None.
         If overwriting, resets the Data instance as calculations are dependent on velocities."""
         if value is not None:
-            overwriting = self._velocities is not None # boolean flag for whether we are overwriting the existing velocities
             
+            # First validate the input array
             velocities = np.array(value)
             if not np.all(np.isfinite(velocities)):
                 raise ValueError("The velocity grid you are trying to set must all be finite and not contain NaNs")
-            self._velocities = np.array(value)
             
+            # Set overwriting flag if velocities already exists and are different from new input
+            overwriting = False
+            if self._velocities is not None:
+                if len(self._velocities) != len(velocities):
+                    overwriting = True
+                elif not np.allclose(self._velocities, velocities):
+                    overwriting = True
+
+            # Set velocities
+            self._velocities = np.array(value)
+
+            # Reset and warn if overwriting
             if overwriting:
                 print("Warning: Overwriting existing velocities in Data. The Data instance will be reset to clear calculations that depend on the velocities.\n" \
                 "The linelist, config, and original data inputs will not be reset.")
@@ -551,13 +562,22 @@ class Data:
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
-            overwriting = self._linelist is not None
             # The method names are self explaining, see the respective methods for more details on their process
             linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
             linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
+
+            # Check if the new linelist is different from the existing one
+            overwriting = False
+            if self._linelist is not None:
+                if len(self._linelist["wavelengths"]) != len(linelist_wl) or len(self._linelist["depths"]) != len(linelist_depths):
+                    overwriting = True
+                elif not np.allclose(self._linelist["wavelengths"], linelist_wl) or not np.allclose(self._linelist["depths"], linelist_depths):
+                    overwriting = True
+
+            # Set new linelist
             self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
-            # If overwriting, reset variables
+            # If overwriting, reset variables and warn
             if overwriting:
                 if self.config.verbose > 0:
                     print("Warning: the input linelist has been modified. \n" \
@@ -745,7 +765,9 @@ class Data:
         overwriting = False
         for check in input_keys:
             if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
-                if not np.allclose(getattr(self, check)["input"], eval(f"input_{check}"), equal_nan=True):
+                if getattr(self, check)["input"].shape != eval(f"input_{check}").shape:
+                    overwriting = True
+                elif not np.allclose(getattr(self, check)["input"], eval(f"input_{check}"), equal_nan=True):
                     overwriting = True
 
         # Set inputs to class variables, the self.reset() cleans all arrays except for the inputs, so this is safe
