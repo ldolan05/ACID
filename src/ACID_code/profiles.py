@@ -153,12 +153,24 @@ class Profiles:
         if p0 is None:
             amplitude_guess = np.min(y)
             centre_guess = x[np.argmin(y)]
-            sigma0 = (x.max() - x.min()) / 10.0
-            gamma0 = sigma0
+
+            half = 0.5 * (np.nanmax(y) + np.nanmin(y))
+            above = np.flatnonzero(y < half)
+            if above.size >= 2:
+                fwhm = abs(x[above[-1]] - x[above[0]])
+            else:
+                raise ValueError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
+            sigma0 = fwhm / 2.355
+
+            gamma0 = sigma0 * 0.1
             offset = 0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
+            bounds = (
+                [-1, np.min(x), 0, 0, -np.inf], # Lower bounds
+                [0, np.max(x), np.inf, np.inf, np.inf] # Upper
+            )
 
-        popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, **kwargs)
+        popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
         return popt, pcov
 
     def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
@@ -189,11 +201,21 @@ class Profiles:
         if p0 is None:
             amplitude_guess = np.min(y)
             mean_guess = x[np.argmin(y)]
-            stddev_guess = (x.max() - x.min()) / 10.0
+            half = 0.5 * (np.nanmax(y) + np.nanmin(y))
+            above = np.flatnonzero(y < half)
+            if above.size >= 2:
+                fwhm = abs(x[above[-1]] - x[above[0]])
+            else:
+                raise ValueError("Could not estimate FWHM for Gaussian profile. Not enough points above half maximum.")
+            sigma0 = fwhm / 2.355
             offset = 0
-            p0 = [amplitude_guess, mean_guess, stddev_guess, offset]
+            p0 = [amplitude_guess, mean_guess, sigma0, offset]
+            bounds = (
+                [-1, np.min(x), 0, -np.inf], # Lower bounds
+                [0, np.max(x), np.inf, np.inf] # Upper bounds
+            )
 
-        popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, **kwargs)
+        popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
         return popt, pcov
 
     def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
@@ -224,11 +246,22 @@ class Profiles:
         if p0 is None:
             amplitude_guess = np.min(y)
             centre_guess = x[np.argmin(y)]
-            gamma0 = (x.max() - x.min()) / 10.0
+            half = 0.5 * (np.nanmax(y) + np.nanmin(y))
+            above = np.flatnonzero(y < half)
+            if above.size >= 2:
+                fwhm = abs(x[above[-1]] - x[above[0]])
+            else:
+                raise ValueError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
+            sigma0 = fwhm / 2.355
+            gamma0 = sigma0 * 0.1
             offset = 0
             p0 = [amplitude_guess, centre_guess, gamma0, offset]
+            bounds = (
+                [-1, np.min(x), 0, -np.inf], # Lower bounds
+                [0, np.max(x), np.inf, np.inf] # Upper bounds
+            )
 
-        popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, **kwargs)
+        popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
         return popt, pcov
 
     def _copy_inputs(self, x, y, yerr, cov_matrix) -> tuple:
@@ -258,7 +291,7 @@ class Profiles:
         cov_matrix_copy = np.copy(cov_matrix) if cov_matrix is not None else cov_matrix
         return x, y, yerr_copy, cov_matrix_copy
 
-    def _fit_model(self, model_name, x, y, yerr, cov_matrix, p0, **kwargs) -> tuple:
+    def _fit_model(self, model_name, x, y, yerr, cov_matrix, p0, bounds=None, **kwargs) -> tuple:
         """Internal method to fit a specified model to the data.
 
         Parameters
@@ -277,7 +310,8 @@ class Profiles:
             Initial guess for the parameters.
         **kwargs : dict
             Additional keyword arguments to pass to curve_fit.
-        
+        bounds : tuple, optional
+            Bounds for the parameters in the form (lower_bounds, upper_bounds), by default None.
         Returns
         -------
         tuple
@@ -288,7 +322,7 @@ class Profiles:
 
         # Perform the curve fitting
         sigma = yerr if cov_matrix is None else cov_matrix
-        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, absolute_sigma=True, **kwargs)
+        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, bounds=bounds, absolute_sigma=True, **kwargs)
         self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
         self.fit_on_x[model_name] = model_func(x, *popt)
 
@@ -324,9 +358,14 @@ class Profiles:
         array_like
             The Voigt profile evaluated at the input x values.
         """
-        z = ((x - centre) + 1j*gamma) / (sigma * np.sqrt(2))
-        voigt_profile = amplitude * np.real(wofz(z)) / (sigma * np.sqrt(2*np.pi))
-        return voigt_profile + offset
+        z = ((x - centre) + 1j * gamma) / (sigma * np.sqrt(2))
+        profile = np.real(wofz(z)) / (sigma * np.sqrt(2*np.pi))
+
+        z0 = 1j * gamma / (sigma * np.sqrt(2))
+        peak = np.real(wofz(z0)) / (sigma * np.sqrt(2*np.pi))
+
+        profile = profile / peak
+        return amplitude * profile + offset
 
     @staticmethod
     def gaussian_func(x, amplitude, mean, stddev, offset=0) -> Array1D:
