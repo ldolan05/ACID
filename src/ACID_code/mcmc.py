@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+from numpy.linalg import norm
 from . import utils
 from .utils import Array1D, Array2D
 from beartype import beartype
@@ -20,6 +21,12 @@ def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
     return _MCMC(theta)
 
+def _mp_log_likelihood(theta):
+    return _MCMC.dynesty_logprob(theta)
+
+def _mp_ptform(u):
+    return _MCMC.ptform(u)
+
 class MCMC:
 
     """
@@ -38,6 +45,7 @@ class MCMC:
             velocities            : Array1D|None = None,
             c_factor                             = None,
             deterministic_profile : bool         = False,
+            sampler_type          : str          = "emcee",
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
@@ -75,6 +83,7 @@ class MCMC:
             self.velocities = data.velocities
             self.c_factor = data.c_factor
             self.deterministic_profile = data.config.deterministic_profile
+            self.sampler_type = data.config.sampler_type
         else:
             self.x = x_or_data
             self.y = y
@@ -83,6 +92,7 @@ class MCMC:
             self.velocities = velocities
             self.c_factor = c_factor
             self.deterministic_profile = deterministic_profile
+            self.sampler_type = sampler_type
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
@@ -289,3 +299,56 @@ class MCMC:
         neff_str = ">" if last_neff > config.min_tau_factor else "<"
         neff_str = f"{last_neff:.2f}{neff_str}{config.min_tau_factor}"
         return tol_str, neff_str
+
+    def dynesty_logprob(self, theta):
+        """Log likelihood function for dynesty nested sampling."""
+
+        forward, z = self.model_function(theta)
+
+        if not np.all(np.isfinite(forward)):
+            return -np.inf
+
+        lp = self.log_prior(z)
+        if not np.isfinite(lp):
+            return -np.inf
+
+        diff = self.y - forward
+        var = self.yerr * self.yerr
+
+        return -0.5 * np.sum(diff * diff / var + np.log(2 * np.pi * var))
+    
+    def ptform(self, u):
+        """
+        Prior transform for dynesty.
+
+        Maps unit-cube samples u in [0, 1] to continuum polynomial
+        coefficients using uniform priors centred on self.model_inputs.
+        """
+
+        u = np.asarray(u, dtype=float)
+        theta0 = np.asarray(self.model_inputs, dtype=float)
+
+        if u.shape != theta0.shape:
+            raise ValueError(
+                f"u has shape {u.shape}, but model_inputs has shape {theta0.shape}"
+            )
+
+        # Width of uniform prior around curve_fit solution.
+        # The floor matters because higher-order polynomial coefficients
+        # may be close to zero.
+        frac_width = 0.5
+        abs_floor = 0.05
+
+        width = np.maximum(frac_width * np.abs(theta0), abs_floor)
+
+        # Usually the zeroth-order continuum coefficient is close to 1,
+        # so give it a slightly wider absolute floor.
+        if len(width) > 0:
+            width[0] = max(width[0], 0.25)
+
+        lower = theta0 - width
+        upper = theta0 + width
+
+        return lower + u * (upper - lower)
+
+            

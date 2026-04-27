@@ -400,6 +400,16 @@ class Acid:
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
 
+        if self.config.sampler_type == "dynesty":
+            try:
+                import dynesty
+            except ImportError:
+                raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed. Please install it with 'pip install dynesty' or choose a different sampler type.")
+        if self.config.sampler_type == "dynesty" and not self.config.deterministic_profile:
+            raise ValueError("The 'dynesty' sampler does not currently support the non-deterministic profile option, please set 'deterministic_profile' to True or choose a different sampler.")
+        if self.config.sampler_type == "dynesty" and self.config.max_steps is not None:
+            raise ValueError("The 'dynesty' sampler does not currently support the max_steps option, please set 'max_steps' to None or choose a different sampler type.")
+
         # --- Start of the ACID method ---
 
         # Setup and data validation done in data class and applies skips
@@ -926,14 +936,21 @@ class Acid:
             
             ctx = mp.get_context("fork")
             pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
-            log_prob_fn = mcmc._mp_log_probability
+            log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
+            ptform = mcmc._mp_ptform
         else:
             MCMC = mcmc.MCMC(self.data)
-            log_prob_fn = MCMC
-        
+            log_prob = MCMC if self.config.sampler_type == "emcee" else MCMC.dynesty_logprob
+            ptform = MCMC.ptform
+
         with pool_context as pool:
-            self.sampler = EnsembleSampler(log_prob_fn=log_prob_fn, pool=pool, **sampler_kwargs)
-            self.sampler.run_mcmc(**mcmc_kwargs)
+            if self.config.sampler_type == "emcee":
+                self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
+                self.sampler.run_mcmc(**mcmc_kwargs)
+            else:
+                import dynesty
+                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool)
+                self.sampler.run_nested(print_progress=self.config.verbose>1)
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """
