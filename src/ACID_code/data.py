@@ -223,6 +223,7 @@ class Config:
 
     #: Property list for error handling
     properties = ["verbose", "masking_lines"]
+    _properties = ["_verbose", "_masking_lines"]
 
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
     data_attributes = ["linelist", "velocities"]
@@ -240,6 +241,23 @@ class Config:
         if name in self.defaults:
             return self.defaults[name]
         raise AttributeError(f"'Config' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self.data_attributes:
+            raise AttributeError(self.data_attributes_input_str.format(name, name, value))
+
+        if value is None:
+            # If value is None, do not set the attribute
+            return
+
+        if name in self._properties or name in self.defaults:
+            super().__setattr__(name, value)
+            return
+
+        raise AttributeError(
+            f"'Config' object has no attribute '{name}', "
+            f"valid attributes are: {list(self.defaults.keys())}"
+        )
 
     def __repr__(self) -> str:
         full_dict = self.to_dict()
@@ -270,7 +288,7 @@ class Config:
             if k in self.data_attributes:
                 raise AttributeError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
-            if k not in self.defaults:
+            if k not in self.defaults and k not in self._properties:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
                 # If input is None, continue, None always makes no change to current value/default
@@ -491,7 +509,7 @@ class Data:
     #: setup_time (float) - The time taken for initialization
     setup_time         : Optional[float] = 0  # time taken for initialization
     #: mcmc_time (float) - The time taken for MCMC sampling
-    mcmc_time          : Optional[float] = 0  # time taken for 
+    mcmc_time          : Optional[float] = 0  # time taken for MCMC sampling
     #: results_time (float) - The time taken to get the final profiles
     results_time       : Optional[float] = 0 
     #: total_time (float) - The total time for the full run
