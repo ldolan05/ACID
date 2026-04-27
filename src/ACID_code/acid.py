@@ -115,11 +115,11 @@ class Acid:
         # Initialise the data class to store calculations in ACID        
         if data is not None:
             if isinstance(data, DataList):
-                data = data[order]
+                self.data = data[order]
             else:
                 self.data = data
         else:
-            self.data = Data()
+            self.data = Data() # generates also a config on initilisation
 
         # If a config is inputted, this will overwrite any config values already in the data class, 
         # otherwise, the config values in the data class will be used and updated by any inputs to the init or ACID method. 
@@ -168,15 +168,9 @@ class Acid:
             # else: user may define a seed at the top of their seed, so can use that
         # else: seed already in config, so seed would already have been set when put in
 
-        # Default order range for ACID, can be updated in ACID_HARPS. Eventually will add option to add this to inputs
-        self.config.order_range = order_range if order_range is not None else self.config.order_range
-        self.config.order = order if order is not None else self.config.order
-
-        # Save config to data class
-        self.data.config = self.config
-
-        # Determine if running in SLURM environment, independent of any previous configs
-        self.slurm = "SLURM_JOB_ID" in os.environ
+        # Set default order and order range for ACID, config handles if either of these are None
+        self.config.order_range = order_range
+        self.config.order = order
 
         return
 
@@ -350,11 +344,11 @@ class Acid:
         ValueError
             If other input arguments do not conform to the expected formats and requirements.
         """
+        # --- Setup and validation ---
+
         init_t0 = time.time()
         if self.config.verbose>1:
             print('Initialising...')
-        # Setup and data validation done in data class and applies skips
-        self.data.set_inputs(wavelengths, flux, errors, sn, skips)
 
         # Check for any potential conflicts in input arguments that are meant for the class initialisation.
         overlap = self._INIT_KEYS & kwargs.keys()
@@ -378,6 +372,7 @@ class Acid:
             "pix_chunk"             : pix_chunk,
             "dev_perc"              : dev_perc,
             "n_sig"                 : n_sig,
+            "skips"                 : skips,
             "parallel"              : parallel,
             "cores"                 : cores,
             "nwalkers"              : nwalkers,
@@ -401,6 +396,11 @@ class Acid:
                 # This doesn't work, needs serious modifications to make work, so just run serially for now
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
+
+        # --- Start of the ACID method ---
+
+        # Setup and data validation done in data class and applies skips
+        self.data.set_inputs(wavelengths, flux, errors, sn)
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -1036,7 +1036,7 @@ class Acid:
             backend = self.sampler.backend # This includes previous seed
 
         if self.config.cores is None:
-            if self.slurm:
+            if "SLURM_JOB_ID" in os.environ:
                 self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.config.cores = os.cpu_count()
@@ -1137,6 +1137,7 @@ class Acid:
 
     @property
     def sampler(self):
+        """Returns the sampler stored in the Data class."""
         return self.data.sampler
 
     @sampler.setter
