@@ -12,7 +12,7 @@ from .lsd import LSD
 from . import mcmc
 from . import utils
 from .data import Data
-from .utils import IntLike
+from .utils import IntLike, Scalar
 #TODO: utils.set_dict_defaults for plots
 
 warnings.filterwarnings("ignore")
@@ -732,11 +732,11 @@ class Result:
             # else: continues to update the sampler and internal variables based on new sampler input
         self.sampler = sampler if sampler is not None else self.sampler
         if self.sampler is None:
-            if _method_name is None:
+            if _method_name is not None:
                 error_msg = f"Cannot run {_method_name} without a sampler, please pass in a sampler to the method or during initialisation."
             else:
                 error_msg = "Cannot initiate sampler without a sampler stored in the instance or passed as a parameter, please pass in a sampler "
-            raise ValueError(error_msg)
+            raise AttributeError(error_msg)
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
@@ -744,7 +744,7 @@ class Result:
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
             self.tau = self.sampler.get_autocorr_time(quiet=True)
-        
+
         self.converged = True
         if self.data.nsteps < 50 * np.max(self.tau):
             self.converged = False
@@ -797,10 +797,10 @@ class Result:
 
     @sampler.setter
     def sampler(self, value: EnsembleSampler|None) -> None:
+        """Sets the sampler in the data class."""
         self.data.sampler = value
 
-    # TODO: add a sampler size limit if possible
-    def save(self, filename:str="result.pkl", store_sampler:bool=True) -> None:
+    def save(self, filename:str="result.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
         """Saves the Result object to a pickle file.
 
         Parameters
@@ -811,11 +811,16 @@ class Result:
             Whether to store the sampler backend in the pickle file. If False, 
             the sampler will not be stored, and the Result object will not be able to 
             continue sampling or plot walkers/corner plots
+        size_limit : Scalar | None, optional
+            A hard size limit to the sampler in GB.
+            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
+            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
+            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
 
         # Use the Data class's save method to handle saving, 
         # which will handle the sampler backend appropriately based on the store_sampler flag
-        self.data.save(filename, store_sampler=store_sampler)
+        self.data.save(filename, store_sampler=store_sampler, size_limit=size_limit)
 
         if getattr(self, "config", None) is not None and self.config.verbose > 1:
             print(f"Result object saved to {filename}")

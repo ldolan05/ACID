@@ -145,7 +145,6 @@ class MaskingLines:
             final_dict[name] = {"lines": np.array(lines), "widths": np.array(widths)}
         return final_dict
 
-#TODO: Tests for config updates, attribute access and error handling
 @beartype
 class Config:
     """The main class for storing ACID configuration settings, with methods to plot and save/load the configuration state."""
@@ -480,10 +479,7 @@ class Data:
     #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
     nsteps            : Optional[int]  = 0
 
-    #: The samples are stored as an array of shape (nwalkers, nsteps, ndim), and not as an emcee sampler object to save memory.
-    #: It has already had the standard burn-in and thinning applied. If the user wants to use their own thinning and burn-in,
-    #: they must store the sampler with the result object by configuring the output.
-    # TODO: samples not currently used in result, check again why I did the below
+    #: The sampler object stored as a class, to be used in Acid or Result as needed, when saved to a file, only the backend is saved and reinitialised by the load function
     sampler  : Optional[EnsembleSampler] = None # stored ensemble sampler
     #: A flag for whether the profiles have been fully calculated to avoid recalculating
     complete : bool                      = False # is set to True when the profiles and combined_profile have been fully calculated
@@ -1036,7 +1032,7 @@ class Data:
             plt.savefig(f"{save_fig}/forward_model.png")
         plt.show()
 
-    def save(self, filename:str="data.pkl", store_sampler:bool=True) -> None:
+    def save(self, filename:str="data.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
         """
         Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
@@ -1048,8 +1044,13 @@ class Data:
         store_sampler : bool
             Whether to store the MCMC sampler object in the data object. This is recommended for determinstic_profile=True as the sampler is
             quite small, otherwise, you should disable this and avoid using Result methods requiring the sampler.
+        size_limit : Scalar | None, optional
+            A hard size limit to the sampler in GB.
+            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
+            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
+            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
-        payload = self.to_dict(store_sampler) # generates a dictionary of the data object for easy pickling
+        payload = self.to_dict(store_sampler, size_limit) # generates a dictionary of the data object for easy pickling
 
         with open(filename, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -1076,7 +1077,7 @@ class Data:
         # Initialise a new Data object and update it with the payload dictionary
         return cls().from_dict(payload)
 
-    def to_dict(self, store_sampler:bool=True) -> dict[str, Any]:
+    def to_dict(self, store_sampler:bool=True, size_limit:Scalar|None=1) -> dict[str, Any]:
         """
         Converts the data object to a dictionary payload for saving. This is used internally in the save method, 
         but can also be used for debugging or other purposes.
@@ -1085,7 +1086,22 @@ class Data:
         ----------
         store_sampler : bool, optional
             Whether to include the MCMC sampler in the dictionary payload, by default True.
+        size_limit : Scalar | None, optional
+            A hard size limit to the sampler in GB.
+            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
+            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
+            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
+        # Check if we should store the sampler based on the store_sampler flag and size limit
+        if size_limit is not None and self.sampler is not None:
+            sampler_size = utils.sampler_nbytes(self.sampler) / 1024**3
+
+            if sampler_size > size_limit:
+                if store_sampler and self.config.verbose > 0:
+                    print(f"Warning: Sampler size ({sampler_size:.2f} GB) exceeds "
+                          f"the size limit ({size_limit} GB). Sampler will not be stored.")
+                store_sampler = False
+
         payload: dict[str, Any] = {}
         for f in fields(self):
             name = f.name
@@ -1595,7 +1611,8 @@ class DataList:
         use_index_mapping : bool                 = True,
         worker            : IntLike|None         = None,
         nworkers          : IntLike|None         = None,
-        store_sampler     : bool                 = False,
+        store_sampler     : bool                 = True,
+        size_limit        : Scalar|None          = 1,
         allow_overwrite   : bool                 = False,
         overwrite_kwargs  : bool                 = False,
         **kwargs,
@@ -1619,8 +1636,14 @@ class DataList:
         nworkers : :py:type:`IntLike` | None, optional
             The total number of workers to use to split the orders. See the "worker" parameter for more details. Default is None.
         store_sampler : bool, optional
-            If True, the sampler object from the ACID run will be stored in the data pickles. This will take up much more disk space, but allow
-            for use of the :py:class:`Result` methods requiring the sampler attribute. Default is False.
+            If True, the sampler object from the ACID run will be stored in the data pickles. This will take up more disk space, but allow
+            for use of the :py:class:`Result` methods requiring the sampler attribute.
+            We recommend leaving this on True if using deterministic sampling, otherwise set to False. Default is True.
+        size_limit : Scalar | None, optional
+            A hard size limit to the sampler in GB.
+            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
+            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
+            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         allow_overwrite : bool, optional
             If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
             that already have result pickles in the save_dir.
@@ -1722,12 +1745,12 @@ class DataList:
                 continue
 
             if self.save_dir is not None:
-                result.save(save_path, store_sampler=store_sampler)
+                result.save(save_path, store_sampler=store_sampler, size_limit=size_limit)
         return
 
     def save(self, save_dir:str|None=None) -> None:
         """
-        Saves the DataList to a pickle file. 
+        Saves the DataList to a pickle file. The samplers, if set to be stored in run_ACID, are stored separately in their own directory and loaded separately on load.
         The pickle file contains a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         The filename is "datalist.pkl". If save_dir is not provided, self.save_dir is used. If that is also None, a ValueError is raised.
 
@@ -1736,13 +1759,12 @@ class DataList:
         save_dir : str | None, optional
             The directory to save the DataList pickle file. If None, self.save_dir is used. Default is None.
         """
-        # TODO: Add DataList handling in tests.py
         d = {}
         if save_dir is not None:
             self.save_dir = save_dir
         if self.save_dir is None:
             raise ValueError("No save path provided and save_dir was not set.")
-        d["dict_list"] = [data.to_dict() for data in self.data_list]
+        d["dict_list"] = [data.to_dict(store_sampler=False) for data in self.data_list]
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
         d["save_dir"] = self.save_dir
         d["verbose"] = self.verbose

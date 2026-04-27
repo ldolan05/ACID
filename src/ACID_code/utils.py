@@ -664,3 +664,16 @@ def autocorr_new(y, c=5.0):
     taus = 2.0 * np.cumsum(f) - 1.0
     window = auto_window(taus, c)
     return float(taus[window])
+
+def sampler_nbytes(sampler) -> IntLike:
+    if hasattr(sampler, "nbytes"):
+        return sampler.nbytes
+    elif hasattr(sampler.backend, "nbytes"):
+        return sampler.backend.nbytes
+    else:
+        nbytes = 0
+        for name in ("chain", "log_prob", "accepted", "blobs"):
+            arr = getattr(sampler.backend, name, None)
+            if arr is not None and hasattr(arr, "nbytes"):
+                nbytes += arr.nbytes
+        return nbytes
