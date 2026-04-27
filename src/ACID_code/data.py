@@ -652,11 +652,11 @@ class Data:
 
     def set_inputs(
         self,
-        input_wavelengths: Optional[np.ndarray] = None,
-        input_flux:        Optional[np.ndarray] = None,
-        input_errors:      Optional[np.ndarray] = None,
-        input_sn:          Optional[np.ndarray] = None,
-        skips:             int                  = 1,
+        input_wavelengths: Array1D|Array2D|None        = None,
+        input_flux:        Array1D|Array2D|None        = None,
+        input_errors:      Array1D|Array2D|None        = None,
+        input_sn:          Array1D|Array2D|Scalar|None = None,
+        skips:             IntLike|None                = None,
     ) -> None:
         """Sets the input data for the ACID class. This is used to initialize the data object with the raw spectra,
         and to validate the arguments (previously done within the ACID function).
@@ -671,7 +671,9 @@ class Data:
         input_sn : np.ndarray, optional
             Signal-to-noise array for the input spectra, by default None
         skips : int, optional
-            Number of pixels to skip when processing the spectra, by default 1 (no skipping)
+            Allows you to set and override the Config value for skips if skips is not None.
+            This allows the inputs to only set one in every skips pixels and is only recommended for testing.
+            By default None, and uses the Config default value (1, no skipping).
         """
         # Check if inputs already exist, use a key to name dictionary map to get boolean for if any/all exist for following logic checks
         input_keys = ["wavelengths", "flux", "errors"]
@@ -707,12 +709,23 @@ class Data:
             if not all_inputs_not_none:
                 raise ValueError("input_wavelengths, input_flux, and (input_errors or input_sn) must be provided either as arguments " \
                                  "or in the form of a Data object.")
+        
+        # First check we have not received len=0 or len=1 for wavelengths and flux so that they do not collapse to 0 dimensions on squeezing
+        if input_wavelengths is not None and len(input_wavelengths) <= 1:
+            raise ValueError("input_wavelengths must have more than 1 value to be valid.")
+        if input_flux is not None and len(input_flux) <= 1:
+            raise ValueError("input_flux must have more than 1 value to be valid.")
+        if input_errors is not None and len(input_errors) <= 1:
+            raise ValueError("input_errors must have more than 1 value to be valid.")
 
         # Convert to arrays, squeeze to remove extra dimensions (as default in legacy inputs)
-        input_wavelengths = np.array(input_wavelengths).squeeze()
-        input_flux = np.array(input_flux).squeeze()
-        input_errors = np.array(input_errors).squeeze() if input_errors is not None else None
-        input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
+        try:
+            input_wavelengths = np.array(input_wavelengths).squeeze()
+            input_flux = np.array(input_flux).squeeze()
+            input_errors = np.array(input_errors).squeeze() if input_errors is not None else None
+            input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
+        except:
+            raise ValueError("There was an error converting the input wavelengths, flux, errors, or SN to numpy arrays. Exception message: \n" + tb.format_exc() + "\n")
 
         # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
         if input_errors is not None:
@@ -743,6 +756,8 @@ class Data:
 
         # Ensure now that the SN becomes just a single value per frame
         if input_sn.ndim == input_flux.ndim:
+            if self.config.verbose > 1:
+                print("Per pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
             # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
             input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
         elif input_sn.ndim != input_flux.ndim-1:
@@ -770,9 +785,10 @@ class Data:
         input_errors = np.take_along_axis(input_errors, sort_idx, axis=-1)
 
         # Apply skips, this just skips some data for testing and faster runs, but real runs should always leave skips=1
-        input_wavelengths = input_wavelengths[:, ::skips]
-        input_flux       = input_flux[:, ::skips]
-        input_errors     = input_errors[:, ::skips]
+        self.config.skips = skips # no change if skips is None
+        input_wavelengths = input_wavelengths[:, ::self.config.skips]
+        input_flux       = input_flux[:, ::self.config.skips]
+        input_errors     = input_errors[:, ::self.config.skips]
 
         # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
         # This checks basically if self.wavelengths["input"] is the same as input_wavelengths, and same for flux and errors, if they exist. 
