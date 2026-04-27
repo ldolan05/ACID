@@ -8,6 +8,7 @@ from math import log10, floor
 from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
+from contextlib import nullcontext
 from . import utils, mcmc
 from .lsd import LSD
 from .result import Result
@@ -910,42 +911,33 @@ class Acid:
 
         # Get default sampler kwargs from initial state
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
+        pool_context = nullcontext(None)
 
         if self.config.parallel:
             utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
 
             if self.config.verbose>1:
                 print(f"Using {self.config.cores} cores for MCMC")
-
-            # For some reason, unspecified pooling as was before (as in case of windows in the else statement)
-            # leds to a hung computer. So specify mp.get_context required, default is spawn, but spawn
-            # causes multiple instances of this script to rerun, causing alpha matrix calculation to be redone
-            # in each child process. Therefore, fork, which is legacy mp behavior on unix, is used.
+            
             ctx = mp.get_context("fork")
-            with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
-                self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
-                self.sampler.run_mcmc(**mcmc_kwargs)
-
+            pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
+            log_prob_fn = mcmc._mp_log_probability
         else:
             MCMC = mcmc.MCMC(self.data)
-            self.sampler = EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+            log_prob_fn = MCMC
+        
+        with pool_context as pool:
+            self.sampler = EnsembleSampler(log_prob_fn=log_prob_fn, pool=pool, **sampler_kwargs)
             self.sampler.run_mcmc(**mcmc_kwargs)
 
-    def run_mcmc_until_converged(
-        self,
-        max_steps:IntLike,
-        state=None,
-        ) -> None:
+    def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """
         Runs MCMC until convergence is reached. A purely class method that I do not recommend you use directly. Use
         Acid.ACID(run_mcmc=True) to run MCMC for the first pass if not already done, which will skip already performed calculations.
         Otherwise, use Acid.continue_sampling or Result.continue_sampling if you have already run MCMC and want to continue.
         """
-
-        # Get sampler kwargs for the first run based on initial state, then update nsteps in mcmc_kwargs for subsequent runs
+        # Get sampler and stopping criterion kwargs for the first run based on initial state, then update nsteps in mcmc_kwargs for subsequent runs
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
-
-        # Set the stopping arguments to save space
         stopping_criterion_args = (self.config.min_checks, self.config.min_tau_factor, self.config.tau_tol)
 
         # Set variables to be updated within the convergence loop
@@ -954,53 +946,34 @@ class Acid:
         max_samples = max_steps // self.config.check_interval
         last_tolerance = np.inf
         last_neff = 0
+        condition = False
+        pool_context = nullcontext(None)
 
         if self.config.parallel:
+            utils.configure_mp_environ(os)
 
-            utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing, mainly only for HPC environments
+            if self.config.verbose > 1:
+                print(f"Using {self.config.cores} cores for MCMC")
 
             ctx = mp.get_context("fork")
-            with ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,)) as pool:
-                self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=mcmc._mp_log_probability)
-                for i in range(max_samples):
-                    tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
-                    desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
-                    mcmc_kwargs["progress_kwargs"] = desc_dict
-                    self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
-                    
-                    mcmc_kwargs["initial_state"] = None # only use initial state for first run
-                    step_number += self.config.check_interval
-
-                    try:
-                        # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
-                        # It scales with the number of steps, so thin by the number of steps taken divided by 
-                        # the check interval to keep the same number of samples for get_autocorr_time to process.
-                        with open(os.devnull, "w") as devnull, \
-                            contextlib.redirect_stdout(devnull), \
-                            contextlib.redirect_stderr(devnull): # Suppresses outputs from get_autocorr_time
-                            tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
-                    except emcee.autocorr.AutocorrError:
-                        continue
-
-                    tau_list.append(tau)
-                    # The stopping criterion function below handles the logic for determining stopping condition
-                    condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
-                    if condition is True and self.config.verbose > 1:
-                        print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
-                        break
+            pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
+            log_prob_fn = mcmc._mp_log_probability
         else:
-            # Comments for the non-parallel version are mostly the same as for the parallel version, see the above if confused
-            MCMC = mcmc.MCMC(self.data)
-            self.sampler = EnsembleSampler(**sampler_kwargs, log_prob_fn=MCMC)
+            log_prob_fn = mcmc.MCMC(self.data)
+
+        with pool_context as pool:
+            self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn)
 
             for i in range(max_samples):
                 tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
-                desc_dict = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
-                mcmc_kwargs["progress_kwargs"] = desc_dict
+                mcmc_kwargs["progress_kwargs"] = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                 self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
                 mcmc_kwargs["initial_state"] = None
                 step_number += self.config.check_interval
 
+                # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
+                # It scales with the number of steps, so thin by the number of steps taken divided by 
+                # the check interval to keep the same number of samples for get_autocorr_time to process.
                 try:
                     with open(os.devnull, "w") as devnull, \
                         contextlib.redirect_stdout(devnull), \
@@ -1008,20 +981,23 @@ class Acid:
                         tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
                 except emcee.autocorr.AutocorrError:
                     continue
-
                 tau_list.append(tau)
-                condition, last_tolerance, last_neff = MCMC._get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
-                if condition is True and self.config.verbose > 1:
-                    print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
+
+                # The stopping criterion function below handles the logic for determining stopping condition
+                condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
+
+                if condition is True:
+                    if self.config.verbose > 1:
+                        print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                     break
-        
+
         # Warn if convergence not reached after either parallel or non-parallel version
         if self.config.verbose > 1 and condition is False:
-                print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
-                        f"Consider increasing max_steps.")
-        
-        # Update step_number once mcmc has finished in both cases
-        self.step_number = step_number
+            print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
+                  f"Consider increasing max_steps.")
+
+        self.step_number = step_number # Update step number once mcmc has finished
+        return
 
     def _get_sampler_kwargs(self, nsteps, state=None):
         # Gets sampler kwargs for the emcee EnsembleSampler and run_mcmc functions based on the current state of the
