@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
-Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["ndim", IsEqual[0]]]
+Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["size", IsEqual[1]]]
 Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
@@ -664,3 +664,16 @@ def autocorr_new(y, c=5.0):
     taus = 2.0 * np.cumsum(f) - 1.0
     window = auto_window(taus, c)
     return float(taus[window])
+
+def sampler_nbytes(sampler) -> IntLike:
+    if hasattr(sampler, "nbytes"):
+        return sampler.nbytes
+    elif hasattr(sampler.backend, "nbytes"):
+        return sampler.backend.nbytes
+    else:
+        nbytes = 0
+        for name in ("chain", "log_prob", "accepted", "blobs"):
+            arr = getattr(sampler.backend, name, None)
+            if arr is not None and hasattr(arr, "nbytes"):
+                nbytes += arr.nbytes
+        return nbytes

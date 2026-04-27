@@ -9,7 +9,7 @@ some of which were highlighted in the Quickstart tutorial.
 Continuing sampling
 -------------------
 
-If you wish to continue sampling the MCMC after the initial run of ACID, you can do so using the :py:method:`ACID_code.Result.continue_sampling` method.
+If you wish to continue sampling the MCMC after the initial run of ACID, you can do so using the :py:function:`ACID_code.Result.continue_sampling` method.
 This method takes the same keyword arguments as the nsteps argument in ACID, allowing you to specify how many additional steps to run.
 
 .. code-block:: python

@@ -115,11 +115,11 @@ class Acid:
         # Initialise the data class to store calculations in ACID        
         if data is not None:
             if isinstance(data, DataList):
-                data = data[order]
+                self.data = data[order]
             else:
                 self.data = data
         else:
-            self.data = Data()
+            self.data = Data() # generates also a config on initilisation
 
         # If a config is inputted, this will overwrite any config values already in the data class, 
         # otherwise, the config values in the data class will be used and updated by any inputs to the init or ACID method. 
@@ -146,8 +146,8 @@ class Acid:
                 print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
                 f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
         if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
-            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy arguments for inputting a linelist, " \
-                             "please use 'linelist' instead.")
+            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
+                             "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
         # Anything left in kwargs is invalid
         if kwargs:
             raise TypeError(
@@ -168,17 +168,9 @@ class Acid:
             # else: user may define a seed at the top of their seed, so can use that
         # else: seed already in config, so seed would already have been set when put in
 
-        # Default order range for ACID, can be updated in ACID_HARPS. Eventually will add option to add this to inputs
-        self.config.order_range = order_range if order_range is not None else self.config.order_range
-        self.config.order = order if order is not None else self.config.order
-
-        # Save config to data class
-        self.data.config = self.config
-
-        # Determine if running in SLURM environment, independent of any previous configs
-        self.slurm = "SLURM_JOB_ID" in os.environ
-
-        self.sampler = None # sampler is a uniquely ACID attribute, so set here as needed in Results class
+        # Set default order and order range for ACID, config handles if either of these are None
+        self.config.order_range = order_range
+        self.config.order = order
 
         return
 
@@ -352,11 +344,11 @@ class Acid:
         ValueError
             If other input arguments do not conform to the expected formats and requirements.
         """
+        # --- Setup and validation ---
+
         init_t0 = time.time()
         if self.config.verbose>1:
             print('Initialising...')
-        # Setup and data validation done in data class and applies skips
-        self.data.set_inputs(wavelengths, flux, errors, sn, skips)
 
         # Check for any potential conflicts in input arguments that are meant for the class initialisation.
         overlap = self._INIT_KEYS & kwargs.keys()
@@ -380,6 +372,7 @@ class Acid:
             "pix_chunk"             : pix_chunk,
             "dev_perc"              : dev_perc,
             "n_sig"                 : n_sig,
+            "skips"                 : skips,
             "parallel"              : parallel,
             "cores"                 : cores,
             "nwalkers"              : nwalkers,
@@ -403,6 +396,11 @@ class Acid:
                 # This doesn't work, needs serious modifications to make work, so just run serially for now
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
+
+        # --- Start of the ACID method ---
+
+        # Setup and data validation done in data class and applies skips
+        self.data.set_inputs(wavelengths, flux, errors, sn)
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -540,10 +538,10 @@ class Acid:
         initial_state = np.array(initial_state).T
 
         ### ACID initialialised ###
-        self.data.initialisation_time += time.time() - init_t0
+        self.data.setup_time += time.time() - init_t0
         mcmc_t0 = time.time()
         if self.config.verbose>1:
-            print('Initialised in %ss'%round((self.data.initialisation_time), 3))
+            print('Initialised in %ss'%round((self.data.setup_time), 3))
         if self.config.verbose>2:
             print('ACID Configuration before MCMC run:')
             print(f"Polynomial order: {self.config.poly_ord}")
@@ -1032,12 +1030,13 @@ class Acid:
         sampler_verbosity = True if self.config.verbose>1 else False
         backend = None
         if state is None:
-            if not hasattr(self, 'sampler'):
-                raise ValueError("No existing sampler found. Please run 'ACID' first or provide a state.")
+            if self.sampler is None:
+                raise ValueError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
+                                 "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
             backend = self.sampler.backend # This includes previous seed
 
         if self.config.cores is None:
-            if self.slurm:
+            if "SLURM_JOB_ID" in os.environ:
                 self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
             else:
                 self.config.cores = os.cpu_count()
@@ -1063,11 +1062,13 @@ class Acid:
 
     def continue_sampling(
         self,
-        sampler,
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
-        max_steps_kwards : dict|None    = None,
-        return_sampler   : bool         = True
+        max_steps_kwargs : dict|None    = None,
+        parallel         : bool         = None,
+        cores            : int          = None,
+        moves            : dict         = None,
+        return_sampler   : bool         = False,
         ) -> EnsembleSampler | None:
         """
         Continue MCMC sampling for additional steps. This should be called in Result class by the user.
@@ -1075,35 +1076,37 @@ class Acid:
 
         Parameters
         ----------
-        sampler : emcee.EnsembleSampler
-            The existing MCMC sampler to continue sampling from.
         nsteps : :py:type:`IntLike`, optional
             Number of additional steps to run the MCMC for.
         max_steps : :py:type:`IntLike`, optional
             Maximum number of steps to run the MCMC for in total (including previous steps).
             If specified, the MCMC will stop if this number of steps is reached even if convergence has not been reached, by default None.
             If input, nsteps is ignored.
-        max_steps_kwards : dict, optional
+        max_steps_kwargs : dict, optional
             Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
             The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
             ignored.
+        parallel : bool, optional
+            Overwrites config with whether to run the MCMC in parallel. If None, uses already existing configuration. Default is None.
+        cores : int, optional
+            Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
+        moves : dict, optional
+            Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
+            Default is None. See :py:function:`Acid.ACID` for format.
         return_sampler : bool, optional
             Whether to return the sampler after continuing sampling. Default is True.
-
 
         Returns
         -------
         emcee.EnsembleSampler | None
             The MCMC sampler after running for the additional steps, or None if return_sampler is False.
         """
-        assert self.data.alpha is not None, "Data instance must have alpha matrix calculated to continue sampling."
-
-        self.sampler = sampler
-        self.config = self.data.config
+        # Update config with any new parallel, cores, or moves settings for the continued sampling
+        self.config.update_hipri(parallel=parallel, cores=cores, moves=moves)
 
         if max_steps is not None:
-            if max_steps_kwards is not None:
-                self.config.update_hipri(**max_steps_kwards)
+            if max_steps_kwargs is not None:
+                self.config.update_hipri(**max_steps_kwargs)
             self.run_mcmc_until_converged(max_steps, state=None) # continue from current state
             self.data.nsteps += self.step_number
         else:
@@ -1131,6 +1134,15 @@ class Acid:
         if self is None:
             raise ValueError("Must be called on an instance or passed an instance explicitly")
         return Result(self)
+
+    @property
+    def sampler(self):
+        """Returns the sampler stored in the Data class."""
+        return self.data.sampler
+
+    @sampler.setter
+    def sampler(self, value):
+        self.data.sampler = value
 
 # All code below is just to ensure backward compatibility with previous ACID versions
 def ACID(*args, **kwargs):

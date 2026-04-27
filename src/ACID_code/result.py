@@ -12,8 +12,8 @@ from .lsd import LSD
 from . import mcmc
 from . import utils
 from .data import Data
-from .data import Config
-from .utils import FloatLike, IntLike, Scalar, Array1D, Array2D
+from .utils import IntLike, Scalar
+#TODO: utils.set_dict_defaults for plots
 
 warnings.filterwarnings("ignore")
 
@@ -21,56 +21,33 @@ def _require_profiles(method):
     # Make sure all results are processed before calling method
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if self.profiles is None:
+        if not self.data.complete: # complete is flag for if profiles have been made
             name = method.__qualname__
-            if self.sampler is not None and self.data is not None:
+            if self.sampler is not None:
                 if self.config.verbose>0:
                     print(f"Note: The Result object was created without the profiles processed. " \
                         f"Running {name} requires all results to be processed, " \
-                        "so process_results() will be called automatically...")
+                        "so process_results() will now be called...")
                 self.process_results()
             else:
                 error = f"Cannot call {name}. The profiles attribute is not available, and no " \
-                "sampler and data objects are available to process results. Please pass an Acid " \
-                "object after running ACID to the results init."
+                "sampler object is available to process results. Please pass an Acid/Data " \
+                "instance after running ACID to the results init."
                 raise ValueError(error)
-        return method(self, *args, **kwargs)
-    return wrapper
-
-def _require_data(method):
-    # Make sure Data object is available before calling method
-    @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
-        if self.data is None:
-            name = method.__qualname__
-            error = f"Cannot call {name}. The Data object is not available in this " \
-            "Result instance."
-            raise ValueError(error)
         return method(self, *args, **kwargs)
     return wrapper
 
 def _require_sampler(method):
     # Make sure sampler object is available before calling method
-    # TODO: Make save for a thinned chain, discard sampler unless store_sampler is True
     sig = inspect.signature(method)
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         bound = sig.bind_partial(self, *args, **kwargs)
-
-        # A specific carvout for the save function
-        store_sampler_in_args = "store_sampler" in sig.parameters
-        if store_sampler_in_args is True:
-            if bound.arguments.get("store_sampler", True) is False:
-                return method(self, *args, **kwargs)
-
-        sampler_in_args = "sampler" in sig.parameters
         inputted_sampler = bound.arguments.get("sampler", None)
-
-        self.initiate_sampler(inputted_sampler if sampler_in_args else None)
-
+        self.initiate_sampler(inputted_sampler, _method_name=method.__qualname__)
         return method(self, *args, **kwargs)
     return wrapper
-# TODO: fix what is going on with _require_sampler/data/profiles, recent updates have made some of these redundant
+
 @beartype
 class Result:
     """
@@ -81,7 +58,7 @@ class Result:
 
     def __init__(
             self,
-            Acid_or_Data_or_Sampler,
+            data                    : Data|object,
             sampler                 : EnsembleSampler|None  = None,
             process_results         : bool                  = True,
             verbose                 : IntLike|bool|str|None = None,
@@ -91,16 +68,14 @@ class Result:
 
         Parameters
         ----------
-        Acid_or_Data_or_Sampler : :py:class:`Acid` | :py:class:`Data` | :py:class:`emcee.EnsembleSampler`
-            An Acid object, Data object (contained in Acid class), or sampler object. If an Acid 
+        data : :py:class:`Data` | :py:class:`Acid`
+            An Acid object or Data object (contained in Acid class). If an Acid 
             object is provided, all other arguments are taken from there. If a Data object is 
             provided, a sampler can be provided in the second argument. If a sampler object 
             is provided, it will be used as the sampler, but all other attributes will need 
             to be set manually for the Result object to be fully functional.
         sampler : :py:class:`emcee.EnsembleSampler`, optional
-            A sampler object to use if the Data object was provided. If an Acid object 
-            was provided, the sampler will be taken from there. If a sampler object was
-            provided in the first argument, this will be ignored (with a warning), by default None
+            Sets and overwrites the sampler in the Data object with this if provided, by default None. 
         process_results : bool, optional
             Whether to process the results from the Acid object upon initialisation, by default True.
             If False, the profiles attribute will not be available until Result.process_results() is called.
@@ -111,53 +86,43 @@ class Result:
             By default, None.
         verbose : :py:type:`IntLike | bool | str`, optional
             Verbosity level, works exactly the same as :py:class:`Acid`, if not provided
-            defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2)
+            defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2).
+            Overwrites any value passed trough the Data object.
         """
+        # Handle the different possible cases for 1st argument input
+        from .acid import Acid
+        if isinstance(data, Acid):
+            self.data = data.data
+        elif isinstance(data, Data):
+            self.data = data
+        else:
+            raise ValueError(f"First argument must be either an Acid or Data object. Got {type(data)} instead.")
 
-        # Set class variables
-        obj = Acid_or_Data_or_Sampler
-        self.sampler    = None
-        self.data       = None
-        self.profiles   = None
-        self.config     = Config() # default config, will be updated if Acid or Data object is provided
-        self.slurm      = "SLURM_JOB_ID" in os.environ
-
+        # Handle config and verbose options
+        self.config = self.data.config # point Result.config to Data.config to keep them in sync
         self.config.verbose = verbose # property overwrites or handles if verbose input was None
 
-        # Handle the different possible cases for 1st argument input
-        if hasattr(obj, "data") and hasattr(obj, "config") and hasattr(obj, "sampler"):
-            # The above line is only all true if an Acid object (as they are set in initialisation), 
-            # the sampler and data classes do not store all 3
-            acid = obj
-            self.initiate_data(acid.data)
-            self.config = acid.config
-            self.initiate_sampler(acid.sampler)
-        elif isinstance(obj, Data):
-            data = obj
-            self.initiate_data(data)
-            self.config = data.config
-            if sampler is not None:
-                self.initiate_sampler(sampler)
-        elif isinstance(obj, EnsembleSampler):
-            self.initiate_sampler(obj)
-            if self.config.verbose>0:
-                print("Warning: Data object not provided. Result object will not be fully functional.")
-            return
-        else:
-            raise ValueError("First argument must be an Acid object, Data object, or emcee.EnsembleSampler object. "
-                             f"Got {type(obj)} instead.")
+        # By default set sampler_initialiated = False until sampler has been initialised in function so that self.initiate_sampler can be skipped
+        self.sampler_initialiated = False
 
-        # From this point, a Data instance is provided and can be drawn from, but sampler may or may not be provided.
-        # All frames must be available as a Result class variable due to legacy behaviour. Once created, we can point
-        # Data.profiles to Result.profiles to keep them in sync.
-        if process_results and self.data is not None and not self.data.complete:
-            self.process_results() # sets self.data.profiles, and points self.profiles to self.data.profiles
-        else:
-            if self.config.verbose>0:
-                print("Warning: Results not processed. profiles attribute will not be available until " \
-                "Result.process_results() is called.")
+        # Handle the sampler if input, initiate if one exists
+        self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
+        if self.sampler is not None:
+            self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
 
-    @_require_data
+        if not self.data.complete:
+            if process_results:
+                if self.sampler is None:
+                    raise ValueError("Cannot process results without a sampler. Please provide a sampler in the initialisation or set process_results=False.")
+                else:
+                    self.process_results()
+            elif self.config.verbose > 0:
+                print("Warning: Results not processed. Profiles attribute will not be available until " \
+                "Result.process_results() is called or passed through a method.")
+        elif self.sampler is None and self.config.verbose>0:
+            print(f"Warning: No sampler provided or found in Data object. \n" \
+            f"Some methods will not work unless a sampler is provided as a parameter or if Result.initiate_sampler(sampler) is called.")
+
     @_require_sampler
     def process_results(self) -> None:
         """
@@ -176,9 +141,9 @@ class Result:
         nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
-        errors = np.max(errors, axis=0) # why?
-        self.poly_cos      = quartiles[1, nvel:]
-        self.poly_cos_err  = errors[nvel:]  
+        errors = np.max(errors, axis=0)
+        poly_cos      = quartiles[1, nvel:]
+        poly_cos_err  = errors[nvel:] # unused for now
 
         if self.config.verbose > 1:
             print('Getting the final profiles...')
@@ -190,7 +155,7 @@ class Result:
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
 
         # First check memory to see if all samples can be used
-        if self.slurm:
+        if "SLURM_JOB_ID" in os.environ:
             available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
             available_memory *= 1e6  # Convert to bytes as in the else statement below
         else:
@@ -214,8 +179,7 @@ class Result:
         # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
         # If there is one frame, then the combined_profile is the same as the single frame profile.
         nframes = len(self.data.flux["input"])
-        self.profiles = np.zeros((nframes, 3, len(self.data.velocities)))
-        self.profiles = [] # switch to list format to add covariance matrix to result
+        profiles = [] # switch to list format to add covariance matrix to result
         for counter in range(nframes+1):
             if counter == 0:
                 flux = np.copy(self.data.flux["combined"])
@@ -242,7 +206,7 @@ class Result:
             # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl = P.polyval(norm_wavelengths, self.poly_cos)
+            mdl = P.polyval(norm_wavelengths, poly_cos)
 
             # correcting continuum
             error = np.sqrt((error/mdl)**2 + (continuum_error/mdl)**2)
@@ -260,14 +224,14 @@ class Result:
             cov_z_f = LSD_profiles.cov_z_F
 
             if counter == 0:
-                self.combined_profile = [profile_f, profile_errors_f, cov_z_f]
+                self.data.combined_profile = [profile_f, profile_errors_f, cov_z_f]
+                self.data.continuum_model = mdl
             else:
-                self.profiles.append([profile_f, profile_errors_f, cov_z_f])
+                profiles.append([profile_f, profile_errors_f, cov_z_f])
 
-        self.data.profiles = self.profiles # point Data.profiles to Result.profiles to keep them in sync
-        self.data.combined_profiles = self.combined_profile
-        self.data.get_profiles_time = time() - t0
-        self.data.full_run_time = self.data.initialisation_time + self.data.mcmc_time + self.data.get_profiles_time
+        self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
+        self.data.results_time = time() - t0
+        self.data.total_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
         self.data.complete = True
 
         return
@@ -281,26 +245,26 @@ class Result:
             # Tuples allow for array-like indexing of the list
             if len(item) == 3:
                 _order, frame, velocity = item
-                return self.profiles[frame][velocity]
+                return self.data.alphaprofiles[frame][velocity]
             elif len(item) == 2:
-                return self.profiles[item[0]][item[1]]
+                return self.data.profiles[item[0]][item[1]]
             elif len(item) == 1:
-                return self.combined_profile[item[0]]
+                return self.data.combined_profile[item[0]]
             else:
                 raise ValueError(f"Tuple indexing must be of length 1, 2, or 3. Got {len(item)} instead.")
         elif isinstance(item, int):
             # Return just the profile or error (or cov_mat) for single int input
             if item < 0 or item > 2:
                 raise ValueError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
-            return self.combined_profile[item]
+            return self.data.combined_profile[item]
         elif isinstance(item, str):
             # Various different options for string inputs, why not
             if "error" in item.lower():
-                return self.combined_profile[1]
+                return self.data.combined_profile[1]
             elif "cov" in item.lower():
-                return self.combined_profile[2]
+                return self.data.combined_profile[2]
             elif "profile" in item.lower():
-                return self.combined_profile[0]
+                return self.data.combined_profile[0]
             else:
                 raise ValueError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
         else:
@@ -309,48 +273,53 @@ class Result:
     @_require_profiles
     def __iter__(self):
         """Allows iterating over the profiles array directly from the Result object."""
-        return iter(self.profiles)
+        return iter(self.data.profiles)
 
     def __repr__(self):
         # Only print out the sampler and data attributes, and whether profiles is available, to avoid printing large arrays
-        return f"Result object with sampler={self.sampler}, data={self.data}, profiles={'available' if self.profiles is not None else 'not available'}"
+        return f"Result object with sampler={self.sampler}, data={self.data}, profiles={'available' if self.data.profiles is not None else 'not available'}"
 
     def __str__(self):
         return self.__repr__()
 
-    @_require_data
     @_require_sampler
     def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler|None=None, **kwargs) -> None:
         """
         Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
-        :py:method:`Acid.continue_sampling` for more details on the parameters that can be passed.
+        :py:function:`Acid.continue_sampling` for more details on the parameters that can be passed.
 
         Parameters
         ----------
-        nsteps : :py:type:`IntLike`, optional
-            Number of additional MCMC steps to run. Passed to Acid.continue_sampling with the stored sampler.
-        max_steps : :py:type:`IntLike`, optional
-            Maximum number of MCMC steps to run, by default None. Passed to Acid.continue_sampling with the stored sampler.
-        max_steps_kwards : dict, optional
-            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
-            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
-            ignored. Passed to Acid.continue_sampling with the stored sampler.
         process_results : bool, optional
             Whether to process the results after continuing sampling, by default True.
             If False, the profiles attribute will not be updated until Result.process_results() is called.
         sampler : emcee.EnsembleSampler | None, optional
             Optionally provide a different sampler to continue sampling from, otherwise,
             takes the sampler from the Result object, by default None
+        nsteps : :py:type:`IntLike`, optional
+            Number of additional MCMC steps to run. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        max_steps : :py:type:`IntLike`, optional
+            Maximum number of MCMC steps to run, by default None. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        max_steps_kwargs : dict, optional
+            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
+            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
+            ignored. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        parallel : bool, optional
+            Overwrites config with whether to run the MCMC in parallel. If None, uses already existing configuration. Default is None.
+            Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        cores : int, optional
+            Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
+            Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        moves : dict, optional
+            Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
+            Default is None. See :py:function:`Acid.ACID` for format. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
         """
         # Note that sampler input updates the sampler stored using the @_require_sampler decorator
-        
-        if type(process_results) is int:
-            raise ValueError("The process_results attribute must be a boolean, not an integer. Did you mean to set nsteps? If so, specificy nsteps=nsteps.")
 
         # Continue sampling using the Acid method
         from .acid import Acid
         acid = Acid(data=self.data) # includes config data
-        self.sampler = acid.continue_sampling(self.sampler, **kwargs)
+        acid.continue_sampling(**kwargs) # updates self.data.sampler (or self.sampler)
 
         self.initiate_sampler(self.sampler) # update internal variables to match new sampler
 
@@ -403,7 +372,7 @@ class Result:
             ax[i].set_ylabel(self.default_param_labels[i])
         ax[-1].legend()
         ax[-1].set_xlabel("Step number")
-        ax[-1].set_xlim(0, self.nsteps)
+        ax[-1].set_xlim(0, self.data.nsteps)
         ax[0].set_title('MCMC Walkers')
         plt.subplots_adjust(hspace=0.05)
         if return_fig:
@@ -497,14 +466,14 @@ class Result:
         labels = utils.set_dict_defaults(labels, default_labels)
 
         # Set useful variables
-        nframes = len(self.profiles)
+        nframes = len(self.data.profiles)
         if fig_ax is None:
             fig, ax = plt.subplots(**subplot_kwargs)
         else:
             fig, ax = fig_ax
 
         # Iterate through and plot frames
-        for f, frame in enumerate(self.profiles):
+        for f, frame in enumerate(self.data.profiles):
             x, y, yerr = self.data.velocities, frame[0], frame[1]
             label_default = f"Frame {f+1}" if nframes > 1 else None
             # Override label in errorbar_kwargs if it is not already set, otherwise use the default label
@@ -573,18 +542,16 @@ class Result:
         wavelengths = self.data.wavelengths["combined"]
         flux = self.data.flux["combined"]
 
-        a, b = utils.get_normalisation_coeffs(wavelengths)
-        profile = utils.flux_to_od(self.combined_profile[0])
-
-        # Get flat_samples which are the same samples used to calculate the final profile
-        continuum_model = P.polyval(wavelengths*a+b, self.poly_cos)
-        model_flux = np.exp(- (self.data.alpha @ profile)) * continuum_model
+        # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
+        # so convert profile back to OD and reconvert to flux for forward model
+        profile = utils.flux_to_od(self.data.combined_profile[0])
+        model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
-        ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
+        ax[0].plot(wavelengths, self.data.continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
         ax[1].plot(wavelengths, model_flux - flux, color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].set_title(labels["title"])
@@ -747,7 +714,7 @@ class Result:
             return fig, ax
         plt.show()
 
-    def initiate_sampler(self, sampler:EnsembleSampler|None) -> None:
+    def initiate_sampler(self, sampler:EnsembleSampler|None, _method_name=None) -> None:
         """
         Initiates the sampler attribute from an external sampler.
 
@@ -755,16 +722,21 @@ class Result:
         ----------
         sampler : :py:class:`emcee.EnsembleSampler`
             An emcee EnsembleSampler object to set as the sampler attribute.
+        _method_name : str, optional
+            Internal parameter used to track which method is calling initiate_sampler, for error messages. 
+            Not intended for user input, by default None.
         """
+        if self.sampler_initialiated:
+            if sampler is None:
+                return # sampler already initiated from initialisation, so skip the rest of the method
+            # else: continues to update the sampler and internal variables based on new sampler input
         self.sampler = sampler if sampler is not None else self.sampler
         if self.sampler is None:
-            raise ValueError("A sampler must be provided in initialisation or in method call")
-        if sampler is None:
-            return # sampler already initiated from initialisation, so skip the rest of the method
-
-        self.ndim = self.sampler.ndim
-        self.nwalkers = self.sampler.nwalkers
-        self.nsteps = self.sampler.get_chain().shape[0]
+            if _method_name is not None:
+                error_msg = f"Cannot run {_method_name} without a sampler, please pass in a sampler to the method or during initialisation."
+            else:
+                error_msg = "Cannot initiate sampler without a sampler stored in the instance or passed as a parameter, please pass in a sampler "
+            raise AttributeError(error_msg)
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
@@ -772,9 +744,9 @@ class Result:
             contextlib.redirect_stdout(devnull), \
             contextlib.redirect_stderr(devnull):
             self.tau = self.sampler.get_autocorr_time(quiet=True)
-        
+
         self.converged = True
-        if self.nsteps < 50 * np.max(self.tau):
+        if self.data.nsteps < 50 * np.max(self.tau):
             self.converged = False
             if self.config.verbose>1:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
@@ -788,33 +760,29 @@ class Result:
             if self.converged:
                 self.burnin = int(3 * np.max(self.tau))
             else:
-                self.burnin = self.nsteps - 1000 # just the last 1000 steps
+                self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
         except:
             if self.config.verbose>0:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
-                f" due to all posterior samples being rejected by prior constraints.\n The resulting profile is likely" \
-                f" wrong. Setting burnin=nsteps-1000, and thin=1.")
-            self.burnin = self.nsteps - 1000 # just the last 1000 steps
+                f" due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
+                f" wrong. Setting defaults: burnin=nsteps-1000, and thin=1.")
+            self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
             self.thin = 1
+        
+        self.burnin = int(np.clip(self.burnin, 0, self.data.nsteps-1)) # ensure burnin is at least 0 and less than total steps
+        self.thin = int(np.clip(self.thin, 1, self.data.nsteps-1)) # ensure thin is at least 1, and not clipping to nsteps
 
-        if self.config is not None:
-            deterministic = self.config.deterministic_profile
-            n_poly_params = self.data.config.poly_ord + 1
-        else: # Make a best guess
-            if self.ndim > 6: # ie we assume a poly order of 5 is the highest anyone would ever want to go
-                deterministic = False
-                n_poly_params = 4
-            else:
-                deterministic = True
-                n_poly_params = self.ndim
-
+        # Below is used for the parameters for the walker and corner plots
+        n_poly_params = self.config.poly_ord + 1
         poly_params = np.arange(-1, -n_poly_params-1, -1).tolist()
+        
+        # Generates labels for the polynomial coefficients, starting from 'a' for the highest order term, and going backwards in the alphabet.
         a=ord('a')
         alph=[chr(i) for i in range(a,a+26)]
         poly_labels = [alph[i] for i in range(n_poly_params)]
         
-        samples = self.sampler.get_chain(thin=int(self.thin), discard=int(self.burnin))
-        if not deterministic:
+        samples = self.sampler.get_chain(thin=self.thin, discard=self.burnin)
+        if not self.config.deterministic_profile:
             max_profile_idx = np.argmax(samples[:,:,:-n_poly_params].mean(axis=(0,1)))
             poly_params.extend([-5, max_profile_idx, 1])
             poly_labels.extend(["$Z_{-1}$", "$Z_{max}$", "$Z_0$"])
@@ -822,30 +790,17 @@ class Result:
         self.default_params = poly_params
         self.default_param_labels = poly_labels
 
-    def initiate_data(self, data:Data) -> None:
-        """Initiates the data attribute from an external Data object.
+    @property
+    def sampler(self) -> EnsembleSampler|None:
+        """Returns the sampler attribute, by default is None if not saved."""
+        return self.data.sampler
 
-        Parameters
-        ----------
-        data : :py:class:`Data`
-            A Data object to set as the data attribute.
-        """
-        self.data = data if data is not None else getattr(self, "data", None)
-        if self.data is None:
-            raise ValueError("A Data object must be provided in initialisation or in method call")
-        if data is None:
-            return # data already initiated from initialisation, so skip the rest of the method
+    @sampler.setter
+    def sampler(self, value: EnsembleSampler|None) -> None:
+        """Sets the sampler in the data class."""
+        self.data.sampler = value
 
-        self.profiles = self.data.profiles
-        self.nsteps     = self.data.nsteps
-
-        # For convenience, let the user call the model without needing to input all required args
-        MCMC_class = mcmc.MCMC(self.data)
-        self.model = MCMC_class.model_function
-
-    @_require_data
-    @_require_sampler # TODO check if necessary
-    def save_result(self, filename:str="result.pkl", store_sampler:bool=True) -> None:
+    def save(self, filename:str="result.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
         """Saves the Result object to a pickle file.
 
         Parameters
@@ -856,27 +811,27 @@ class Result:
             Whether to store the sampler backend in the pickle file. If False, 
             the sampler will not be stored, and the Result object will not be able to 
             continue sampling or plot walkers/corner plots
+        size_limit : Scalar | None, optional
+            A hard size limit to the sampler in GB.
+            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
+            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
+            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
-        state = dict(self.__dict__)
 
-        state["data"] = self.data.to_dict()
-        state["backend"] = dict(self.sampler.backend.__dict__) if store_sampler else None
-        state["model"] = None
-        state["sampler"] = None
-
-        with open(filename, "wb") as f:
-            pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
+        # Use the Data class's save method to handle saving, 
+        # which will handle the sampler backend appropriately based on the store_sampler flag
+        self.data.save(filename, store_sampler=store_sampler, size_limit=size_limit)
 
         if getattr(self, "config", None) is not None and self.config.verbose > 1:
             print(f"Result object saved to {filename}")
 
     @classmethod
-    def load_result(cls, result_object:str|Result="result.pkl") -> Result:
-        """Loads a Result object from a pickle file or from an object with the same attributes as a saved Result object.
+    def load(cls, result:str|Result|Data="result.pkl") -> Result:
+        """Loads a Result object from a pickle file or from a Data/Result object.
 
         Parameters
         ----------
-        result_object : str | :py:class:`Result`, optional
+        result : str | :py:class:`Result` | :py:class:`Data`, optional
             A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
 
         Returns
@@ -884,41 +839,9 @@ class Result:
         :py:class:`Result`
             A Result object loaded from the pickle file or from the provided object.
         """
-        if isinstance(result_object, str):
-            with open(result_object, "rb") as f:
-                obj = pickle.load(f)
-        else:
-            obj = dict(result_object.__dict__)
-
-        res = cls.__new__(cls) 
-        res.__dict__.update(obj)
-
-        # reconstruct data
-        data = Data()
-        data.from_dict(res.data)
-        res.data = data
-
-        # reconstruct backend
-        if res.backend is not None:
-            backend = emceebackend.Backend(dtype=np.float64)
-            backend.__dict__.update(res.backend)
-
-            # reconstruct sampler from backend
-            shape = backend.shape
-            log_prob = mcmc.MCMC(res.data)
-            res.sampler = EnsembleSampler(*shape, log_prob, backend=backend) # dummy sampler to hold the backend
-            res.backend = None # backend is now stored in the sampler, so remove it from the Result object to avoid confusion
-
-        # rebuild convenience things that shouldn’t be pickled
-        cls.initiate_data(res, res.data) # sets profiles and nsteps
-
-        if getattr(res, "sampler", None) is not None:
-            cls.initiate_sampler(res, res.sampler) # sets burnin, thin, and default params/labels
-        
-        if getattr(res, "config", None) is None:
-            res.config = Config()
-        
-        if res.config.verbose > 1:
-            print("Result object loaded")
-
-        return res
+        if isinstance(result, str):
+            return cls(Data.load(result))
+        elif isinstance(result, Result):
+            return cls(result.data)
+        elif isinstance(result, Data):
+            return cls(result)

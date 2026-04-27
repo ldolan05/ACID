@@ -41,39 +41,42 @@ Saving the Result
 -----------------
 
 The Result class returned by ACID contains a method to save the entire Result object to a .pkl file for later use.
-This can be done using the Result.save_result() method.
+This can be done using the Result.save() method.
 
 .. code-block:: python
 
     # Save the result to a .pkl file
-    result.save_result('example_result.pkl', store_sampler=True)
+    result.save('example_result.pkl', store_sampler=True)
     ...
     # Later, load the result back:
-    result = acid.Result.load_result('example_result.pkl')
+    result = acid.Result.load('example_result.pkl')
 
-The save_result method does not actually store the instance of the class as previously we had issues pickling class instances that stored samplers.
-This method instead stores the Result internal dictionary as a pickle, including the backend of the emcee MCMC sampler (as a dictionary) if 
-store_sampler=True (default is True). For this reason, if you try to open the dictionary yourself with pickle.load() and without using the class method, 
-you will run into errors. If the sampler is not stored, some of the methods when loading the result will not work (eg. plotting walkers).
+The save method does not actually store the instance of the class as previously we had issues pickling class instances that stored samplers.
+This method instead saves just the Data instance stored within and reinitialises the Data and Result instance on load. 
+The Data instance itself stores the sampler which is not pickled directly on save, but instead has its internal dictionary pickled and then reinitialised on load.
+This is done to avoid issues with pickling issues trying to load instances.
 
-The :py:class:`Result` class also handles the storing of the :py:class:`Data` class (again, as a dictionary). See the :ref:`data` for more info.
+If store_sampler=True (default is True), the sampler is saved with the Data instance, otherwise it is discarded. 
+We recommended leaving this on True when running the deterministic profile model, otherwise you can disable it for the larger chains sampling the entire profile.
+If you try to open the dictionary yourself with pickle.load() and without using the class method, you will run into errors.
+If the sampler is not stored, some of the methods when loading the result will not work (eg. plotting walkers).
 
 Plotting
 ---------
 
 The Result class contains a number of plotting methods to visualise the results of ACID. These include:
 
-- :py:func:`ACID_code.Result.plot_profiles`: Plots the final LSD profiles returned by ACID. Can plot multiple profiles if multiple spectra were input.
-    
-- :py:func:`ACID_code.Result.plot_walkers`: Plots the MCMC walkers for the continuum fit parameters.
+- :py:function:`ACID_code.Result.plot_profiles`: Plots the final LSD profiles returned by ACID. Can plot multiple profiles if multiple spectra were input.
 
-- :py:func:`ACID_code.Result.plot_corner`: Plots a corner plot of the posterior distributions of the continuum fit parameters.
+- :py:function:`ACID_code.Result.plot_walkers`: Plots the MCMC walkers for the continuum fit parameters.
 
-- :py:func:`ACID_code.Result.plot_forward_model`: Plots the forward model fit to the data.
+- :py:function:`ACID_code.Result.plot_corner`: Plots a corner plot of the posterior distributions of the continuum fit parameters.
 
-- :py:func:`ACID_code.Result.plot_autocorrelation`: Plots the autocorrelation of the MCMC chains for the continuum fit parameters.
+- :py:function:`ACID_code.Result.plot_forward_model`: Plots the forward model fit to the data.
 
-- :py:func:`ACID_code.Result.plot_acf`: Plots the autocorrelation function for each parameter, averaged across walkers. This is less useful than the above, but kept as it was a part of the emcee example.
+- :py:function:`ACID_code.Result.plot_autocorrelation`: Plots the autocorrelation of the MCMC chains for the continuum fit parameters.
+
+- :py:function:`ACID_code.Result.plot_acf`: Plots the autocorrelation function for each parameter, averaged across walkers. This is less useful than the above, but kept as it was a part of the emcee example.
 
 These plotting functions have a number of keyword arguments to tailor the plots to your needs. See the API (linked above) for more information on these.
 
@@ -83,7 +86,7 @@ and the sampler also fitted the profile, the parameters of the first, last and m
 .. code-block:: python
 
     import ACID_code as acid
-    result = acid.Result.load_result('example_result.pkl')
+    result = acid.Result.load('example_result.pkl')
     result.plot_profiles()
     result.plot_walkers()
     result.plot_corner()
