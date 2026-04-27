@@ -43,7 +43,6 @@ class LSD:
             Should follow the same format as :py:class:`Acid` verbosity. 
             Will overwrite the verbosity level in the config if a Data instance is input, by default None.
         """
-        # TODO: test putting non-OD inputs
         # Set class variables, taking from input data if it exists, else setting to defaults
         self.slurm    = "SLURM_JOB_ID" in os.environ
         self.data     = data if data is not None else Data()
