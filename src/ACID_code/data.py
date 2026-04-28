@@ -1147,6 +1147,10 @@ class Data:
             This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
             A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
+        if self.sampler is not None and store_sampler and self.config.sampler_type == "dynesty":
+            raise ValueError("Storing the sampler is not currently supported for dynesty samplers.\n" \
+            "If you really want to, separate the sampler with data.sampler.save('sampler') and add it back later.\n")
+
         # Check if we should store the sampler based on the store_sampler flag and size limit
         if size_limit is not None and self.sampler is not None:
             sampler_size = utils.sampler_nbytes(self.sampler) / 1024**3

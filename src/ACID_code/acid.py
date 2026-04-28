@@ -15,6 +15,10 @@ from .result import Result
 from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
+try:
+    import dynesty
+except ImportError:
+    dynesty = None
 
 @beartype
 class Acid:
@@ -272,6 +276,11 @@ class Acid:
         skips : :py:type:`IntLike`, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
+        sampler_type : :py:type:`str`, optional
+            The sampler to use for MCMC. Currently supports "emcee" and "dynesty". "emcee" uses the emcee EnsembleSampler, 
+            and "dynesty" uses the dynesty NestedSampler. If "dynesty" is chosen, the dynesty package needs to be installed, and the
+            nsteps parameter is treated as "nlive" to be passed to the NestedSampler. By default "emcee". We only recommend using dynesty
+            for model comparison, otherwise emcee is much faster. This is an experimental option, do no expect all Result methods to work properly.
         parallel : :py:type:`bool`, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, see
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
@@ -401,14 +410,12 @@ class Acid:
             self.config.parallel = False
 
         if self.config.sampler_type == "dynesty":
-            try:
-                import dynesty
-            except ImportError:
-                raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed. Please install it with 'pip install dynesty' or choose a different sampler type.")
+            if dynesty is None:
+                raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")
         if self.config.sampler_type == "dynesty" and not self.config.deterministic_profile:
-            raise ValueError("The 'dynesty' sampler does not currently support the non-deterministic profile option, please set 'deterministic_profile' to True or choose a different sampler.")
+            raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise the speed is far too slow)")
         if self.config.sampler_type == "dynesty" and self.config.max_steps is not None:
-            raise ValueError("The 'dynesty' sampler does not currently support the max_steps option, please set 'max_steps' to None or choose a different sampler type.")
+            raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive.")
 
         # --- Start of the ACID method ---
 
@@ -925,7 +932,8 @@ class Acid:
         """
 
         # Get default sampler kwargs from initial state
-        sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
+        if self.config.sampler_type == "emcee":
+            sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
         pool_context = nullcontext(None)
 
         if self.config.parallel:
@@ -938,10 +946,12 @@ class Acid:
             pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
             log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
             ptform = mcmc._mp_ptform
+            queue_size = os.cpu_count()
         else:
             MCMC = mcmc.MCMC(self.data)
             log_prob = MCMC if self.config.sampler_type == "emcee" else MCMC.dynesty_logprob
             ptform = MCMC.ptform
+            queue_size = None
 
         with pool_context as pool:
             if self.config.sampler_type == "emcee":
@@ -949,7 +959,9 @@ class Acid:
                 self.sampler.run_mcmc(**mcmc_kwargs)
             else:
                 import dynesty
-                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool)
+                if self.config.parallel:
+                    pool.size = self.config.cores
+                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
                 self.sampler.run_nested(print_progress=self.config.verbose>1)
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:

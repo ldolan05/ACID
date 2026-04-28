@@ -84,6 +84,7 @@ class MCMC:
             self.c_factor = data.c_factor
             self.deterministic_profile = data.config.deterministic_profile
             self.sampler_type = data.config.sampler_type
+            self.model_inputs = data.model_inputs
         else:
             self.x = x_or_data
             self.y = y
@@ -327,11 +328,7 @@ class MCMC:
 
         u = np.asarray(u, dtype=float)
         theta0 = np.asarray(self.model_inputs, dtype=float)
-
-        if u.shape != theta0.shape:
-            raise ValueError(
-                f"u has shape {u.shape}, but model_inputs has shape {theta0.shape}"
-            )
+        theta0 = theta0[self.k_max:] # only continuum coefficents, not profile points
 
         # Width of uniform prior around curve_fit solution.
         # The floor matters because higher-order polynomial coefficients

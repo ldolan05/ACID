@@ -13,6 +13,12 @@ from . import mcmc
 from . import utils
 from .data import Data
 from .utils import IntLike, Scalar
+try:
+    from dynesty import NestedSampler
+    from dynesty import plotting as dyplot
+except ImportError:
+    NestedSampler = None
+    dyplot = None
 #TODO: utils.set_dict_defaults for plots
 
 warnings.filterwarnings("ignore")
@@ -59,7 +65,7 @@ class Result:
     def __init__(
             self,
             data                    : Data|object,
-            sampler                 : EnsembleSampler|None  = None,
+            sampler                 : EnsembleSampler|NestedSampler|None = None, # type:ignore
             process_results         : bool                  = True,
             verbose                 : IntLike|bool|str|None = None,
         ) -> None:
@@ -74,7 +80,7 @@ class Result:
             provided, a sampler can be provided in the second argument. If a sampler object 
             is provided, it will be used as the sampler, but all other attributes will need 
             to be set manually for the Result object to be fully functional.
-        sampler : :py:class:`emcee.EnsembleSampler`, optional
+        sampler : :py:class:`emcee.EnsembleSampler` | :py:class:`dynesty.NestedSampler`, optional
             Sets and overwrites the sampler in the Data object with this if provided, by default None. 
         process_results : bool, optional
             Whether to process the results from the Acid object upon initialisation, by default True.
@@ -108,6 +114,7 @@ class Result:
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
         if self.sampler is not None:
+            self.dynesty = isinstance(self.sampler, NestedSampler)
             self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
 
         if not self.data.complete:
@@ -135,7 +142,12 @@ class Result:
         t0 = time()
 
         # Obtain flattened samples
-        flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
+        if self.dynesty:
+            flat_samples = self.sampler.results.samples_equal()
+            from dynesty import plotting as dyplot
+            fig, ax = dyplot.traceplot(self.sampler.results)
+        else:
+            flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
         # Getting the final profile and continuum values
         nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
@@ -380,6 +392,16 @@ class Result:
         plt.show()
 
     @_require_sampler
+    def plot_traceplot(self, return_fig:bool=False) -> None | tuple:
+        if not self.dynesty:
+            raise ValueError("Traceplot is only available for dynesty samplers, as emcee traceplots are already plotted in plot_walkers.")
+        fig, ax = dyplot.traceplot(self.sampler.results, labels=self.default_param_labels)
+        plt.suptitle('Dynesty Traceplot')
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    @_require_sampler
     def plot_corner(
         self,
         sampler    :EnsembleSampler|None = None,
@@ -402,6 +424,13 @@ class Result:
         ----------
         If return_fig is True, returns the figure object containing the corner plot, else None
         """
+        if self.dynesty:
+            fig, axes = dyplot.cornerplot(self.sampler.results, labels=self.default_param_labels, show_titles=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
+            plt.suptitle('Dynesty Corner Plot')
+            if return_fig:
+                return fig, axes
+            plt.show()
+            return
 
         # Get samples and thin and burnin from the class variables
         samples = self.sampler.get_chain()
@@ -714,14 +743,14 @@ class Result:
             return fig, ax
         plt.show()
 
-    def initiate_sampler(self, sampler:EnsembleSampler|None, _method_name=None) -> None:
+    def initiate_sampler(self, sampler:EnsembleSampler|NestedSampler|None, _method_name=None) -> None: # type:ignore
         """
         Initiates the sampler attribute from an external sampler.
 
         Parameters
         ----------
-        sampler : :py:class:`emcee.EnsembleSampler`
-            An emcee EnsembleSampler object to set as the sampler attribute.
+        sampler : :py:class:`emcee.EnsembleSampler` or object, optional
+            An emcee EnsembleSampler object or a compatible sampler object to set as the sampler attribute.
         _method_name : str, optional
             Internal parameter used to track which method is calling initiate_sampler, for error messages. 
             Not intended for user input, by default None.
@@ -737,6 +766,14 @@ class Result:
             else:
                 error_msg = "Cannot initiate sampler without a sampler stored in the instance or passed as a parameter, please pass in a sampler "
             raise AttributeError(error_msg)
+
+        if self.dynesty:
+            a=ord('a')
+            alph=[chr(i) for i in range(a,a+26)]
+            poly_labels = [alph[i] for i in range(n_poly_params)]
+            self.default_param_labels = poly_labels
+            self.default_params = None
+            return
 
         # Calculate autocorr time, burnin, thin
         # Suppress output from get_autocorr_time call
@@ -791,12 +828,12 @@ class Result:
         self.default_param_labels = poly_labels
 
     @property
-    def sampler(self) -> EnsembleSampler|None:
+    def sampler(self) -> EnsembleSampler|NestedSampler|None: # type:ignore
         """Returns the sampler attribute, by default is None if not saved."""
         return self.data.sampler
 
     @sampler.setter
-    def sampler(self, value: EnsembleSampler|None) -> None:
+    def sampler(self, value: EnsembleSampler|NestedSampler|None) -> None: # type:ignore
         """Sets the sampler in the data class."""
         self.data.sampler = value
 
