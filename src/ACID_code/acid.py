@@ -890,11 +890,31 @@ class Acid:
                                                    plot_type="masked")
 
         # Run LSD again with the new fitted flux and errors
-        LSD_masking = LSD(self.data)
+        LSD_masking = LSD(self.data, OD=self.config.od)
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
         # alpha is only dependent on wavelengths and linelist, which are unchanged
-        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
+        if self.config.od:
+            LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
+        else:
+            LSD_masking.run_LSD(x, fitted_flux-1, fitted_errors, sn)
+            self.data.alpha = LSD_masking.alpha # set alpha for non OD
+        
+        # import matplotlib.pyplot as plt
+        # plt.plot(x, fitted_flux, label="Fitted flux")
+        # plt.show()
+
+        # plt.plot(self.data.velocities, LSD_masking.profile_F)
+        # plt.show()
+
+        # plt.plot(x, y)
+        # import numpy.polynomial.polynomial as P
+        # a,b = utils.get_normalisation_coeffs(x)
+        # norm_wavelengths = (x*a)+b
+        # mdl = P.polyval(norm_wavelengths, poly_inputs)
+        # plt.plot(x, (1+self.data.alpha@(LSD_masking.profile))*mdl, label="Model")
+        # plt.show()
+        # sys.exit()
 
         # Update and set new variables
         self.data.c_factor = LSD_masking.c_factor

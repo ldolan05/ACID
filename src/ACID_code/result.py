@@ -144,8 +144,6 @@ class Result:
         # Obtain flattened samples
         if self.dynesty:
             flat_samples = self.sampler.results.samples_equal()
-            from dynesty import plotting as dyplot
-            fig, ax = dyplot.traceplot(self.sampler.results)
         else:
             flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 

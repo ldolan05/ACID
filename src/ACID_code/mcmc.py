@@ -101,17 +101,17 @@ class MCMC:
             self.od = od
             data = None
 
-        # if We are not OD we need to change some things
-        if not self.od:
-            if data is None:
-                raise ValueError("If not using optical depth, data must be provided to MCMC for precomputation.")
-            if not data.config.deterministic_profile:
-                raise NotImplementedError("Full profile fitting is not currently implemented for non-optical depth case.")
-            from .lsd import LSD
-            lsd = LSD(data, OD=False)
-            lsd.run_LSD(data.wavelengths["fitted"], data.flux["fitted"]-1, data.errors["fitted"], sn=data.sn["fitted"])
-            self.alpha = lsd.alpha
-            self.c_factor = lsd.c_factor
+        # # if We are not OD we need to change some things
+        # if not self.od:
+        #     if data is None:
+        #         raise ValueError("If not using optical depth, data must be provided to MCMC for precomputation.")
+        #     if not data.config.deterministic_profile:
+        #         raise NotImplementedError("Full profile fitting is not currently implemented for non-optical depth case.")
+        #     from .lsd import LSD
+        #     lsd = LSD(data, OD=False)
+        #     lsd.run_LSD(data.wavelengths["fitted"], data.flux["fitted"]-1, data.errors["fitted"], sn=data.sn["fitted"])
+        #     self.alpha = lsd.alpha
+        #     self.c_factor = lsd.c_factor
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
@@ -206,6 +206,17 @@ class MCMC:
         dot_prod = self.alpha @ z
         dot_prod = dot_prod + 1 if not self.od else np.exp(-dot_prod)
         forward = dot_prod * mdl
+
+        # import matplotlib.pyplot as plt
+        # import sys
+        # plt.plot(self.x, self.y, label='Data')
+        # plt.plot(self.x, forward, label='Model')
+        # plt.legend()
+        # plt.show()
+        # plt.plot(self.velocities, z, label='Profile Points (z)')
+        # plt.legend()
+        # plt.show()
+        # sys.exit()
 
         return forward, z
 
@@ -362,7 +373,7 @@ class MCMC:
         # Width of uniform prior around curve_fit solution.
         # The floor matters because higher-order polynomial coefficients
         # may be close to zero.
-        frac_width = 0.5
+        frac_width = 5
         abs_floor = 0.05
 
         width = np.maximum(frac_width * np.abs(theta0), abs_floor)
