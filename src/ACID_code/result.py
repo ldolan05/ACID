@@ -226,7 +226,7 @@ class Result:
             condition = np.array_equal(wavelengths, self.data.wavelengths["combined"])
             alpha = self.data.alpha if condition else None
 
-            LSD_profiles = LSD(self.data)
+            LSD_profiles = LSD(self.data, OD=self.config.od)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn, alpha=alpha)
 
             profile_f = LSD_profiles.profile_F
@@ -571,8 +571,12 @@ class Result:
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        profile = utils.flux_to_od(self.data.combined_profile[0])
-        model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
+        if self.config.od:
+            profile = utils.flux_to_od(self.data.combined_profile[0])
+            model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
+        else:
+            profile = self.data.combined_profile[0]-1
+            model_flux = (1+(self.data.alpha @ profile)) * self.data.continuum_model
 
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)

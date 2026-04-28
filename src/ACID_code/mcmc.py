@@ -101,18 +101,6 @@ class MCMC:
             self.od = od
             data = None
 
-        # # if We are not OD we need to change some things
-        # if not self.od:
-        #     if data is None:
-        #         raise ValueError("If not using optical depth, data must be provided to MCMC for precomputation.")
-        #     if not data.config.deterministic_profile:
-        #         raise NotImplementedError("Full profile fitting is not currently implemented for non-optical depth case.")
-        #     from .lsd import LSD
-        #     lsd = LSD(data, OD=False)
-        #     lsd.run_LSD(data.wavelengths["fitted"], data.flux["fitted"]-1, data.errors["fitted"], sn=data.sn["fitted"])
-        #     self.alpha = lsd.alpha
-        #     self.c_factor = lsd.c_factor
-
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
         # Precompute normalization coefficients these are used to adjust the wavelengths to
@@ -124,11 +112,11 @@ class MCMC:
             # For deterministic model, the below variables are used, and are precomputed for speed
             err_od = self.yerr / self.y # independent of continuum, since it's a ratio
             V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
-            self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
         else:
             # For non-OD case, we need to precompute the variance vector in flux space for the likelihood calculation
             V = 1.0 / (self.yerr ** 2) # variance vector in flux space
-            self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for
+
+        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for
 
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:

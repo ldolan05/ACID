@@ -134,6 +134,7 @@ class LSD:
         if self.OD:
             self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
         else:
+            self.profile += 1
             self.profile_F, self.profile_errors_F, self.cov_z_F = self.profile, self.profile_errors, self.cov_z
 
         return
