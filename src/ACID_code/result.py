@@ -14,10 +14,10 @@ from . import utils
 from .data import Data
 from .utils import IntLike, Scalar
 try:
-    from dynesty import NestedSampler
+    from dynesty.sampler import Sampler
     from dynesty import plotting as dyplot
 except ImportError:
-    NestedSampler = None
+    Sampler = None
     dyplot = None
 #TODO: utils.set_dict_defaults for plots
 
@@ -65,7 +65,7 @@ class Result:
     def __init__(
             self,
             data                    : Data|object,
-            sampler                 : EnsembleSampler|NestedSampler|None = None, # type:ignore
+            sampler                 : EnsembleSampler|Sampler|None = None, # type:ignore
             process_results         : bool                  = True,
             verbose                 : IntLike|bool|str|None = None,
         ) -> None:
@@ -80,7 +80,7 @@ class Result:
             provided, a sampler can be provided in the second argument. If a sampler object 
             is provided, it will be used as the sampler, but all other attributes will need 
             to be set manually for the Result object to be fully functional.
-        sampler : :py:class:`emcee.EnsembleSampler` | :py:class:`dynesty.NestedSampler`, optional
+        sampler : :py:class:`emcee.EnsembleSampler` | :py:class:`dynesty.Sampler`, optional
             Sets and overwrites the sampler in the Data object with this if provided, by default None. 
         process_results : bool, optional
             Whether to process the results from the Acid object upon initialisation, by default True.
@@ -114,7 +114,7 @@ class Result:
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
         if self.sampler is not None:
-            self.dynesty = isinstance(self.sampler, NestedSampler)
+            self.dynesty = isinstance(self.sampler, Sampler)
             self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
 
         if not self.data.complete:
@@ -743,7 +743,7 @@ class Result:
             return fig, ax
         plt.show()
 
-    def initiate_sampler(self, sampler:EnsembleSampler|NestedSampler|None, _method_name=None) -> None: # type:ignore
+    def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
         """
         Initiates the sampler attribute from an external sampler.
 
@@ -770,7 +770,7 @@ class Result:
         if self.dynesty:
             a=ord('a')
             alph=[chr(i) for i in range(a,a+26)]
-            poly_labels = [alph[i] for i in range(n_poly_params)]
+            poly_labels = [alph[i] for i in range(self.config.poly_ord + 1)]
             self.default_param_labels = poly_labels
             self.default_params = None
             return
@@ -828,12 +828,12 @@ class Result:
         self.default_param_labels = poly_labels
 
     @property
-    def sampler(self) -> EnsembleSampler|NestedSampler|None: # type:ignore
+    def sampler(self) -> EnsembleSampler|Sampler|None: # type:ignore
         """Returns the sampler attribute, by default is None if not saved."""
         return self.data.sampler
 
     @sampler.setter
-    def sampler(self, value: EnsembleSampler|NestedSampler|None) -> None: # type:ignore
+    def sampler(self, value: EnsembleSampler|Sampler|None) -> None: # type:ignore
         """Sets the sampler in the data class."""
         self.data.sampler = value
 

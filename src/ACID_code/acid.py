@@ -198,6 +198,7 @@ class Acid:
         dev_perc              : IntLike|None                = None,   # Config
         n_sig                 : IntLike|None                = None,   # Config
         skips                 : IntLike|None                = None,   # Config
+        od                    : bool|None                   = None,   # Config
         sampler_type          : str|None                    = None,   # Config
         parallel              : bool|None                   = None,   # Config
         cores                 : IntLike|None                = None,   # Config
@@ -384,6 +385,7 @@ class Acid:
             "dev_perc"              : dev_perc,
             "n_sig"                 : n_sig,
             "skips"                 : skips,
+            "od"                    : od,
             "sampler_type"          : sampler_type,
             "parallel"              : parallel,
             "cores"                 : cores,

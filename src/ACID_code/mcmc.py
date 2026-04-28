@@ -46,6 +46,8 @@ class MCMC:
             c_factor                             = None,
             deterministic_profile : bool         = False,
             sampler_type          : str          = "emcee",
+            model_inputs          : Array1D|None = None,
+            od                    : bool         = True
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
@@ -85,6 +87,7 @@ class MCMC:
             self.deterministic_profile = data.config.deterministic_profile
             self.sampler_type = data.config.sampler_type
             self.model_inputs = data.model_inputs
+            self.od = data.config.od
         else:
             self.x = x_or_data
             self.y = y
@@ -94,6 +97,21 @@ class MCMC:
             self.c_factor = c_factor
             self.deterministic_profile = deterministic_profile
             self.sampler_type = sampler_type
+            self.model_inputs = model_inputs
+            self.od = od
+            data = None
+
+        # if We are not OD we need to change some things
+        if not self.od:
+            if data is None:
+                raise ValueError("If not using optical depth, data must be provided to MCMC for precomputation.")
+            if not data.config.deterministic_profile:
+                raise NotImplementedError("Full profile fitting is not currently implemented for non-optical depth case.")
+            from .lsd import LSD
+            lsd = LSD(data, OD=False)
+            lsd.run_LSD(data.wavelengths["fitted"], data.flux["fitted"]-1, data.errors["fitted"], sn=data.sn["fitted"])
+            self.alpha = lsd.alpha
+            self.c_factor = lsd.c_factor
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
@@ -102,10 +120,15 @@ class MCMC:
         a, b = utils.get_normalisation_coeffs(self.x)
         self.u = (a * self.x) + b # These are the normalized wavelengths used throughout the fitting process
 
-        # For deterministic model, the below variables are used, and are precomputed for speed
-        err_od = self.yerr / self.y # independent of continuum, since it's a ratio
-        V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
-        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
+        if self.od:
+            # For deterministic model, the below variables are used, and are precomputed for speed
+            err_od = self.yerr / self.y # independent of continuum, since it's a ratio
+            V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
+            self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
+        else:
+            # For non-OD case, we need to precompute the variance vector in flux space for the likelihood calculation
+            V = 1.0 / (self.yerr ** 2) # variance vector in flux space
+            self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for
 
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
@@ -174,13 +197,15 @@ class MCMC:
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
-        flux_od = - np.log(fitted_flux)
+        flux_od = - np.log(fitted_flux) if self.od else fitted_flux-1 # if not using OD, just use flux directly
 
         # Solve for the profile points
         z = cho_solve(self.c_factor, self.AtV @ flux_od)
 
         # Convert back from optical depth to flux
-        forward = np.exp(- (self.alpha @ z)) * mdl
+        dot_prod = self.alpha @ z
+        dot_prod = dot_prod + 1 if not self.od else np.exp(-dot_prod)
+        forward = dot_prod * mdl
 
         return forward, z
 
@@ -201,8 +226,12 @@ class MCMC:
         """
 
         # Hard box prior on each z[i]
-        if np.any((z < -0.4) | (z > 1.6)):
-            return -np.inf
+        if self.od:
+            if np.any((z < -0.4) | (z > 1.6)):
+                return -np.inf
+        else:
+            if np.any((z > 0.5) | (z <= -1)):
+                return -np.inf
 
         # # excluding the continuum points in the profile (in flux)
         # z_cont = []

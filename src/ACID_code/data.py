@@ -203,6 +203,7 @@ class Config:
         "dev_perc" : 25,
         "n_sig" : 3,
         "skips" : 1,
+        "od"    : True,
         "sampler_type" : "emcee",
         "parallel" : True,
         "cores" : None,
