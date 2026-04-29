@@ -230,7 +230,8 @@ class MCMC:
             return -np.inf
 
         diff = self.y - forward
-        ll = -0.5 * np.sum(diff*diff / (self.yerr*self.yerr) + np.log(2*np.pi*(self.yerr*self.yerr)))
+        var = self.yerr * self.yerr
+        ll = -0.5 * np.sum(diff*diff/var + np.log(2*np.pi*var))
         return lp + ll
 
     @staticmethod

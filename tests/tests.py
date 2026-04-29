@@ -620,7 +620,6 @@ def LSD():
 
     # Try LSD in OD and flux
     lsd = acid.LSD(data=data, OD=True)
-    print(wavelength.shape, sn.shape)
     lsd.run_LSD(wavelength, spectrum, error, sn)
 
     # And in flux

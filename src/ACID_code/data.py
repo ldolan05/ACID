@@ -242,6 +242,26 @@ class Config:
             return self.defaults[name]
         raise AttributeError(f"'Config' object has no attribute '{name}'")
 
+    def __getattribute__(self, name):
+        """Override the default attribute access to allow for environment variable overrides."""
+        if name.startswith("_"):
+            return object.__getattribute__(self, name)
+
+        raw = os.environ.get("_ACID_CONFIG")
+
+        if raw is not None:
+            import json
+
+            env_config = json.loads(raw)
+
+            if not isinstance(env_config, dict):
+                raise ValueError("_ACID_CONFIG must decode to a dictionary")
+
+            if name in env_config:
+                return env_config[name]
+
+        return object.__getattribute__(self, name)
+
     def __setattr__(self, name: str, value: Any) -> None:
         if name in self.data_attributes:
             raise AttributeError(self.data_attributes_input_str.format(name, name, value))
