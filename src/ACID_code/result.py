@@ -13,6 +13,7 @@ from . import mcmc
 from . import utils
 from .data import Data
 from .utils import IntLike, Scalar
+from .rassine import model
 #TODO: utils.set_dict_defaults for plots
 
 warnings.filterwarnings("ignore")
@@ -206,7 +207,12 @@ class Result:
             # Build continuum model
             a, b = utils.get_normalisation_coeffs(wavelengths)
             norm_wavelengths = (a*wavelengths)+b
-            mdl = P.polyval(norm_wavelengths, poly_cos)
+            if not self.config.rassine:
+                mdl = P.polyval(norm_wavelengths, poly_cos)
+            else:
+                # print(poly_cos.shape)
+                # sys.exit()
+                mdl = model(norm_wavelengths, flux, poly_cos[0])[0]
 
             # correcting continuum
             error = np.sqrt((error/mdl)**2 + (continuum_error/mdl)**2)
@@ -552,7 +558,7 @@ class Result:
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
         ax[0].plot(wavelengths, self.data.continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        ax[1].plot(wavelengths, model_flux - flux, color='C0', linewidth=1, label='Residuals')
+        ax[1].plot(wavelengths[:-10], (model_flux-flux)[:-10], color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].set_title(labels["title"])
         ax[1].set_xlabel(labels["xlabel"])
