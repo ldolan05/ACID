@@ -837,7 +837,7 @@ class Acid:
         sn = self.data.sn["combined"]
 
         # Use the initial LSD run to get the forward model and scaled residuals
-        forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
+        forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha, od=self.config.od).full_model(self.data.model_inputs)
         residuals = (y - forward) / forward
 
         # Chunk masking based on deviation from residuals
@@ -890,15 +890,11 @@ class Acid:
                                                    plot_type="masked")
 
         # Run LSD again with the new fitted flux and errors
-        LSD_masking = LSD(self.data, OD=self.config.od)
+        LSD_masking = LSD(self.data)
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
         # alpha is only dependent on wavelengths and linelist, which are unchanged
-        if self.config.od:
-            LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
-        else:
-            LSD_masking.run_LSD(x, fitted_flux-1, fitted_errors, sn)
-            self.data.alpha = LSD_masking.alpha # set alpha for non OD
+        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
 
         # Update and set new variables
         self.data.c_factor = LSD_masking.c_factor

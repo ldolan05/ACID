@@ -147,10 +147,11 @@ class MCMC:
         """
         # Extract profile points and continuum coefficients from theta
         z = theta[:self.k_max]
+        z -= 1 if not self.od else 0 # if not using OD, profile points are in flux space and need to be shifted by 1
         mdl = self.alpha @ z
 
         # Converting model from optical depth to flux
-        mdl = np.exp(-mdl)
+        mdl = np.exp(-mdl) if self.od else mdl+1 # if not using OD, just use flux directly
 
         # Calculate continuum polynomial
         coefs = np.asarray(theta[self.k_max:], dtype=float)
@@ -185,26 +186,22 @@ class MCMC:
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
-        flux_od = - np.log(fitted_flux) if self.od else fitted_flux-1 # if not using OD, just use flux directly
+
+        # Do OD/non-OD conversions
+        if self.od:
+            flux_od = (-np.log(fitted_flux))
+            AtV = self.AtV
+        else:
+            AtV = self.AtV * (mdl * mdl)
+            flux_od = fitted_flux - 1
 
         # Solve for the profile points
-        z = cho_solve(self.c_factor, self.AtV @ flux_od)
+        z = cho_solve(self.c_factor, AtV @ flux_od, check_finite=False)
 
         # Convert back from optical depth to flux
         dot_prod = self.alpha @ z
-        dot_prod = dot_prod + 1 if not self.od else np.exp(-dot_prod)
+        dot_prod = np.exp(-dot_prod) if self.od else dot_prod + 1
         forward = dot_prod * mdl
-
-        # import matplotlib.pyplot as plt
-        # import sys
-        # plt.plot(self.x, self.y, label='Data')
-        # plt.plot(self.x, forward, label='Model')
-        # plt.legend()
-        # plt.show()
-        # plt.plot(self.velocities, z, label='Profile Points (z)')
-        # plt.legend()
-        # plt.show()
-        # sys.exit()
 
         return forward, z
 

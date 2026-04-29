@@ -226,7 +226,7 @@ class Result:
             condition = np.array_equal(wavelengths, self.data.wavelengths["combined"])
             alpha = self.data.alpha if condition else None
 
-            LSD_profiles = LSD(self.data, OD=self.config.od)
+            LSD_profiles = LSD(self.data)
             LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn, alpha=alpha)
 
             profile_f = LSD_profiles.profile_F
