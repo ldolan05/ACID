@@ -204,7 +204,7 @@ class Acid:
         min_tau_factor        : IntLike|None                = None,   # Config
         tau_tol               : float|None                  = None,   # Config
         moves                 : list|None                   = None,   # Config
-        run_mcmc              : bool|None                   = True,   # Config
+        run_mcmc              : bool|None                   = None,   # Config
         _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
