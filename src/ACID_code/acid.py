@@ -15,6 +15,7 @@ from .result import Result
 from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
+from .rassine import model
 
 @beartype
 class Acid:
@@ -204,7 +205,8 @@ class Acid:
         min_tau_factor        : IntLike|None                = None,   # Config
         tau_tol               : float|None                  = None,   # Config
         moves                 : list|None                   = None,   # Config
-        run_mcmc              : bool|None                   = True,   # Config
+        run_mcmc              : bool|None                   = None,   # Config
+        rassine               : bool|None                   = None,   # Config
         _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
@@ -386,6 +388,7 @@ class Acid:
             "tau_tol"               : tau_tol,
             "moves"                 : moves,
             "run_mcmc"              : run_mcmc,
+            "rassine"               : rassine,
         }
 
         # Update config if any of the above config settings are new
@@ -537,6 +540,18 @@ class Acid:
                 pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
             initial_state.append(pos)
         initial_state = np.array(initial_state).T
+
+        # For the rassine branch, leave everything above the same, we just now need to change the model_inputs to Rassine type inputs
+        if self.config.rassine:
+            self.data.model_inputs = np.array([10])
+            self.data.nwalkers = 10
+            self.data.ndim = 1
+            initial_state = rng.uniform(1, 100, (self.data.nwalkers, self.data.ndim))
+            # initial_state = rng.normal(self.data.model_inputs, 5, (self.data.nwalkers, self.data.ndim)).T
+            # import matplotlib.pyplot as plt
+            # plt.plot(self.initial_state.T)
+            # plt.show()
+            # sys.exit()
 
         ### ACID initialialised ###
         self.data.setup_time += time.time() - init_t0

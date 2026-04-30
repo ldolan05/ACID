@@ -6,6 +6,7 @@ from beartype import beartype
 from numpy.polynomial import polynomial as P
 from scipy.linalg import cho_solve
 from .data import Data
+from .rassine import model
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -38,6 +39,7 @@ class MCMC:
             velocities            : Array1D|None = None,
             c_factor                             = None,
             deterministic_profile : bool         = False,
+            rassine               : bool         = False,
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
@@ -75,6 +77,7 @@ class MCMC:
             self.velocities = data.velocities
             self.c_factor = data.c_factor
             self.deterministic_profile = data.config.deterministic_profile
+            self.rassine = data.config.rassine
         else:
             self.x = x_or_data
             self.y = y
@@ -83,6 +86,7 @@ class MCMC:
             self.velocities = velocities
             self.c_factor = c_factor
             self.deterministic_profile = deterministic_profile
+            self.rassine = rassine
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
 
@@ -102,6 +106,9 @@ class MCMC:
             self.model_function = self.full_model # include profile fitting
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
+
+        if self.rassine:
+            self.model_function = self.rassine_model
 
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
@@ -173,6 +180,31 @@ class MCMC:
 
         return forward, z
 
+    def rassine_model(self, theta):
+
+        if theta[0] <= 1e-5:
+            return np.ones_like(self.y), np.full(self.k_max, -2) # return very low z to trigger prior rejection
+        elif theta[0] >= 100:
+            return np.ones_like(self.y), np.full(self.k_max, -2) # return very low z to trigger prior rejection
+
+        # Build continuum model
+        mdl = model(self.u, self.y, theta[0])[0]
+
+        if np.any(mdl <= 0): # force positive continuum at all points
+            return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
+
+        # Calculate fitted flux and convert to OD
+        fitted_flux = self.y/mdl
+        flux_od = - np.log(fitted_flux)
+
+        # Solve for the profile points
+        z = cho_solve(self.c_factor, self.AtV @ flux_od)
+
+        # Convert back from optical depth to flux
+        forward = np.exp(- (self.alpha @ z)) * mdl
+
+        return forward, z
+
     def log_prior(self, z):
         """
         Calculates the log prior probability of the profile points (z) and imposes the prior
@@ -228,6 +260,13 @@ class MCMC:
         lp = self.log_prior(z)
         if not np.isfinite(lp):
             return -np.inf
+        
+        # import matplotlib.pyplot as plt
+        # plt.plot(self.x, self.y, label="Data")
+        # plt.plot(self.x, forward, label="Model")
+        # plt.show()
+        # plt.plot(self.velocities, z)
+        # plt.show()
 
         diff = self.y - forward
         var = self.yerr * self.yerr
