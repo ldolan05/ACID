@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+from numpy.linalg import norm
 from . import utils
 from .utils import Array1D, Array2D
 from beartype import beartype
@@ -21,6 +22,12 @@ def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
     return _MCMC(theta)
 
+def _mp_log_likelihood(theta):
+    return _MCMC.dynesty_logprob(theta)
+
+def _mp_ptform(u):
+    return _MCMC.ptform(u)
+
 class MCMC:
 
     """
@@ -40,6 +47,9 @@ class MCMC:
             c_factor                             = None,
             deterministic_profile : bool         = False,
             rassine               : bool         = False,
+            sampler_type          : str          = "emcee",
+            model_inputs          : Array1D|None = None,
+            od                    : bool         = True
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
@@ -78,6 +88,9 @@ class MCMC:
             self.c_factor = data.c_factor
             self.deterministic_profile = data.config.deterministic_profile
             self.rassine = data.config.rassine
+            self.sampler_type = data.config.sampler_type
+            self.model_inputs = data.model_inputs
+            self.od = data.config.od
         else:
             self.x = x_or_data
             self.y = y
@@ -86,6 +99,10 @@ class MCMC:
             self.velocities = velocities
             self.c_factor = c_factor
             self.deterministic_profile = deterministic_profile
+            self.sampler_type = sampler_type
+            self.model_inputs = model_inputs
+            self.od = od
+            data = None
             self.rassine = rassine
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
@@ -95,10 +112,15 @@ class MCMC:
         a, b = utils.get_normalisation_coeffs(self.x)
         self.u = (a * self.x) + b # These are the normalized wavelengths used throughout the fitting process
 
-        # For deterministic model, the below variables are used, and are precomputed for speed
-        err_od = self.yerr / self.y # independent of continuum, since it's a ratio
-        V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
-        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for _mcmc_solve_z input
+        if self.od:
+            # For deterministic model, the below variables are used, and are precomputed for speed
+            err_od = self.yerr / self.y # independent of continuum, since it's a ratio
+            V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
+        else:
+            # For non-OD case, we need to precompute the variance vector in flux space for the likelihood calculation
+            V = 1.0 / (self.yerr ** 2) # variance vector in flux space
+
+        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for
 
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
@@ -132,10 +154,11 @@ class MCMC:
         """
         # Extract profile points and continuum coefficients from theta
         z = theta[:self.k_max]
+        z -= 1 if not self.od else 0 # if not using OD, profile points are in flux space and need to be shifted by 1
         mdl = self.alpha @ z
 
         # Converting model from optical depth to flux
-        mdl = np.exp(-mdl)
+        mdl = np.exp(-mdl) if self.od else mdl+1 # if not using OD, just use flux directly
 
         # Calculate continuum polynomial
         coefs = np.asarray(theta[self.k_max:], dtype=float)
@@ -170,13 +193,56 @@ class MCMC:
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
-        flux_od = - np.log(fitted_flux)
+
+        # Do OD/non-OD conversions
+        if self.od:
+            flux_od = (-np.log(fitted_flux))
+            AtV = self.AtV
+        else:
+            AtV = self.AtV * (mdl * mdl)
+            flux_od = fitted_flux - 1
 
         # Solve for the profile points
-        z = cho_solve(self.c_factor, self.AtV @ flux_od)
+        z = cho_solve(self.c_factor, AtV @ flux_od, check_finite=False)
 
         # Convert back from optical depth to flux
-        forward = np.exp(- (self.alpha @ z)) * mdl
+        dot_prod = self.alpha @ z
+        dot_prod = np.exp(-dot_prod) if self.od else dot_prod + 1
+        forward = dot_prod * mdl
+
+        return forward, z
+
+    def rassine_model(self, theta):
+
+        if theta[0] <= 1e-5:
+            return np.ones_like(self.y), np.full(self.k_max, -2) # return very low z to trigger prior rejection
+        elif theta[0] >= 100:
+            return np.ones_like(self.y), np.full(self.k_max, -2) # return very low z to trigger prior rejection
+
+        # Build continuum model
+        mdl = model(self.u, self.y, theta[0])[0]
+
+        if np.any(mdl <= 0): # force positive continuum at all points
+            return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
+
+        # Calculate fitted flux and convert to OD
+        fitted_flux = self.y/mdl
+
+        # Do OD/non-OD conversions
+        if self.od:
+            flux_od = (-np.log(fitted_flux))
+            AtV = self.AtV
+        else:
+            AtV = self.AtV * (mdl * mdl)
+            flux_od = fitted_flux - 1
+
+        # Solve for the profile points
+        z = cho_solve(self.c_factor, AtV @ flux_od, check_finite=False)
+
+        # Convert back from optical depth to flux
+        dot_prod = self.alpha @ z
+        dot_prod = np.exp(-dot_prod) if self.od else dot_prod + 1
+        forward = dot_prod * mdl
 
         return forward, z
 
@@ -222,8 +288,12 @@ class MCMC:
         """
 
         # Hard box prior on each z[i]
-        if np.any((z < -0.4) | (z > 1.6)):
-            return -np.inf
+        if self.od:
+            if np.any((z < -0.4) | (z > 1.6)):
+                return -np.inf
+        else:
+            if np.any((z > 0.5) | (z <= -1)):
+                return -np.inf
 
         # # excluding the continuum points in the profile (in flux)
         # z_cont = []
@@ -329,3 +399,52 @@ class MCMC:
         neff_str = ">" if last_neff > config.min_tau_factor else "<"
         neff_str = f"{last_neff:.2f}{neff_str}{config.min_tau_factor}"
         return tol_str, neff_str
+
+    def dynesty_logprob(self, theta):
+        """Log likelihood function for dynesty nested sampling."""
+
+        forward, z = self.model_function(theta)
+
+        if not np.all(np.isfinite(forward)):
+            return -np.inf
+
+        lp = self.log_prior(z)
+        if not np.isfinite(lp):
+            return -np.inf
+
+        diff = self.y - forward
+        var = self.yerr * self.yerr
+
+        return -0.5 * np.sum(diff * diff / var + np.log(2 * np.pi * var))
+    
+    def ptform(self, u):
+        """
+        Prior transform for dynesty.
+
+        Maps unit-cube samples u in [0, 1] to continuum polynomial
+        coefficients using uniform priors centred on self.model_inputs.
+        """
+
+        u = np.asarray(u, dtype=float)
+        theta0 = np.asarray(self.model_inputs, dtype=float)
+        theta0 = theta0[self.k_max:] # only continuum coefficents, not profile points
+
+        # Width of uniform prior around curve_fit solution.
+        # The floor matters because higher-order polynomial coefficients
+        # may be close to zero.
+        frac_width = 5
+        abs_floor = 0.05
+
+        width = np.maximum(frac_width * np.abs(theta0), abs_floor)
+
+        # Usually the zeroth-order continuum coefficient is close to 1,
+        # so give it a slightly wider absolute floor.
+        if len(width) > 0:
+            width[0] = max(width[0], 0.25)
+
+        lower = theta0 - width
+        upper = theta0 + width
+
+        return lower + u * (upper - lower)
+
+            

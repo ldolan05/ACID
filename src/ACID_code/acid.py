@@ -16,6 +16,10 @@ from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
 from .rassine import model
+try:
+    import dynesty
+except ImportError:
+    dynesty = None
 
 @beartype
 class Acid:
@@ -195,6 +199,8 @@ class Acid:
         dev_perc              : IntLike|None                = None,   # Config
         n_sig                 : IntLike|None                = None,   # Config
         skips                 : IntLike|None                = None,   # Config
+        od                    : bool|None                   = None,   # Config
+        sampler_type          : str|None                    = None,   # Config
         parallel              : bool|None                   = None,   # Config
         cores                 : IntLike|None                = None,   # Config
         nwalkers              : IntLike|None                = None,   # Config, then Data just before MCMC
@@ -273,6 +279,11 @@ class Acid:
         skips : :py:type:`IntLike`, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
+        sampler_type : :py:type:`str`, optional
+            The sampler to use for MCMC. Currently supports "emcee" and "dynesty". "emcee" uses the emcee EnsembleSampler, 
+            and "dynesty" uses the dynesty NestedSampler. If "dynesty" is chosen, the dynesty package needs to be installed, and the
+            nsteps parameter is treated as "nlive" to be passed to the NestedSampler. By default "emcee". We only recommend using dynesty
+            for model comparison, otherwise emcee is much faster. This is an experimental option, do no expect all Result methods to work properly.
         parallel : :py:type:`bool`, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, see
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
@@ -376,6 +387,8 @@ class Acid:
             "dev_perc"              : dev_perc,
             "n_sig"                 : n_sig,
             "skips"                 : skips,
+            "od"                    : od,
+            "sampler_type"          : sampler_type,
             "parallel"              : parallel,
             "cores"                 : cores,
             "nwalkers"              : nwalkers,
@@ -400,6 +413,14 @@ class Acid:
                 # This doesn't work, needs serious modifications to make work, so just run serially for now
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
+
+        if self.config.sampler_type == "dynesty":
+            if dynesty is None:
+                raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")
+        if self.config.sampler_type == "dynesty" and not self.config.deterministic_profile:
+            raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise the speed is far too slow)")
+        if self.config.sampler_type == "dynesty" and self.config.max_steps is not None:
+            raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive.")
 
         # --- Start of the ACID method ---
 
@@ -524,22 +545,25 @@ class Acid:
         self.data.nwalkers = self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
         rng = np.random.default_rng(self.config.seed)
 
-        # Starting values of walkers with independent variation
-        sigma = 0.8 * 0.005
-        initial_state = []
-        for i in range(0, len(self.data.model_inputs)):
-            if i < len(self.data.velocities):
-                if not self.config.deterministic_profile:
-                    pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+        # Starting values of walkers with independent variation#
+        if self.config.sampler_type == "emcee":
+            sigma = 0.8 * 0.005
+            initial_state = []
+            for i in range(0, len(self.data.model_inputs)):
+                if i < len(self.data.velocities):
+                    if not self.config.deterministic_profile:
+                        pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+                    else:
+                        continue
                 else:
-                    continue
-            else:
-                x1 = self.data.model_inputs[i]
-                rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
-                sigma = abs(rounded_sigma) / 10
-                pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
-            initial_state.append(pos)
-        initial_state = np.array(initial_state).T
+                    x1 = self.data.model_inputs[i]
+                    rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
+                    sigma = abs(rounded_sigma) / 10
+                    pos = rng.normal(self.data.model_inputs[i], sigma, (self.data.nwalkers, ))
+                initial_state.append(pos)
+            initial_state = np.array(initial_state).T
+        else:
+            initial_state = None
 
         # For the rassine branch, leave everything above the same, we just now need to change the model_inputs to Rassine type inputs
         if self.config.rassine:
@@ -547,11 +571,6 @@ class Acid:
             self.data.nwalkers = 10
             self.data.ndim = 1
             initial_state = rng.uniform(1, 100, (self.data.nwalkers, self.data.ndim))
-            # initial_state = rng.normal(self.data.model_inputs, 5, (self.data.nwalkers, self.data.ndim)).T
-            # import matplotlib.pyplot as plt
-            # plt.plot(self.initial_state.T)
-            # plt.show()
-            # sys.exit()
 
         ### ACID initialialised ###
         self.data.setup_time += time.time() - init_t0
@@ -828,7 +847,7 @@ class Acid:
         sn = self.data.sn["combined"]
 
         # Use the initial LSD run to get the forward model and scaled residuals
-        forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha).full_model(self.data.model_inputs)
+        forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha, od=self.config.od).full_model(self.data.model_inputs)
         residuals = (y - forward) / forward
 
         # Chunk masking based on deviation from residuals
@@ -925,7 +944,8 @@ class Acid:
         """
 
         # Get default sampler kwargs from initial state
-        sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
+        if self.config.sampler_type == "emcee":
+            sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
         pool_context = nullcontext(None)
 
         if self.config.parallel:
@@ -936,14 +956,25 @@ class Acid:
             
             ctx = mp.get_context("fork")
             pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
-            log_prob_fn = mcmc._mp_log_probability
+            log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
+            ptform = mcmc._mp_ptform
+            queue_size = os.cpu_count()
         else:
             MCMC = mcmc.MCMC(self.data)
-            log_prob_fn = MCMC
-        
+            log_prob = MCMC if self.config.sampler_type == "emcee" else MCMC.dynesty_logprob
+            ptform = MCMC.ptform
+            queue_size = None
+
         with pool_context as pool:
-            self.sampler = EnsembleSampler(log_prob_fn=log_prob_fn, pool=pool, **sampler_kwargs)
-            self.sampler.run_mcmc(**mcmc_kwargs)
+            if self.config.sampler_type == "emcee":
+                self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
+                self.sampler.run_mcmc(**mcmc_kwargs)
+            else:
+                import dynesty
+                if self.config.parallel:
+                    pool.size = self.config.cores
+                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
+                self.sampler.run_nested(print_progress=self.config.verbose>1)
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """

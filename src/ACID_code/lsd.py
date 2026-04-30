@@ -25,7 +25,7 @@ class LSD:
     def __init__(
             self,
             data    : object|None           = None,
-            OD      : bool                  = True,
+            od      : bool                  = None,
             verbose : IntLike|bool|str|None = None,
             ) -> None:
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
@@ -34,8 +34,9 @@ class LSD:
         ----------
         data : object | None, optional
             A data instance to draw parameters and configs from, by default None
-        OD : bool, optional
-            Whether to perform LSD in optical depth space (True) or flux space (False), by default True.
+        od : bool, optional
+            Whether to perform LSD in optical depth space (True) or flux space (False), by default None.
+            If None, takes from Data instance if provided, else defaults to True.
             We generally recommend always using optical depth as ACID was always intended, but you can set
             this to False if you wish to do your own testing. See :ref:`LSD` in the documentation for more details.
         verbose : :py:type:`IntLike | bool | str | None`, optional
@@ -47,7 +48,7 @@ class LSD:
         self.slurm    = "SLURM_JOB_ID" in os.environ
         self.data     = data if data is not None else Data()
         self.linelist = data.linelist if data is not None else None
-        self.OD       = OD
+        self.od       = od if od is not None else data.config.od
         try:
             self.config = data.config
         except:
@@ -87,9 +88,9 @@ class LSD:
             decomposition and solving for the profile, by default None
         """
         # Ensure inputs are numpy arrays
-        wavelengths = np.asarray(wavelengths)
-        flux = np.asarray(flux)
-        errors = np.asarray(errors)
+        wavelengths = np.array(wavelengths)
+        flux = np.array(flux)
+        errors = np.array(errors)
 
         # Ensure dimensions match
         if not wavelengths.shape == flux.shape == errors.shape:
@@ -115,8 +116,10 @@ class LSD:
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
-        if self.OD:
+        if self.od:
             flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
+        else:
+            flux -= 1
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         if alpha is None:
@@ -131,9 +134,10 @@ class LSD:
         self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_cov=True)
 
         # Convert profile back to flux if needed
-        if self.OD:
+        if self.od:
             self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
         else:
+            self.profile += 1
             self.profile_F, self.profile_errors_F, self.cov_z_F = self.profile, self.profile_errors, self.cov_z
 
         return
