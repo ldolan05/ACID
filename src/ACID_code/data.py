@@ -1588,14 +1588,14 @@ class DataList:
     def __repr__(self):
         return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"
 
-    def __call__(self, **kwargs):
+    def __call__(self, *args, **kwargs):
         """Runs and returns the results of the :py:function:`DataList.run_ACID` method, which runs ACID on the Data instances in the list for the specified orders.
         
         Parameters
         ----------
         See :py:function:`DataList.run_ACID` for the accepted parameters and their descriptions.
         """
-        return self.run_ACID(**kwargs)
+        return self.run_ACID(*args, **kwargs)
 
     def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
         """
@@ -1667,6 +1667,7 @@ class DataList:
         nworkers          : IntLike|None         = None,
         store_sampler     : bool                 = True,
         size_limit        : Scalar|None          = 1,
+        drop_after_run    : bool                 = False,
         allow_overwrite   : bool                 = False,
         overwrite_kwargs  : bool                 = False,
         **kwargs,
@@ -1698,6 +1699,9 @@ class DataList:
             If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
             This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
             A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
+        drop_after_run : bool, optional
+            If True, the Data instance for an order will be dropped from the DataList after running ACID on that order.
+            This can be useful for saving memory if the Data instances are large and you do not need to keep them in memory after processing.
         allow_overwrite : bool, optional
             If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
             that already have result pickles in the save_dir.
@@ -1800,6 +1804,8 @@ class DataList:
 
             if self.save_dir is not None:
                 result.save(save_path, store_sampler=store_sampler, size_limit=size_limit)
+            if drop_after_run:
+                self.data_list[self.o2i[order]] = None
         return
 
     def save(self, save_dir:str|None=None) -> None:
