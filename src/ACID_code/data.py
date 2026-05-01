@@ -5,7 +5,8 @@ from tqdm import tqdm
 import traceback as tb
 from typing import Any, Dict, Optional
 from emcee import EnsembleSampler
-import emcee.backends.backend as emceebackend
+from emcee.backends.backend import Backend
+from emcee.backends.hdf import HDFBackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pickle, os
@@ -194,6 +195,8 @@ class Config:
             },
         },
         "seed" : None,
+        "save_path" : None,
+        "sampler_path" : None,
 
         # RUN_ACID CONFIGURATION
         "deterministic_profile" : True,
@@ -517,9 +520,6 @@ class Data:
     continuum_model   : Optional[np.ndarray] = None
     #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
     nsteps            : Optional[int]  = 0
-
-    #: The sampler object stored as a class, to be used in Acid or Result as needed, when saved to a file, only the backend is saved and reinitialised by the load function
-    sampler  : Optional[EnsembleSampler] = None # stored ensemble sampler
     #: A flag for whether the profiles have been fully calculated to avoid recalculating
     complete : bool                      = False # is set to True when the profiles and combined_profile have been fully calculated
 
@@ -534,16 +534,53 @@ class Data:
     #: results_time (float) - The time taken to get the final profiles
     results_time       : Optional[float] = 0 
     #: total_time (float) - The total time for the full run
-    total_time         : Optional[float] = 0  
+    total_time         : Optional[float] = 0
 
     # Initialise the properties
     # -------------------------
+    #: The sampler object stored as a class, but when saved, only a string to the HDF5 path is stored.
+    _sampler  : Optional[EnsembleSampler] = None # stored ensemble sampler
     #: Config data for convenience as a class, but converted to a dictionary on save to avoid pickling issues
     _config   : Config = field(default_factory=Config)
     #: The linelist is stored as a dictionary but exposed as a :py:class:`LineList` object when the property is accessed.
     _linelist : Optional[Dict[str, np.ndarray]] = None
     #: The velocities are stored as a 1D numpy array
     _velocities : Optional[np.ndarray] = None
+
+    @property
+    def sampler(self) -> EnsembleSampler|None:
+        """
+        The ensemble sampler object used for MCMC sampling.
+        This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
+        """
+        return self._sampler
+
+    @sampler.setter
+    def sampler(self, sampler:EnsembleSampler|Backend|HDFBackend|str|None) -> None:
+        """
+        Sets the sampler object from various types.
+        This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
+        """
+        if sampler is not None:
+            from .mcmc import MCMC
+            log_prob_fn = MCMC(self)
+
+        if isinstance(sampler, EnsembleSampler):
+            self._sampler = sampler
+        elif isinstance(sampler, Backend) or isinstance(sampler, HDFBackend):
+            self._sampler = utils.backend_to_sampler(sampler, log_prob_fn)
+        elif isinstance(sampler, str):
+            if os.path.exists(sampler):
+                self._sampler = utils.backend_to_sampler(HDFBackend(sampler), log_prob_fn)
+            else:
+                raise ValueError(f"The provided sampler path '{sampler}' does not exist.")
+        elif sampler is None:
+            if self.config.verbose > 0 and self._sampler is not None:
+                print("Warning, you have discarded the sampler.")
+            self._sampler = None
+        
+        if self._sampler is not None and isinstance(self._sampler.backend, HDFBackend):
+            self.config.sampler_path = self._sampler.backend.filename
 
     @property
     def velocities(self) -> Array1D|None:
@@ -1087,31 +1124,55 @@ class Data:
             plt.savefig(f"{save_fig}/forward_model.png")
         plt.show()
 
-    def save(self, filename:str="data.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
+    def save(self, save_path:str|None=None, sampler_path:str|None=None) -> None:
         """
         Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
 
         Parameters
         ----------
-        filename : str
-            The name of the file to save the data object to. This should be a .pkl file.
-        store_sampler : bool
-            Whether to store the MCMC sampler object in the data object. This is recommended for determinstic_profile=True as the sampler is
-            quite small, otherwise, you should disable this and avoid using Result methods requiring the sampler.
-        size_limit : Scalar | None, optional
-            A hard size limit to the sampler in GB.
-            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
-            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
-            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
+        save_path : str | None
+            The path to save the data object. If None, uses the path stored in the config.
+            If That is also None, the data object will not be saved.
+            Will attempt to create the directory for the filepath if it does not exist.
+            The file must end with .pkl to be recognised as a pickled file.
+        sampler_path : str | None
+            This is used for saving the sampler as a HDF5 file if it has not already been set up as such.
+            If a .h5 file is provided, and the sampler is not already saved as a HDF5 file, the sampler backend is converted to a HDF5 backend and saved.
+            If the sampler is already set up to save as a HDF5 file, this argument is ignored. 
+            If you want to move the file location, move it yourself and set Data.sampler = sampler_path to update the location in the Data object.
+            If None, this will do nothing.
         """
-        payload = self.to_dict(store_sampler, size_limit) # generates a dictionary of the data object for easy pickling
+        # First we handle the sampler saving, so that when saved it can be added to the sampler path saved in the dictionary later
+        if sampler_path is not None:
+            if self.sampler is not None:
+                if not isinstance(self.sampler.backend, HDFBackend):
+                    if not sampler_path.endswith(".h5"):
+                        raise ValueError("sampler_path must end with .h5 to convert and save the sampler backend as a HDF5 file.")
+                    os.makedirs(os.path.dirname(sampler_path), exist_ok=True) # create directory if it does not exist
+                    utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
+                    self.config.sampler_path = sampler_path # update config with sampler path for future reference
+                    if self.config.verbose > 1:
+                        print(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
+                else:
+                    if self.config.verbose > 1:
+                        print("Sampler is already set up to save as a HDF5 file, ignoring sampler_path argument.")
+            else:
+                if self.config.verbose > 0:
+                    print("Cannot save sampler as sampler does not exist.")
 
-        with open(filename, "wb") as f:
+        # Now save the Data object itself, with the sampler path included to be used when reloaded
+        self.config.save_path = save_path # update and overwrite config with save path for future reference
+        save_path = self.config.save_path # now use the save path in the config
+        payload = self.to_dict() # generates a dictionary of the data object for easy pickling
+        os.makedirs(os.path.dirname(save_path), exist_ok=True) # create directory if it does not exist
+        with open(save_path, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+        if self.config.verbose > 1:
+            print(f"Data object saved to {save_path}")
 
     @classmethod
-    def load(cls, filename:str, drop_sampler:bool=False) -> Data:
+    def load(cls, filename:str) -> Data:
         """
         Loads a data object from a file using pickling. This will read the dictionary from the file and 
         then use it to initialise a new Data class.
@@ -1120,9 +1181,6 @@ class Data:
         ----------
         filename : str
             The name of the file to load the data object from. This should be a .pkl file.
-        drop_sampler : bool
-            If True, the sampler will not be loaded even if it is present in the file.
-            This is useful for saving memory if you only want to load the data and not the sampler.
         Returns
         -------
         Data
@@ -1132,32 +1190,13 @@ class Data:
             payload = pickle.load(f)
 
         # Initialise a new Data object and update it with the payload dictionary
-        return cls().from_dict(payload, drop_sampler)
+        return cls().from_dict(payload)
 
-    def to_dict(self, store_sampler:bool=True, size_limit:Scalar|None=1) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Converts the data object to a dictionary payload for saving. This is used internally in the save method, 
         but can also be used for debugging or other purposes.
-
-        Parameters
-        ----------
-        store_sampler : bool, optional
-            Whether to include the MCMC sampler in the dictionary payload, by default True.
-        size_limit : Scalar | None, optional
-            A hard size limit to the sampler in GB.
-            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
-            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
-            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
-        # Check if we should store the sampler based on the store_sampler flag and size limit
-        if size_limit is not None and self.sampler is not None:
-            sampler_size = utils.sampler_nbytes(self.sampler) / 1024**3
-
-            if sampler_size > size_limit:
-                if store_sampler and self.config.verbose > 0:
-                    print(f"Warning: Sampler size ({sampler_size:.2f} GB) exceeds "
-                          f"the size limit ({size_limit} GB). Sampler will not be stored.")
-                store_sampler = False
 
         payload: dict[str, Any] = {}
         for f in fields(self):
@@ -1166,16 +1205,16 @@ class Data:
 
             if name == "_config":
                 payload["config"] = val.to_dict() # store as dict in payload, but store as class in Data
-            elif name == "sampler":
-                if store_sampler and self.sampler is not None:
-                    # Store the sampler as its backend dictionary to avoid pickling issues
-                    payload["sampler"] = dict(self.sampler.backend.__dict__)
+            elif name == "_sampler":
+                if val is not None:
+                    if self.config.sampler_path is not None:
+                        payload["sampler"] = self.config.sampler_path # stores just the path to the sampler
             else:
                 payload[name] = val
 
         return payload
 
-    def from_dict(self, payload:dict[str,Any], drop_sampler:bool=False) -> Data:
+    def from_dict(self, payload:dict[str,Any]) -> Data:
         """
         Updates the data object from a dictionary payload. This is used internally in the 
         load method, but can also be used for debugging or other purposes.
@@ -1186,34 +1225,28 @@ class Data:
             The dictionary payload to update the data object from. This should have the same keys as the
             attributes of the data class. The "config" key should be a dictionary 
             that can be used to initialise a Config class.
-        drop_sampler : bool
-            If True, the sampler will not be loaded even if it is present in the file.
-            This is useful for saving memory if you only want to load the data and not the sampler.
         """
         for f in fields(self):
             name = f.name
             if name == "_config": # config stored as a dict in payload, but stored here as class
                 cfg_dict = payload.get("config", {})
                 setattr(self, "_config", Config(**cfg_dict))
-            elif name == "sampler":
-                sampler = payload.get("sampler", None)
-                if sampler is None or drop_sampler:
-                    continue
-                # Reconstruct sampler from backend if in payload, avoids pickling issues
-                backend = emceebackend.Backend(dtype=np.float64)
-                backend.__dict__.update(sampler)
-                nwalkers, ndim = backend.shape
-                from .mcmc import MCMC
-                self.sampler = EnsembleSampler(nwalkers, ndim, log_prob_fn=MCMC(self), backend=backend) # dummy sampler to hold the backend
+            elif name == "_sampler":
+                continue # handled after loop
             else:
                 if name in payload:
                     setattr(self, name, payload[name])
+
+        # Handle sampler separately
+        self.sampler = payload.get("sampler", None) # property handles the loading of the sampler
+        
         return self
 
     @property
     def result(self):
         if not self.complete:
-            raise ValueError("Results have not yet been calculated, cannot return results object. Please run the MCMC sampling and process the results first.")
+            raise ValueError(f"Results have not yet been calculated, cannot return results object.\n"
+                             f"Please run the MCMC sampling and process the results first.")
         from .result import Result
         return Result(self)
 
@@ -1416,7 +1449,10 @@ class DataList:
             Setting 'order' will not have any effect as they will be overwritten by the order numbers in the order_range.
             If not provided, default Config values will be used. Default is None.
         save_dir : str | None, optional
-            The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
+            The default directory to save results and figures for each order.
+            By default the DataList will save data.pkl and sampler.h5 to the directory (named by the order number) to in this directory.
+            If the Configs or kwargs passed contain their own save_path or sampler_path (see :py:class:`Acid`), those instead are used.
+            If None, no saving will be done, this is however, not recommended. Default is None.
         verbose : int | bool | str | None, optional
             The verbosity level for printing information during the initialization. 
             Follows the same format as the "verbose" input in the :py:class:`Config` class. 
@@ -1501,7 +1537,8 @@ class DataList:
             data.config.update_lowpri(**config_kwargs)
             data.config.update_hipri(order=order) # order must be overwritten and set last by us to ensure it matches with the order of the input data for this index
 
-            # Set the inputs for this Data instance, taking the idx'th element of the input arrays for this order. If errors or sn are not provided, they will be set to None and approximated in the Data class.
+            # Set the inputs for this Data instance, taking the idx'th element of the input arrays for this order.
+            # If errors or sn are not provided, they will be set to None and approximated in the Data class.
             input_errors = errors[idx] if errors is not None else None
             input_sn = sn[idx] if sn is not None else None
             data.set_inputs(wavelengths[idx], flux[idx], input_errors, input_sn)
@@ -1509,7 +1546,13 @@ class DataList:
             # Set linelist and velocities, which always should be same for all orders
             data.linelist = linelist # sets the linelist for this Data instance, which is shared across all orders in the DataList
             data.velocities = velocities
-            
+
+            if self.save_dir is not None:
+                save_path = os.path.join(self.save_dir, f"order_{order}", "data.pkl")
+                sampler_path = os.path.join(self.save_dir, f"order_{order}", "sampler.h5")
+                data.config.update_lowpri(save_path=save_path, # set default save path for this order which can be overwritten by user
+                                        sampler_path=sampler_path) # set default sampler path for this order which can be overwritten by user
+
             datalist.append(data) # finally append to the datalist
 
         self.data_list = datalist # datalist property handles the rest
@@ -1652,6 +1695,7 @@ class DataList:
         if np.any([o not in order_range for o in self.orders]):
             raise ValueError("The already saved orders must be a subset of the inputted order_range.")
         self.order_range = np.array(order_range, dtype=np.int32)
+        self.sort_by_order() # re-sorts the list and updates the o2i mapping, and injects the new order_range into each config
 
     def sort_by_order(self) -> None:
         """
@@ -1661,6 +1705,8 @@ class DataList:
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
         self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
         self.orders = np.array([data.config.order for data in self.data_list], dtype=np.int32)
+        for data in self.data_list:
+            data.config.order_range = self.order_range # inject the order range into each config for internal awareness
 
         if len(np.unique(self.orders)) != len(self.orders):
             raise ValueError("All Data instances within the inputted list must have unique order numbers.")
@@ -1671,9 +1717,6 @@ class DataList:
         use_index_mapping : bool                 = True,
         worker            : IntLike|None         = None,
         nworkers          : IntLike|None         = None,
-        store_sampler     : bool                 = True,
-        size_limit        : Scalar|None          = 1,
-        drop_after_run    : bool                 = False,
         allow_overwrite   : bool                 = False,
         overwrite_kwargs  : bool                 = False,
         **kwargs,
@@ -1697,17 +1740,14 @@ class DataList:
         nworkers : :py:type:`IntLike` | None, optional
             The total number of workers to use to split the orders. See the "worker" parameter for more details. Default is None.
         store_sampler : bool, optional
-            If True, the sampler object from the ACID run will be stored in the data pickles. This will take up more disk space, but allow
-            for use of the :py:class:`Result` methods requiring the sampler attribute.
+            If True, the sampler object from the ACID run will be stored in the same folder as the resulting data pickles.
+            This will take up more disk space, but allow for use of the :py:class:`Result` methods requiring the sampler attribute.
             We recommend leaving this on True if using deterministic sampling, otherwise set to False. Default is True.
         size_limit : Scalar | None, optional
             A hard size limit to the sampler in GB.
             If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
             This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
             A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
-        drop_after_run : bool, optional
-            If True, the Data instance for an order will be dropped from the DataList after running ACID on that order.
-            This can be useful for saving memory if the Data instances are large and you do not need to keep them in memory after processing.
         allow_overwrite : bool, optional
             If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
             that already have result pickles in the save_dir.
@@ -1761,17 +1801,15 @@ class DataList:
 
         iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose > 1 else orders
         for order in iterable:
-            if self.save_dir is not None:
-                # Define save location
-                results_dir = os.path.join(self.save_dir, "results")
-                os.makedirs(results_dir, exist_ok=True)
-                save_path = os.path.join(results_dir, f"order_{order}.pkl")
-                if os.path.exists(save_path) and not allow_overwrite:
-                    if self.verbose > 1:
-                        print(f"ACID result for order {order} already exists at {save_path}. \n"
-                                f"Skipping this order. To overwrite existing results, set allow_overwrite=True.")
-                    continue
-            
+
+            # Check if ACID already ran for this order
+            if os.path.exists(self.data_list[self.o2i[order]].config.save_path) and not allow_overwrite:
+                if self.verbose > 1:
+                    print(f"ACID result for order {order} already exists at {self.data_list[self.o2i[order]].config.save_path}. \n"
+                            f"Skipping this order. To overwrite existing results, set allow_overwrite=True.")
+                # else the sampler and data instance is overwritten
+                continue
+
             # Handling if any kwargs were input 
             data = self.data_list[self.o2i[order]]
             # Only overwrite if overwrite_kwargs is True, otherwise keep the existing linelist/velocities in the Data instance
@@ -1803,22 +1841,26 @@ class DataList:
                       f"low, and no lines survived the cut. Skipping this order.", flush=True)
                 continue
             # If no known exception arose, just print the last 3 calls in traceback for debugging and skip the order.
-            except Exception:
+            except Exception as e:
+                raise e
                 print(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n", flush=True)
                 tb.print_exc(limit=-3)
                 continue
 
-            if self.save_dir is not None:
-                result.save(save_path, store_sampler=store_sampler, size_limit=size_limit)
-            if drop_after_run:
-                self.data_list[self.o2i[order]] = None
-        return
+        # Once all the orders have been done, we can repack the all the data instances into one to speedup loading time
+        # The data instances are very light as they do not store the sampler, so we can afford to pack and store duplicates
+        self.save()
 
     def save(self, save_dir:str|None=None) -> None:
         """
-        Saves the DataList to a pickle file. The samplers, if set to be stored in run_ACID, are stored separately in their own directory and loaded separately on load.
+        Pack all of the DataList instances into a single DataList pickle, and save the state of the datalist to this pickle.
+        Otherwise, the data instances can always be reloaded separately from the inidividual resulting pickle files in the directory for their order.
+        Or just wherever the Config has them stored.
         The pickle file contains a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
-        The filename is "datalist.pkl". If save_dir is not provided, self.save_dir is used. If that is also None, a ValueError is raised.
+        The filename is always "datalist.pkl", as save_dir must be a directory.
+        If save_dir is not provided, self.save_dir is used. If that is also None, a ValueError is raised.
+        All the orders should be in the memory to run this function, you can ensure they are all loaded with the load() method 
+        and pointing to the directory with all the data pickles.
 
         Parameters
         ----------
@@ -1830,7 +1872,7 @@ class DataList:
             self.save_dir = save_dir
         if self.save_dir is None:
             raise ValueError("No save path provided and save_dir was not set.")
-        d["dict_list"] = [data.to_dict(store_sampler=False) for data in self.data_list]
+        d["dict_list"] = [data.to_dict() for data in self.data_list]
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
         d["save_dir"] = self.save_dir
         d["verbose"] = self.verbose
@@ -1838,7 +1880,7 @@ class DataList:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, path:str) -> DataList:
+    def load(cls, path:str, print_progress:bool=True) -> DataList:
         """
         Loads a DataList from a pickle file. The pickle file should contain a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         Will attempt to load from datalist.pkl in the provided path if it is a directory, otherwise will attempt to load from the provided path directly. 
@@ -1848,6 +1890,10 @@ class DataList:
         ----------
         path : str
             The path to the pickle file or directory to search for the pickle file.
+        print_progress : bool, optional
+            If True, will print progress messages during the loading process.
+            Similar to verbosity, but only for this function.
+            Default is True.
 
         Returns
         -------
@@ -1857,34 +1903,41 @@ class DataList:
         if os.path.isdir(path):
             path_check = os.path.join(path, "datalist.pkl")
             if not os.path.exists(path_check):
-                # Final attempt to directly load the result pickles
-                if path.endswith("results"):
-                    result_path = path
-                else:
-                    result_path = os.path.join(path, "results")
-                if os.path.exists(result_path) and os.path.isdir(result_path):
-                    result_files = [f for f in os.listdir(result_path) if f.endswith(".pkl")]
-                    if not len(result_files) > 0:
-                        raise ValueError(f"No datalist.pkl found in {path}, and no result pickles found in {result_path}.")
-                    data_list = []
-                    from .result import Result
-                    for result_file in result_files:
-                        result = Result.load(os.path.join(result_path, result_file))
-                        data_list.append(result.data)
+                # Final attempt to directly load the data pickles from order folders
+                all_files = os.listdir(path)
+                data_list = []
+                if print_progress:
+                    all_files = tqdm(all_files, "Opening data pickles in order folders", unit="folder")
+                for folder in all_files:
+                    folder_path = os.path.join(path, folder)
+                    if os.path.isdir(folder_path) and folder.startswith("order_"):
+                        pickle_path = os.path.join(folder_path, "data.pkl")
+                        if os.path.exists(pickle_path):
+                            with open(pickle_path, "rb") as f:
+                                d = pickle.load(f)
+                            data_list.append(Data().from_dict(d))
+                if len(data_list) > 0:
+                    if print_progress:
+                        print(f"Successfully loaded {len(data_list)} Data instances from order folders in {path}.")
                     return cls.from_datalist(data_list, save_dir=path)
                 else:
-                    raise ValueError(f"No datalist.pkl found in {path}, and no results directory found to look for result pickles.")
+                    raise ValueError(f"No datalist.pkl found in {path}, and no data pickles found in order folders within that path.")
             else:
                 path = path_check
         else:
             if not os.path.exists(path):
                 raise ValueError(f"No pickle file found at {path} to load the DataList from.")
 
+        if print_progress:
+            print(f"Loading DataList from {path}...")
         with open(path, "rb") as f:
             d = pickle.load(f)
         data_list = [Data().from_dict(d) for d in d["dict_list"]]
         verbose = d["verbose"] if "verbose" in d else None
-        obj = cls.from_datalist(data_list, save_dir=d["save_dir"], verbose=verbose)
+        # We use a new save_dir depending on the path location in case the directory has changed since last saved
+        obj = cls.from_datalist(data_list, save_dir=os.path.dirname(path), verbose=verbose)
+        if print_progress:
+            print(f"Successfully loaded DataList from {path}.")
         return obj
 
     @property
@@ -1893,11 +1946,13 @@ class DataList:
 
     @save_dir.setter
     def save_dir(self, dir):
-        if dir is None:
-            self._save_dir = None
-            return
-        os.makedirs(dir, exist_ok=True)
+        if dir is not None:
+            os.makedirs(dir, exist_ok=True)
         self._save_dir = dir
+        if self._save_dir is None:
+            if self.verbose > 1:
+                print("Warning: save_dir is set to None. No results will be saved. This is not recommended.")
+        return
 
     @property
     def combined_profile(self) -> tuple|None:

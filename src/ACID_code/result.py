@@ -230,6 +230,10 @@ class Result:
         self.data.total_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
         self.data.complete = True
 
+        # Now that results are complete, save the data instance if specified
+        if self.config.save_path is not None:
+            self.save() # the sampler is already saved if specified
+
         return
 
     @_require_profiles
@@ -798,38 +802,21 @@ class Result:
         """Sets the sampler in the data class."""
         self.data.sampler = value
 
-    def save(self, filename:str="result.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
-        """Saves the Result object to a pickle file.
-
-        Parameters
-        ----------
-        filename : str, optional
-            Name of the file to save the Result object to, by default "result.pkl"
-        store_sampler : bool, optional
-            Whether to store the sampler backend in the pickle file. If False, 
-            the sampler will not be stored, and the Result object will not be able to 
-            continue sampling or plot walkers/corner plots
-        size_limit : Scalar | None, optional
-            A hard size limit to the sampler in GB.
-            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
-            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
-            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
+    def save(self, *args, **kwargs) -> None:
         """
-
-        # Use the Data class's save method to handle saving, 
-        # which will handle the sampler backend appropriately based on the store_sampler flag
-        self.data.save(filename, store_sampler=store_sampler, size_limit=size_limit)
-
-        if getattr(self, "config", None) is not None and self.config.verbose > 1:
-            print(f"Result object saved to {filename}")
+        Saves the Data instance which the Result class inherits from Acid.
+        See :py:function:`Data.save` for more details on the parameters that can be passed.
+        """
+        self.data.save(*args, **kwargs)
 
     @classmethod
-    def load(cls, result:str|Result|Data="result.pkl") -> Result:
-        """Loads a Result object from a pickle file or from a Data/Result object.
+    def load(cls, data:str|Result|Data="result.pkl") -> Result:
+        """
+        Loads a Result object from a pickle file or from a Data/Result object.
 
         Parameters
         ----------
-        result : str | :py:class:`Result` | :py:class:`Data`, optional
+        data : str | :py:class:`Result` | :py:class:`Data`, optional
             A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
 
         Returns
@@ -837,9 +824,9 @@ class Result:
         :py:class:`Result`
             A Result object loaded from the pickle file or from the provided object.
         """
-        if isinstance(result, str):
-            return cls(Data.load(result))
-        elif isinstance(result, Result):
-            return cls(result.data)
-        elif isinstance(result, Data):
-            return cls(result)
+        if isinstance(data, str):
+            return cls(Data.load(data))
+        elif isinstance(data, Result):
+            return cls(data.data)
+        elif isinstance(data, Data):
+            return cls(data)

@@ -6,6 +6,8 @@ from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
 import glob, emcee, psutil, os
+from emcee import EnsembleSampler
+import emcee.backends.backend as emceebackend
 import scipy.constants as const
 from typing import TypeAlias, Annotated
 c_kms = float(const.c/1e3)
@@ -330,6 +332,52 @@ def get_available_memory():
     else:
         available_memory = psutil.virtual_memory().available
     return available_memory
+
+def save_backend_to_hdf5(backend, filename):
+    nwalkers, ndim = backend.shape
+    niter = backend.iteration
+
+    hdf = emcee.backends.HDFBackend(
+        filename,
+        dtype=getattr(backend, "dtype", None),
+    )
+
+    # Overwrite existing file and reset if already exists
+    hdf.reset(nwalkers, ndim)
+
+    blobs = backend.get_blobs()
+
+    # Allocate space in the HDF5 datasets.
+    if niter > 0:
+        hdf.grow(niter, None if blobs is None else blobs[0])
+
+    with hdf.open("a") as f:
+        g = f["mcmc"] # mcmc is always the emcee default
+
+        if niter > 0:
+            g["chain"][:] = backend.get_chain()
+            g["log_prob"][:] = backend.get_log_prob()
+            g["accepted"][:] = backend.accepted
+
+            if blobs is not None:
+                g["blobs"][:] = blobs
+                g.attrs["has_blobs"] = True
+
+        # Required so HDFBackend.iteration works correctly.
+        g.attrs["iteration"] = niter
+
+        # Reload the random state of the walkers if they exist
+        random_state = getattr(backend, "random_state", None)
+        if random_state is not None:
+            for i, v in enumerate(random_state):
+                g.attrs[f"random_state_{i}"] = v
+    return hdf
+
+def backend_to_sampler(backend, log_prob_fn):
+    nwalkers, ndim = backend.shape
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob_fn)
+    sampler.backend = backend
+    return sampler
 
 def set_dict_defaults(input_dict: dict | None, default_dict: dict) -> dict:
     """Sets default values in a dictionary if they are not already present.

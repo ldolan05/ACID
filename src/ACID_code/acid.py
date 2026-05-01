@@ -103,6 +103,18 @@ class Acid:
             optical and near infrared. For a guide on using your own/modifying the defaults, see :ref:`masking_lines`. By default None, stored in the Config instance.
         seed : :py:type:`IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
+        save_path : :py:type:`str`, optional
+            The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
+            If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
+            Should be a valid file path that ends with ".pkl". If the directory containing it does not exist, it will be created.
+            If a file already exists at this path, it will be overwritten on Acid initialization.
+        sampler_path : :py:type:`str`, optional
+            The path to save the sampler HDF5 backend file to.
+            If None, the sampler is not saved and only stored in memory. By default None.
+            Note that if your path points to an existing file, it will be overwritten on Acid initialization.
+            If True, we use the emcee HDF5 backend to store and load the sampler.
+            Should be a valid file path that ends with ".h5". If the directory containing it does not exist, it will be created.
+            Note that if you later try and save the sampler through the data class, it is converted to a HD5 backend.
         data : :py:class:`Data` | :py:class:`DataList`, optional
             An optional backend :py:class:`Data` object to use for storing data. Allows previously calculated results to be used skipped.
             If None, a new :py:class:`Data` object is created. Please note that if the :py:class:`Data` class already has a saved ACID config
@@ -180,6 +192,23 @@ class Acid:
         # Set default order and order range for ACID, config handles if either of these are None
         self.config.order_range = order_range
         self.config.order = order
+
+        # Handle data saving paths checks
+        if save_path is not None:
+            if not save_path.endswith(".pkl"):
+                raise ValueError("'save_path' must end with '.pkl'.")
+        self.config.save_path = save_path
+
+        # Handle sampler path checks
+        if sampler_path is not None:
+            if not sampler_path.endswith(".h5"):
+                raise ValueError("'sampler_path' must end with '.h5'.")
+            # Delete existing file at sampler path if it exists
+            if os.path.exists(sampler_path):
+                if self.config.verbose > 0:
+                    print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
+                os.remove(sampler_path)
+        self.config.sampler_path = sampler_path
 
         return
 
@@ -1027,6 +1056,14 @@ class Acid:
                 raise ValueError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
                                  "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
             backend = self.sampler.backend # This includes previous seed
+        
+        # Now that the backend has been set depending on an existing state, if the backend is stil None, we choose depending on sampler_path
+        if backend is None and self.config.sampler_path is not None:
+            os.makedirs(os.path.dirname(self.config.sampler_path), exist_ok=True)
+            backend = emcee.backends.HDFBackend(self.config.sampler_path)
+            if self.config.verbose > 1:
+                print(f"Using sampler backend at {self.config.sampler_path}")
+        # else: leave none and a normal in-memory sampler backend is used
 
         if self.config.cores is None:
             if "SLURM_JOB_ID" in os.environ:
