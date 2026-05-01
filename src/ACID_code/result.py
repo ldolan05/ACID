@@ -102,13 +102,13 @@ class Result:
         self.config = self.data.config # point Result.config to Data.config to keep them in sync
         self.config.verbose = verbose # property overwrites or handles if verbose input was None
 
-        # By default set sampler_initialiated = False until sampler has been initialised in function so that self.initiate_sampler can be skipped
-        self.sampler_initialiated = False
+        # By default set sampler_initialized = False until sampler has been initialised in function so that self.initiate_sampler can be skipped
+        self.sampler_initialized = False
 
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
         if self.sampler is not None:
-            self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
+            self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialized to True
 
         if not self.data.complete:
             if process_results:
@@ -726,7 +726,7 @@ class Result:
             Internal parameter used to track which method is calling initiate_sampler, for error messages. 
             Not intended for user input, by default None.
         """
-        if self.sampler_initialiated:
+        if self.sampler_initialized:
             if sampler is None:
                 return # sampler already initiated from initialisation, so skip the rest of the method
             # else: continues to update the sampler and internal variables based on new sampler input
@@ -789,6 +789,8 @@ class Result:
 
         self.default_params = poly_params
         self.default_param_labels = poly_labels
+
+        self.sampler_initialized = True
 
     @property
     def sampler(self) -> EnsembleSampler|None:
