@@ -14,4 +14,6 @@ dependencies:
   - sphinx_rtd_theme
   - corner
   - beartype
+  - psutil
+  - h5py
 prefix: /Users/benjamincadell/miniforge3/envs/acid

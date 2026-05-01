@@ -27,7 +27,8 @@ dependencies = [
     "tqdm",
     "psutil",
     "corner",
-    "beartype"
+    "beartype",
+    "h5py"
 ]
 dynamic = ["version"]
 
