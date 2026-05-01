@@ -27,15 +27,18 @@ class Acid:
 
     def __init__(
         self,
-        velocities      : Array1D|None                                       = None,   # Data
-        linelist        : Array2D|str|LineList|dict|None                     = None,   # Data
-        order           : IntLike|None                                       = None,   # Config
-        order_range     : Array1D|None                                       = None,   # Config
-        verbose         : IntLike|bool|str|None                              = None,   # Config
-        masking_lines   : dict|MaskingLines|None                             = None,   # Config
-        seed            : IntLike|None                                       = None,   # Config
-        data            : Data|DataList|None                                 = None,   # Data
-        config          : Config|None                                        = None,   # Config
+        velocities       : Array1D|None                                       = None,   # Data
+        linelist         : Array2D|str|LineList|dict|None                     = None,   # Data
+        order            : IntLike|None                                       = None,   # Config
+        order_range      : Array1D|None                                       = None,   # Config
+        verbose          : IntLike|bool|str|None                              = None,   # Config
+        sampler_progress : bool|None                                          = None,   # Config
+        masking_lines    : dict|MaskingLines|None                             = None,   # Config
+        seed             : IntLike|None                                       = None,   # Config
+        save_path        : str|None                                           = None,   # Config
+        sampler_path     : str|None                                           = None,   # Config
+        data             : Data|DataList|None                                 = None,   # Data
+        config           : Config|None                                        = None,   # Config
         **kwargs,
         ) -> None:
         """
@@ -90,6 +93,10 @@ class Acid:
             - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
             - Boolean: If True, defaults to 2. If False, defaults to 0.
             - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
+            By default 2 (medium).
+        sampler_progress : :py:type:`bool`, optional
+            A verbosity override for just the MCMC sampling progress.
+            By default None which does not override, but if True/False, it will overwrite with that value.
         masking_lines : :py:type:`dict` | :py:class:`MaskingLines`, optional
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. Unless you'd like to change the default masking
             lines, we recommend just using the defaults (leaving this as None), which are based on telluric lines and strong hydrogen/metal lines in the 
@@ -139,6 +146,7 @@ class Acid:
 
         # Verbosity validation handled in config property setter
         self.config.verbose = verbose
+        self.config.sampler_progress = sampler_progress
 
         # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
         if "linelist_path" in kwargs:
@@ -552,17 +560,23 @@ class Acid:
 
         # Run MCMC
         if self.config.run_mcmc is True:
+            # Default run for just nsteps steps
             if self.config.max_steps is None:
                 if self.config.verbose > 1:
                     print("Running MCMC for %s steps..."%self.config.nsteps)
                 self.run_mcmc(self.config.nsteps, initial_state)
                 self.data.nsteps += self.config.nsteps
+            # Else use max_steps path
             else:
                 if self.config.verbose > 1:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
                 self.run_mcmc_until_converged(self.config.max_steps, initial_state)
                 self.data.nsteps = self.step_number
             self.data.mcmc_time += time.time() - mcmc_t0
+
+            if self.config.verbose>1:
+                print('MCMC finished after %ss'%(round(self.data.mcmc_time, 3)))
+
             return Result(self)
 
         else:
@@ -1003,7 +1017,10 @@ class Acid:
         # Gets sampler kwargs for the emcee EnsembleSampler and run_mcmc functions based on the current state of the
         # ACID instance and the inputted nsteps and state.
 
+        # Set verbosity of the sampler with sampler_progress override if specified
         sampler_verbosity = True if self.config.verbose>1 else False
+        sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
+        
         backend = None
         if state is None:
             if self.sampler is None:

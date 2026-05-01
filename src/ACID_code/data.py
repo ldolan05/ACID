@@ -153,6 +153,7 @@ class Config:
     defaults = {
         # INIT CONFIGURATION
         "verbose" : 2,
+        "sampler_progress" : None,
         "order" : 0,
         "order_range" : [0],
         "masking_lines" : {
