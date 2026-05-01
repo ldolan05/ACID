@@ -1926,7 +1926,7 @@ class DataList:
         self._data_list = data_list
         self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
-    def combine_profiles(self, exclude:int|list|None=None) -> None:
+    def combine_profiles(self, exclude:int|list|None=None, must_have_converged:bool=False) -> None:
         """
         Calculates the combined profile and its errors across all orders, excluding any orders specified in the exclude argument.
         
@@ -1934,6 +1934,9 @@ class DataList:
         ----------
         exclude : int | list[int] | None
             Orders to exclude from the combined profile calculation.
+        must_have_converged : bool
+            If True, only includes orders that have converged in the combined profile calculation. Default is False, which 
+            includes all orders regardless of convergence status.
         """
         if isinstance(exclude, int):
             exclude = [exclude]
@@ -1943,9 +1946,20 @@ class DataList:
         if not all(o in self.orders for o in exclude):
             raise ValueError(f"All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
 
-        profiles = [data.combined_profile[0] for data in self.data_list if data.config.order not in exclude]
-        errors = [data.combined_profile[1] for data in self.data_list if data.config.order not in exclude]
-        covariances = [data.combined_profile[2] for data in self.data_list if data.config.order not in exclude]
+        profiles = []
+        errors = []
+        covariances = []
+        for data in self.data_list:
+            if data.config.order in exclude:
+                continue
+            try:
+                if (must_have_converged and not data.result.converged):
+                    continue
+            except:
+                continue
+            profiles.append(data.combined_profile[0])
+            errors.append(data.combined_profile[1])
+            covariances.append(data.combined_profile[2])
 
         self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
         self.excluded_orders = exclude
