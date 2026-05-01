@@ -1092,23 +1092,17 @@ class Acid:
         if return_sampler:
             return self.sampler
 
-    def get_result(
-        self=None,
-        ) -> Result:
+    @property
+    def result(self) -> Result:
         """Return a Result object for this instance or one passed explicitly.
-
-        Parameters
-        ----------
-        self : Acid instance, optional
-            The Acid instance to get the Result for. If None, must be called on an instance of Acid.
 
         Returns
         -------
         Result
             The Result object for the given Acid instance.
         """
-        if self is None:
-            raise ValueError("Must be called on an instance or passed an instance explicitly")
+        if not self.data.complete:
+            raise ValueError("ACID has not been run yet. Cannot create a Result instance.")
         return Result(self)
 
     @property
