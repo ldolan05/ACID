@@ -232,13 +232,9 @@ class LSD:
         vel = c_kms * (diff / wavelengths_linelist)
 
         # Get memory available depnding on whether were on slurm or not
-        if self.slurm:
-            available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
-            available_memory *= 1e6  # Convert to bytes as in the else statement below
-        else:
-            available_memory = psutil.virtual_memory().available
-        mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
-        m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
+        available_memory = utils.get_available_memory() # in bytes
+        mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 # Matrix size in bytes
+        m_available = available_memory / 2  # Available memory in bytes (divided by 2 to be safe)
 
         # Calculate alpha matrix in one go if it fits in memory
         if mat_size < m_available:

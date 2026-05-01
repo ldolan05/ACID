@@ -155,15 +155,11 @@ class Result:
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
 
         # First check memory to see if all samples can be used
-        if "SLURM_JOB_ID" in os.environ:
-            available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
-            available_memory *= 1e6  # Convert to bytes as in the else statement below
-        else:
-            available_memory = psutil.virtual_memory().available
-        m_available = available_memory * 1e-9 * 0.8 # in GB, with 0.8 factor safety gap
+        available_memory = utils.get_available_memory() # in bytes
+        m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
         n_samples, ncoeffs = coeffs.shape
         npix = powers.shape[0]
-        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 * 1e-9
+        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
             if self.config.verbose > 1:

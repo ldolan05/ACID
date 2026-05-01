@@ -5,10 +5,9 @@ from __future__ import annotations
 from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
-import glob, emcee
+import glob, emcee, psutil, os
 import scipy.constants as const
 from typing import TypeAlias, Annotated
-from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
@@ -314,6 +313,23 @@ def get_normalisation_coeffs(wl:Array1D)->tuple[Scalar, Scalar]:
     a = 2 / (np.nanmax(wl)-np.nanmin(wl))
     b = 1 - a * np.nanmax(wl)
     return a, b
+
+def get_available_memory():
+    """
+    Returns the available memory in bytes.
+    Checks if in a SLURM environment and uses its memory allocation if available.
+
+    Returns
+    -------
+    int
+        Available memory in bytes.
+    """
+    if "SLURM_JOB_ID" in os.environ:
+        available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
+        available_memory *= 1024**2  # Convert to bytes as in the else statement below
+    else:
+        available_memory = psutil.virtual_memory().available
+    return available_memory
 
 def set_dict_defaults(input_dict: dict | None, default_dict: dict) -> dict:
     """Sets default values in a dictionary if they are not already present.
