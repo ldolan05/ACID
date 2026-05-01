@@ -1110,7 +1110,7 @@ class Data:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, filename: str) -> Data:
+    def load(cls, filename:str, drop_sampler:bool=False) -> Data:
         """
         Loads a data object from a file using pickling. This will read the dictionary from the file and 
         then use it to initialise a new Data class.
@@ -1119,7 +1119,9 @@ class Data:
         ----------
         filename : str
             The name of the file to load the data object from. This should be a .pkl file.
-        
+        drop_sampler : bool
+            If True, the sampler will not be loaded even if it is present in the file.
+            This is useful for saving memory if you only want to load the data and not the sampler.
         Returns
         -------
         Data
@@ -1129,7 +1131,7 @@ class Data:
             payload = pickle.load(f)
 
         # Initialise a new Data object and update it with the payload dictionary
-        return cls().from_dict(payload)
+        return cls().from_dict(payload, drop_sampler)
 
     def to_dict(self, store_sampler:bool=True, size_limit:Scalar|None=1) -> dict[str, Any]:
         """
@@ -1172,7 +1174,7 @@ class Data:
 
         return payload
 
-    def from_dict(self, payload: dict[str, Any]) -> Data:
+    def from_dict(self, payload:dict[str,Any], drop_sampler:bool=False) -> Data:
         """
         Updates the data object from a dictionary payload. This is used internally in the 
         load method, but can also be used for debugging or other purposes.
@@ -1183,6 +1185,9 @@ class Data:
             The dictionary payload to update the data object from. This should have the same keys as the
             attributes of the data class. The "config" key should be a dictionary 
             that can be used to initialise a Config class.
+        drop_sampler : bool
+            If True, the sampler will not be loaded even if it is present in the file.
+            This is useful for saving memory if you only want to load the data and not the sampler.
         """
         for f in fields(self):
             name = f.name
@@ -1191,7 +1196,7 @@ class Data:
                 setattr(self, "_config", Config(**cfg_dict))
             elif name == "sampler":
                 sampler = payload.get("sampler", None)
-                if sampler is None:
+                if sampler is None or drop_sampler:
                     continue
                 # Reconstruct sampler from backend if in payload, avoids pickling issues
                 backend = emceebackend.Backend(dtype=np.float64)
