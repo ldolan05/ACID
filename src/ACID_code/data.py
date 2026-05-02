@@ -1841,8 +1841,7 @@ class DataList:
                       f"low, and no lines survived the cut. Skipping this order.", flush=True)
                 continue
             # If no known exception arose, just print the last 3 calls in traceback for debugging and skip the order.
-            except Exception as e:
-                raise e
+            except Exception:
                 print(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n", flush=True)
                 tb.print_exc(limit=-3)
                 continue
