@@ -153,8 +153,11 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     output = output + (mask,) if return_mask else output
     return output
 
-def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
-    """Clips the linelist to only include lines within the wavelength range of the observed spectrum.
+def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
+    """
+    Clips the linelist to only include lines within the wavelength range of the observed spectrum.
+    Includes a pad either side of the wavelength range so that the wings of lines outside
+    the range can also contribute to the fit.
 
     Parameters
     ----------
@@ -164,6 +167,8 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
         Wavelengths from the linelist
     depths_linelist : np.ndarray
         Depths from the linelist
+    pad : float, optional
+        Number of angstroms to pad on either side of the wavelength range. By default, 5.
 
     Returns
     -------
@@ -172,7 +177,7 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
     depths_linelist : np.ndarray
         Clipped depths from the linelist
     """
-    lower, upper = np.nanmin(wavelengths), np.nanmax(wavelengths)
+    lower, upper = np.nanmin(wavelengths)-pad, np.nanmax(wavelengths)+pad
     idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
     return wavelengths_linelist[idx], depths_linelist[idx]
 
