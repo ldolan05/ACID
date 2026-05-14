@@ -544,7 +544,7 @@ class Result:
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        profile = utils.flux_to_od(self.data.combined_profile[0])
+        profile = utils.flux_to_od(self[0])
         model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
 
         # Plotting
