@@ -176,6 +176,24 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
     idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
     return wavelengths_linelist[idx], depths_linelist[idx]
 
+def drop_edges(array, n_pix=2):
+    """
+    Drops the edges of an array by a specified number of pixels.
+    
+    Parameters
+    ----------
+    array : np.ndarray
+        The input array.
+    n_pix : int, optional
+        Number of pixels to drop from each edge. Default is 2.
+
+    Returns
+    -------
+    np.ndarray
+        The array with edges dropped.
+    """
+    return array[n_pix:-n_pix]
+
 @beartype
 def calc_deltav(wavelengths:Array1D)->Scalar:
     """Calculates velocity pixel size
