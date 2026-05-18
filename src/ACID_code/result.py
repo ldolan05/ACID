@@ -385,7 +385,7 @@ class Result:
         sampler    :EnsembleSampler|None = None,
         return_fig :bool                 = False,
         **kwargs,
-        ) -> None | tuple:
+        ) -> None | plt.Figure:
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
 
         Parameters
