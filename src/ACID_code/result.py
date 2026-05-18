@@ -2,17 +2,15 @@ from __future__ import annotations
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings, contextlib, functools, inspect, psutil
+import corner, sys, os, warnings, contextlib, functools, inspect
 from emcee import EnsembleSampler
-import emcee.backends.backend as emceebackend
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy.polynomial import polynomial as P
 from .lsd import LSD
-from . import mcmc
 from . import utils
 from .data import Data
-from .utils import IntLike, Scalar
+from .utils import IntLike
 #TODO: utils.set_dict_defaults for plots
 
 warnings.filterwarnings("ignore")
