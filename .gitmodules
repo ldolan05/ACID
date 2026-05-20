@@ -1,3 +1,9 @@
 [submodule "science"]
 	path = science
 	url = git@github.com:Benjamin-Cadell/ACID-science.git
+[submodule "src/ReloadedRM"]
+	path = src/ReloadedRM
+	url = git@github.com:rrubenza/ReloadedRM.git
+[submodule "src/Rassine_public"]
+	path = src/Rassine_public
+	url = git@github.com:MichaelCretignier/Rassine_public.git

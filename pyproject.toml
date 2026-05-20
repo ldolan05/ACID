@@ -40,8 +40,12 @@ docs = [
 [project.urls]
 Homepage = "https://github.com/ldolan05/ACID"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["ACID_code*"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
