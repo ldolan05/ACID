@@ -130,6 +130,9 @@ class LSD:
         # Solve for profile and profile errors using Cholesky factors
         self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_cov=True)
 
+        self.forward_model = self.alpha @ self.profile
+        self.forward_model_errors = np.sqrt(np.sum((self.alpha * self.profile_errors)**2, axis=1))
+
         # Convert profile back to flux if needed
         if self.OD:
             self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
