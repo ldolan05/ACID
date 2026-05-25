@@ -2,14 +2,12 @@ from __future__ import annotations
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings, contextlib, functools, inspect, psutil
+import corner, sys, os, warnings, contextlib, functools, inspect
 from emcee import EnsembleSampler
-import emcee.backends.backend as emceebackend
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy.polynomial import polynomial as P
 from .lsd import LSD
-from . import mcmc
 from . import utils
 from .data import Data
 from .utils import IntLike, Scalar
@@ -108,8 +106,8 @@ class Result:
         self.config = self.data.config # point Result.config to Data.config to keep them in sync
         self.config.verbose = verbose # property overwrites or handles if verbose input was None
 
-        # By default set sampler_initialiated = False until sampler has been initialised in function so that self.initiate_sampler can be skipped
-        self.sampler_initialiated = False
+        # By default set sampler_initialized = False until sampler has been initialised in function so that self.initiate_sampler can be skipped
+        self.sampler_initialized = False
 
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
@@ -165,15 +163,11 @@ class Result:
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
 
         # First check memory to see if all samples can be used
-        if "SLURM_JOB_ID" in os.environ:
-            available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
-            available_memory *= 1e6  # Convert to bytes as in the else statement below
-        else:
-            available_memory = psutil.virtual_memory().available
-        m_available = available_memory * 1e-9 * 0.8 # in GB, with 0.8 factor safety gap
+        available_memory = utils.get_available_memory() # in bytes
+        m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
         n_samples, ncoeffs = coeffs.shape
         npix = powers.shape[0]
-        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 * 1e-9
+        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
             if self.config.verbose > 1:
@@ -243,6 +237,10 @@ class Result:
         self.data.results_time = time() - t0
         self.data.total_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
         self.data.complete = True
+
+        # Now that results are complete, save the data instance if specified
+        if self.config.save_path is not None:
+            self.save() # the sampler is already saved if specified
 
         return
 
@@ -405,7 +403,7 @@ class Result:
         sampler    :EnsembleSampler|None = None,
         return_fig :bool                 = False,
         **kwargs,
-        ) -> None | tuple:
+        ) -> None | plt.Figure:
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
 
         Parameters
@@ -572,18 +570,24 @@ class Result:
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
         if self.config.od:
-            profile = utils.flux_to_od(self.data.combined_profile[0])
+            profile = utils.flux_to_od(self[0])
             model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
         else:
             profile = self.data.combined_profile[0]-1
             model_flux = (1+(self.data.alpha @ profile)) * self.data.continuum_model
 
+        # Due to distortion at the edges of the profile, we drop the last 2 pixels
+        wavelengths = utils.drop_edges(wavelengths)
+        flux = utils.drop_edges(flux)
+        model_flux = utils.drop_edges(model_flux)
+        continuum_model = utils.drop_edges(self.data.continuum_model)
+
         # Plotting
         fig, ax = plt.subplots(2, 1, **subplot_kwargs)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
-        ax[0].plot(wavelengths, self.data.continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        ax[1].plot(wavelengths, model_flux - flux, color='C0', linewidth=1, label='Residuals')
+        ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
+        ax[1].plot(wavelengths, model_flux-flux, color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].set_title(labels["title"])
         ax[1].set_xlabel(labels["xlabel"])
@@ -757,7 +761,7 @@ class Result:
             Internal parameter used to track which method is calling initiate_sampler, for error messages. 
             Not intended for user input, by default None.
         """
-        if self.sampler_initialiated:
+        if self.sampler_initialized:
             if sampler is None:
                 return # sampler already initiated from initialisation, so skip the rest of the method
             # else: continues to update the sampler and internal variables based on new sampler input
@@ -829,6 +833,8 @@ class Result:
         self.default_params = poly_params
         self.default_param_labels = poly_labels
 
+        self.sampler_initialized = True
+
     @property
     def sampler(self) -> EnsembleSampler|Sampler|None: # type:ignore
         """Returns the sampler attribute, by default is None if not saved."""
@@ -839,38 +845,21 @@ class Result:
         """Sets the sampler in the data class."""
         self.data.sampler = value
 
-    def save(self, filename:str="result.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
-        """Saves the Result object to a pickle file.
-
-        Parameters
-        ----------
-        filename : str, optional
-            Name of the file to save the Result object to, by default "result.pkl"
-        store_sampler : bool, optional
-            Whether to store the sampler backend in the pickle file. If False, 
-            the sampler will not be stored, and the Result object will not be able to 
-            continue sampling or plot walkers/corner plots
-        size_limit : Scalar | None, optional
-            A hard size limit to the sampler in GB.
-            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
-            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
-            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
+    def save(self, *args, **kwargs) -> None:
         """
-
-        # Use the Data class's save method to handle saving, 
-        # which will handle the sampler backend appropriately based on the store_sampler flag
-        self.data.save(filename, store_sampler=store_sampler, size_limit=size_limit)
-
-        if getattr(self, "config", None) is not None and self.config.verbose > 1:
-            print(f"Result object saved to {filename}")
+        Saves the Data instance which the Result class inherits from Acid.
+        See :py:function:`Data.save` for more details on the parameters that can be passed.
+        """
+        self.data.save(*args, **kwargs)
 
     @classmethod
-    def load(cls, result:str|Result|Data="result.pkl") -> Result:
-        """Loads a Result object from a pickle file or from a Data/Result object.
+    def load(cls, data:str|Result|Data="result.pkl") -> Result:
+        """
+        Loads a Result object from a pickle file or from a Data/Result object.
 
         Parameters
         ----------
-        result : str | :py:class:`Result` | :py:class:`Data`, optional
+        data : str | :py:class:`Result` | :py:class:`Data`, optional
             A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
 
         Returns
@@ -878,9 +867,9 @@ class Result:
         :py:class:`Result`
             A Result object loaded from the pickle file or from the provided object.
         """
-        if isinstance(result, str):
-            return cls(Data.load(result))
-        elif isinstance(result, Result):
-            return cls(result.data)
-        elif isinstance(result, Data):
-            return cls(result)
+        if isinstance(data, str):
+            return cls(Data.load(data))
+        elif isinstance(data, Result):
+            return cls(data.data)
+        elif isinstance(data, Data):
+            return cls(data)

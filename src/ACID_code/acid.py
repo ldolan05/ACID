@@ -31,15 +31,18 @@ class Acid:
 
     def __init__(
         self,
-        velocities      : Array1D|None                                       = None,   # Data
-        linelist        : Array2D|str|LineList|dict|None                     = None,   # Data
-        order           : IntLike|None                                       = None,   # Config
-        order_range     : Array1D|None                                       = None,   # Config
-        verbose         : IntLike|bool|str|None                              = None,   # Config
-        masking_lines   : dict|MaskingLines|None                             = None,   # Config
-        seed            : IntLike|None                                       = None,   # Config
-        data            : Data|DataList|None                                 = None,   # Data
-        config          : Config|None                                        = None,   # Config
+        velocities       : Array1D|None                                       = None,   # Data
+        linelist         : Array2D|str|LineList|dict|None                     = None,   # Data
+        order            : IntLike|None                                       = None,   # Config
+        order_range      : Array1D|None                                       = None,   # Config
+        verbose          : IntLike|bool|str|None                              = None,   # Config
+        sampler_progress : bool|None                                          = None,   # Config
+        masking_lines    : dict|MaskingLines|None                             = None,   # Config
+        seed             : IntLike|None                                       = None,   # Config
+        save_path        : str|None                                           = None,   # Config
+        sampler_path     : str|None                                           = None,   # Config
+        data             : Data|DataList|None                                 = None,   # Data
+        config           : Config|None                                        = None,   # Config
         **kwargs,
         ) -> None:
         """
@@ -94,12 +97,28 @@ class Acid:
             - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
             - Boolean: If True, defaults to 2. If False, defaults to 0.
             - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
+            By default 2 (medium).
+        sampler_progress : :py:type:`bool`, optional
+            A verbosity override for just the MCMC sampling progress.
+            By default None which does not override, but if True/False, it will overwrite with that value.
         masking_lines : :py:type:`dict` | :py:class:`MaskingLines`, optional
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. Unless you'd like to change the default masking
             lines, we recommend just using the defaults (leaving this as None), which are based on telluric lines and strong hydrogen/metal lines in the 
             optical and near infrared. For a guide on using your own/modifying the defaults, see :ref:`masking_lines`. By default None, stored in the Config instance.
         seed : :py:type:`IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
+        save_path : :py:type:`str`, optional
+            The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
+            If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
+            Should be a valid file path that ends with ".pkl". If the directory containing it does not exist, it will be created.
+            If a file already exists at this path, it will be overwritten on Acid initialization.
+        sampler_path : :py:type:`str`, optional
+            The path to save the sampler HDF5 backend file to.
+            If None, the sampler is not saved and only stored in memory. By default None.
+            Note that if your path points to an existing file, it will be overwritten on Acid initialization.
+            If True, we use the emcee HDF5 backend to store and load the sampler.
+            Should be a valid file path that ends with ".h5". If the directory containing it does not exist, it will be created.
+            Note that if you later try and save the sampler through the data class, it is converted to a HD5 backend.
         data : :py:class:`Data` | :py:class:`DataList`, optional
             An optional backend :py:class:`Data` object to use for storing data. Allows previously calculated results to be used skipped.
             If None, a new :py:class:`Data` object is created. Please note that if the :py:class:`Data` class already has a saved ACID config
@@ -143,6 +162,7 @@ class Acid:
 
         # Verbosity validation handled in config property setter
         self.config.verbose = verbose
+        self.config.sampler_progress = sampler_progress
 
         # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
         if "linelist_path" in kwargs:
@@ -177,6 +197,23 @@ class Acid:
         self.config.order_range = order_range
         self.config.order = order
 
+        # Handle data saving paths checks
+        if save_path is not None:
+            if not save_path.endswith(".pkl"):
+                raise ValueError("'save_path' must end with '.pkl'.")
+        self.config.save_path = save_path
+
+        # Handle sampler path checks
+        if sampler_path is not None:
+            if not sampler_path.endswith(".h5"):
+                raise ValueError("'sampler_path' must end with '.h5'.")
+            # Delete existing file at sampler path if it exists
+            if os.path.exists(sampler_path):
+                if self.config.verbose > 0:
+                    print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
+                os.remove(sampler_path)
+        self.config.sampler_path = sampler_path
+
         return
 
     # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
@@ -210,7 +247,7 @@ class Acid:
         min_tau_factor        : IntLike|None                = None,   # Config
         tau_tol               : float|None                  = None,   # Config
         moves                 : list|None                   = None,   # Config
-        run_mcmc              : bool|None                   = True,   # Config
+        run_mcmc              : bool|None                   = None,   # Config
         _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
@@ -576,17 +613,23 @@ class Acid:
 
         # Run MCMC
         if self.config.run_mcmc is True:
+            # Default run for just nsteps steps
             if self.config.max_steps is None:
                 if self.config.verbose > 1:
                     print("Running MCMC for %s steps..."%self.config.nsteps)
                 self.run_mcmc(self.config.nsteps, initial_state)
                 self.data.nsteps += self.config.nsteps
+            # Else use max_steps path
             else:
                 if self.config.verbose > 1:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
                 self.run_mcmc_until_converged(self.config.max_steps, initial_state)
                 self.data.nsteps = self.step_number
             self.data.mcmc_time += time.time() - mcmc_t0
+
+            if self.config.verbose>1:
+                print('MCMC finished after %ss'%(round(self.data.mcmc_time, 3)))
+
             return Result(self)
 
         else:
@@ -1039,13 +1082,24 @@ class Acid:
         # Gets sampler kwargs for the emcee EnsembleSampler and run_mcmc functions based on the current state of the
         # ACID instance and the inputted nsteps and state.
 
+        # Set verbosity of the sampler with sampler_progress override if specified
         sampler_verbosity = True if self.config.verbose>1 else False
+        sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
+        
         backend = None
         if state is None:
             if self.sampler is None:
                 raise ValueError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
                                  "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
             backend = self.sampler.backend # This includes previous seed
+        
+        # Now that the backend has been set depending on an existing state, if the backend is stil None, we choose depending on sampler_path
+        if backend is None and self.config.sampler_path is not None:
+            os.makedirs(os.path.dirname(self.config.sampler_path), exist_ok=True)
+            backend = emcee.backends.HDFBackend(self.config.sampler_path)
+            if self.config.verbose > 1:
+                print(f"Using sampler backend at {self.config.sampler_path}")
+        # else: leave none and a normal in-memory sampler backend is used
 
         if self.config.cores is None:
             if "SLURM_JOB_ID" in os.environ:
@@ -1128,23 +1182,17 @@ class Acid:
         if return_sampler:
             return self.sampler
 
-    def get_result(
-        self=None,
-        ) -> Result:
+    @property
+    def result(self) -> Result:
         """Return a Result object for this instance or one passed explicitly.
-
-        Parameters
-        ----------
-        self : Acid instance, optional
-            The Acid instance to get the Result for. If None, must be called on an instance of Acid.
 
         Returns
         -------
         Result
             The Result object for the given Acid instance.
         """
-        if self is None:
-            raise ValueError("Must be called on an instance or passed an instance explicitly")
+        if not self.data.complete:
+            raise ValueError("ACID has not been run yet. Cannot create a Result instance.")
         return Result(self)
 
     @property

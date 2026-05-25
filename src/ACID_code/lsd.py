@@ -133,6 +133,9 @@ class LSD:
         # Solve for profile and profile errors using Cholesky factors
         self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_cov=True)
 
+        self.forward_model = self.alpha @ self.profile
+        self.forward_model_errors = np.sqrt(np.sum((self.alpha * self.profile_errors)**2, axis=1))
+
         # Convert profile back to flux if needed
         if self.od:
             self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
@@ -236,13 +239,9 @@ class LSD:
         vel = c_kms * (diff / wavelengths_linelist)
 
         # Get memory available depnding on whether were on slurm or not
-        if self.slurm:
-            available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
-            available_memory *= 1e6  # Convert to bytes as in the else statement below
-        else:
-            available_memory = psutil.virtual_memory().available
-        mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 * 1e-9 # Matrix size in GB
-        m_available = available_memory * 1e-9 / 2  # Available memory in GB (divided by 2 to be safe)
+        available_memory = utils.get_available_memory() # in bytes
+        mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 # Matrix size in bytes
+        m_available = available_memory / 2  # Available memory in bytes (divided by 2 to be safe)
 
         # Calculate alpha matrix in one go if it fits in memory
         if mat_size < m_available:

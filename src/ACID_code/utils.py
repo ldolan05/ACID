@@ -5,10 +5,11 @@ from __future__ import annotations
 from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
-import glob, emcee
+import glob, emcee, psutil, os
+from emcee import EnsembleSampler
+import emcee.backends.backend as emceebackend
 import scipy.constants as const
 from typing import TypeAlias, Annotated
-from numpy.typing import NDArray
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
@@ -152,8 +153,11 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     output = output + (mask,) if return_mask else output
     return output
 
-def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
-    """Clips the linelist to only include lines within the wavelength range of the observed spectrum.
+def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
+    """
+    Clips the linelist to only include lines within the wavelength range of the observed spectrum.
+    Includes a pad either side of the wavelength range so that the wings of lines outside
+    the range can also contribute to the fit.
 
     Parameters
     ----------
@@ -163,6 +167,8 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
         Wavelengths from the linelist
     depths_linelist : np.ndarray
         Depths from the linelist
+    pad : float, optional
+        Number of angstroms to pad on either side of the wavelength range. By default, 5.
 
     Returns
     -------
@@ -171,9 +177,27 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist):
     depths_linelist : np.ndarray
         Clipped depths from the linelist
     """
-    lower, upper = np.nanmin(wavelengths), np.nanmax(wavelengths)
+    lower, upper = np.nanmin(wavelengths)-pad, np.nanmax(wavelengths)+pad
     idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
     return wavelengths_linelist[idx], depths_linelist[idx]
+
+def drop_edges(array, n_pix=2):
+    """
+    Drops the edges of an array by a specified number of pixels.
+    
+    Parameters
+    ----------
+    array : np.ndarray
+        The input array.
+    n_pix : int, optional
+        Number of pixels to drop from each edge. Default is 2.
+
+    Returns
+    -------
+    np.ndarray
+        The array with edges dropped.
+    """
+    return array[n_pix:-n_pix]
 
 @beartype
 def calc_deltav(wavelengths:Array1D)->Scalar:
@@ -314,6 +338,69 @@ def get_normalisation_coeffs(wl:Array1D)->tuple[Scalar, Scalar]:
     a = 2 / (np.nanmax(wl)-np.nanmin(wl))
     b = 1 - a * np.nanmax(wl)
     return a, b
+
+def get_available_memory():
+    """
+    Returns the available memory in bytes.
+    Checks if in a SLURM environment and uses its memory allocation if available.
+
+    Returns
+    -------
+    int
+        Available memory in bytes.
+    """
+    if "SLURM_JOB_ID" in os.environ:
+        available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
+        available_memory *= 1024**2  # Convert to bytes as in the else statement below
+    else:
+        available_memory = psutil.virtual_memory().available
+    return available_memory
+
+def save_backend_to_hdf5(backend, filename):
+    nwalkers, ndim = backend.shape
+    niter = backend.iteration
+
+    hdf = emcee.backends.HDFBackend(
+        filename,
+        dtype=getattr(backend, "dtype", None),
+    )
+
+    # Overwrite existing file and reset if already exists
+    hdf.reset(nwalkers, ndim)
+
+    blobs = backend.get_blobs()
+
+    # Allocate space in the HDF5 datasets.
+    if niter > 0:
+        hdf.grow(niter, None if blobs is None else blobs[0])
+
+    with hdf.open("a") as f:
+        g = f["mcmc"] # mcmc is always the emcee default
+
+        if niter > 0:
+            g["chain"][:] = backend.get_chain()
+            g["log_prob"][:] = backend.get_log_prob()
+            g["accepted"][:] = backend.accepted
+
+            if blobs is not None:
+                g["blobs"][:] = blobs
+                g.attrs["has_blobs"] = True
+
+        # Required so HDFBackend.iteration works correctly.
+        g.attrs["iteration"] = niter
+
+        # Reload the random state of the walkers if they exist
+        random_state = getattr(backend, "random_state", None)
+        if random_state is not None:
+            for i, v in enumerate(random_state):
+                g.attrs[f"random_state_{i}"] = v
+    return hdf
+
+def backend_to_sampler(backend, log_prob_fn):
+    nwalkers, ndim = backend.shape
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob_fn)
+    sampler.backend = backend
+    return sampler
 
 def set_dict_defaults(input_dict: dict | None, default_dict: dict) -> dict:
     """Sets default values in a dictionary if they are not already present.
