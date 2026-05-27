@@ -108,9 +108,12 @@ def mask_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
 
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
-        if num_invalid > 0:
-            print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values, which will be dropped when necessary, \n"
-                  f"but it is still recommended to check your wavelength, spectrum and error arrays for bad pixels and make sure this is intentional.")
+        perc_invalid = num_invalid / np.size(wavelengths) * 100
+        if perc_invalid > 10:
+            print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values ({perc_invalid:.2f}%), \n"
+                  f"which will be dropped when necessary, but it is still recommended to check your wavelength, \n"
+                  f"spectrum and error arrays for bad pixels and make sure this is intentional. \n"
+                  f"This warning is only printed if more than 10% of pixels are invalid.")
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
@@ -146,8 +149,9 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
 
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
-        if num_invalid > 0:
-            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0).")
+        perc_invalid = num_invalid / np.size(wavelengths) * 100
+        if perc_invalid > 10:
+            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0), which is {perc_invalid:.2f}% of the total.")
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
