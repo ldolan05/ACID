@@ -1269,8 +1269,10 @@ class Data:
     @property
     def result(self):
         if not self.complete:
-            raise ValueError(f"Results have not yet been calculated, cannot return results object.\n"
-                             f"Please run the MCMC sampling and process the results first.")
+            if self.config.verbose > 0:
+                print(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
+                      f"Returning None instead.")
+                return None
         from .result import Result
         return Result(self)
 
@@ -1427,8 +1429,9 @@ class DataList:
         order_range      : Array1D|None                   = None,
         config           : Config|list[Config]|None       = None,
         save_dir         : str|None                       = None,
+        overwrite        : bool                           = False,
         verbose          : IntLike|bool|str|None          = None,
-        load                                              = None,
+        _load                                             = None,
         _data_list       : list[Data]|None                = None,
         **config_kwargs,
         ) -> None:
@@ -1477,11 +1480,17 @@ class DataList:
             By default the DataList will save data.pkl and sampler.h5 to the directory (named by the order number) to in this directory.
             If the Configs or kwargs passed contain their own save_path or sampler_path (see :py:class:`Acid`), those instead are used.
             If None, no saving will be done, this is however, not recommended. Default is None.
+        overwrite : bool, optional
+            Whether to overwrite existing with new Data instances when using run_ACID, or to load and use existing Data instance if they exist.
+            If True, if a Data instance already exists for an order, it will be overwritten with the new Data instance generated from the ACID run for that order.
+            Note, that the saving of this new Data instance only applies when run_ACID is run, otherwise it is just held in memory.
+            If False, if a Data instance already exists for an order, it will be loaded and used instead of generating a new Data instance from the ACID run for that order.
+            Default is False.
         verbose : int | bool | str | None, optional
             The verbosity level for printing information during the initialization. 
             Follows the same format as the "verbose" input in the :py:class:`Config` class. 
             Default is None.
-        load : Any, optional
+        _load : Any, optional
             Not yet implemented, do not use. The idea is that you can input a Load object which has its own tools to pull s2d data from common instruments 
             such as ESPRESSO, HARPS, etc. If you want to use this feature, please open an issue or contribute a pull request with the implementation.
         _data_list : list[:py:class:`Data`] | None, optional
@@ -1495,7 +1504,7 @@ class DataList:
         """
 
         # Raise if load was used
-        if load is not None:
+        if _load is not None:
             raise NotImplementedError(f"The 'load' argument is not yet implemented. \n"
                                       f"The idea is that you can input a Load object which has its own tools to pull s2d data from common "\
                                       f"instruments such as ESPRESSO, HARPS, etc. \nIf you want to use this feature, please open an issue or "\
@@ -1509,23 +1518,25 @@ class DataList:
         # Configure verbosity
         self.verbose = Config(verbose=verbose).verbose
 
-        # Configure velocities
+        # All orders should have the same velocity grid and line list
         self.velocities = velocities
 
         # Configure order_range, creates one if not input from the shape of wavelengths
         self.order_range = order_range # if None, will be set later, otherwise self.from_datalist handles the range from configs     
 
-        # Configure save_dir, for saving intermediate results and figures per order
+        # Set class attributes
         self._save_dir = None
-        self.save_dir = save_dir if save_dir is not None else None
-
-        # Set empty class attributes
+        self._data_list = None
         self._combined_profile = None
+        self.overwrite = overwrite
         self.excluded_orders = []
 
         if _data_list is not None:
             self.data_list = _data_list # datalist property handles the rest
+            self.save_dir = save_dir
             return
+        
+        self.save_dir = save_dir
 
         # From here, the array inputs must be provided
         if order_range is None:
@@ -1576,6 +1587,16 @@ class DataList:
                 sampler_path = os.path.join(self.save_dir, f"order_{order}", "sampler.h5")
                 data.config.update_lowpri(save_path=save_path, # set default save path for this order which can be overwritten by user
                                         sampler_path=sampler_path) # set default sampler path for this order which can be overwritten by user
+
+            # Check if file already exists
+            if os.path.exists(data.config.save_path):
+                if self.overwrite:
+                    if self.verbose > 1:
+                        print(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
+                else:
+                    if self.verbose > 0:
+                        print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
+                    data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
 
             datalist.append(data) # finally append to the datalist
 
@@ -1741,7 +1762,7 @@ class DataList:
         use_index_mapping : bool                 = True,
         worker            : IntLike|None         = None,
         nworkers          : IntLike|None         = None,
-        allow_overwrite   : bool                 = False,
+        overwrite         : bool|None            = None,
         overwrite_kwargs  : bool                 = False,
         **kwargs,
         ) -> None:
@@ -1772,8 +1793,9 @@ class DataList:
             If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
             This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
             A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
-        allow_overwrite : bool, optional
-            If True, will allow overwriting existing result pickles in the save_dir. Default is False, which will skip running ACID on orders 
+        overwrite : bool, optional
+            If True, will allow overwriting existing data and sampler pickles in the save_dir. Default is None, which will use the class
+            default behaviour set in initialization (which is False). If False, this will skip running ACID on orders 
             that already have result pickles in the save_dir.
         overwrite_kwargs : bool, optional
             If True, any keys in the kwargs that are also in the config for the Data instance will be overwritten by the kwargs values.
@@ -1784,6 +1806,10 @@ class DataList:
             The kwargs passed also allow you to add/overwrite the linelist and velocities in the Data instance with the same overwrite logic.
         """
         from .acid import Acid # local import to avoid circular imports, since Acid imports Data
+
+        # Configure overwrite from class default if not input in the method call
+        if overwrite is None:
+            overwrite = self.overwrite
 
         # Validate worker and nworkers inputs for splitting orders across workers, and set defaults if not provided for easier logic below.
         if worker is not None or nworkers is not None:
@@ -1827,10 +1853,10 @@ class DataList:
         for order in iterable:
 
             # Check if ACID already ran for this order
-            if os.path.exists(self.data_list[self.o2i[order]].config.save_path) and not allow_overwrite:
+            if os.path.exists(self.data_list[self.o2i[order]].config.save_path) and overwrite is False:
                 if self.verbose > 1:
                     print(f"ACID result for order {order} already exists at {self.data_list[self.o2i[order]].config.save_path}. \n"
-                            f"Skipping this order. To overwrite existing results, set allow_overwrite=True.")
+                            f"Skipping this order. To overwrite existing results, set overwrite=True.")
                 # else the sampler and data instance is overwritten
                 continue
 
