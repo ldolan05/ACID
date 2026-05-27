@@ -100,7 +100,7 @@ class Acid:
             By default 2 (medium).
         sampler_progress : :py:type:`bool`, optional
             A verbosity override for just the MCMC sampling progress.
-            By default None which does not override, but if True/False, it will overwrite with that value.
+            By default None which does not override, but if True/False, it will overwrite with that value, and use/don't use a tqdm output for the sampler.
         masking_lines : :py:type:`dict` | :py:class:`MaskingLines`, optional
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. Unless you'd like to change the default masking
             lines, we recommend just using the defaults (leaving this as None), which are based on telluric lines and strong hydrogen/metal lines in the 
