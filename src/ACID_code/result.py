@@ -527,6 +527,7 @@ class Result:
     @_require_profiles
     def plot_forward_model(
         self,
+        fig_ax          :tuple|None = None,
         grid            :bool      = True,
         labels          :dict|None = None,
         return_fig      :bool      = False,
@@ -537,6 +538,12 @@ class Result:
 
         Parameters
         ----------
+        fig_ax: tuple | None
+            Optionally provide an existing fig/axis tuple to plot on, by default None and
+            creates a new figure and axis. The axis must be a 2 element array of axes, 
+            where the first axis is for the spectrum and forward model, 
+            and the second axis is for the residuals.
+            If provided, the grid, labels, and titles should be set by you.
         grid : bool, optional
             Show or hide grid, by default True
         labels : dict | None, optional
@@ -584,22 +591,26 @@ class Result:
         continuum_model = utils.drop_edges(self.data.continuum_model)
 
         # Plotting
-        fig, ax = plt.subplots(2, 1, **subplot_kwargs)
+        if fig_ax is not None:
+            fig, ax = fig_ax
+        else:
+            fig, ax = plt.subplots(2, 1, **subplot_kwargs)
+            ax[0].set_title(labels["title"])
+            ax[1].set_xlabel(labels["xlabel"])
+            ax[0].set_ylabel(labels["ylabel"])
+            ax[1].set_ylabel(labels["residuals_ylabel"])
+            ax[0].grid(grid)
+            ax[1].grid(grid)
+            plt.subplots_adjust(hspace=0.05)
+
+        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
         ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
         ax[1].plot(wavelengths, model_flux-flux, color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
-        ax[0].set_title(labels["title"])
-        ax[1].set_xlabel(labels["xlabel"])
-        ax[0].set_ylabel(labels["ylabel"])
-        ax[1].set_ylabel(labels["residuals_ylabel"])
-        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].legend()
         ax[1].legend()
-        ax[0].grid(grid)
-        ax[1].grid(grid)
-        plt.subplots_adjust(hspace=0.05)
 
         if return_fig:
             return fig, ax
