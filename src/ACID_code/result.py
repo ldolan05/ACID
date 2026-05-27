@@ -221,15 +221,21 @@ class Result:
             alpha = self.data.alpha if condition else None
 
             LSD_profiles = LSD(self.data)
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn, alpha=alpha)
+            LSD_profiles.run_LSD(wavelengths, flux, error, sn, alpha=alpha)
 
             profile_f = LSD_profiles.profile_F
             profile_errors_f = LSD_profiles.profile_errors_F
             cov_z_f = LSD_profiles.cov_z_F
 
             if counter == 0:
+                # Set combined profile params
                 self.data.combined_profile = [profile_f, profile_errors_f, cov_z_f]
                 self.data.continuum_model = mdl
+
+                # Set the forward model params, multiplied by mdl as LSD is run on normalized flux
+                self.data.forward_model = LSD_profiles.forward_model * mdl
+                self.data.forward_errors = LSD_profiles.forward_model_errors * mdl
+                self.data.forward_x = wavelengths
             else:
                 profiles.append([profile_f, profile_errors_f, cov_z_f])
 
@@ -569,12 +575,7 @@ class Result:
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        if self.config.od:
-            profile = utils.flux_to_od(self[0])
-            model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
-        else:
-            profile = self.data.combined_profile[0]-1
-            model_flux = (1+(self.data.alpha @ profile)) * self.data.continuum_model
+        model_flux = self.data.forward_model
 
         # Due to distortion at the edges of the profile, we drop the last 2 pixels
         wavelengths = utils.drop_edges(wavelengths)

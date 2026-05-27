@@ -520,6 +520,12 @@ class Data:
     combined_profile  : Optional[list] = None
     #: The final fitted continuum model and errors
     continuum_model   : Optional[np.ndarray] = None
+    #: The forward model using the final profile, alpha matrix, and continuum model
+    forward_model     : Optional[np.ndarray] = None
+    #: Errors on the above forward model, usually not needed
+    forward_errors    : Optional[np.ndarray] = None
+    #: The x-axis for the above forward model, which is just the combined wavelength grid, and set in Result.process_results
+    forward_x        : Optional[np.ndarray] = None
     #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
     nsteps            : Optional[int]  = 0
     #: A flag for whether the profiles have been fully calculated to avoid recalculating
