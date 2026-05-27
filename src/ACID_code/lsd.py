@@ -139,9 +139,11 @@ class LSD:
         # Convert profile back to flux if needed
         if self.od:
             self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
+            self.forward_model, self.forward_model_errors = utils.od_to_flux(self.forward_model, self.forward_model_errors)
         else:
             self.profile += 1
             self.profile_F, self.profile_errors_F, self.cov_z_F = self.profile, self.profile_errors, self.cov_z
+            self.forward_model += 1
 
         return
 
