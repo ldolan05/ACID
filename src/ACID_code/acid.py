@@ -1,4 +1,5 @@
 from __future__ import annotations
+import traceback
 import warnings
 warnings.filterwarnings("ignore")
 import sys, emcee, os, time, inspect, inspect, contextlib
@@ -315,10 +316,10 @@ class Acid:
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
         sampler_type : :py:type:`str`, optional
-            The sampler to use for MCMC. Currently supports "emcee" and "dynesty". "emcee" uses the emcee EnsembleSampler, 
-            and "dynesty" uses the dynesty NestedSampler. If "dynesty" is chosen, the dynesty package needs to be installed, and the
-            nsteps parameter is treated as "nlive" to be passed to the NestedSampler. By default "emcee". We only recommend using dynesty
-            for model comparison, otherwise emcee is much faster. This is an experimental option, do no expect all Result methods to work properly.
+            If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
+            by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
+            The only reason I added this was to get the Bayesian evidence for model comparison.
+            If "dynesty" is chosen, the dynesty package needs to be installed, and the nsteps parameter is treated as "nlive" to be passed to the NestedSampler.
         parallel : :py:type:`bool`, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, see
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
@@ -452,9 +453,9 @@ class Acid:
             if dynesty is None:
                 raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")
         if self.config.sampler_type == "dynesty" and not self.config.deterministic_profile:
-            raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise the speed is far too slow)")
+            raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise you'll be waiting hours for a single result)")
         if self.config.sampler_type == "dynesty" and self.config.max_steps is not None:
-            raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive.")
+            raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive. See the dynesty docs for more details.")
 
         # --- Start of the ACID method ---
 
@@ -641,12 +642,12 @@ class Acid:
         """
         This method is no longer supported in ACID. Please use the ACID function with the appropriate inputs for HARPS spectra instead. 
         Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. 
-        If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code==1.4.5
+        If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5
         """
         raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
-        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code==1.4.5")
+        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
 
     def combine_spec(
         self,
@@ -858,9 +859,12 @@ class Acid:
             self.data.plot_continuum_fit(plot_type=plot_type)
 
         if np.any(flux_obs <= 0) or np.any(new_errors <= 0):
-            raise ContinuumError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
+            error = ContinuumError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
             "Consider adjusting the polynomial order or continuum percentile. Use verbose=3 to see the plot of the continuum fit.\n " \
             "Note that this will only work for interactive terminals or displays which work with plt.show()")
+            self.data.exception = error
+            self.data.traceback = traceback.format_stack()
+            raise error
 
         return poly_coeffs, flux_obs, new_errors
 

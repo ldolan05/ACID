@@ -1,10 +1,9 @@
 from __future__ import annotations
 import numpy as np
 from astropy.io import  fits
-import glob, psutil, os
+import glob, psutil, os, traceback
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
-from scipy.interpolate import LSQUnivariateSpline
 from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
@@ -108,9 +107,14 @@ class LSD:
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
         if len(wavelengths_linelist) == 0:
-            raise LineListRangeError(f"No lines in linelist are within the wavelength range of the observed spectrum. \n"\
-                                     f"You may have mismatched wavelengths units between linelist and spectrum or an empty linelist.\n"\
-                                     f"Please check your linelist and input spectrum.")
+            error = LineListRangeError(
+                "No lines in linelist are within the wavelength range of the observed spectrum.\n"
+                "You may have mismatched wavelength units between linelist and spectrum or an empty linelist.\n"
+                "Please check your linelist and input spectrum."
+            )
+            self.data.exception = error
+            self.data.traceback = traceback.format_stack()
+            raise error
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
@@ -180,7 +184,10 @@ class LSD:
         nrest = np.sum(idx)
         perc = 100 * nrest / (nrest + ncut)
         if nrest == 0:
-            raise SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+            error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+            self.data.exception = error
+            self.data.traceback = traceback.format_stack()
+            raise error
         if self.config.verbose > 0:
             if perc < 5:
                 print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")

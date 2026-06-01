@@ -543,6 +543,10 @@ class Data:
     results_time       : Optional[float] = 0 
     #: total_time (float) - The total time for the full run
     total_time         : Optional[float] = 0
+    #: The exception class if an error was raised during the run
+    exception          : Optional[Exception] = None
+    #: The traceback string if an error was raised during the run
+    traceback          : Optional[str] = None
 
     # Initialise the properties
     # -------------------------
