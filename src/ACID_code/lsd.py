@@ -46,10 +46,10 @@ class LSD:
         # Set class variables, taking from input data if it exists, else setting to defaults
         self.slurm    = "SLURM_JOB_ID" in os.environ
         self.data     = data if data is not None else Data()
-        self.linelist = data.linelist if data is not None else None
-        self.od       = od if od is not None else data.config.od
+        self.linelist = self.data.linelist if self.data is not None else None
+        self.od       = od if od is not None else self.data.config.od
         try:
-            self.config = data.config
+            self.config = self.data.config
         except:
             self.config = Config() # uses defaults
         self.config.update_hipri(verbose=verbose) # Update config with new values, if not None
