@@ -585,14 +585,18 @@ class Data:
             if os.path.exists(sampler):
                 self._sampler = utils.backend_to_sampler(HDFBackend(sampler), log_prob_fn)
             else:
-                raise FileNotFoundError(f"The provided sampler path '{sampler}' does not exist.")
+                if self.config.verbose > 0:
+                    print(f"Warning: The sampler was not found at the provided path '{sampler}', it may have been moved or deleted. \n"
+                          f"The sampler will be set to None.", flush=True)
+                self._sampler = None
+                # TODO: Allow sampler to have completed results, but no sampler, and configured methods with _requiresampler property that need them
         elif sampler is None:
             if self.config.verbose > 0 and self._sampler is not None:
                 print("Warning, you have discarded the sampler.")
             self._sampler = None
         
         if self._sampler is not None and isinstance(self._sampler.backend, HDFBackend):
-            self.config.sampler_path = self._sampler.backend.filename
+            self.config.sampler_path = os.path.abspath(self._sampler.backend.filename)
 
     @property
     def velocities(self) -> Array1D|None:
@@ -1263,15 +1267,22 @@ class Data:
                     setattr(self, name, payload[name])
 
         # Handle sampler separately
-        try:
-            self.sampler = payload.get("sampler", None) # property handles the loading of the sampler
-        except FileNotFoundError:
-            raise FileNotFoundError(f"The sampler path in the stored data pickle file does not exist, it may have been moved from:\n"\
-                                    f" {payload.get('sampler', None)}")
+        self.sampler = payload.get("sampler", None) # property handles the loading of the sampler
+        if self.sampler is None and self.config.sampler_path is not None:
+            try:
+                self.sampler = self.config.sampler_path
+            except:
+                self.sampler = None
+
         return self
 
     @property
     def result(self):
+        if self.exception is not None:
+            if self.config.verbose > 0:
+                print(f"An exception was raised during the run, cannot return results object.\n"
+                      f"Returning None instead.")
+                return None
         if not self.complete:
             if self.config.verbose > 0:
                 print(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
@@ -1534,13 +1545,11 @@ class DataList:
         self._combined_profile = None
         self.overwrite = overwrite
         self.excluded_orders = []
+        self.save_dir = save_dir
 
         if _data_list is not None:
             self.data_list = _data_list # datalist property handles the rest
-            self.save_dir = save_dir
             return
-        
-        self.save_dir = save_dir
 
         # From here, the array inputs must be provided
         if order_range is None:
@@ -1587,9 +1596,9 @@ class DataList:
             data.velocities = velocities
 
             if self.save_dir is not None:
-                save_path = os.path.join(self.save_dir, f"order_{order}", "data.pkl")
-                sampler_path = os.path.join(self.save_dir, f"order_{order}", "sampler.h5")
-                data.config.update_lowpri(save_path=save_path, # set default save path for this order which can be overwritten by user
+                save_path = os.path.abspath(os.path.join(self.save_dir, f"order_{order}", "data.pkl"))
+                sampler_path = os.path.abspath(os.path.join(self.save_dir, f"order_{order}", "sampler.h5"))
+                data.config.update_hipri(save_path=save_path, # set default save path for this order which can be overwritten by user
                                         sampler_path=sampler_path) # set default sampler path for this order which can be overwritten by user
 
             # Check if file already exists
@@ -1601,6 +1610,8 @@ class DataList:
                     if self.verbose > 0:
                         print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
                     data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
+            else:
+                data.save() # save the newly initialized, but mostly empty data instance to the file for future reference and use
 
             datalist.append(data) # finally append to the datalist
 
@@ -1856,16 +1867,22 @@ class DataList:
         iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose > 1 else orders
         for order in iterable:
 
-            # Check if ACID already ran for this order
-            if os.path.exists(self.data_list[self.o2i[order]].config.save_path) and overwrite is False:
-                if self.verbose > 1:
-                    print(f"ACID result for order {order} already exists at {self.data_list[self.o2i[order]].config.save_path}. \n"
-                            f"Skipping this order. To overwrite existing results, set overwrite=True.")
-                # else the sampler and data instance is overwritten
-                continue
-
-            # Handling if any kwargs were input 
             data = self.data_list[self.o2i[order]]
+
+            # Check if ACID already ran for this order
+            if os.path.exists(data.config.save_path) and overwrite is False:
+                if data.complete:
+                    if self.verbose > 1:
+                        print(f"An ACID completed result for order {order} already exists. \n"
+                                f"Skipping this order. To overwrite existing results, set overwrite=True.")
+                    continue
+                elif data.exception is not None:
+                    if self.verbose > 1:
+                        print(f"An ACID run for order {order} previously encountered an exception. \n"
+                                f"Skipping this order. To retry and overwrite existing results, set overwrite=True.")
+                    continue
+
+            # Handling if any kwargs were input
             # Only overwrite if overwrite_kwargs is True, otherwise keep the existing linelist/velocities in the Data instance
             if "linelist" in kwargs:
                 ll = kwargs.pop("linelist")
@@ -1920,20 +1937,23 @@ class DataList:
         save_dir : str | None, optional
             The directory to save the DataList pickle file. If None, self.save_dir is used. Default is None.
         """
-        d = {}
         if save_dir is not None:
             self.save_dir = save_dir
         if self.save_dir is None:
-            raise ValueError("No save path provided and save_dir was not set.")
-        d["dict_list"] = [data.to_dict() for data in self.data_list]
+            raise ValueError("No save directory provided and save_dir was not set.")
+        for data in self.data_list:
+            # Ensures that the save paths for each data instance are correct and updated to match the current save_dir,
+            # even if it was changed since initialization.
+            self._set_paths_for_data(data, self.save_dir)
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
-        d["save_dir"] = self.save_dir
+        d = {}
         d["verbose"] = self.verbose
+        # and maybe other class attributes later
         with open(save_loc, "wb") as f:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, path:str, print_progress:bool=True) -> DataList:
+    def load(cls, path:str) -> DataList:
         """
         Loads a DataList from a pickle file. The pickle file should contain a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         Will attempt to load from datalist.pkl in the provided path if it is a directory, otherwise will attempt to load from the provided path directly. 
@@ -1942,79 +1962,55 @@ class DataList:
         Parameters
         ----------
         path : str
-            The path to the pickle file or directory to search for the pickle file.
-        print_progress : bool, optional
-            If True, will print progress messages during the loading process.
-            Similar to verbosity, but only for this function.
-            Default is True.
+            The directory containing the datalist.pkl file, or the datalist.pkl itself. Note that the directories containing the results should also be in here.
 
         Returns
         -------
         DataList
             The loaded DataList object.
         """
-        if os.path.isdir(path):
-            path_check = os.path.join(path, "datalist.pkl")
-            if not os.path.exists(path_check):
-                # Final attempt to directly load the data pickles from default order folders
-                all_files = os.listdir(path)
-                data_list = []
-                if print_progress:
-                    all_files = tqdm(all_files, "Opening data pickles in order folders", unit="folder")
-                moved_folder_flag = False
-                for folder in all_files:
-                    folder_path = os.path.join(path, folder)
-                    if os.path.isdir(folder_path) and folder.startswith("order_"):
-                        pickle_path = os.path.join(folder_path, "data.pkl")
-                        if os.path.exists(pickle_path):
-                            with open(pickle_path, "rb") as f:
-                                d = pickle.load(f)
-                                data = Data().from_dict(d)
-                            data_list.append(data)
-                    if not os.path.abspath(data.config.save_path).startswith(os.path.abspath(folder_path)):
-                        moved_folder_flag = True
-                        # We are definitionally trying to load from default paths, so can just use the default naming paths below
-                        data.config.save_path = pickle_path
-                        data.config.sampler_path = os.path.join(folder_path, "sampler.h5")
-                if moved_folder_flag:
-                    print("At least one of the saved Data's save_path or sampler_path does not start with the absolute path of its " \
-                          "respective folder, meaning it has likely been moved.\n" \
-                          "The save_paths and sampler_paths have been updated to the new directory location that they were found.")
-                if len(data_list) > 0:
-                    if print_progress:
-                        print(f"Successfully loaded {len(data_list)} Data instances from order folders in {path}.")
-                    return cls.from_datalist(data_list, save_dir=path)
-                else:
-                    raise ValueError(f"No datalist.pkl found in {path}, and no data pickles with the default naming convention were found in order folders in that path.\n"
-                                     "If the Data instances exist you will need to load them separately and initialize the DataList with the from_datalist() method, "
-                                     "or move the datalist.pkl to the provided path.")
-            else:
-                path = path_check
-        else:
-            if not os.path.exists(path):
+        abspath = os.path.abspath
+        join = os.path.join
+        isdir = os.path.isdir
+        exists = os.path.exists
+
+        path = abspath(path)
+        if path.endswith("datalist.pkl"):
+            if not exists(path):
                 raise ValueError(f"No pickle file found at {path} to load the DataList from.")
+            else:
+                path = os.path.dirname(path)
+        elif not isdir(path):
+            raise ValueError(f"The provided path {path} is not a directory, or a datalist pickle file.\n"
+                             f"You should provide a path to a directory containing the folders with the data pickles and sampler files.")
 
-        if print_progress:
-            print(f"Loading DataList from {path}...")
-        with open(path, "rb") as f:
-            d = pickle.load(f)
+        if exists(join(path, "datalist.pkl")):
+            with open(join(path, "datalist.pkl"), "rb") as f:
+                d = pickle.load(f)
+            verbose = d["verbose"]
+        else:
+            verbose = None
+        verbose = Config(verbose=verbose).verbose
 
-        # Check to see if the stored datalist save_dir matches, else print a warning for saved results being potentially different:
-        # print(os.path.abspath(d["save_dir"]), f"\n", os.path.abspath(os.path.dirname(path)))
-        if os.path.abspath(d["save_dir"]) != os.path.abspath(os.path.dirname(path)):
-            print(f"Warning: The save_dir stored in the pickle file ({d['save_dir']}) does not match the directory of the provided path ({os.path.dirname(path)}). \n" \
-                f"This may cause issues if the directory structure has changed since the DataList was saved, "\
-                f"as the individual Data instances may be looking for their saved results in the old directory. \n" \
-                f"If you have intentionally moved the directory, set the save_dir to the new directory now, " \
-                f"and the property will handle updating the respective save paths if the save path was in the previous location. \n") 
-            # TODO: test this warning and the solution 
+        dir_list = os.listdir(path)        
+        data_list = []
+        folder_moved_flag = False
+        dir_list = dir_list if verbose < 2 else tqdm(dir_list, "Loading Data instances from directory", unit="folder")
+        for folder in dir_list:
+            if isdir(join(path, folder)) and folder.startswith("order_"):
+                save_path = join(path, folder, "data.pkl")
+                sampler_path = join(path, folder, "sampler.h5")
+                if exists(save_path):
+                    data = Data.load(save_path)
+                    if abspath(data.config.save_path) != save_path or abspath(data.config.sampler_path) != sampler_path:
+                        folder_moved_flag = True
+                        cls._set_paths_for_data(data, path)
+                    data_list.append(data)
 
-        data_list = [Data().from_dict(d) for d in d["dict_list"]]
-        verbose = d["verbose"] if "verbose" in d else None
-        # We use a new save_dir depending on the path location in case the directory has changed since last saved
-        obj = cls.from_datalist(data_list, save_dir=os.path.dirname(path), verbose=verbose)
-        if print_progress:
-            print(f"Successfully loaded DataList from {path}.")
+        if folder_moved_flag and verbose is not None and verbose > 0:
+            print(f"Warning: At least one of the Data instances found in the directory does not match the current location, it has been updated.")
+                    
+        obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
         return obj
 
     @property
@@ -2028,19 +2024,6 @@ class DataList:
         elif self._save_dir is None:
             if self.verbose > 0:
                 print("Warning: save_dir is set to None. No results will be saved. This is not recommended.")
-            return
-
-        if self.data_list != [] and self._save_dir is not None: # only do the work below if paths existing data instances need to be considered
-            for data in self.data_list:
-                old_save_path = os.path.abspath(data.config.save_path)
-                old_sampler_path = os.path.abspath(data.config.sampler_path)
-                old_dir = os.path.abspath(self._save_dir)
-                is_default_path = old_sampler_path.startswith(old_dir) and old_save_path.startswith(old_dir)
-                if is_default_path:
-                    data.config.save_path = os.path.join(dir, os.path.relpath(old_save_path, old_dir))
-                    data.config.sampler_path = os.path.join(dir, os.path.relpath(old_sampler_path, old_dir))
-                    data.save()
-
         self._save_dir = dir
         return
 
@@ -2166,3 +2149,14 @@ class DataList:
         from .profiles import Profiles
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
+
+    @staticmethod
+    def _set_paths_for_data(data: Data, save_dir: str) -> None:
+        "Helper to set paths for a Data instance to a new one for a given order."
+        order = data.config.order
+        save_path = os.path.abspath(os.path.join(save_dir, f"order_{order}", "data.pkl"))
+        sampler_path = os.path.abspath(os.path.join(save_dir, f"order_{order}", "sampler.h5"))
+
+        data.config.save_path = save_path
+        data.config.sampler_path = sampler_path
+        data.save()
