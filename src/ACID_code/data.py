@@ -1601,17 +1601,17 @@ class DataList:
                 data.config.update_hipri(save_path=save_path, # set default save path for this order which can be overwritten by user
                                         sampler_path=sampler_path) # set default sampler path for this order which can be overwritten by user
 
-            # Check if file already exists
-            if os.path.exists(data.config.save_path):
-                if self.overwrite:
-                    if self.verbose > 1:
-                        print(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
+                # Check if file already exists
+                if os.path.exists(data.config.save_path):
+                    if self.overwrite:
+                        if self.verbose > 1:
+                            print(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
+                    else:
+                        if self.verbose > 0:
+                            print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
+                        data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
                 else:
-                    if self.verbose > 0:
-                        print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
-                    data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
-            else:
-                data.save() # save the newly initialized, but mostly empty data instance to the file for future reference and use
+                    data.save() # save the newly initialized, but mostly empty data instance to the file for future reference and use
 
             datalist.append(data) # finally append to the datalist
 
