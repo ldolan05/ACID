@@ -87,7 +87,7 @@ class Result:
             the Result object for methods that do not require the profiles attribute, such as 
             continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
             and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
-            By default, None.
+            By default, True.
         verbose : :py:type:`IntLike | bool | str`, optional
             Verbosity level, works exactly the same as :py:class:`Acid`, if not provided
             defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2).

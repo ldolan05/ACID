@@ -436,6 +436,7 @@ class Config:
         If return_fig is True, returns a tuple of (fig, ax) where fig is the matplotlib figure object and ax is the axis object.
         Otherwise, returns None and shows the plot.
         """
+        # TODO: SORT out the colours and looks of this and the below continuum fit plot
         fig, ax = plt.subplots(figsize=(10, 6))
         for i, (name, line_data) in enumerate(self.masking_lines):
             for line, width in zip(line_data["lines"], line_data["widths"]):
@@ -646,7 +647,9 @@ class Data:
 
         Parameters
         ----------
-        See :py:class:`Acid` for the accepted linelist formats and parameters.
+        linelist : Array2D, str, LineList, dict[str, Array1D], or None
+             The linelist to be set, which can be in various formats for convenience.
+             See :py:class:`Acid` init for the accepted linelist formats and parameters.
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
@@ -1212,16 +1215,6 @@ class Data:
         """
         Converts the data object to a dictionary payload for saving. This is used internally in the save method, 
         but can also be used for debugging or other purposes.
-
-        Parameters
-        ----------
-        store_sampler : bool, optional
-            Whether to include the MCMC sampler in the dictionary payload, by default True.
-        size_limit : Scalar | None, optional
-            A hard size limit to the sampler in GB.
-            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
-            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
-            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
         """
         if self.sampler is not None and self.config.sampler_type == "dynesty":
             raise ValueError("Storing the sampler is not currently supported for dynesty samplers.\n" \
@@ -1322,10 +1315,6 @@ class LineList:
         ----------
         linelist : str, dict, LineList, list, or np.ndarray
             See :py:class:`Acid`.
-        linelist_wl : array-like, optional
-            See :py:class:`Acid`.
-        linelist_depths : array-like, optional
-            See :py:class:`Acid`.
 
         Returns
         -------
@@ -1356,8 +1345,6 @@ class LineList:
                 raise ValueError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths and index 1 being depths")
             linelist_wl = linelist[0]
             linelist_depths = linelist[1]
-        elif linelist_wl is not None and linelist_depths is not None:
-            pass # linelist_wl and linelist_depths already set, will be processed below
         else:
             raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
@@ -1429,8 +1416,7 @@ class DataList:
     strictly necessary to run ACID over multiple orders, you can handle the multiple instances yourself.
 
     The DataList class works with a required root directory specified by the user to access to the same data across parallel processes, 
-    and also to save intermediate results and figures per order. It also can save the whole sampler if you specify save_sampler=True in the run_ACID method,
-    which will save the sampler with Data in result to the save_dir after running ACID for each order but take up much more disk space.
+    and also to save intermediate results and figures per order.
     """
 
     def __init__(
@@ -1524,11 +1510,6 @@ class DataList:
                                       f"The idea is that you can input a Load object which has its own tools to pull s2d data from common "\
                                       f"instruments such as ESPRESSO, HARPS, etc. \nIf you want to use this feature, please open an issue or "\
                                       f"contribute a pull request with the implementation.")
-            from .load import Load
-            if not isinstance(load, Load):
-                raise ValueError("load must be an instance of the Load class. Got: {load!r}")
-            wavelengths, flux, errors, sn = load.get_data()
-            order_range = load.order_range
 
         # Configure verbosity
         self.verbose = Config(verbose=verbose).verbose
@@ -1864,6 +1845,10 @@ class DataList:
         if nworkers > 1:
             orders = np.array_split(orders, nworkers)[worker]
 
+        # Check if linelist or velocities were in kwargs and remove them now once if so
+        ll = kwargs.pop("linelist", None)
+        vel = kwargs.pop("velocities", None)
+
         iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose > 1 else orders
         for order in iterable:
 
@@ -1884,11 +1869,9 @@ class DataList:
 
             # Handling if any kwargs were input
             # Only overwrite if overwrite_kwargs is True, otherwise keep the existing linelist/velocities in the Data instance
-            if "linelist" in kwargs:
-                ll = kwargs.pop("linelist")
+            if ll is not None:
                 data.linelist = ll if overwrite_kwargs else data.linelist
-            if "velocities" in kwargs:
-                vel = kwargs.pop("velocities")
+            if vel is not None:
                 data.velocities = vel if overwrite_kwargs else data.velocities
             if overwrite_kwargs:
                 data.config.update_hipri(**kwargs)

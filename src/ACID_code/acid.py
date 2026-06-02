@@ -60,9 +60,9 @@ class Acid:
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default :py:class:`Config` and/or :py:class:`Data` values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed via 
-        :py:attr:`ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and run_acid).
+        :py:attr:`ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and the ACID method).
 
-        All parameters below and in run_ACID are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
+        All parameters below and in the ACID method are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
         The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
 
         Parameters
@@ -73,12 +73,11 @@ class Acid:
             choose your own velocity grid, by default None, stored in the Data instance.
         linelist : :py:type:`Array2D | str` | :py:class:`LineList` | dict`, optional
             The linelist to use for LSD. The linelist should have wavelengths in angstroms and relative depths between 0 and 1.
-            This is a required parameter if linelist_wl and linelist_depths are not provided. It can be of the forms:
+            This is a required parameter. It can be of the forms:
             - String: A path to a VALD linelist in string format. Support for other linelists may be added in the future or on request.
             - :py:type:`Array2D`: A 2D array-like object indexed such that 0 is wavelengths and 1 is depths.
             - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
             - :py:class:`LineList`: The :py:class:`LineList` class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
-            - If None, linelist_wl and linelist_depths must be provided (see below), by default None, stored in the Data instance.
         order : :py:type:`IntLike`, optional
             If this ACID instance is intended as a run on a specific order, then you can designate this instance for that order. This will allow
             the resulting Data instance to track of which order the profiles correspond to. Note that orders can be indexed by the correct indexing
@@ -117,7 +116,7 @@ class Acid:
             The path to save the sampler HDF5 backend file to.
             If None, the sampler is not saved and only stored in memory. By default None.
             Note that if your path points to an existing file, it will be overwritten on Acid initialization.
-            If True, we use the emcee HDF5 backend to store and load the sampler.
+            If existing, we use the emcee HDF5 backend to store and load the sampler.
             Should be a valid file path that ends with ".h5". If the directory containing it does not exist, it will be created.
             Note that if you later try and save the sampler through the data class, it is converted to a HD5 backend.
         data : :py:class:`Data` | :py:class:`DataList`, optional
@@ -315,6 +314,9 @@ class Acid:
         skips : :py:type:`IntLike`, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
+        od : :py:type:`bool`, optional
+            If True, runs ACID in optical depth, otherwise, the LSD methods and ACID fitting is performed in flux. By default None which defaults to True.
+            Note that the whole point of ACID is to run LSD in OD, we highly recommend leaving this unless you specifically want to compare.
         sampler_type : :py:type:`str`, optional
             If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
