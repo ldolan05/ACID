@@ -506,8 +506,9 @@ class Acid:
         # The code for telluric masking is contained without the MaskingLines class, which both telluric_lines
         # and hydrogen_lines are instances of.
         line_mask = self.config.masking_lines.get_masks(self.data.wavelengths["combined"])
-        line_mask = np.all(line_mask, axis=0)
-        self.data.errors["combined"][line_mask] = 1e12
+        if line_mask != []:
+            line_mask = np.all(line_mask, axis=0)
+            self.data.errors["combined"][line_mask] = 1e12
 
         # Get the initial polynomial coefficents
         if not hasattr(self.data.wavelengths, "combined_normalized"):
