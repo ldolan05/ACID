@@ -363,7 +363,7 @@ def test_data_and_datalist():
         cores=10,
         )
     datalist[22].config.update_hipri(poly_ord=4)
-    datalist.run_ACID(allow_overwrite=True)
+    datalist.run_ACID(overwrite=True)
     datalist[22].result.plot_profiles()
     datalist.combine_profiles(exclude=21)
     datalist.plot_combined_profile()
@@ -619,12 +619,12 @@ def LSD():
     data = Acid.data
 
     # Try LSD in OD and flux
-    lsd = acid.LSD(data=data, OD=True)
+    lsd = acid.LSD(data=data, od=True)
     lsd.run_LSD(wavelength, spectrum, error, sn)
 
     # And in flux
     data.reset()
-    lsd = acid.LSD(data=data, OD=False)
+    lsd = acid.LSD(data=data, od=False)
     lsd.run_LSD(wavelength, spectrum, error, sn)
 
 print("Starting tests, this will take a 2-5 minutes to run, and a bunch of output will be printed.")
