@@ -112,7 +112,10 @@ class Result:
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
         if self.sampler is not None:
-            self.dynesty = isinstance(self.sampler, Sampler)
+            if Sampler is not None: # ie, only if dynesty is installed do this cheeck
+                self.dynesty = isinstance(self.sampler, Sampler)
+            else:
+                self.dynesty = False
             self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
 
         if not self.data.complete:
@@ -259,7 +262,7 @@ class Result:
             # Tuples allow for array-like indexing of the list
             if len(item) == 3:
                 _order, frame, velocity = item
-                return self.data.alphaprofiles[frame][velocity]
+                return self.data.profiles[frame][velocity]
             elif len(item) == 2:
                 return self.data.profiles[item[0]][item[1]]
             elif len(item) == 1:

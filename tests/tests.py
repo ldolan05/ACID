@@ -78,8 +78,8 @@ def legacy_test():
         plt.figure()
 
         for frame in range(len(files)):
-            profile = result[frame, 0]
-            profile_error = result[frame, 1]
+            profile = result[0, frame, 0]
+            profile_error = result[0, frame, 1]
             plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
 
         plt.xlabel('Velocities (km/s)')
