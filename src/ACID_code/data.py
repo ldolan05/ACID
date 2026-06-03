@@ -925,7 +925,7 @@ class Data:
             self.errors = {}
             self.sn = {}
 
-    def plot_continuum_fit(self, plot_type:str="initial", return_fig:bool=False, save_fig:str|None=None) -> None:
+    def plot_continuum_fit(self, plot_type:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None:
         """
         Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
 
@@ -933,7 +933,7 @@ class Data:
         ----------
         plot_type : str, optional
             The type of continuum fit to plot, either "initial" for the initial continuum fit or
-            "masked" for the continuum fit after residual masking. Default is "initial".
+            "masked" for the continuum fit after residual masking. Default is "masked".
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False.
         save_fig : str or None, optional
