@@ -530,17 +530,25 @@ class Result:
     @_require_profiles
     def plot_forward_model(
         self,
+        normalized      :bool       = False,
+        divide_by_median:bool       = False,
         fig_ax          :tuple|None = None,
-        grid            :bool      = True,
-        labels          :dict|None = None,
-        return_fig      :bool      = False,
-        subplot_kwargs  :dict|None = None,
+        grid            :bool       = True,
+        labels          :dict|None  = None,
+        return_fig      :bool       = False,
+        subplot_kwargs  :dict|None  = None,
         ) -> None | tuple:
         """
         Plots the forward model calculated from the final profiles to the combined input spectrum.
 
         Parameters
         ----------
+        normalized : bool, optional
+            Whether to plot the normalized spectrum and forward model (divided by the continuum), 
+            or the raw flux, by default False.
+        divide_by_median : bool, optional
+            Divides flux units by the median continuum value so that the y-axis is in units of median continuum,
+            by default False. Only applies if normalized is False.
         fig_ax: tuple | None
             Optionally provide an existing fig/axis tuple to plot on, by default None and
             creates a new figure and axis. The axis must be a 2 element array of axes, 
@@ -580,18 +588,18 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
 
         # Get input data
-        wavelengths = self.data.wavelengths["combined"]
-        flux = self.data.flux["combined"]
+        wavelengths = np.copy(self.data.wavelengths["combined"])
+        flux = np.copy(self.data.flux["combined"])
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        model_flux = self.data.forward_model
+        model_flux = np.copy(self.data.forward_model)
 
         # Due to distortion at the edges of the profile, we drop the last 2 pixels
         wavelengths = utils.drop_edges(wavelengths)
         flux = utils.drop_edges(flux)
         model_flux = utils.drop_edges(model_flux)
-        continuum_model = utils.drop_edges(self.data.continuum_model)
+        continuum_model = utils.drop_edges(np.copy(self.data.continuum_model))
 
         # Plotting
         if fig_ax is not None:
@@ -606,11 +614,22 @@ class Result:
             ax[1].grid(grid)
             plt.subplots_adjust(hspace=0.05)
 
+        if normalized:
+            flux /= continuum_model
+            model_flux /= continuum_model
+            continuum_model /= continuum_model # is just 1s
+
+        if divide_by_median:
+            median_continuum = np.median(continuum_model)
+            flux /= median_continuum
+            model_flux /= median_continuum
+            continuum_model /= median_continuum
+
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
         ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
         ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        ax[1].plot(wavelengths, model_flux-flux, color='C0', linewidth=1, label='Residuals')
+        ax[1].plot(wavelengths, (model_flux-flux), color='C0', linewidth=1, label='Residuals')
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].legend()
         ax[1].legend()
