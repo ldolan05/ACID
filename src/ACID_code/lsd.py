@@ -409,7 +409,8 @@ class LSD:
         wavelengths          : Array1D|None = None,
         linelist_wavelengths : Array1D|None = None,
         linelist_depths      : Array1D|None = None,
-        ) -> tuple[Array1D, Array1D]:
+        return_alpha         : bool = False,
+        ) -> tuple[Array1D, Array1D]|tuple[Array1D, Array1D, Array2D]:
         """
         Convolve your profile either using an inputted alpha matrix or by calculating one using :py:meth:`calc_alpha` 
         with the inputted wavelengths and linelist. The units of the output convolved model spectrum will match the 
@@ -440,10 +441,13 @@ class LSD:
             if velocities is None or wavelengths is None or linelist_wavelengths is None or linelist_depths is None:
                 raise ValueError("If alpha matrix is not input, velocities, wavelengths, linelist_wavelengths, and " \
                 "linelist_depths must all be provided to calculate the alpha matrix.")
-            cls.__init__(cls)
-            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities, verbose=2)
+            cls.__init__(cls, verbose=2)
+            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities)
 
         model_spectrum = alpha @ profile
         model_errors = np.sqrt((alpha**2) @ (profile_errors**2))
 
-        return model_spectrum, model_errors
+        if return_alpha:
+            return model_spectrum, model_errors, alpha
+        else:
+            return model_spectrum, model_errors
