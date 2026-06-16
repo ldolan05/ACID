@@ -156,6 +156,7 @@ class LSD:
             wavelengths_linelist : Array1D,
             depths_linelist      : Array1D,
             sn                   : Scalar,
+            skip_warnings        : bool = False,
             ) -> tuple[Array1D, Array1D]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
@@ -168,6 +169,9 @@ class LSD:
             Depths from the linelist
         sn : :py:type:`Scalar`
             Signal-to-noise ratio threshold
+        skip_warnings : bool, optional
+            Whether to skip warnings about the number of lines remaining after the S/N cut,
+            by default False
 
         Returns
         -------
@@ -180,19 +184,20 @@ class LSD:
         depths_linelist = depths_linelist[idx]
 
         # Analyse remaining lines
-        ncut = np.sum(~idx)
-        nrest = np.sum(idx)
-        perc = 100 * nrest / (nrest + ncut)
-        if nrest == 0:
-            error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
-            self.data.exception = error
-            self.data.traceback = traceback.format_stack()
-            raise error
-        if self.config.verbose > 0:
-            if perc < 5:
-                print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-            if self.config.verbose > 2:
-                print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
+        if not skip_warnings:
+            ncut = np.sum(~idx)
+            nrest = np.sum(idx)
+            perc = 100 * nrest / (nrest + ncut)
+            if nrest == 0:
+                error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+                self.data.exception = error
+                self.data.traceback = traceback.format_stack()
+                raise error
+            if self.config.verbose > 0:
+                if perc < 5:
+                    print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
+                if self.config.verbose > 2:
+                    print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist
 
     def calc_alpha(
