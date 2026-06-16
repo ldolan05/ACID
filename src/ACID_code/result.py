@@ -153,94 +153,82 @@ class Result:
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
         errors = np.max(errors, axis=0)
-        poly_cos      = quartiles[1, nvel:]
-        poly_cos_err  = errors[nvel:] # unused for now
+        med_poly_coeffs      = quartiles[1, nvel:]
+        med_poly_coeffs_err  = errors[nvel:] # unused for now, the error is usually quite small though
+        poly_coeffs = flat_samples[:, nvel:] # coefficients for each sample, shape (nsamples, ncoeffs)
 
         if self.config.verbose > 1:
             print('Getting the final profiles...')
 
-        # Finding error for the continuum fit
-        norm_wl = self.data.wavelengths["combined_normalized"]
-        coeffs = flat_samples[:, nvel:]
-        ncoeffs = coeffs.shape[1]
-        powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+        # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
+        norm_wl = utils.normalize_wavelengths(self.data.wavelengths["masked"])
+        continuum = P.polyval(norm_wl, med_poly_coeffs)
 
-        # First check memory to see if all samples can be used
-        available_memory = utils.get_available_memory() # in bytes
-        m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
-        n_samples, ncoeffs = coeffs.shape
-        npix = powers.shape[0]
-        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
-        # If memory exceeded, fallback to using 1000 random samples
-        if matrix_size_gb > m_available:
-            if self.config.verbose > 1:
-                print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
-                "Calculating with a max of 1000 random samples instead.")
-            indices_size = min(1000, n_samples)
-            random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
-            coeffs = coeffs[random_indices, :]
+        # Get continuum error
+        continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
 
-        conts = (coeffs @ powers.T)
-        continuum_error = np.std(conts, axis=0)
+        # Run a final LSD using the same inputs that the MCMC sampler got - but now including the error on the continuum - this is our final profile and error
+        wavelengths = self.data.wavelengths["masked"]
+        flux = self.data.flux["masked"]
+        error = self.data.errors["masked"]
+        sn = self.data.sn["masked"]
+        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha_fitting)
 
-        # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
-        # If there is one frame, then the combined_profile is the same as the single frame profile.
-        nframes = len(self.data.flux["input"])
-        profiles = [] # switch to list format to add covariance matrix to result
-        for counter in range(nframes+1):
-            if counter == 0:
-                flux = np.copy(self.data.flux["combined"])
-                error = np.copy(self.data.errors["combined"])
-                wavelengths = np.copy(self.data.wavelengths["combined"])
-                sn = np.copy(self.data.sn["combined"])
-                error[self.data.residual_masks] = 1e12
+        # Use the above to get our combined profile and error
+        self.data.combined_profile = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+
+        # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
+        # Note that to get from input to combined you require the "self.data.nanmask" mask, which just removes non physical and nan values from the inputs
+        # We will need to recalculate alpha on the new wavelength grid
+        linelist_wl, linelist_depths = self.data.linelist
+        lsd = LSD(self.data)
+        linelist_wl, linelist_depths = lsd.sn_clip(linelist_wl, linelist_depths, self.data.sn["combined"], skip_warnings=True)
+        if self.config.od:
+            linelist_depths = utils.flux_to_od(linelist=linelist_depths)
+            profile_to_conv, prof_errs_to_conv = utils.flux_to_od(self.data.combined_profile[0], self.data.combined_profile[1])
+        else:
+            profile_to_conv, prof_errs_to_conv = self.data.combined_profile[0], self.data.combined_profile[1]
+        forward_model, _errors, alpha_combined = lsd.convolve_profile(
+            profile              = profile_to_conv,
+            profile_errors       = prof_errs_to_conv,
+            velocities           = self.data.velocities,
+            linelist_wavelengths = linelist_wl,
+            linelist_depths      = linelist_depths,
+            wavelengths          = self.data.wavelengths["combined"],
+            return_alpha         = True
+        )
+        if self.config.od:
+            forward_model = utils.od_to_flux(forward_model)
+        self.data.forward_model = forward_model
+        self.data.forward_x     = self.data.wavelengths["combined"]
+
+        # Also get the continuum model on the original combined wavelength grid, for plotting purposes
+        self.data.continuum_model = P.polyval(utils.normalize_wavelengths(self.data.wavelengths["combined"]), med_poly_coeffs)
+
+        # Iterate through each frame to get per-frame profiles
+        profiles = []
+        for i in range(len(self.data.wavelengths["input"])):
+            # Use nanmask as we cannot work with non-physical inputs like nan or negative fluxes
+            wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
+            flux = self.data.flux["input"][i][self.data.nanmask]
+            error = self.data.errors["input"][i][self.data.nanmask]
+            sn = self.data.sn["input"][i]
+
+            # Avoid alpha recalculation if the input wavelengths are the same as the combined wavelengths, always true for single frame LSD
+            if np.array_equal(wavelengths, self.data.wavelengths["combined"]):
+                if np.array_equal(flux, self.data.flux["combined"]) and np.array_equal(error, self.data.errors["combined"]) and np.array_equal(sn, self.data.sn["combined"]):
+                    # in this case, the input frame is the same as the combined frame, so we can just directly use the combined profile
+                    profiles.append((self.data.combined_profile[0], self.data.combined_profile[1], self.data.combined_profile[2]))
+                    continue
+                else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
+                    alpha = alpha_combined
             else:
-                flux = np.copy(self.data.flux["input"][counter-1])[self.data.nanmask]
-                error = np.copy(self.data.errors["input"][counter-1])[self.data.nanmask]
-                wavelengths = np.copy(self.data.wavelengths["input"][counter-1])[self.data.nanmask]
-                sn = np.copy(self.data.sn["input"][counter-1])
-
-                # Masking based off residuals interpolated onto new wavelength grid
-                reference_wave = self.data.wavelengths["input"][np.nanargmax(self.data.sn["input"])]
-                reference_wave = reference_wave[self.data.nanmask]
-
-                reference_mask = np.zeros_like(reference_wave, dtype=bool)
-                reference_mask[self.data.residual_masks] = True
-                reference_interp1d = interp1d(reference_wave, reference_mask.astype(float), kind="nearest", bounds_error=False, fill_value=0.0)
-                interpolated_mask = reference_interp1d(wavelengths) > 0.5
-                error[interpolated_mask] = 1e12
-
-            # Build continuum model
-            a, b = utils.get_normalisation_coeffs(wavelengths)
-            norm_wavelengths = (a*wavelengths)+b
-            mdl = P.polyval(norm_wavelengths, poly_cos)
-
-            # correcting continuum
-            error = np.sqrt((error/mdl)**2 + (continuum_error/mdl)**2)
-            flux /= mdl
-
-            # Check whether we can skip alpha by reusing the same alpha, only true if the wavelength grid is identical
-            condition = np.array_equal(wavelengths, self.data.wavelengths["combined"])
-            alpha = self.data.alpha if condition else None
-
-            LSD_profiles = LSD(self.data)
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn, alpha=alpha)
-
-            profile_f = LSD_profiles.profile_F
-            profile_errors_f = LSD_profiles.profile_errors_F
-            cov_z_f = LSD_profiles.cov_z_F
-
-            if counter == 0:
-                # Set combined profile params
-                self.data.combined_profile = [profile_f, profile_errors_f, cov_z_f]
-                self.data.continuum_model = mdl
-
-                # Set the forward model params, multiplied by mdl as LSD is run on normalized flux
-                self.data.forward_model = LSD_profiles.forward_model * mdl
-                self.data.forward_errors = LSD_profiles.forward_model_errors * mdl
-                self.data.forward_x = wavelengths
-            else:
-                profiles.append([profile_f, profile_errors_f, cov_z_f])
+                alpha = None
+            norm_wl = utils.normalize_wavelengths(wavelengths)
+            continuum = P.polyval(norm_wl, med_poly_coeffs)
+            continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
+            lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=alpha)
+            profiles.append((lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F))
 
         self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
         self.data.results_time = time() - t0
@@ -250,8 +238,43 @@ class Result:
         # Now that results are complete, save the data instance if specified
         if self.config.save_path is not None:
             self.save() # the sampler is already saved if specified
-
         return
+
+    def _get_continuum_error(self, norm_wl, poly_coeffs):
+        ncoeffs = poly_coeffs.shape[1]
+        powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+
+        # First check memory to see if all samples can be used
+        available_memory = utils.get_available_memory() # in bytes
+        m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
+        n_samples, ncoeffs = poly_coeffs.shape
+        npix = powers.shape[0]
+        matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
+        # If memory exceeded, fallback to using 1000 random samples
+        if matrix_size_gb > m_available:
+            if self.config.verbose > 1:
+                print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
+                "Calculating with a max of 1000 random samples instead.")
+            indices_size = min(1000, n_samples)
+            random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
+            coeffs = poly_coeffs[random_indices, :]
+        else:
+            coeffs = poly_coeffs
+
+        # Then get the error from the conts matrix above
+        conts = (coeffs @ powers.T)
+        continuum_error = np.std(conts, axis=0)
+        return continuum_error
+
+    def _run_continuum_corrected_LSD(self, continuum, continuum_error, wavelengths, flux, error, sn, alpha=None):
+        """Helper to run LSD part on a continuum corrrected spectrum"""
+        # correcting continuum
+        corrected_error = np.sqrt((error/continuum)**2 + (continuum_error/continuum)**2)
+        corrected_flux = flux / continuum
+
+        lsd = LSD(self.data)
+        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
+        return lsd
 
     @_require_profiles
     def __getitem__(self, item) -> list|np.ndarray:

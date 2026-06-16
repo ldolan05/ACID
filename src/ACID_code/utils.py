@@ -343,6 +343,22 @@ def get_normalisation_coeffs(wl:Array1D)->tuple[Scalar, Scalar]:
     b = 1 - a * np.nanmax(wl)
     return a, b
 
+def normalize_wavelengths(wl:Array1D)->Array1D:
+    """Normalizes a wavelength array to the range [-1, 1] using linear scaling.
+
+    Parameters
+    ----------
+    wl : Array1D
+        Wavelength array to be normalized.
+
+    Returns
+    -------
+    Array1D
+        Normalized wavelength array.
+    """
+    a, b = get_normalisation_coeffs(wl)
+    return (a*wl)+b
+
 def get_available_memory():
     """
     Returns the available memory in bytes.

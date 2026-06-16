@@ -488,6 +488,7 @@ class Acid:
             hasattr(self.data.flux, "combined"),
             hasattr(self.data.errors, "combined"),
             hasattr(self.data.sn, "combined"),
+            hasattr(self.data, "nanmask")
         )):
             if self.config.verbose > 2:
                 print("Combined spectra already exists, skipping combination step.")
@@ -503,19 +504,27 @@ class Acid:
             self.data.flux["combined"] = flux
             self.data.errors["combined"] = errors
             self.data.nanmask = nanmask
+        
+        # Get the initial polynomial coefficents
+        if not hasattr(self.data.wavelengths, "combined_normalized"):
+            self.data.wavelengths["combined_normalized"] = utils.normalize_wavelengths(self.data.wavelengths["combined"])
 
         # Perform line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         # The code for telluric masking is contained without the MaskingLines class, which both telluric_lines
         # and hydrogen_lines are instances of.
+        # TODO: Sort this if statement below out 
         line_mask = self.config.masking_lines.get_masks(self.data.wavelengths["combined"])
         if line_mask != []:
             line_mask = np.all(line_mask, axis=0)
-            self.data.errors["combined"][line_mask] = 1e12
+            self.data.line_mask = line_mask
+        else:
+            self.data.line_mask = np.ones_like(self.data.wavelengths["combined"], dtype=bool)
 
-        # Get the initial polynomial coefficents
-        if not hasattr(self.data.wavelengths, "combined_normalized"):
-            a, b = utils.get_normalisation_coeffs(self.data.wavelengths["combined"])
-            self.data.wavelengths["combined_normalized"] = (self.data.wavelengths["combined"]*a)+b
+        # Create the line_masked keys
+        self.data.wavelengths["line_masked"] = self.data.wavelengths["combined"][~self.data.line_mask]
+        self.data.flux["line_masked"] = self.data.flux["combined"][~self.data.line_mask]
+        self.data.errors["line_masked"] = self.data.errors["combined"][~self.data.line_mask]
+        self.data.sn["line_masked"] = self.data.sn["combined"]
 
         # Compute an initial continuum fit
         # poly inputs has polynomial coefficients and scale at the end
@@ -530,15 +539,16 @@ class Acid:
             if self.config.verbose > 2:
                 print("Performing initial continuum fit...")
             self.data.poly_inputs, self.data.flux["fitted"], self.data.errors["fitted"] = self.continuumfit(
-                self.data.flux["combined"],
-                self.data.wavelengths["combined"],
-                self.data.errors["combined"],
+                # TODO: change order of y and x?
+                self.data.flux["line_masked"],
+                self.data.wavelengths["line_masked"],
+                self.data.errors["line_masked"],
                 poly_ord = self.config.poly_ord,
                 plot_result = self.config.verbose > 2,
                 plot_type = "initial"
             )
-        self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["combined"]) # Just to keep track
-        self.data.sn["fitted"]          = np.copy(self.data.sn["combined"]) # SN also is not changed here
+        self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["line_masked"]) # Just to keep track
+        self.data.sn["fitted"]          = np.copy(self.data.sn["line_masked"]) # SN also is not changed here
 
         # Get the initial LSD profile and set the alpha matrix (unchanged from masking) and model_inputs
         if all((
@@ -563,12 +573,14 @@ class Acid:
 
         # Masking based off residuals
         # Requires: self.x, self.y, self.yerr, self.data.model_inputs, self.poly
-        # Sets: self.c_factor, self.residual_masks
+        # Sets: self.c_factor, self.fitting_mask
         # Modifies: self.yerr, and as of 1.5, self.data.model_inputs
         # As of 1.4.0, this is all applied to the data class (not internal ACID variables)
+        # As of 2.0, also sets self.data.alpha_fitting, self.data.alpha is no longer modified
         if all((
-            self.data.residual_masks is not None,
-            self.data.c_factor is not None
+            self.data.fitting_mask is not None,
+            self.data.c_factor is not None,
+            self.data.alpha_fitting is not None
         )):
             if self.config.verbose > 1:
                 print("Residual masks already exists, skipping residual masking step.")
@@ -852,6 +864,7 @@ class Acid:
         # Save to Data the required variables for the plot
         if plot_type not in self.data.plotting_variables:
             self.data.plotting_variables[plot_type] = {}
+            # TODO: Show line_mask in plot too
         self.data.plotting_variables[plot_type]["unnormalized_wavelengths"] = unnormalized_wavelengths
         self.data.plotting_variables[plot_type]["fluxes"]                   = fluxes
         self.data.plotting_variables[plot_type]["fit"]                      = fit
@@ -880,15 +893,17 @@ class Acid:
 
         # Residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
 
-        # Set standard variables
-        x = self.data.wavelengths["combined"]
-        y = self.data.flux["combined"]
-        yerr = self.data.errors["combined"]
-        sn = self.data.sn["combined"]
+        # Set standard variables - note we are getting the combined spectrum here, not the line masked spectrum,
+        # as we want to mask based on the full spectrum
+        x = np.copy(self.data.wavelengths["combined"])
+        y = np.copy(self.data.flux["combined"])
+        yerr = np.copy(self.data.errors["combined"])
+        sn = np.copy(self.data.sn["combined"])
 
         # Use the initial LSD run to get the forward model and scaled residuals
         forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha, od=self.config.od).full_model(self.data.model_inputs)
         residuals = (y - forward) / forward
+        # TODO Change above to use the forward and residuals from the first LSD call directly
 
         # Chunk masking based on deviation from residuals
         # -----------------------------------------------
@@ -906,8 +921,8 @@ class Acid:
         # Then mask those regions that are greater than pix_chunk in length
         for start, end in zip(starts, ends):
             if (end - start) >= self.config.pix_chunk:
-                yerr[start:end] = 1e12
                 pix_mask[start:end] = True
+        self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
 
         # Warn if more than 50% of spectrum is masked this way
         if np.sum(pix_mask) > 0.5 * len(pix_mask):
@@ -917,12 +932,8 @@ class Acid:
                 "or consider adjusting the pix_chunk and dev_perc parameters. If you are aware that you \n" \
                 "have bad spectra, then this can be ignored.")
 
-        # Note that this is used to keep track of the residual masks for later use when processing the results
-        self.data.residual_masks = tuple([yerr >= 1e12])
-
         # Sigma clipping
         # --------------
-
         # Get median, sigma, and clip limits
         m = np.median(residuals)
         sigma = np.std(residuals)
@@ -931,9 +942,18 @@ class Acid:
         upper_clip = m + clip
 
         # Find and apply mask
-        mask = (residuals <= lower_clip) | (residuals >= upper_clip)
-        yerr[mask] = 1e12
+        sigma_mask = (residuals <= lower_clip) | (residuals >= upper_clip)
+        self.data.sigma_mask = sigma_mask
 
+        # Apply all masks
+        fitting_mask = ~pix_mask & ~sigma_mask & ~self.data.line_mask
+        self.data.fitting_mask = fitting_mask # Save the fitting mask for later use in plotting and analysis
+        x = x[fitting_mask]
+        y = y[fitting_mask]
+        yerr = yerr[fitting_mask]
+
+        # Second Continuum Fit
+        # --------------------
         # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
         poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(y, x, yerr, self.config.poly_ord,
                                                    plot_result=self.config.verbose > 2,
@@ -944,24 +964,27 @@ class Acid:
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
         # alpha is only dependent on wavelengths and linelist, which are unchanged
-        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha)
+        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn)
+        # TODO: in LSD, add a check that alpha.shape matches the inputs wavelength shape
 
         # Update and set new variables
         self.data.c_factor = LSD_masking.c_factor
         self.data.initial_model_inputs = np.copy(self.data.model_inputs) # Save the initial model inputs before masking for later use if needed
         self.data.model_inputs = np.concatenate((LSD_masking.profile, poly_inputs))
+        self.data.alpha_fitting = LSD_masking.alpha # Update alpha to the new alpha with masked residuals
 
         # Set masked variables
         self.data.wavelengths["masked"] = x
-        self.data.flux["masked"]        = y # x and y dont change in this func
+        self.data.flux["masked"]        = y
         self.data.errors["masked"]      = yerr # yerr is modified in this func
-        self.data.sn["masked"]          = np.copy(self.data.sn["combined"]) # SN is not changed in this func
+        self.data.sn["masked"]          = sn # SN is not changed in this func
         # self.alpha is also modified in this func to get new alpha with masked residuals using pix chunk and dev perc
 
         # Set required variables for plotting in the Data class
         if "residual_masking" not in self.data.plotting_variables:
             self.data.plotting_variables["residual_masking"] = {}
-        self.data.plotting_variables["residual_masking"]["mask"] = mask
+        self.data.plotting_variables["residual_masking"]["mask"] = sigma_mask
+        # TODO: add the new vars
         self.data.plotting_variables["residual_masking"]["residuals"] = residuals
         self.data.plotting_variables["residual_masking"]["upper_clip"] = upper_clip
         self.data.plotting_variables["residual_masking"]["lower_clip"] = lower_clip
@@ -1302,7 +1325,6 @@ def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     # Determine which arguments are for __init__ and which are for run_ACID_HARPS
     init_params = inspect.signature(Acid.__init__).parameters
     init_keys = set(init_params.keys()) - {"self"}
-
     # Split kwargs accordingly
     init_kwargs = {key: val for key, val in combined.items() if key in init_keys}
     run_kwargs = {key: val for key, val in combined.items() if key not in init_keys}

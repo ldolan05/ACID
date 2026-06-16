@@ -81,7 +81,7 @@ class MCMC:
             self.x = data.wavelengths["masked"]
             self.y = data.flux["masked"]
             self.yerr = data.errors["masked"]
-            self.alpha = data.alpha
+            self.alpha = data.alpha_fitting
             self.velocities = data.velocities
             self.c_factor = data.c_factor
             self.deterministic_profile = data.config.deterministic_profile
