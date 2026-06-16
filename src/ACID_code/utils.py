@@ -150,8 +150,10 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         perc_invalid = num_invalid / np.size(wavelengths) * 100
-        if perc_invalid > 10:
-            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0), which is {perc_invalid:.2f}% of the total.")
+        if num_invalid > 0:
+            print(f"Some invalid (negative, non-finite, or NaN) pixels were found and dropped from the spectrum. \n"
+                  f"Please note that the stored arrays will have a different shape to the one you passed.")
+            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} ({perc_invalid:.2f}%).")
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
