@@ -10,6 +10,7 @@ from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 import scipy.constants as const
 from typing import TypeAlias, Annotated
+from matplotlib.collections import LineCollection
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
@@ -495,6 +496,17 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
     mask = np.abs(data - median) < nsig * sigma_nmad
     robust_data = np.where(mask, data, np.nan)
     return np.nanmean(robust_data, axis=axis)
+
+def plot_masked_line(ax, x, y, mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"]):
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    segment_mask = mask[:-1] | mask[1:]
+    colors = np.where(segment_mask, colors[1], colors[0])
+    lc = LineCollection(segments, colors=colors, linewidths=1.5)
+    ax.add_collection(lc)
+    ax.plot([], [], color=colors[0], label=label[0])
+    ax.plot([], [], color=colors[1], label=label[1])
+    return
 
 @beartype
 def combine_profiles(

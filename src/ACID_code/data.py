@@ -1074,23 +1074,30 @@ class Data:
         # Unpack variables
         x = self.wavelengths["combined"]
         y = self.flux["combined"]
-        mask = self.plotting_variables["residual_masking"]["mask"]
+        # mask = self.plotting_variables["residual_masking"]["mask"]
         residuals = self.plotting_variables["residual_masking"]["residuals"]
         upper_clip = self.plotting_variables["residual_masking"]["upper_clip"]
         lower_clip = self.plotting_variables["residual_masking"]["lower_clip"]
-        pix_mask = self.plotting_variables["residual_masking"]["pix_mask"]
         profile_F = self.plotting_variables["residual_masking"]["profile_F"]
 
-        nremoved = np.sum(mask)
+        pix_mask = self.pix_mask
+        sigma_mask = self.sigma_mask
+        line_mask = self.line_mask
+        full_mask = pix_mask | sigma_mask | line_mask
+
+        nremoved = np.sum(full_mask)
         if self.config.verbose > 1:
             print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
 
         # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
-        ax.plot(x, residuals, label='Residuals', color='blue')
-        ax.axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
-        ax.axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
-        ax.axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
+        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+
+        utils.plot_masked_line(ax, x, residuals, full_mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"])
+
+        # Show sigma clipping
+        ax.axhline(upper_clip, color='C0', linestyle='--', label='Sigma Clip Thresholds', linewidth=2)
+        ax.axhline(lower_clip, color='C0', linestyle='--', linewidth=2)
 
         # Show line masking regions
         line_mask = self.config.masking_lines.get_masks(x, with_names=True)
@@ -1099,8 +1106,8 @@ class Data:
             starts = np.flatnonzero(~padded[:-1] & padded[1:])
             ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
             for j, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((x[start]), (x[end-1]), color=f'C{i+1}', alpha=0.3,
-                           label=f"{name} Line masks" if j == 0 else None)
+                ax.axvspan((x[start]), (x[end-1]), color=f'C{i+2}', alpha=0.3,
+                           label=f"{name.capitalize()} line masks" if j == 0 else None)
 
         # Show pix_chunk masked points:
         masked = pix_mask
@@ -1109,22 +1116,28 @@ class Data:
         ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
         for i, (start, end) in enumerate(zip(starts, ends)):
             ax.axvspan((x[start]), (x[end-1]),
-                        color='red', alpha=0.15, label="Chunk deviation masking" if i == 0 else None)
-        # And show pix_chunk range
+                        color='red', alpha=0.15, label="Applied chunk deviation masking" if i == 0 else None)
+        
+        # And show chunk deviation range
         dev = self.config.dev_perc / 100
-        ax.axhspan(-dev, dev, color='green', alpha=0.1, label="Chunk deviation masking range")
+        ax.hlines([-dev, dev], xmin=np.min(x), xmax=np.max(x), color='C1', linestyle='--', linewidth=2, label="Chunk deviation masking range")
+
+        # Set a good ylim off everything but the masked points
+        ymax = np.max([dev, upper_clip, np.max(residuals[~full_mask])])
+        ymin = np.min([ -dev, -lower_clip, np.min(residuals[~full_mask])])
+        ax.set_ylim(ymin*1.1, ymax*1.1)
 
         ax.set_xlim(np.min(x), np.max(x))
         ax.grid(True)
         ax.set_title('Residuals with Sigma Clipping Thresholds')
         ax.set_xlabel('Wavelength')
         ax.set_ylabel('Residuals')
-        ax.legend(loc="lower right")
+        ax.legend()
         if save_fig is not None:
             plt.savefig(f"{save_fig}/residuals.png")
         plt.show()
 
-        # Plot the profile
+        # Plot the LSD profile
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(self.velocities, profile_F, label='LSD Profile after Masking and before sampling', color='red')
         ax.set_title('LSD Profile after Residual Masking')
@@ -1139,24 +1152,28 @@ class Data:
 
         # Finally plot the forward model
         from .mcmc import MCMC
-        x = self.wavelengths["masked"]
-        y = self.flux["masked"]
-        forward_masked, _ = MCMC(self).deterministic_model(self.poly_inputs)
+        x = self.wavelengths["combined"]
+        y = self.flux["combined"]
+        forward, _ = MCMC(self).deterministic_model(self.poly_inputs)
         fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
         ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
-        ax[0].plot(x, forward_masked, label='Forward model with masked residuals', color='C0', linewidth=1)
-        ax[0].set_title('Forward model with masked residuals')
-        ax[0].set_xlabel('Wavelength')
+        ax[0].plot(x, forward, label='Forward model from initial fit after masking', color='C0', linewidth=1)
+        ax[0].legend()
+        ax[0].set_title('Masked Forward Model')
+        # ax[0].set_xlabel('Wavelength')
         ax[0].set_ylabel('Flux')
-        ax[1].plot(x, (y-forward_masked)/forward_masked, label='Residuals', color='blue')
-        ax[1].axhline(upper_clip, color='red', linestyle='--', label='Upper Clip Threshold')
-        ax[1].axhline(lower_clip, color='green', linestyle='--', label='Lower Clip Threshold')
-        ax[1].axhspan(lower_clip, upper_clip, color='gray', alpha=0.3, label='Sigma Clipping masking range')
-        ax[1].set_title('Residuals of forward model with masked residuals')
+        ax[0].grid(True)
+        utils.plot_masked_line(ax[0], x, y, full_mask, colors=["blue", "red"], label=["Original data", "Masked Data"])
+        
+        utils.plot_masked_line(ax[1], x, (y-forward)/forward, full_mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"])
+        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
+        ax[1].grid(True)
+        # ax[1].set_title('Residuals of forward model with masked residuals')
         ax[1].set_xlabel('Wavelength')
         ax[1].set_ylabel('Residuals')
-        ax[0].legend()
-        ax[0].grid(True)
+        ax[1].legend()
+        plt.tight_layout()
+
         if save_fig is not None:
             plt.savefig(f"{save_fig}/forward_model.png")
         plt.show()

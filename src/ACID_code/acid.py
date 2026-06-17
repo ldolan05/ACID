@@ -515,16 +515,21 @@ class Acid:
         # TODO: Sort this if statement below out 
         line_mask = self.config.masking_lines.get_masks(self.data.wavelengths["combined"])
         if line_mask != []:
-            line_mask = np.all(line_mask, axis=0)
+            line_mask = np.any(line_mask, axis=0)
             self.data.line_mask = line_mask
         else:
-            self.data.line_mask = np.ones_like(self.data.wavelengths["combined"], dtype=bool)
+            self.data.line_mask = np.zeros_like(self.data.wavelengths["combined"], dtype=bool)
 
         # Create the line_masked keys
-        self.data.wavelengths["line_masked"] = self.data.wavelengths["combined"][~self.data.line_mask]
-        self.data.flux["line_masked"] = self.data.flux["combined"][~self.data.line_mask]
-        self.data.errors["line_masked"] = self.data.errors["combined"][~self.data.line_mask]
-        self.data.sn["line_masked"] = self.data.sn["combined"]
+        # self.data.wavelengths["line_masked"] = self.data.wavelengths["combined"][~self.data.line_mask]
+        # self.data.flux["line_masked"] = self.data.flux["combined"][~self.data.line_mask]
+        # self.data.errors["line_masked"] = self.data.errors["combined"][~self.data.line_mask]
+        # self.data.sn["line_masked"] = self.data.sn["combined"]
+        # Test this change
+        self.data.errors["line_masked"] = np.where(self.data.line_mask, 1e12, self.data.wavelengths["combined"])
+        self.data.wavelengths["line_masked"] = np.copy(self.data.wavelengths["combined"])
+        self.data.flux["line_masked"] = np.copy(self.data.flux["combined"])
+        self.data.sn["line_masked"] = np.copy(self.data.sn["combined"])
 
         # Compute an initial continuum fit
         # poly inputs has polynomial coefficients and scale at the end
@@ -904,12 +909,15 @@ class Acid:
         forward, _profile = mcmc.MCMC(x, y, yerr, self.data.alpha, od=self.config.od).full_model(self.data.model_inputs)
         residuals = (y - forward) / forward
         # TODO Change above to use the forward and residuals from the first LSD call directly
-
+        
+        # We often only want to be searching on the residuals that have not already been masked by the line_mask
+        masked_residuals = residuals[~self.data.line_mask] 
+        
         # Chunk masking based on deviation from residuals
         # -----------------------------------------------
 
         # Get bad pixels that deviate by a percentage greater than dev_perc
-        bad_idx = np.abs(residuals) > (self.config.dev_perc / 100)
+        bad_idx = np.abs(masked_residuals) > (self.config.dev_perc / 100)
 
         # A trick to get the mask for continous regions of bad pixels, by padding the bad_idx 
         # with False on both sides and finding the start and end indices of the True regions
