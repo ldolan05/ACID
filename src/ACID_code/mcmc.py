@@ -181,11 +181,11 @@ class MCMC:
         # Build continuum model
         mdl = P.polyval(self.u, coefs)
 
-        if np.any(mdl <= 0): # force positive continuum at all points
-            return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
-
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
+
+        if np.any(fitted_flux <= 0): # force positive flux at all points
+            return fitted_flux, np.full(self.k_max, -2) # return very low z to trigger prior rejection
 
         # Do OD/non-OD conversions
         if self.od:
