@@ -497,15 +497,15 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
     robust_data = np.where(mask, data, np.nan)
     return np.nanmean(robust_data, axis=axis)
 
-def plot_masked_line(ax, x, y, mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"]):
-    points = np.array([x, y]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    segment_mask = mask[:-1] | mask[1:]
-    colors = np.where(segment_mask, colors[1], colors[0])
-    lc = LineCollection(segments, colors=colors, linewidths=1.5)
-    ax.add_collection(lc)
+def plot_masked_line(ax, x, y, mask, colors=["C0", "C3"], label=["Residuals", "Masked Residuals"]):
     ax.plot([], [], color=colors[0], label=label[0])
     ax.plot([], [], color=colors[1], label=label[1])
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    segment_mask = mask[:-1] & mask[1:]
+    colors = np.where(segment_mask, colors[0], colors[1])
+    lc = LineCollection(segments, colors=colors)
+    ax.add_collection(lc)
     return
 
 @beartype

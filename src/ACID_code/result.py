@@ -161,54 +161,53 @@ class Result:
             print('Getting the final profiles...')
 
         # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
-        norm_wl = utils.normalize_wavelengths(self.data.wavelengths["masked"])
+        norm_wl = self.data.wavelengths["fitting"]
         continuum = P.polyval(norm_wl, med_poly_coeffs)
 
         # Get continuum error
         continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
 
         # Run a final LSD using the same inputs that the MCMC sampler got - but now including the error on the continuum - this is our final profile and error
-        wavelengths = self.data.wavelengths["masked"]
-        flux = self.data.flux["masked"]
-        error = self.data.errors["masked"]
-        sn = self.data.sn["masked"]
-        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha_fitting)
+        wavelengths = self.data.wavelengths["masked"][self.data.full_mask]
+        flux = self.data.flux["fitting"]
+        error = self.data.errors["fitting"]
+        sn = self.data.sn["fitting"]
+
+        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["fitting"])
 
         # Use the above to get our combined profile and error
-        self.data.combined_profile = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+        self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
 
         # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
-        # Note that to get from input to combined you require the "self.data.nanmask" mask, which just removes non physical and nan values from the inputs
-        # We will need to recalculate alpha on the new wavelength grid
-        linelist_wl, linelist_depths = self.data.linelist
-        lsd = LSD(self.data)
-        linelist_wl, linelist_depths = lsd.sn_clip(linelist_wl, linelist_depths, self.data.sn["combined"], skip_warnings=True)
-        if self.config.od:
-            linelist_depths = utils.flux_to_od(linelist=linelist_depths)
-            profile_to_conv, prof_errs_to_conv = utils.flux_to_od(self.data.combined_profile[0], self.data.combined_profile[1])
-        else:
-            profile_to_conv, prof_errs_to_conv = self.data.combined_profile[0], self.data.combined_profile[1]
-        forward_model, _errors, alpha_combined = lsd.convolve_profile(
-            profile              = profile_to_conv,
-            profile_errors       = prof_errs_to_conv,
-            velocities           = self.data.velocities,
-            linelist_wavelengths = linelist_wl,
-            linelist_depths      = linelist_depths,
-            wavelengths          = self.data.wavelengths["combined"],
-            return_alpha         = True
+        forward_model, forward_errors = lsd.convolve_profile(
+            profile              = utils.flux_to_od(self.data.profile["final"][0]),
+            profile_errors       = utils.flux_to_od(self.data.profile["final"][1]),
+            alpha                = self.data.alpha["masked"],
         )
         if self.config.od:
             forward_model = utils.od_to_flux(forward_model)
-        self.data.forward_model = forward_model
-        self.data.forward_x     = self.data.wavelengths["combined"]
+        
+        # Set the final LSD results
+        norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
+        continuum = P.polyval(norm_combined_wl, med_poly_coeffs)
+        self.data.forward_y["final"] = forward_model * continuum
+        self.data.forward_x["final"] = self.data.wavelengths["combined"]
+        self.data.forward_yerr["final"] = forward_errors
+        self.data.alpha["final"] = self.data.alpha["masked"]
+        self.data.continuum["final"] = continuum
+        self.data.poly_inputs["final"] = med_poly_coeffs
 
-        # Also get the continuum model on the original combined wavelength grid, for plotting purposes
-        self.data.continuum_model = P.polyval(utils.normalize_wavelengths(self.data.wavelengths["combined"]), med_poly_coeffs)
+        # For completeness of the final key, also carry over the wavelengths and flux values
+        self.data.wavelengths["final"] = self.data.wavelengths["combined"]
+        self.data.flux["final"] = self.data.flux["combined"]
+        self.data.errors["final"] = self.data.errors["combined"]
+        self.data.sn["final"] = self.data.sn["combined"]
 
         # Iterate through each frame to get per-frame profiles
         profiles = []
         for i in range(len(self.data.wavelengths["input"])):
             # Use nanmask as we cannot work with non-physical inputs like nan or negative fluxes
+            # TODO: Need to interpolate onto potential new wavelength grids the mask
             wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
             flux = self.data.flux["input"][i][self.data.nanmask]
             error = self.data.errors["input"][i][self.data.nanmask]
@@ -218,10 +217,10 @@ class Result:
             if np.array_equal(wavelengths, self.data.wavelengths["combined"]):
                 if np.array_equal(flux, self.data.flux["combined"]) and np.array_equal(error, self.data.errors["combined"]) and np.array_equal(sn, self.data.sn["combined"]):
                     # in this case, the input frame is the same as the combined frame, so we can just directly use the combined profile
-                    profiles.append((self.data.combined_profile[0], self.data.combined_profile[1], self.data.combined_profile[2]))
+                    profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
                     continue
                 else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
-                    alpha = alpha_combined
+                    alpha = self.data.alpha["masked"]
             else:
                 alpha = None
             norm_wl = utils.normalize_wavelengths(wavelengths)
@@ -289,22 +288,22 @@ class Result:
             elif len(item) == 2:
                 return self.data.profiles[item[0]][item[1]]
             elif len(item) == 1:
-                return self.data.combined_profile[item[0]]
+                return self.data.profile["final"][item[0]]
             else:
                 raise ValueError(f"Tuple indexing must be of length 1, 2, or 3. Got {len(item)} instead.")
         elif isinstance(item, int):
             # Return just the profile or error (or cov_mat) for single int input
             if item < 0 or item > 2:
                 raise ValueError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
-            return self.data.combined_profile[item]
+            return self.data.profile["final"][item]
         elif isinstance(item, str):
             # Various different options for string inputs, why not
             if "error" in item.lower():
-                return self.data.combined_profile[1]
+                return self.data.profile["final"][1]
             elif "cov" in item.lower():
-                return self.data.combined_profile[2]
+                return self.data.profile["final"][2]
             elif "profile" in item.lower():
-                return self.data.combined_profile[0]
+                return self.data.profile["final"][0]
             else:
                 raise ValueError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
         else:
@@ -553,6 +552,8 @@ class Result:
     @_require_profiles
     def plot_forward_model(
         self,
+        show_masking    :bool      = True,
+        show_continuum  :bool      = True,
         fig_ax          :tuple|None = None,
         grid            :bool      = True,
         labels          :dict|None = None,
@@ -564,6 +565,10 @@ class Result:
 
         Parameters
         ----------
+        show_masking : bool, optional
+            Whether to show the masked regions of the spectrum, by default True
+        show_continuum : bool, optional
+            Whether to show the fitted continuum, by default True
         fig_ax: tuple | None
             Optionally provide an existing fig/axis tuple to plot on, by default None and
             creates a new figure and axis. The axis must be a 2 element array of axes, 
@@ -603,18 +608,18 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
 
         # Get input data
-        wavelengths = self.data.wavelengths["combined"]
+        wavelengths = self.data.forward_x["final"]
         flux = self.data.flux["combined"]
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        model_flux = self.data.forward_model
+        forward = self.data.forward_y["final"]
 
         # Due to distortion at the edges of the profile, we drop the last 2 pixels
         wavelengths = utils.drop_edges(wavelengths)
         flux = utils.drop_edges(flux)
-        model_flux = utils.drop_edges(model_flux)
-        continuum_model = utils.drop_edges(self.data.continuum_model)
+        forward = utils.drop_edges(forward)
+        residuals = forward - flux
 
         # Plotting
         if fig_ax is not None:
@@ -631,12 +636,28 @@ class Result:
 
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
-        ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
-        ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        ax[1].plot(wavelengths, model_flux-flux, color='C0', linewidth=1, label='Residuals')
-        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
+
+        if show_continuum:
+            continuum_model = utils.drop_edges(self.data.continuum["final"])
+            ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
+        
+        if show_masking:
+            full_mask = self.data.full_mask
+
+            utils.plot_masked_line(ax[0], wavelengths, forward, full_mask, label=["Forward model", "Masked Forward model"])
+            utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])
+
+            dropped_full_mask = utils.drop_edges(full_mask)
+            max_diff = 0.1 * np.max(np.abs(residuals[dropped_full_mask]))
+            ymax = np.max(residuals[dropped_full_mask])
+            ymin = np.min(residuals[dropped_full_mask])
+            ax[1].set_ylim(ymin - max_diff, ymax + max_diff)
+        else:
+            ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
+            ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
+
         ax[0].legend()
-        ax[1].legend()
+        # ax[1].legend()
 
         if return_fig:
             return fig, ax
@@ -846,7 +867,7 @@ class Result:
             if self.config.verbose>0:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
                 f" due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
-                f" wrong. Setting defaults: burnin=nsteps-1000, and thin=1.")
+                f" wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.")
             self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
             self.thin = 1
         
