@@ -222,7 +222,7 @@ class Config:
         "deterministic_profile" : True,
         "poly_ord" : 3,
         "continuum_percentile" : 90,
-        "bin_size" : 100,
+        "bin_size" : 50,
         "pix_chunk" : 20,
         "dev_perc" : 25,
         "n_sig" : 3,
@@ -245,6 +245,7 @@ class Config:
             ("DEMove", 0.1, {"gamma0": 1.0}),
         ],
         "run_mcmc" : True,
+        "continuum_method" : None, # forced here or calculated in ACID based on poly order
     }
 
     #: Property list for error handling

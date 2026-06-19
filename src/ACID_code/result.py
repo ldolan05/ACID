@@ -162,7 +162,7 @@ class Result:
 
         # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
         norm_wl = self.data.wavelengths["fitting"]
-        continuum = P.polyval(norm_wl, med_poly_coeffs)
+        continuum = utils.eval_continuum(norm_wl, med_poly_coeffs, method=self.config.continuum_method)
 
         # Get continuum error
         continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
@@ -189,7 +189,7 @@ class Result:
         
         # Set the final LSD results
         norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
-        continuum = P.polyval(norm_combined_wl, med_poly_coeffs)
+        continuum = utils.eval_continuum(norm_combined_wl, med_poly_coeffs, method=self.config.continuum_method)
         self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_x["final"] = self.data.wavelengths["combined"]
         self.data.forward_yerr["final"] = forward_errors
@@ -224,7 +224,7 @@ class Result:
             else:
                 alpha = None
             norm_wl = utils.normalize_wavelengths(wavelengths)
-            continuum = P.polyval(norm_wl, med_poly_coeffs)
+            continuum = utils.eval_continuum(norm_wl, med_poly_coeffs, method=self.config.continuum_method)
             continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
             lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=alpha)
             profiles.append((lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F))
