@@ -10,6 +10,7 @@ from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 import scipy.constants as const
 from typing import TypeAlias, Annotated
+from matplotlib.collections import LineCollection
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
@@ -150,8 +151,10 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     if verbose > 1:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         perc_invalid = num_invalid / np.size(wavelengths) * 100
-        if perc_invalid > 10:
-            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} (non-finite or <= 0), which is {perc_invalid:.2f}% of the total.")
+        if num_invalid > 0:
+            print(f"Some invalid (negative, non-finite, or NaN) pixels were found and dropped from the spectrum. \n"
+                  f"Please note that the stored arrays will have a different shape to the one you passed.")
+            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} ({perc_invalid:.2f}%).")
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
@@ -343,6 +346,22 @@ def get_normalisation_coeffs(wl:Array1D)->tuple[Scalar, Scalar]:
     b = 1 - a * np.nanmax(wl)
     return a, b
 
+def normalize_wavelengths(wl:Array1D)->Array1D:
+    """Normalizes a wavelength array to the range [-1, 1] using linear scaling.
+
+    Parameters
+    ----------
+    wl : Array1D
+        Wavelength array to be normalized.
+
+    Returns
+    -------
+    Array1D
+        Normalized wavelength array.
+    """
+    a, b = get_normalisation_coeffs(wl)
+    return (a*wl)+b
+
 def get_available_memory():
     """
     Returns the available memory in bytes.
@@ -477,6 +496,17 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
     mask = np.abs(data - median) < nsig * sigma_nmad
     robust_data = np.where(mask, data, np.nan)
     return np.nanmean(robust_data, axis=axis)
+
+def plot_masked_line(ax, x, y, mask, colors=["C0", "C3"], label=["Residuals", "Masked Residuals"]):
+    ax.plot([], [], color=colors[0], label=label[0])
+    ax.plot([], [], color=colors[1], label=label[1])
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    segment_mask = mask[:-1] & mask[1:]
+    colors = np.where(segment_mask, colors[0], colors[1])
+    lc = LineCollection(segments, colors=colors)
+    ax.add_collection(lc)
+    return
 
 @beartype
 def combine_profiles(

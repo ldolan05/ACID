@@ -46,7 +46,6 @@ class MCMC:
             c_factor                             = None,
             deterministic_profile : bool         = False,
             sampler_type          : str          = "emcee",
-            model_inputs          : Array1D|None = None,
             od                    : bool         = True
         ) -> None:
         """
@@ -56,7 +55,7 @@ class MCMC:
         Parameters
         ----------
         x_or_data : :py:type:`Array1D` | :py:type:`Array2D` | :py:class:`Data`
-            Wavelength array or :py:class:`Data` instance. If a :py:class:`Data` instance is provided, takes all 
+            Normalized wavelength array or :py:class:`Data` instance. If a :py:class:`Data` instance is provided, takes all 
             the arguments below from there. If a :py:class:`Data` instance is provided, all other 
             arguments are ignored.
         y : :py:type:`Array1D`, optional
@@ -78,15 +77,14 @@ class MCMC:
         # else user is on their own!
         if isinstance(x_or_data, Data):
             data = x_or_data
-            self.x = data.wavelengths["masked"]
-            self.y = data.flux["masked"]
-            self.yerr = data.errors["masked"]
-            self.alpha = data.alpha
+            self.x = data.wavelengths["fitting"]
+            self.y = data.flux["fitting"]
+            self.yerr = data.errors["fitting"]
+            self.alpha = data.alpha["fitting"]
             self.velocities = data.velocities
-            self.c_factor = data.c_factor
+            self.c_factor = data.c_factor["fitting"]
             self.deterministic_profile = data.config.deterministic_profile
             self.sampler_type = data.config.sampler_type
-            self.model_inputs = data.model_inputs
             self.od = data.config.od
         else:
             self.x = x_or_data
@@ -97,16 +95,10 @@ class MCMC:
             self.c_factor = c_factor
             self.deterministic_profile = deterministic_profile
             self.sampler_type = sampler_type
-            self.model_inputs = model_inputs
             self.od = od
             data = None
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
-
-        # Precompute normalization coefficients these are used to adjust the wavelengths to
-        # between -1 and 1 - makes the continuum coefficents smaller and easier for emcee to handle.
-        a, b = utils.get_normalisation_coeffs(self.x)
-        self.u = (a * self.x) + b # These are the normalized wavelengths used throughout the fitting process
 
         if self.od:
             # For deterministic model, the below variables are used, and are precomputed for speed
@@ -116,7 +108,7 @@ class MCMC:
             # For non-OD case, we need to precompute the variance vector in flux space for the likelihood calculation
             V = 1.0 / (self.yerr ** 2) # variance vector in flux space
 
-        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication for
+        self.AtV = self.alpha.T * V # precompute alpha matrix multiplication once
 
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
@@ -157,7 +149,7 @@ class MCMC:
         coefs = np.asarray(theta[self.k_max:], dtype=float)
 
         # Apply continuum model
-        mdl *= P.polyval(self.u, coefs)
+        mdl *= P.polyval(self.x, coefs)
 
         return mdl, z
 
@@ -179,24 +171,25 @@ class MCMC:
         coefs = np.asarray(theta, dtype=float)
 
         # Build continuum model
-        mdl = P.polyval(self.u, coefs)
-
-        if np.any(mdl <= 0): # force positive continuum at all points
-            return mdl, np.full(self.k_max, -2) # return very low z to trigger prior rejection
+        mdl = P.polyval(self.x, coefs)
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
 
+        if self.od:
+            if np.any(fitted_flux <= 0): # force positive flux at all points
+                return fitted_flux, np.full(self.k_max, -2) # return very low z to trigger prior rejection
+
         # Do OD/non-OD conversions
         if self.od:
-            flux_od = (-np.log(fitted_flux))
+            flux = (-np.log(fitted_flux))
             AtV = self.AtV
         else:
             AtV = self.AtV * (mdl * mdl)
-            flux_od = fitted_flux - 1
+            flux = fitted_flux - 1
 
         # Solve for the profile points
-        z = cho_solve(self.c_factor, AtV @ flux_od, check_finite=False)
+        z = cho_solve(self.c_factor, AtV @ flux, check_finite=False)
 
         # Convert back from optical depth to flux
         dot_prod = self.alpha @ z

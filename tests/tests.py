@@ -602,7 +602,7 @@ def error_and_inputs_handlings():
     data.alpha = 0.5
     data.set_inputs([24, 25], [0.5, 0.6], [0.1, 0.1], [10, 20])
     assert data.sn["input"].ndim + 1 == data.wavelengths["input"].ndim, "Data instance did not set sn with correct dimensions when given multiple frames."
-    assert data.alpha is None, "Data instance did not reset alpha to None when setting new inputs with multiple frames."
+    assert data.alpha == {}, "Data instance did not reset alpha to an empty dict when setting new inputs with multiple frames."
     data.set_inputs(wavelength, spectrum, input_sn=sn) # reset to original inputs for any future tests
     assert data.errors["input"].ndim == data.wavelengths["input"].ndim, "Data instance did not calculate errors from the SN"
 
