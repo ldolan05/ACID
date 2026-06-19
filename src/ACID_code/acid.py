@@ -560,6 +560,7 @@ class Acid:
             "masked" in self.data.forward_y,
             "masked" in self.data.poly_inputs,
             "masked" in self.data.wavelengths,
+            "fitting" in self.data.c_factor,
         )):
             if self.config.verbose > 1:
                 print("Residual masks already exists, skipping residual masking step.")
@@ -795,6 +796,14 @@ class Acid:
         clipped_waves = np.nanmedian(w2, axis=1)
         clipped_errs = np.nanmedian(e2, axis=1)
 
+        # Also add as a safeguard an extra point for high orders at start and end of spectrum to avoid edge effects in high order fits
+        if poly_ord > 5:
+            max_wl_idx = np.nanargmax(w)
+            min_wl_idx = np.nanargmin(w)
+            clipped_waves = np.concatenate(([w[min_wl_idx]], clipped_waves, [w[max_wl_idx]]))
+            clipped_flux = np.concatenate(([f[min_wl_idx]], clipped_flux, [f[max_wl_idx]]))
+            clipped_errs = np.concatenate(([e[min_wl_idx]], clipped_errs, [e[max_wl_idx]]))
+
         # Remove bad points for the polynomial fit, defined as non-finite values or errors that are non-positive or above 1e11
         good = (
             np.isfinite(clipped_waves)
@@ -921,8 +930,7 @@ class Acid:
         # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
         # alpha since it wil be the same. We still run LSD to get c_factor and the profile
         # alpha is only dependent on wavelengths and linelist, which are unchanged
-        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha["initial"])
-        # TODO: in LSD, add a check that alpha.shape matches the inputs wavelength shape
+        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha["initial"], skip_warnings=True)
 
         # Set new variables with the masked key
         self.data.c_factor["masked"] = LSD_masking.c_factor

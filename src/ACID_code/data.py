@@ -2119,6 +2119,8 @@ class DataList:
                     continue
             except:
                 continue
+            if "final" not in data.profile:
+                continue
             profiles.append(data.profile["final"][0])
             errors.append(data.profile["final"][1])
             covariances.append(data.profile["final"][2])

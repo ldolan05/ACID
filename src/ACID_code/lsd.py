@@ -56,13 +56,14 @@ class LSD:
 
     def run_LSD(
         self,
-        wavelengths : Array1D,
-        flux        : Array1D,
-        errors      : Array1D,
-        sn          : Scalar,
-        linelist    : Array2D|str|LineList|dict|None = None,
-        velocities  : Array1D|None                   = None,
-        alpha       : Array2D|None                   = None,
+        wavelengths    : Array1D,
+        flux           : Array1D,
+        errors         : Array1D,
+        sn             : Scalar,
+        linelist       : Array2D|str|LineList|dict|None = None,
+        velocities     : Array1D|None                   = None,
+        alpha          : Array2D|None                   = None,
+        skip_warnings  : bool = False,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -91,6 +92,12 @@ class LSD:
         flux = np.array(flux)
         errors = np.array(errors)
 
+        # If alpha is input check its shape matches the input wavelengths and velocities
+        if alpha is not None:
+            if alpha.shape != (len(wavelengths), len(self.data.velocities)):
+                raise ValueError(f"Inputted alpha matrix shape {alpha.shape} does not match expected shape "
+                                 f"{(len(wavelengths), len(self.data.velocities))} based on input wavelengths and velocities.")
+
         # Ensure dimensions match
         if not wavelengths.shape == flux.shape == errors.shape:
             raise ValueError("Input wavelengths, flux, and errors must have the same shape.")       
@@ -117,7 +124,7 @@ class LSD:
             raise error
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
+        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn, skip_warnings)
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
         if self.od:
@@ -156,7 +163,7 @@ class LSD:
             wavelengths_linelist : Array1D,
             depths_linelist      : Array1D,
             sn                   : Scalar,
-            skip_warnings        : bool = False,
+            skip_warnings       : bool = False,
             ) -> tuple[Array1D, Array1D]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
@@ -193,7 +200,7 @@ class LSD:
                 self.data.exception = error
                 self.data.traceback = traceback.format_stack()
                 raise error
-            if self.config.verbose > 0:
+            if self.config.verbose > 0 and not skip_warnings:
                 if perc < 5:
                     print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
                 if self.config.verbose > 2:

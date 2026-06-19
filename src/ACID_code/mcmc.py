@@ -176,19 +176,20 @@ class MCMC:
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
 
-        if np.any(fitted_flux <= 0): # force positive flux at all points
-            return fitted_flux, np.full(self.k_max, -2) # return very low z to trigger prior rejection
+        if self.od:
+            if np.any(fitted_flux <= 0): # force positive flux at all points
+                return fitted_flux, np.full(self.k_max, -2) # return very low z to trigger prior rejection
 
         # Do OD/non-OD conversions
         if self.od:
-            flux_od = (-np.log(fitted_flux))
+            flux = (-np.log(fitted_flux))
             AtV = self.AtV
         else:
             AtV = self.AtV * (mdl * mdl)
-            flux_od = fitted_flux - 1
+            flux = fitted_flux - 1
 
         # Solve for the profile points
-        z = cho_solve(self.c_factor, AtV @ flux_od, check_finite=False)
+        z = cho_solve(self.c_factor, AtV @ flux, check_finite=False)
 
         # Convert back from optical depth to flux
         dot_prod = self.alpha @ z
