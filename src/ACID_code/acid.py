@@ -558,13 +558,7 @@ class Acid:
             initial_LSD = LSD(self.data) # Initialise LSD class with standard Acid attributes (verbosity, linelist, velocities, etc)
             initial_LSD.run_LSD(self.data.wavelengths["fitted"], self.data.flux["fitted"], self.data.errors["fitted"], self.data.sn["fitted"])
 
-            # Use alpha matrix and initial profile class variables from initial LSD run
-            self.data.profile["initial"] = [initial_LSD.profile_F, initial_LSD.profile_errors_F, initial_LSD.cov_z_F]
-            self.data.alpha["initial"] = initial_LSD.alpha
-            self.data.c_factor["initial"] = initial_LSD.c_factor
-            self.data.forward_x["initial"] = self.data.wavelengths["fitted"]
-            self.data.forward_y["initial"] = initial_LSD.forward_model * self.data.continuum["initial"]
-            self.data.forward_yerr["initial"] = initial_LSD.forward_model_errors * self.data.continuum["initial"]
+            self.store_LSD_result(initial_LSD, key="initial", wl_key="fitted", continuum=self.data.continuum["initial"]) # Store the results in the data class
 
         # Masking based off residuals
         if all((
@@ -943,15 +937,11 @@ class Acid:
         LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha["initial"], skip_warnings=True)
 
         # Set new variables with the masked key
-        self.data.c_factor["masked"] = LSD_masking.c_factor
-        self.data.alpha["masked"] = LSD_masking.alpha # is just the same as initial, but we save it for completeness
-        self.data.profile["masked"] = [LSD_masking.profile_F, LSD_masking.profile_errors_F, LSD_masking.cov_z_F]
-        norm_wl = utils.normalize_wavelengths(x)
-        self.data.continuum["masked"] = utils.eval_continuum(norm_wl, poly_inputs, method=self.config.continuum_method)
         self.data.poly_inputs["masked"] = poly_inputs
-        self.data.forward_x["masked"] = x
-        self.data.forward_y["masked"] = LSD_masking.forward_model * self.data.continuum["masked"]
-        self.data.forward_yerr["masked"] = LSD_masking.forward_model_errors * self.data.continuum["masked"]
+        self.data.continuum["masked"] = utils.eval_continuum(norm_wl, poly_inputs, method=self.config.continuum_method)
+        norm_wl = utils.normalize_wavelengths(x)
+        
+        self.store_LSD_result(key="masked", wl_key="masked", lsd=LSD_masking, continuum=self.data.continuum["masked"])
 
         # Now that we have used the error mask, we apply the mask to remove the data for fitting
         self.data.wavelengths["fitting"]   = utils.normalize_wavelengths(x)[self.data.full_mask]
@@ -988,40 +978,27 @@ class Acid:
         # Set rng seed off of config seed if desired, otherwise default config seed is None and rng will be random
         rng = np.random.default_rng(self.config.seed)
 
-        model_inputs = np.concatenate((self.data.profile["masked"][0], self.data.poly_inputs["masked"]))
+        n_profile_params = self.data.alpha["fitting"].shape[1]
 
-        # Starting values of walkers with independent variation
-        # TODO modernize this below, change model inputs usage
+        self.data.ndim = self.config.poly_ord + 1
+        if not self.config.deterministic_profile:
+            self.data.ndim += n_profile_params
+
         if self.config.sampler_type == "emcee":
-        #     sigma = 0.8 * 0.005
-        #     initial_state = []
-        #     for i in range(0, len(model_inputs)):
-        #         if i < len(self.data.velocities):
-        #             if not self.config.deterministic_profile:
-        #                 pos = rng.normal(model_inputs[i], sigma, (self.data.nwalkers, ))
-        #             else:
-        #                 continue
-        #         else:
-        #             x1 = model_inputs[i]
-        #             rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
-        #             sigma = abs(rounded_sigma) / 10
-        #             pos = rng.normal(model_inputs[i], sigma, (self.data.nwalkers, ))
-        #         initial_state.append(pos)
-        #     initial_state = np.array(initial_state).T
-
             theta0 = self.data.poly_inputs["masked"]
+
             if not self.config.deterministic_profile:
-                theta0 = np.concatenate((self.data.profile["masked"][0], theta0))
+                profile0 = np.asarray(self.data.profile["masked"][0]).reshape(-1)
+                theta0 = np.concatenate((profile0, theta0))
+
+            # Test to see if the starting position is valid
             test_mcmc = mcmc.MCMC(self.data)
             width = np.maximum(0.5 * np.abs(theta0), 1e-3)
             walkers = []
-            # print(theta0)
-            # print("Calculating initial walker positions...")
             while len(walkers) < self.data.nwalkers:
                 theta = rng.normal(theta0, width)
                 if np.isfinite(test_mcmc.log_probability(theta)):
                     walkers.append(theta)
-                    # print(f"Walker {len(walkers)} initialized (out of {self.data.nwalkers})")
             initial_state = np.array(walkers)
         else:
             initial_state = None
@@ -1244,6 +1221,29 @@ class Acid:
 
         if return_sampler:
             return self.sampler
+
+    def store_LSD_result(self, lsd:LSD, key:str, wl_key:str, continuum:Array1D):
+        """Store the results of the LSD run in the Data class for a given key.
+
+        Parameters
+        ----------
+        lsd : LSD
+            The LSD object containing the results of the LSD run.
+        key : str
+            The key under which to store the results in the Data class.
+        wl_key : str
+            The key corresponding to the wavelengths used in the LSD run.
+        continuum : np.ndarray
+            The fitted continuum values corresponding to the wavelengths. Note
+            that the continuum is not stored, but is used for scaling the forward model before storing.
+        """
+        self.data.c_factor[key] = lsd.c_factor
+        self.data.alpha[key] = lsd.alpha
+        self.data.profile[key] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+        self.data.forward_x[key] = self.data.wavelengths[wl_key]
+        self.data.forward_y[key] = lsd.forward_model * continuum
+        self.data.forward_yerr[key] = lsd.forward_model_errors * continuum
+
 
     @property
     def result(self) -> Result:

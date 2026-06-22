@@ -149,13 +149,17 @@ class Result:
             flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
         # Getting the final profile and continuum values
-        nvel = len(self.data.velocities) if self.config.deterministic_profile is False else 0
+        n_profile_params = 0
+        if not self.config.deterministic_profile:
+            n_profile_params = self.data.alpha["fitting"].shape[1]
+
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
-        errors = np.diff(quartiles, axis=0)
-        errors = np.max(errors, axis=0)
-        med_poly_coeffs      = quartiles[1, nvel:]
-        med_poly_coeffs_err  = errors[nvel:] # unused for now, the error is usually quite small though
-        poly_coeffs = flat_samples[:, nvel:] # coefficients for each sample, shape (nsamples, ncoeffs)
+        param_errors = np.diff(quartiles, axis=0)
+        param_errors = np.max(param_errors, axis=0)
+
+        med_poly_coeffs = quartiles[1, n_profile_params:]
+        med_poly_coeffs_err = param_errors[n_profile_params:]
+        poly_coeffs = flat_samples[:, n_profile_params:]
 
         if self.config.verbose > 1:
             print('Getting the final profiles...')
@@ -186,13 +190,26 @@ class Result:
         )
         if self.config.od:
             forward_model = utils.od_to_flux(forward_model)
+
+        # alpha_masked = self.data.alpha["masked"]
+        # forward_model = LSD.dot_alpha_and_profile(alpha_masked, lsd.profile_flat)
+        # forward_errors = np.sqrt(
+        #     np.sum((alpha_masked @ lsd.cov_z) * alpha_masked, axis=1)
+        # )
+        # if self.config.od:
+        #     forward_model, forward_errors = utils.od_to_flux(
+        #         forward_model,
+        #         forward_errors,
+        #     )
+        # else:
+        #     forward_model += 1
         
-        # Set the final LSD results
+        # Set the final LSD results # TODO: move to a new data.set_LSD_result method (from Acid one)
         norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
         continuum = utils.eval_continuum(norm_combined_wl, med_poly_coeffs, method=self.config.continuum_method)
         self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_x["final"] = self.data.wavelengths["combined"]
-        self.data.forward_yerr["final"] = forward_errors
+        self.data.forward_yerr["final"] = forward_errors * continuum
         self.data.alpha["final"] = self.data.alpha["masked"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
@@ -202,6 +219,9 @@ class Result:
         self.data.flux["final"] = self.data.flux["combined"]
         self.data.errors["final"] = self.data.errors["combined"]
         self.data.sn["final"] = self.data.sn["combined"]
+
+        # We also want to have a final single profile where we force LSD to run not in ion mode
+        # self.profile["final_single"]
 
         # Iterate through each frame to get per-frame profiles
         profiles = []
@@ -270,6 +290,12 @@ class Result:
         # correcting continuum
         corrected_error = np.sqrt((error/continuum)**2 + (continuum_error/continuum)**2)
         corrected_flux = flux / continuum
+
+        # corrected_error = np.sqrt(
+        #     (error / continuum)**2
+        #     + (flux * continuum_error / continuum**2)**2
+        # )
+        # TODO: check above should if it should be error
 
         lsd = LSD(self.data)
         lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
@@ -535,7 +561,12 @@ class Result:
             # Override label in errorbar_kwargs if it is not already set, otherwise use the default label
             if "label" not in errorbar_kwargs:
                 errorbar_kwargs["label"] = label_default
-            ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
+            
+            if x.ndim > 1:
+                for i in range(x.shape[1]):
+                    ax.errorbar(x[i], y[i]-1, yerr=yerr[i], **errorbar_kwargs)
+            else:
+                ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
 
         # Add labels and titles
         ax.set_title(labels["title"])

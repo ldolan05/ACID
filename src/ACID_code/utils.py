@@ -221,7 +221,7 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     output = output + (mask,) if return_mask else output
     return output
 
-def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
+def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, ions_linelist=None, pad=5):
     """
     Clips the linelist to only include lines within the wavelength range of the observed spectrum.
     Includes a pad either side of the wavelength range so that the wings of lines outside
@@ -235,6 +235,7 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
         Wavelengths from the linelist
     depths_linelist : np.ndarray
         Depths from the linelist
+    ions_linelist : np.ndarray | None, optional
     pad : float, optional
         Number of angstroms to pad on either side of the wavelength range. By default, 5.
 
@@ -244,9 +245,13 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
         Clipped wavelengths from the linelist
     depths_linelist : np.ndarray
         Clipped depths from the linelist
+    ions_linelist : np.ndarray | None
+        Clipped ions from the linelist, if provided
     """
     lower, upper = np.nanmin(wavelengths)-pad, np.nanmax(wavelengths)+pad
     idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
+    if ions_linelist is not None:
+        return wavelengths_linelist[idx], depths_linelist[idx], ions_linelist[idx]
     return wavelengths_linelist[idx], depths_linelist[idx]
 
 def drop_edges(array, n_pix=2):

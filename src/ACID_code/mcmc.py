@@ -7,6 +7,7 @@ from beartype import beartype
 from scipy.linalg import cho_solve
 from .data import Data
 from numpy.polynomial.chebyshev import chebval
+from .lsd import LSD
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -127,6 +128,13 @@ class MCMC:
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
 
+        # For dynesty's sake, should delete later
+        if data is not None:
+            profile0 = np.asarray(data.profile["masked"][0]).reshape(-1)
+            self.model_inputs = np.concatenate((profile0, data.poly_inputs["masked"]))
+        else:
+            self.model_inputs = None
+
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
         return self.log_probability(*args, **kwargs)
@@ -148,9 +156,10 @@ class MCMC:
             Model spectrum and profile points (z).
         """
         # Extract profile points and continuum coefficients from theta
-        z = theta[:self.k_max]
-        z -= 1 if not self.od else 0 # if not using OD, profile points are in flux space and need to be shifted by 1
-        mdl = self.alpha @ z
+        z = np.asarray(theta[:self.k_max], dtype=float).copy()
+        if not self.od:
+            z -= 1 # if not using OD, profile points are in flux space and need to be shifted by 1
+        mdl = LSD.dot_alpha_and_profile(self.alpha, z) # handles the new ion_mode where multiple profiles are fitted simultaneously
 
         # Converting model from optical depth to flux
         mdl = np.exp(-mdl) if self.od else mdl+1 # if not using OD, just use flux directly
@@ -202,7 +211,7 @@ class MCMC:
         z = cho_solve(self.c_factor, AtV @ flux, check_finite=False)
 
         # Convert back from optical depth to flux
-        dot_prod = self.alpha @ z
+        dot_prod = LSD.dot_alpha_and_profile(self.alpha, z)
         dot_prod = np.exp(-dot_prod) if self.od else dot_prod + 1
         forward = dot_prod * mdl
 
