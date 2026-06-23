@@ -9,7 +9,7 @@ from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import pickle, os
+import pickle, os, traceback
 import numpy as np
 from . import utils
 from .errors import *
@@ -1925,25 +1925,36 @@ class DataList:
 
             # The following try-except loops came from just testing ACID on a lot of different orders, stars, and instruments
             failed_msg = f"Order {order} (list index {self.o2i[order]}) failed with error:"
+            exception_raised = False
             try:
-                result = Acid(data=data).ACID() # All params are stored in Data and Config (in Data)
+                _result = Acid(data=data).ACID() # All params are stored in Data and Config (in Data)
             except LineListRangeError:
                 print(f"{failed_msg} line list range error. Your linelist is likely out of "\
                       f"range of the wavelengths. Skipping this order.", flush=True)
-                continue
+                exception_raised = True
             except ContinuumError:
                 print(f"{failed_msg} continuum fitting error. The fitted continuum likely "\
                       f"had negative values. Skipping this order.", flush=True)
-                continue
+                exception_raised = True
             except SNCutError:
                 print(f"{failed_msg} S/N cut error. The S/N of the spectrum is likely too "\
                       f"low, and no lines survived the cut. Skipping this order.", flush=True)
-                continue
+                exception_raised = True
             # If no known exception arose, just print the last 3 calls in traceback for debugging and skip the order.
-            except Exception:
+            except Exception as e:
                 print(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n", flush=True)
                 tb.print_exc(limit=-3)
-                continue
+                exception_raised = True
+                data.exception = str(e)
+            
+            if exception_raised:
+                try:
+                    data.traceback = traceback.format_stack() # include the new exception in the data instance for future reference
+                    data.save() # save the data instance with the exception for future reference
+                except:
+                    print(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
+                          f"This is likely due to a corrupted Data instance.", flush=True)
+
 
         # Once all the orders have been done, we can repack the all the data instances into one to speedup loading time
         # The data instances are very light as they do not store the sampler, so we can afford to pack and store duplicates
