@@ -667,6 +667,13 @@ class Result:
             utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])
 
             dropped_full_mask = utils.drop_edges(full_mask)
+
+            ymax = max(np.max(forward[dropped_full_mask]), np.max(flux))
+            ymin = min(np.min(forward[dropped_full_mask]), np.min(flux))
+            ymin -= (0.1 * ymax) # ymax will always be larger, so use it to extend ymin
+            ymax += (0.1 * ymax)
+            ax[0].set_ylim(ymin, ymax)
+
             max_diff = 0.1 * np.max(np.abs(residuals[dropped_full_mask]))
             ymax = np.max(residuals[dropped_full_mask])
             ymin = np.min(residuals[dropped_full_mask])

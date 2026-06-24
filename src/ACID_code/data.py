@@ -1051,6 +1051,7 @@ class Data:
         plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
         ax.set_title(plot_title)
         ax.legend()
+        ax.set_ylim(np.min(fluxes)*0.9, np.max(fluxes)*1.1)
         if save_fig is not None:
             plt.savefig(save_fig)
         if return_fig:
