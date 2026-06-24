@@ -542,7 +542,12 @@ class Acid:
                 print("Calculating initial LSD profile...")
             # Get the initial LSD profile using the initial fit
             initial_LSD = LSD(self.data) # Initialise LSD class with standard Acid attributes (verbosity, linelist, velocities, etc)
-            initial_LSD.run_LSD(self.data.wavelengths["fitted"], self.data.flux["fitted"], self.data.errors["fitted"], self.data.sn["fitted"])
+            initial_LSD.run_LSD(
+                wavelengths = self.data.wavelengths["fitted"],
+                flux = self.data.flux["fitted"],
+                errors = self.data.errors["fitted"],
+                sn = self.data.sn["fitted"]
+            )
 
             # Use alpha matrix and initial profile class variables from initial LSD run
             self.data.profile["initial"] = [initial_LSD.profile_F, initial_LSD.profile_errors_F, initial_LSD.cov_z_F]

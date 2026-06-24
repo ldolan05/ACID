@@ -138,11 +138,14 @@ class LSD:
         else:
             self.alpha = alpha
 
+        # At this point we need to clean our points for negative fluxes and large masked errors and nans
+        self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
+
         # Now solve for profile using Cholesky decomposition
-        self.c_factor = self.calc_cholesky(self.alpha, errors)
+        self.c_factor = self.calc_cholesky(self.alpha[self.mask], errors[self.mask])
 
         # Solve for profile and profile errors using Cholesky factors
-        self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_cov=True)
+        self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha[self.mask], flux[self.mask], errors[self.mask], self.c_factor, return_cov=True)
 
         self.forward_model = self.alpha @ self.profile
         self.forward_model_errors = np.sqrt(np.sum((self.alpha * self.profile_errors)**2, axis=1))
