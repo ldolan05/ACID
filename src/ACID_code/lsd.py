@@ -153,7 +153,19 @@ class LSD:
             if ions_linelist is None or use_ions is False:
                 self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist, self.data.velocities, verbose=self.config.verbose)
             else:
-                self.alpha_ion, self.unique_ions = self.calc_alpha_ion(wavelengths, self.data.velocities, wavelengths_linelist, depths_linelist, ions_linelist)
+                ions_grouped = self.group_sparse_ions(
+                    ions_linelist,
+                    min_lines_per_ion=20,
+                    other_label="other",
+                )
+                self.alpha_ion, self.unique_ions = self.calc_alpha_ion(
+                    wavelengths,
+                    self.data.velocities,
+                    wavelengths_linelist,
+                    depths_linelist,
+                    ions_grouped,
+                    verbose=self.config.verbose,
+                )
                 self.n_ions = len(self.unique_ions)
                 self.n_velocities = len(self.data.velocities)
                 self.alpha = self.flatten_alpha(self.alpha_ion)
@@ -184,7 +196,6 @@ class LSD:
 
         print(self.alpha.shape)
         print(self.n_ions, self.n_velocities, self.alpha.shape, ion_mode, self.unique_ions)
-        print(self.alpha_ion.shape)
 
         # Now solve for profile using Cholesky decomposition, independent of ion mode since alpha is flattened in both cases
         self.c_factor = self.calc_cholesky(self.alpha, errors)
@@ -428,15 +439,15 @@ class LSD:
         # print("zero columns:", np.sum(col_norm == 0))
 
         # Cholesky factorisation of M
-        print(AVA.shape)
-        plt.imshow(AVA)
-        plt.colorbar()
-        plt.show()
-        plt.imshow(alpha)
-        plt.colorbar()
-        plt.show()
-        import sys
-        sys.exit()
+        # print(AVA.shape)
+        # plt.imshow(AVA)
+        # plt.colorbar()
+        # plt.show()
+        # plt.imshow(alpha)
+        # plt.colorbar()
+        # plt.show()
+        # import sys
+        # sys.exit()
         c_factor = cho_factor(AVA, overwrite_a=False, **kwargs)
         return c_factor
 
@@ -661,3 +672,20 @@ class LSD:
         if alpha.ndim != 3:
             raise ValueError(f"Expected 3D alpha_ion, got shape {alpha.shape}")
         return np.concatenate(alpha, axis=1)
+
+    @staticmethod
+    def group_sparse_ions(
+        ions_linelist,
+        min_lines_per_ion=10,
+        other_label="other",
+    ):
+        ions_linelist = np.asarray(ions_linelist).astype(object)
+
+        unique_ions, counts = np.unique(ions_linelist, return_counts=True)
+        good_ions = unique_ions[counts >= min_lines_per_ion]
+
+        grouped_ions = ions_linelist.copy()
+        sparse = ~np.isin(grouped_ions, good_ions)
+        grouped_ions[sparse] = other_label
+
+        return grouped_ions

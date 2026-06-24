@@ -1143,7 +1143,10 @@ class Data:
 
         # Plot the LSD profile
         fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(self.velocities, self.profile["masked"][0], label='LSD Profile after Masking and before sampling', color='red')
+        try:
+            ax.plot(self.velocities, self.profile["masked"][0], label='LSD Profile after Masking and before sampling', color='red')
+        except:
+            ax.plot(self.velocities, np.median(self.profile["masked"][0], axis=0), label='MEDIAN LSD Profile after Masking and before sampling', color='red')
         ax.set_title('LSD Profile after Residual Masking')
         ax.set_xlabel('Velocity (km/s)')
         ax.set_ylabel('LSD Profile')

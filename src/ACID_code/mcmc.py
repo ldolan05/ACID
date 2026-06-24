@@ -288,13 +288,7 @@ class MCMC:
             Log probability.
         """
         forward, z = self.model_function(theta)
-        # import matplotlib.pyplot as plt
-        # from time import sleep
-        # plt.plot(forward)
-        # plt.show()
-        # plt.plot(z)
-        # plt.show()
-        # sleep(1)
+
         lp = self.log_prior(theta, z)
         if not np.isfinite(lp):
             return -np.inf

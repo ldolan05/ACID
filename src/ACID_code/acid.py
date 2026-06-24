@@ -938,9 +938,9 @@ class Acid:
 
         # Set new variables with the masked key
         self.data.poly_inputs["masked"] = poly_inputs
-        self.data.continuum["masked"] = utils.eval_continuum(norm_wl, poly_inputs, method=self.config.continuum_method)
         norm_wl = utils.normalize_wavelengths(x)
-        
+        self.data.continuum["masked"] = utils.eval_continuum(norm_wl, poly_inputs, method=self.config.continuum_method)
+
         self.store_LSD_result(key="masked", wl_key="masked", lsd=LSD_masking, continuum=self.data.continuum["masked"])
 
         # Now that we have used the error mask, we apply the mask to remove the data for fitting
