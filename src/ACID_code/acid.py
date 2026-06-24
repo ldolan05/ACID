@@ -813,6 +813,10 @@ class Acid:
             & (clipped_errs < 1e11) # 1e12 is the default mask error value, which can be picked up in the median error binning
         )
 
+        # TODO: Here, add a check to see if len(good) is less than poly_ord + 1, and if so,
+        # raise an error or warning that the polynomial fit cannot be performed due to insufficient good points.
+        # This could be due to too over masking, which could be another thing to raise/warn against
+
         # Fit with np.polyfit
         coeffs = np.polyfit(clipped_waves[good], clipped_flux[good], poly_ord, w=1/clipped_errs[good])
         poly = np.poly1d(coeffs)

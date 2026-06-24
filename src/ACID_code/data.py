@@ -1126,8 +1126,8 @@ class Data:
         ax.hlines([-dev, dev], xmin=np.min(x), xmax=np.max(x), color='C1', linestyle='--', linewidth=2, label="Chunk deviation masking range")
 
         # Set a good ylim off everything but the masked points
-        ymax = np.max([dev, upper_clip, np.max(residuals[~full_mask])])
-        ymin = np.min([ -dev, -lower_clip, np.min(residuals[~full_mask])])
+        ymax = np.max([dev, upper_clip, np.max(residuals[full_mask])])
+        ymin = np.min([-dev, lower_clip, np.min(residuals[full_mask])])
         ax.set_ylim(ymin*1.1, ymax*1.1)
 
         ax.set_xlim(np.min(x), np.max(x))
