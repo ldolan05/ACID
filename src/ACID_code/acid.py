@@ -842,7 +842,7 @@ class Acid:
         if plot_result is True:
             self.data.plot_continuum_fit(plot_type=plot_type)
 
-        if np.any(flux_obs <= 0) or np.any(new_errors <= 0):
+        if np.any(flux_obs[~self.data.line_mask] <= 0) or np.any(new_errors[~self.data.line_mask] <= 0):
             error = ContinuumError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
             "Consider adjusting the polynomial order or continuum percentile. Use verbose=3 to see the plot of the continuum fit.\n " \
             "Note that this will only work for interactive terminals or displays which work with plt.show()")
