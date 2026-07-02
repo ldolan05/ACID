@@ -166,9 +166,14 @@ class Profiles:
             offset = 0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
             bounds = (
-                [-1, np.min(x), 0, 0, -np.inf], # Lower bounds
+                [-1.5, np.min(x), 0, 0, -np.inf], # Lower bounds
                 [0, np.max(x), np.inf, np.inf, np.inf] # Upper
             )
+            # Raise an error if the initial guess is outside the bounds
+            for i in range(len(p0)):
+                if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
+                    raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                                     f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
         popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
         return popt, pcov
@@ -211,9 +216,13 @@ class Profiles:
             offset = 0
             p0 = [amplitude_guess, mean_guess, sigma0, offset]
             bounds = (
-                [-1, np.min(x), 0, -np.inf], # Lower bounds
+                [-1.5, np.min(x), 0, -np.inf], # Lower bounds
                 [0, np.max(x), np.inf, np.inf] # Upper bounds
             )
+            for i in range(len(p0)):
+                if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
+                    raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                                     f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
         popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
         return popt, pcov
