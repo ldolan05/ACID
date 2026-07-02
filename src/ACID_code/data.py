@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from beartype import beartype
 from tqdm import tqdm
+import scipy
 import traceback as tb
 from typing import Any, Dict, Optional
 from emcee import EnsembleSampler
@@ -1993,7 +1994,7 @@ class DataList:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def load(cls, path:str) -> DataList:
+    def load(cls, path:str, verbose:int|str|bool|None=None) -> DataList:
         """
         Loads a DataList from a pickle file. The pickle file should contain a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         Will attempt to load from datalist.pkl in the provided path if it is a directory, otherwise will attempt to load from the provided path directly. 
@@ -2003,6 +2004,9 @@ class DataList:
         ----------
         path : str
             The directory containing the datalist.pkl file, or the datalist.pkl itself. Note that the directories containing the results should also be in here.
+        verbose : int | str | bool | None, optional
+            The verbosity level to use when loading the DataList. If None, the verbosity level from the pickle file is used. Default is None. The verbosity only
+            affects this function and will not overwrite the verbosity level of the DataList once it is loaded.
 
         Returns
         -------
@@ -2024,7 +2028,9 @@ class DataList:
             raise ValueError(f"The provided path {path} is not a directory, or a datalist pickle file.\n"
                              f"You should provide a path to a directory containing the folders with the data pickles and sampler files.")
 
-        if exists(join(path, "datalist.pkl")):
+        if verbose is not None:
+            pass # keep inputted verbosity
+        elif exists(join(path, "datalist.pkl")):
             with open(join(path, "datalist.pkl"), "rb") as f:
                 d = pickle.load(f)
             verbose = d["verbose"]
@@ -2191,6 +2197,45 @@ class DataList:
         from .profiles import Profiles
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
+
+    def plot_chi2(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+        """
+        Plots the chi-squared values against order in the DataList.
+        This helps diagnose which orders have a bad fit and may need to be excluded from the combined profile.
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+        """
+        # TODO: test for this
+        fig, ax = plt.subplots(figsize=(12, 6))
+        orders = []
+        chi2_values = []
+        for data in self.data_list:
+            if data.result is not None:
+                orders.append(data.config.order)
+                try:
+                    res = scipy.stats.chisquare(f_obs=data.flux["final"], f_exp=data.forward_y["final"])
+                    chi2_values.append(res.statistic)
+                except Exception as e:
+                    print(f"Warning: Could not calculate chi-squared for order {data.config.order}. :\n{e}")
+                    chi2_values.append(np.nan)
+        
+        ax.plot(orders, chi2_values, marker='o', linestyle='-', color='blue')
+        ax.set_xlabel("Order")
+        ax.set_ylabel("Chi-squared")
+        ax.set_title("Chi-squared values for each order")
+        ax.grid(True)
+        
+        if return_fig:
+            return fig, ax
+        plt.show()
 
     @staticmethod
     def _set_paths_for_data(data: Data, save_dir: str) -> None:
