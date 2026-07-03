@@ -585,6 +585,7 @@ class Acid:
             self.data.model_inputs = np.array([10])
             self.data.nwalkers = 10
             self.data.ndim = 1
+            rng = np.random.default_rng(self.config.seed)
             initial_state = rng.uniform(1, 100, (self.data.nwalkers, self.data.ndim))
 
         ### ACID initialialised ###
