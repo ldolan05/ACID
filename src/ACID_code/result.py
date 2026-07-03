@@ -668,16 +668,15 @@ class Result:
 
             dropped_full_mask = utils.drop_edges(full_mask)
 
-            ymax = max(np.max(forward[dropped_full_mask]), np.max(flux))
-            ymin = min(np.min(forward[dropped_full_mask]), np.min(flux))
-            ymin -= (0.1 * ymax) # ymax will always be larger, so use it to extend ymin
-            ymax += (0.1 * ymax)
-            ax[0].set_ylim(ymin, ymax)
+            ymax = np.max(np.max(forward[dropped_full_mask]), np.max(flux))
+            ymin = np.min(np.min(forward[dropped_full_mask]), np.min(flux))
+            diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
+            ax[0].set_ylim(ymin - diff, ymax + diff)
 
-            max_diff = 0.1 * np.max(np.abs(residuals[dropped_full_mask]))
             ymax = np.max(residuals[dropped_full_mask])
             ymin = np.min(residuals[dropped_full_mask])
-            ax[1].set_ylim(ymin - max_diff, ymax + max_diff)
+            diff = (ymax - ymin) * 0.1
+            ax[1].set_ylim(ymin - diff, ymax + diff)
         else:
             ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
             ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')

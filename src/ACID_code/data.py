@@ -1130,7 +1130,8 @@ class Data:
         # Set a good ylim off everything but the masked points
         ymax = np.max([dev, upper_clip, np.max(residuals[full_mask])])
         ymin = np.min([-dev, lower_clip, np.min(residuals[full_mask])])
-        ax.set_ylim(ymin*1.1, ymax*1.1)
+        diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
+        ax.set_ylim(ymin - diff, ymax + diff)
 
         ax.set_xlim(np.min(x), np.max(x))
         ax.grid(True)
@@ -1174,10 +1175,10 @@ class Data:
         utils.plot_masked_line(ax[1], x, residuals, full_mask, label=["Residuals", "Masked Residuals"])
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
 
-        max_diff = 0.1 * np.max(np.abs(residuals[full_mask]))
         ymax = np.max(residuals[full_mask])
         ymin = np.min(residuals[full_mask])
-        ax[1].set_ylim(ymin - max_diff, ymax + max_diff)
+        diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
+        ax[1].set_ylim(ymin - diff, ymax + diff)
 
         ax[1].grid(True)
         # ax[1].set_title('Residuals of forward model with masked residuals')
