@@ -1734,6 +1734,12 @@ class DataList:
         """
         return self.run_ACID(*args, **kwargs)
 
+    def __len__(self):
+        return len(self.data_list)
+
+    def __iter__(self):
+        yield from self.data_list
+
     def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
         """
         Appends a Data instance to the data list. Note that the order range of the class is kept, 
