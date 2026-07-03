@@ -2,14 +2,12 @@ from __future__ import annotations
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, pickle, warnings, contextlib, functools, inspect, psutil
+import corner, sys, os, warnings, contextlib, functools, inspect
 from emcee import EnsembleSampler
-import emcee.backends.backend as emceebackend
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy.polynomial import polynomial as P
 from .lsd import LSD
-from . import mcmc
 from . import utils
 from .data import Data
 from .utils import IntLike, Scalar
@@ -90,7 +88,7 @@ class Result:
             the Result object for methods that do not require the profiles attribute, such as 
             continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
             and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
-            By default, None.
+            By default, True.
         verbose : :py:type:`IntLike | bool | str`, optional
             Verbosity level, works exactly the same as :py:class:`Acid`, if not provided
             defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2).
@@ -115,8 +113,11 @@ class Result:
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
         if self.sampler is not None:
-            self.dynesty = isinstance(self.sampler, Sampler)
-            self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialized to True
+            if Sampler is not None: # ie, only if dynesty is installed do this cheeck
+                self.dynesty = isinstance(self.sampler, Sampler)
+            else:
+                self.dynesty = False
+            self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
 
         if not self.data.complete:
             if process_results:
@@ -153,22 +154,100 @@ class Result:
         quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         errors = np.diff(quartiles, axis=0)
         errors = np.max(errors, axis=0)
-        poly_cos      = quartiles[1, nvel:]
-        poly_cos_err  = errors[nvel:] # unused for now
+        med_poly_coeffs      = quartiles[1, nvel:]
+        med_poly_coeffs_err  = errors[nvel:] # unused for now, the error is usually quite small though
+        poly_coeffs = flat_samples[:, nvel:] # coefficients for each sample, shape (nsamples, ncoeffs)
 
         if self.config.verbose > 1:
             print('Getting the final profiles...')
 
-        # Finding error for the continuum fit
-        norm_wl = self.data.wavelengths["combined_normalized"]
-        coeffs = flat_samples[:, nvel:]
-        ncoeffs = coeffs.shape[1]
+        # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
+        norm_wl = self.data.wavelengths["fitting"]
+        continuum = P.polyval(norm_wl, med_poly_coeffs)
+
+        # Get continuum error
+        continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
+
+        # Run a final LSD using the same inputs that the MCMC sampler got - but now including the error on the continuum - this is our final profile and error
+        wavelengths = self.data.wavelengths["masked"][self.data.full_mask]
+        flux = self.data.flux["fitting"]
+        error = self.data.errors["fitting"]
+        sn = self.data.sn["fitting"]
+
+        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["fitting"])
+
+        # Use the above to get our combined profile and error
+        self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+
+        # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
+        forward_model, forward_errors = lsd.convolve_profile(
+            profile              = utils.flux_to_od(self.data.profile["final"][0]),
+            profile_errors       = utils.flux_to_od(self.data.profile["final"][1]),
+            alpha                = self.data.alpha["masked"],
+        )
+        if self.config.od:
+            forward_model = utils.od_to_flux(forward_model)
+        
+        # Set the final LSD results
+        norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
+        continuum = P.polyval(norm_combined_wl, med_poly_coeffs)
+        self.data.forward_y["final"] = forward_model * continuum
+        self.data.forward_x["final"] = self.data.wavelengths["combined"]
+        self.data.forward_yerr["final"] = forward_errors
+        self.data.alpha["final"] = self.data.alpha["masked"]
+        self.data.continuum["final"] = continuum
+        self.data.poly_inputs["final"] = med_poly_coeffs
+
+        # For completeness of the final key, also carry over the wavelengths and flux values
+        self.data.wavelengths["final"] = self.data.wavelengths["combined"]
+        self.data.flux["final"] = self.data.flux["combined"]
+        self.data.errors["final"] = self.data.errors["combined"]
+        self.data.sn["final"] = self.data.sn["combined"]
+
+        # Iterate through each frame to get per-frame profiles
+        profiles = []
+        for i in range(len(self.data.wavelengths["input"])):
+            # Use nanmask as we cannot work with non-physical inputs like nan or negative fluxes
+            # TODO: Need to interpolate onto potential new wavelength grids the mask
+            wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
+            flux = self.data.flux["input"][i][self.data.nanmask]
+            error = self.data.errors["input"][i][self.data.nanmask]
+            sn = self.data.sn["input"][i]
+
+            # Avoid alpha recalculation if the input wavelengths are the same as the combined wavelengths, always true for single frame LSD
+            if np.array_equal(wavelengths, self.data.wavelengths["combined"]):
+                if np.array_equal(flux, self.data.flux["combined"]) and np.array_equal(error, self.data.errors["combined"]) and np.array_equal(sn, self.data.sn["combined"]):
+                    # in this case, the input frame is the same as the combined frame, so we can just directly use the combined profile
+                    profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
+                    continue
+                else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
+                    alpha = self.data.alpha["masked"]
+            else:
+                alpha = None
+            norm_wl = utils.normalize_wavelengths(wavelengths)
+            continuum = P.polyval(norm_wl, med_poly_coeffs)
+            continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
+            lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=alpha)
+            profiles.append((lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F))
+
+        self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
+        self.data.results_time = time() - t0
+        self.data.total_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
+        self.data.complete = True
+
+        # Now that results are complete, save the data instance if specified
+        if self.config.save_path is not None:
+            self.save() # the sampler is already saved if specified
+        return
+
+    def _get_continuum_error(self, norm_wl, poly_coeffs):
+        ncoeffs = poly_coeffs.shape[1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
 
         # First check memory to see if all samples can be used
         available_memory = utils.get_available_memory() # in bytes
         m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
-        n_samples, ncoeffs = coeffs.shape
+        n_samples, ncoeffs = poly_coeffs.shape
         npix = powers.shape[0]
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
@@ -178,75 +257,24 @@ class Result:
                 "Calculating with a max of 1000 random samples instead.")
             indices_size = min(1000, n_samples)
             random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
-            coeffs = coeffs[random_indices, :]
+            coeffs = poly_coeffs[random_indices, :]
+        else:
+            coeffs = poly_coeffs
 
+        # Then get the error from the conts matrix above
         conts = (coeffs @ powers.T)
         continuum_error = np.std(conts, axis=0)
+        return continuum_error
 
-        # First get the combined profile, and then calculate each frame's profile if there are multiple frames.
-        # If there is one frame, then the combined_profile is the same as the single frame profile.
-        nframes = len(self.data.flux["input"])
-        profiles = [] # switch to list format to add covariance matrix to result
-        for counter in range(nframes+1):
-            if counter == 0:
-                flux = np.copy(self.data.flux["combined"])
-                error = np.copy(self.data.errors["combined"])
-                wavelengths = np.copy(self.data.wavelengths["combined"])
-                sn = np.copy(self.data.sn["combined"])
-                error[self.data.residual_masks] = 1e12
-            else:
-                flux = np.copy(self.data.flux["input"][counter-1])[self.data.nanmask]
-                error = np.copy(self.data.errors["input"][counter-1])[self.data.nanmask]
-                wavelengths = np.copy(self.data.wavelengths["input"][counter-1])[self.data.nanmask]
-                sn = np.copy(self.data.sn["input"][counter-1])
+    def _run_continuum_corrected_LSD(self, continuum, continuum_error, wavelengths, flux, error, sn, alpha=None):
+        """Helper to run LSD part on a continuum corrrected spectrum"""
+        # correcting continuum
+        corrected_error = np.sqrt((error/continuum)**2 + (continuum_error/continuum)**2)
+        corrected_flux = flux / continuum
 
-                # Masking based off residuals interpolated onto new wavelength grid
-                reference_wave = self.data.wavelengths["input"][np.nanargmax(self.data.sn["input"])]
-                reference_wave = reference_wave[self.data.nanmask]
-
-                reference_mask = np.zeros_like(reference_wave, dtype=bool)
-                reference_mask[self.data.residual_masks] = True
-                reference_interp1d = interp1d(reference_wave, reference_mask.astype(float), kind="nearest", bounds_error=False, fill_value=0.0)
-                interpolated_mask = reference_interp1d(wavelengths) > 0.5
-                error[interpolated_mask] = 1e12
-
-            # Build continuum model
-            a, b = utils.get_normalisation_coeffs(wavelengths)
-            norm_wavelengths = (a*wavelengths)+b
-            if not self.config.rassine:
-                mdl = P.polyval(norm_wavelengths, poly_cos)
-            else:
-                # print(poly_cos.shape)
-                # sys.exit()
-                mdl = model(norm_wavelengths, flux, poly_cos[0])[0]
-
-            # correcting continuum
-            error = np.sqrt((error/mdl)**2 + (continuum_error/mdl)**2)
-            flux /= mdl
-
-            # Check whether we can skip alpha by reusing the same alpha, only true if the wavelength grid is identical
-            condition = np.array_equal(wavelengths, self.data.wavelengths["combined"])
-            alpha = self.data.alpha if condition else None
-
-            LSD_profiles = LSD(self.data)
-            LSD_profiles.run_LSD(wavelengths, flux, error, sn=sn, alpha=alpha)
-
-            profile_f = LSD_profiles.profile_F
-            profile_errors_f = LSD_profiles.profile_errors_F
-            cov_z_f = LSD_profiles.cov_z_F
-
-            if counter == 0:
-                self.data.combined_profile = [profile_f, profile_errors_f, cov_z_f]
-                self.data.continuum_model = mdl
-            else:
-                profiles.append([profile_f, profile_errors_f, cov_z_f])
-
-        self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
-        self.data.results_time = time() - t0
-        self.data.total_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
-        self.data.complete = True
-
-        return
+        lsd = LSD(self.data)
+        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
+        return lsd
 
     @_require_profiles
     def __getitem__(self, item) -> list|np.ndarray:
@@ -257,26 +285,26 @@ class Result:
             # Tuples allow for array-like indexing of the list
             if len(item) == 3:
                 _order, frame, velocity = item
-                return self.data.alphaprofiles[frame][velocity]
+                return self.data.profiles[frame][velocity]
             elif len(item) == 2:
                 return self.data.profiles[item[0]][item[1]]
             elif len(item) == 1:
-                return self.data.combined_profile[item[0]]
+                return self.data.profile["final"][item[0]]
             else:
                 raise ValueError(f"Tuple indexing must be of length 1, 2, or 3. Got {len(item)} instead.")
         elif isinstance(item, int):
             # Return just the profile or error (or cov_mat) for single int input
             if item < 0 or item > 2:
                 raise ValueError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
-            return self.data.combined_profile[item]
+            return self.data.profile["final"][item]
         elif isinstance(item, str):
             # Various different options for string inputs, why not
             if "error" in item.lower():
-                return self.data.combined_profile[1]
+                return self.data.profile["final"][1]
             elif "cov" in item.lower():
-                return self.data.combined_profile[2]
+                return self.data.profile["final"][2]
             elif "profile" in item.lower():
-                return self.data.combined_profile[0]
+                return self.data.profile["final"][0]
             else:
                 raise ValueError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
         else:
@@ -407,7 +435,7 @@ class Result:
         sampler    :EnsembleSampler|None = None,
         return_fig :bool                 = False,
         **kwargs,
-        ) -> None | tuple:
+        ) -> None | plt.Figure:
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
 
         Parameters
@@ -525,16 +553,37 @@ class Result:
     @_require_profiles
     def plot_forward_model(
         self,
-        grid            :bool      = True,
-        labels          :dict|None = None,
-        return_fig      :bool      = False,
-        subplot_kwargs  :dict|None = None,
+        normalized      :bool       = False,
+        divide_by_median:bool       = False,
+        show_masking    :bool       = True,
+        show_continuum  :bool       = True,
+        fig_ax          :tuple|None = None,
+        grid            :bool       = True,
+        labels          :dict|None  = None,
+        return_fig      :bool       = False,
+        subplot_kwargs  :dict|None  = None,
         ) -> None | tuple:
         """
         Plots the forward model calculated from the final profiles to the combined input spectrum.
 
         Parameters
         ----------
+        normalized : bool, optional
+            Whether to plot the normalized spectrum and forward model (divided by the continuum), 
+            or the raw flux, by default False.
+        divide_by_median : bool, optional
+            Divides flux units by the median continuum value so that the y-axis is in units of median continuum,
+            by default False. Only applies if normalized is False.
+        show_masking : bool, optional
+            Whether to show the masked regions of the spectrum, by default True
+        show_continuum : bool, optional
+            Whether to show the fitted continuum, by default True
+        fig_ax: tuple | None
+            Optionally provide an existing fig/axis tuple to plot on, by default None and
+            creates a new figure and axis. The axis must be a 2 element array of axes, 
+            where the first axis is for the spectrum and forward model, 
+            and the second axis is for the residuals.
+            If provided, the grid, labels, and titles should be set by you.
         grid : bool, optional
             Show or hide grid, by default True
         labels : dict | None, optional
@@ -568,35 +617,31 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
 
         # Get input data
-        wavelengths = self.data.wavelengths["combined"]
-        flux = self.data.flux["combined"]
+        wavelengths = np.copy(self.data.forward_x["final"])
+        flux = np.copy(self.data.flux["combined"])
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        if self.config.od:
-            profile = utils.flux_to_od(self.data.combined_profile[0])
-            model_flux = utils.od_to_flux(self.data.alpha @ profile) * self.data.continuum_model
-        else:
-            profile = self.data.combined_profile[0]-1
-            model_flux = (1+(self.data.alpha @ profile)) * self.data.continuum_model
+        forward = np.copy(self.data.forward_y["final"])
+
+        # Due to distortion at the edges of the profile, we drop the last 2 pixels
+        wavelengths = utils.drop_edges(wavelengths)
+        flux = utils.drop_edges(flux)
+        forward = utils.drop_edges(forward)
+        residuals = forward - flux
 
         # Plotting
-        fig, ax = plt.subplots(2, 1, **subplot_kwargs)
-        ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
-        ax[0].plot(wavelengths, model_flux, color='C0', linewidth=1, label='Forward Model Fit')
-        ax[0].plot(wavelengths, self.data.continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        ax[1].plot(wavelengths[:-10], (model_flux-flux)[:-10], color='C0', linewidth=1, label='Residuals')
-        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
-        ax[0].set_title(labels["title"])
-        ax[1].set_xlabel(labels["xlabel"])
-        ax[0].set_ylabel(labels["ylabel"])
-        ax[1].set_ylabel(labels["residuals_ylabel"])
-        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
-        ax[0].legend()
-        ax[1].legend()
-        ax[0].grid(grid)
-        ax[1].grid(grid)
-        plt.subplots_adjust(hspace=0.05)
+        if fig_ax is not None:
+            fig, ax = fig_ax
+        else:
+            fig, ax = plt.subplots(2, 1, **subplot_kwargs)
+            ax[0].set_title(labels["title"])
+            ax[1].set_xlabel(labels["xlabel"])
+            ax[0].set_ylabel(labels["ylabel"])
+            ax[1].set_ylabel(labels["residuals_ylabel"])
+            ax[0].grid(grid)
+            ax[1].grid(grid)
+            plt.subplots_adjust(hspace=0.05)
 
         if return_fig:
             return fig, ax
@@ -806,7 +851,7 @@ class Result:
             if self.config.verbose>0:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
                 f" due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
-                f" wrong. Setting defaults: burnin=nsteps-1000, and thin=1.")
+                f" wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.")
             self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
             self.thin = 1
         
@@ -843,38 +888,21 @@ class Result:
         """Sets the sampler in the data class."""
         self.data.sampler = value
 
-    def save(self, filename:str="result.pkl", store_sampler:bool=True, size_limit:Scalar|None=1) -> None:
-        """Saves the Result object to a pickle file.
-
-        Parameters
-        ----------
-        filename : str, optional
-            Name of the file to save the Result object to, by default "result.pkl"
-        store_sampler : bool, optional
-            Whether to store the sampler backend in the pickle file. If False, 
-            the sampler will not be stored, and the Result object will not be able to 
-            continue sampling or plot walkers/corner plots
-        size_limit : Scalar | None, optional
-            A hard size limit to the sampler in GB.
-            If the sampler exceeds this size, it will not be stored regardless of the store_sampler flag.
-            This is to avoid accidentally storing very large samplers. If None, no limit is set. Default is 1GB.
-            A warning will be printed if this size_limit forces the store_sampler to be False if store_sampler was set to True.
+    def save(self, *args, **kwargs) -> None:
         """
-
-        # Use the Data class's save method to handle saving, 
-        # which will handle the sampler backend appropriately based on the store_sampler flag
-        self.data.save(filename, store_sampler=store_sampler, size_limit=size_limit)
-
-        if getattr(self, "config", None) is not None and self.config.verbose > 1:
-            print(f"Result object saved to {filename}")
+        Saves the Data instance which the Result class inherits from Acid.
+        See :py:function:`Data.save` for more details on the parameters that can be passed.
+        """
+        self.data.save(*args, **kwargs)
 
     @classmethod
-    def load(cls, result:str|Result|Data="result.pkl") -> Result:
-        """Loads a Result object from a pickle file or from a Data/Result object.
+    def load(cls, data:str|Result|Data="result.pkl") -> Result:
+        """
+        Loads a Result object from a pickle file or from a Data/Result object.
 
         Parameters
         ----------
-        result : str | :py:class:`Result` | :py:class:`Data`, optional
+        data : str | :py:class:`Result` | :py:class:`Data`, optional
             A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
 
         Returns
@@ -882,9 +910,9 @@ class Result:
         :py:class:`Result`
             A Result object loaded from the pickle file or from the provided object.
         """
-        if isinstance(result, str):
-            return cls(Data.load(result))
-        elif isinstance(result, Result):
-            return cls(result.data)
-        elif isinstance(result, Data):
-            return cls(result)
+        if isinstance(data, str):
+            return cls(Data.load(data))
+        elif isinstance(data, Result):
+            return cls(data.data)
+        elif isinstance(data, Data):
+            return cls(data)

@@ -1,10 +1,9 @@
 from __future__ import annotations
 import numpy as np
 from astropy.io import  fits
-import glob, psutil, os
+import glob, psutil, os, traceback
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
-from scipy.interpolate import LSQUnivariateSpline
 from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
@@ -47,23 +46,24 @@ class LSD:
         # Set class variables, taking from input data if it exists, else setting to defaults
         self.slurm    = "SLURM_JOB_ID" in os.environ
         self.data     = data if data is not None else Data()
-        self.linelist = data.linelist if data is not None else None
-        self.od       = od if od is not None else data.config.od
+        self.linelist = self.data.linelist if self.data is not None else None
+        self.od       = od if od is not None else self.data.config.od
         try:
-            self.config = data.config
+            self.config = self.data.config
         except:
             self.config = Config() # uses defaults
         self.config.update_hipri(verbose=verbose) # Update config with new values, if not None
 
     def run_LSD(
         self,
-        wavelengths : Array1D,
-        flux        : Array1D,
-        errors      : Array1D,
-        sn          : Scalar,
-        linelist    : Array2D|str|LineList|dict|None = None,
-        velocities  : Array1D|None                   = None,
-        alpha       : Array2D|None                   = None,
+        wavelengths    : Array1D,
+        flux           : Array1D,
+        errors         : Array1D,
+        sn             : Scalar,
+        linelist       : Array2D|str|LineList|dict|None = None,
+        velocities     : Array1D|None                   = None,
+        alpha          : Array2D|None                   = None,
+        skip_warnings  : bool = False,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -92,6 +92,12 @@ class LSD:
         flux = np.array(flux)
         errors = np.array(errors)
 
+        # If alpha is input check its shape matches the input wavelengths and velocities
+        if alpha is not None:
+            if alpha.shape != (len(wavelengths), len(self.data.velocities)):
+                raise ValueError(f"Inputted alpha matrix shape {alpha.shape} does not match expected shape "
+                                 f"{(len(wavelengths), len(self.data.velocities))} based on input wavelengths and velocities.")
+
         # Ensure dimensions match
         if not wavelengths.shape == flux.shape == errors.shape:
             raise ValueError("Input wavelengths, flux, and errors must have the same shape.")       
@@ -108,12 +114,17 @@ class LSD:
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
         if len(wavelengths_linelist) == 0:
-            raise LineListRangeError(f"No lines in linelist are within the wavelength range of the observed spectrum. \n"\
-                                     f"You may have mismatched wavelengths units between linelist and spectrum or an empty linelist.\n"\
-                                     f"Please check your linelist and input spectrum.")
+            error = LineListRangeError(
+                "No lines in linelist are within the wavelength range of the observed spectrum.\n"
+                "You may have mismatched wavelength units between linelist and spectrum or an empty linelist.\n"
+                "Please check your linelist and input spectrum."
+            )
+            self.data.exception = error
+            self.data.traceback = traceback.format_stack()
+            raise error
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
+        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn, skip_warnings)
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
         if self.od:
@@ -127,18 +138,26 @@ class LSD:
         else:
             self.alpha = alpha
 
+        # At this point we need to clean our points for negative fluxes and large masked errors and nans
+        self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
+
         # Now solve for profile using Cholesky decomposition
-        self.c_factor = self.calc_cholesky(self.alpha, errors)
+        self.c_factor = self.calc_cholesky(self.alpha[self.mask], errors[self.mask])
 
         # Solve for profile and profile errors using Cholesky factors
-        self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_cov=True)
+        self.profile, self.profile_errors, self.cov_z = self.solve_z(self.alpha[self.mask], flux[self.mask], errors[self.mask], self.c_factor, return_cov=True)
+
+        self.forward_model = self.alpha @ self.profile
+        self.forward_model_errors = np.sqrt(np.sum((self.alpha * self.profile_errors)**2, axis=1))
 
         # Convert profile back to flux if needed
         if self.od:
             self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
+            self.forward_model, self.forward_model_errors = utils.od_to_flux(self.forward_model, self.forward_model_errors)
         else:
             self.profile += 1
             self.profile_F, self.profile_errors_F, self.cov_z_F = self.profile, self.profile_errors, self.cov_z
+            self.forward_model += 1
 
         return
 
@@ -147,6 +166,7 @@ class LSD:
             wavelengths_linelist : Array1D,
             depths_linelist      : Array1D,
             sn                   : Scalar,
+            skip_warnings       : bool = False,
             ) -> tuple[Array1D, Array1D]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
@@ -159,6 +179,9 @@ class LSD:
             Depths from the linelist
         sn : :py:type:`Scalar`
             Signal-to-noise ratio threshold
+        skip_warnings : bool, optional
+            Whether to skip warnings about the number of lines remaining after the S/N cut,
+            by default False
 
         Returns
         -------
@@ -171,16 +194,20 @@ class LSD:
         depths_linelist = depths_linelist[idx]
 
         # Analyse remaining lines
-        ncut = np.sum(~idx)
-        nrest = np.sum(idx)
-        perc = 100 * nrest / (nrest + ncut)
-        if nrest == 0:
-            raise SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
-        if self.config.verbose > 0:
-            if perc < 5:
-                print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-            if self.config.verbose > 2:
-                print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
+        if not skip_warnings:
+            ncut = np.sum(~idx)
+            nrest = np.sum(idx)
+            perc = 100 * nrest / (nrest + ncut)
+            if nrest == 0:
+                error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+                self.data.exception = error
+                self.data.traceback = traceback.format_stack()
+                raise error
+            if self.config.verbose > 0 and not skip_warnings:
+                if perc < 5:
+                    print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
+                if self.config.verbose > 2:
+                    print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist
 
     def calc_alpha(
@@ -392,7 +419,8 @@ class LSD:
         wavelengths          : Array1D|None = None,
         linelist_wavelengths : Array1D|None = None,
         linelist_depths      : Array1D|None = None,
-        ) -> tuple[Array1D, Array1D]:
+        return_alpha         : bool = False,
+        ) -> tuple[Array1D, Array1D]|tuple[Array1D, Array1D, Array2D]:
         """
         Convolve your profile either using an inputted alpha matrix or by calculating one using :py:meth:`calc_alpha` 
         with the inputted wavelengths and linelist. The units of the output convolved model spectrum will match the 
@@ -423,10 +451,13 @@ class LSD:
             if velocities is None or wavelengths is None or linelist_wavelengths is None or linelist_depths is None:
                 raise ValueError("If alpha matrix is not input, velocities, wavelengths, linelist_wavelengths, and " \
                 "linelist_depths must all be provided to calculate the alpha matrix.")
-            cls.__init__(cls)
-            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities, verbose=2)
+            cls.__init__(cls, verbose=2)
+            alpha = cls.calc_alpha(cls, wavelengths, linelist_wavelengths, linelist_depths, velocities)
 
         model_spectrum = alpha @ profile
         model_errors = np.sqrt((alpha**2) @ (profile_errors**2))
 
-        return model_spectrum, model_errors
+        if return_alpha:
+            return model_spectrum, model_errors, alpha
+        else:
+            return model_spectrum, model_errors

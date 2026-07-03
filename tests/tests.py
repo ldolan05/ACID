@@ -78,8 +78,8 @@ def legacy_test():
         plt.figure()
 
         for frame in range(len(files)):
-            profile = result[frame, 0]
-            profile_error = result[frame, 1]
+            profile = result[0, frame, 0]
+            profile_error = result[0, frame, 1]
             plt.errorbar(velocities, profile, profile_error, label = '%s'%frame)
 
         plt.xlabel('Velocities (km/s)')
@@ -114,8 +114,8 @@ def class_test():
     nsteps2 = 3000
     result = classes_test(skips=3, nsteps=nsteps1) # test the classes and result handling, use lower skips
     os.makedirs("tests/test_data", exist_ok=True) # create test data directory if it doesn't exist
-    result.save(filename="tests/test_data/classes_test.pkl")
-    result = acid.Result.load("tests/test_data/classes_test.pkl")
+    result.save("tests/test_data/classes_test_data.pkl", "tests/test_data/classes_test_sampler.h5")
+    result = acid.Result.load("tests/test_data/classes_test_data.pkl")
     result.plot_corner()
     result.plot_profiles()
     result.plot_walkers()
@@ -363,7 +363,7 @@ def test_data_and_datalist():
         cores=10,
         )
     datalist[22].config.update_hipri(poly_ord=4)
-    datalist.run_ACID(allow_overwrite=True)
+    datalist.run_ACID(overwrite=True)
     datalist[22].result.plot_profiles()
     datalist.combine_profiles(exclude=21)
     datalist.plot_combined_profile()
@@ -385,13 +385,20 @@ def saves_and_loads():
     result.load("tests/test_data/result_test.pkl")
     result.plot_profiles()
 
-    datalist = acid.DataList.load("tests/test_data/datalist/results")
+    datalist = acid.DataList.load("tests/test_data/datalist/")
     datalist.excluded_orders = [21]
     datalist.plot_combined_profile()
 
+    datalist = acid.DataList.load("tests/test_data/datalist/datalist.pkl")
+    datalist.plot_combined_profile()
+    datalist.fit_profile()
+
+    import shutil
+    shutil.move("tests/test_data/datalist/datalist.pkl", "tests/test_data/datalist.pkl")
     datalist = acid.DataList.load("tests/test_data/datalist/")
     datalist.plot_combined_profile()
     datalist.fit_profile()
+    shutil.move("tests/test_data/datalist.pkl", "tests/test_data/datalist/datalist.pkl")
 
     # Testing regular result
     # Get back a result to test it with
@@ -408,22 +415,15 @@ def saves_and_loads():
     result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, skips=3)
 
     # Check result survives multiple saves and loads and can continue sampling after loading
-    path = "tests/test_data/result_test.pkl"
-    result.save(path)
-    result = acid.Result.load(path)
+    data_path = "tests/test_data/result_test.pkl"
+    sampler_path = "tests/test_data/result_test_sampler.h5"
+    result.save(data_path, sampler_path)
+    result = acid.Result.load(data_path)
     result.plot_corner() # requires sampler
     result.continue_sampling(nsteps=1000)
-    result.save(path)
-    result = acid.Result.load(path)
+    result.save(data_path)
+    result = acid.Result.load(data_path)
     result.plot_corner() # requires sampler
-
-    # Now try save without sampler
-    result.save(path, store_sampler=False)
-    result = acid.Result.load(path)
-    try:
-        result.plot_corner() # should fail since sampler is not stored
-    except AttributeError as e:
-        print(f"Caught attempt to plot corner without sampler: {e}")
 
 def error_and_inputs_handlings():
     orderd = acid.Config.defaults["order"] # is 0
@@ -602,7 +602,7 @@ def error_and_inputs_handlings():
     data.alpha = 0.5
     data.set_inputs([24, 25], [0.5, 0.6], [0.1, 0.1], [10, 20])
     assert data.sn["input"].ndim + 1 == data.wavelengths["input"].ndim, "Data instance did not set sn with correct dimensions when given multiple frames."
-    assert data.alpha is None, "Data instance did not reset alpha to None when setting new inputs with multiple frames."
+    assert data.alpha == {}, "Data instance did not reset alpha to an empty dict when setting new inputs with multiple frames."
     data.set_inputs(wavelength, spectrum, input_sn=sn) # reset to original inputs for any future tests
     assert data.errors["input"].ndim == data.wavelengths["input"].ndim, "Data instance did not calculate errors from the SN"
 
@@ -619,12 +619,12 @@ def LSD():
     data = Acid.data
 
     # Try LSD in OD and flux
-    lsd = acid.LSD(data=data, OD=True)
+    lsd = acid.LSD(data=data, od=True)
     lsd.run_LSD(wavelength, spectrum, error, sn)
 
     # And in flux
     data.reset()
-    lsd = acid.LSD(data=data, OD=False)
+    lsd = acid.LSD(data=data, od=False)
     lsd.run_LSD(wavelength, spectrum, error, sn)
 
 print("Starting tests, this will take a 2-5 minutes to run, and a bunch of output will be printed.")
