@@ -250,6 +250,7 @@ class Acid:
         min_tau_factor        : IntLike|None                = None,   # Config
         tau_tol               : float|None                  = None,   # Config
         moves                 : list|None                   = None,   # Config
+        continuum_method      : str|None                    = None,   # Config
         run_mcmc              : bool|None                   = None,   # Config
         rassine               : bool|None                   = None,   # Config
         _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
@@ -377,6 +378,10 @@ class Acid:
             - "fraction" is the fraction of walkers to which this move should be applied.
             - "move_kwargs" is an optional dictionary of keyword arguments passed to
               the move class initialisation.
+        continuum_method : :py:type:`str`, optional
+            The method to use for fitting and evaluating the continuum. Options are "polyval" or "chebval". Default is None,
+            which uses polyval for poly_ord <= 5 and chebval for poly_ord > 5.
+            This is because chebyshev polynomials are more numerically stable for higher order polynomials.
         run_mcmc : :py:type:`bool`, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
@@ -444,6 +449,7 @@ class Acid:
             "tau_tol"               : tau_tol,
             "moves"                 : moves,
             "run_mcmc"              : run_mcmc,
+            "continuum_method"      : continuum_method,
             "rassine"               : rassine,
         }
 
@@ -464,6 +470,14 @@ class Acid:
             raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise you'll be waiting hours for a single result)")
         if self.config.sampler_type == "dynesty" and self.config.max_steps is not None:
             raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive. See the dynesty docs for more details.")
+
+        if self.config.continuum_method is None:
+            if self.config.poly_ord <= 5:
+                self.config.continuum_method = "polyval"
+            else:
+                self.config.continuum_method = "chebval"
+        elif self.config.continuum_method not in ["polyval", "chebval"]:
+            raise ValueError("Invalid 'continuum_method' input, must be one of ['polyval', 'chebval'].")
 
         # --- Start of the ACID method ---
 
@@ -534,7 +548,7 @@ class Acid:
                 plot_type = "initial"
             )
         norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
-        self.data.continuum["initial"] = P.polyval(norm_wl, self.data.poly_inputs["initial"])
+        self.data.continuum["initial"] = utils.eval_continuum(norm_wl, self.data.poly_inputs["initial"], method=self.config.continuum_method)
         self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["initial"]) # Just to keep track
         self.data.sn["fitted"]          = np.copy(self.data.sn["initial"]) # SN also is not changed here
 
@@ -554,13 +568,7 @@ class Acid:
                 sn = self.data.sn["fitted"]
             )
 
-            # Use alpha matrix and initial profile class variables from initial LSD run
-            self.data.profile["initial"] = [initial_LSD.profile_F, initial_LSD.profile_errors_F, initial_LSD.cov_z_F]
-            self.data.alpha["initial"] = initial_LSD.alpha
-            self.data.c_factor["initial"] = initial_LSD.c_factor
-            self.data.forward_x["initial"] = self.data.wavelengths["fitted"]
-            self.data.forward_y["initial"] = initial_LSD.forward_model * self.data.continuum["initial"]
-            self.data.forward_yerr["initial"] = initial_LSD.forward_model_errors * self.data.continuum["initial"]
+            self.store_LSD_result(initial_LSD, key="initial", wl_key="fitted", continuum=self.data.continuum["initial"]) # Store the results in the data class
 
         # Masking based off residuals
         if all((
@@ -761,12 +769,12 @@ class Acid:
 
     def continuumfit(
         self,
-        wavelengths : Array1D,
-        fluxes      : Array1D,
-        errors      : Array1D,
-        poly_ord    : IntLike = 3,
-        plot_result : bool    = False,
-        plot_type   : str     = "initial"
+        wavelengths      : Array1D,
+        fluxes           : Array1D,
+        errors           : Array1D,
+        poly_ord         : IntLike = 3,
+        plot_result      : bool    = False,
+        plot_type        : str     = "initial"
         ) -> tuple:
         """Provides an initial, normalised continuum fit using inputted spectra.
 
@@ -814,8 +822,8 @@ class Acid:
         clipped_waves = np.nanmedian(w2, axis=1)
         clipped_errs = np.nanmedian(e2, axis=1)
 
-        # Also add as a safeguard an extra point for high orders at start and end of spectrum to avoid edge effects in high order fits
-        if poly_ord > 5:
+        # # Also add as a safeguard an extra point for high orders at start and end of spectrum to avoid edge effects in high order fits
+        if poly_ord > 5 and self.config.continuum_method == "polyval":
             max_wl_idx = np.nanargmax(w)
             min_wl_idx = np.nanargmin(w)
             clipped_waves = np.concatenate(([w[min_wl_idx]], clipped_waves, [w[max_wl_idx]]))
@@ -835,17 +843,13 @@ class Acid:
         # raise an error or warning that the polynomial fit cannot be performed due to insufficient good points.
         # This could be due to too over masking, which could be another thing to raise/warn against
 
-        # Fit with np.polyfit
-        coeffs = np.polyfit(clipped_waves[good], clipped_flux[good], poly_ord, w=1/clipped_errs[good])
-        poly = np.poly1d(coeffs)
-        fit = poly(norm_wavelengths)
+        # Fit with MCMC to get the polynomial coefficients and evaluate the continuum fit
+        poly_coeffs = utils.fit_continuum(clipped_waves[good], clipped_flux[good], poly_ord, method=self.config.continuum_method, w=1/clipped_errs[good])
+        fit = utils.eval_continuum(norm_wavelengths, poly_coeffs, method=self.config.continuum_method)
 
         # Get the model fitted flux and errors from the fit
         flux_obs = fluxes / fit
         new_errors = errors / fit
-
-        # Flip coefficients for use in MCMC (ordered from lowest degree to highest)
-        poly_coeffs = np.flip(coeffs)
 
         # Save to Data the required variables for the plot
         if plot_type not in self.data.plotting_variables:
@@ -955,15 +959,11 @@ class Acid:
         LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha["initial"], skip_warnings=True)
 
         # Set new variables with the masked key
-        self.data.c_factor["masked"] = LSD_masking.c_factor
-        self.data.alpha["masked"] = LSD_masking.alpha # is just the same as initial, but we save it for completeness
-        self.data.profile["masked"] = [LSD_masking.profile_F, LSD_masking.profile_errors_F, LSD_masking.cov_z_F]
-        norm_wl = utils.normalize_wavelengths(x)
-        self.data.continuum["masked"] = P.polyval(norm_wl, poly_inputs)
         self.data.poly_inputs["masked"] = poly_inputs
-        self.data.forward_x["masked"] = x
-        self.data.forward_y["masked"] = LSD_masking.forward_model * self.data.continuum["masked"]
-        self.data.forward_yerr["masked"] = LSD_masking.forward_model_errors * self.data.continuum["masked"]
+        norm_wl = utils.normalize_wavelengths(x)
+        self.data.continuum["masked"] = utils.eval_continuum(norm_wl, poly_inputs, method=self.config.continuum_method)
+
+        self.store_LSD_result(key="masked", wl_key="masked", lsd=LSD_masking, continuum=self.data.continuum["masked"])
 
         # Now that we have used the error mask, we apply the mask to remove the data for fitting
         self.data.wavelengths["fitting"]   = utils.normalize_wavelengths(x)[self.data.full_mask]
@@ -1000,26 +1000,28 @@ class Acid:
         # Set rng seed off of config seed if desired, otherwise default config seed is None and rng will be random
         rng = np.random.default_rng(self.config.seed)
 
-        model_inputs = np.concatenate((self.data.profile["masked"][0], self.data.poly_inputs["masked"]))
+        n_profile_params = self.data.alpha["fitting"].shape[1]
 
-        # Starting values of walkers with independent variation
-        # TODO modernize this below, change model inputs usage
+        self.data.ndim = self.config.poly_ord + 1
+        if not self.config.deterministic_profile:
+            self.data.ndim += n_profile_params
+
         if self.config.sampler_type == "emcee":
-            sigma = 0.8 * 0.005
-            initial_state = []
-            for i in range(0, len(model_inputs)):
-                if i < len(self.data.velocities):
-                    if not self.config.deterministic_profile:
-                        pos = rng.normal(model_inputs[i], sigma, (self.data.nwalkers, ))
-                    else:
-                        continue
-                else:
-                    x1 = model_inputs[i]
-                    rounded_sigma = round(x1, 1-int(floor(log10(abs(x1))))-1)
-                    sigma = abs(rounded_sigma) / 10
-                    pos = rng.normal(model_inputs[i], sigma, (self.data.nwalkers, ))
-                initial_state.append(pos)
-            initial_state = np.array(initial_state).T
+            theta0 = self.data.poly_inputs["masked"]
+
+            if not self.config.deterministic_profile:
+                profile0 = np.asarray(self.data.profile["masked"][0]).reshape(-1)
+                theta0 = np.concatenate((profile0, theta0))
+
+            # Test to see if the starting position is valid
+            test_mcmc = mcmc.MCMC(self.data)
+            width = np.maximum(0.5 * np.abs(theta0), 1e-3)
+            walkers = []
+            while len(walkers) < self.data.nwalkers:
+                theta = rng.normal(theta0, width)
+                if np.isfinite(test_mcmc.log_probability(theta)):
+                    walkers.append(theta)
+            initial_state = np.array(walkers)
         else:
             initial_state = None
 
@@ -1241,6 +1243,29 @@ class Acid:
 
         if return_sampler:
             return self.sampler
+
+    def store_LSD_result(self, lsd:LSD, key:str, wl_key:str, continuum:Array1D):
+        """Store the results of the LSD run in the Data class for a given key.
+
+        Parameters
+        ----------
+        lsd : LSD
+            The LSD object containing the results of the LSD run.
+        key : str
+            The key under which to store the results in the Data class.
+        wl_key : str
+            The key corresponding to the wavelengths used in the LSD run.
+        continuum : np.ndarray
+            The fitted continuum values corresponding to the wavelengths. Note
+            that the continuum is not stored, but is used for scaling the forward model before storing.
+        """
+        self.data.c_factor[key] = lsd.c_factor
+        self.data.alpha[key] = lsd.alpha
+        self.data.profile[key] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+        self.data.forward_x[key] = self.data.wavelengths[wl_key]
+        self.data.forward_y[key] = lsd.forward_model * continuum
+        self.data.forward_yerr[key] = lsd.forward_model_errors * continuum
+
 
     @property
     def result(self) -> Result:

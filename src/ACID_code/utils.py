@@ -11,6 +11,8 @@ import emcee.backends.backend as emceebackend
 import scipy.constants as const
 from typing import TypeAlias, Annotated
 from matplotlib.collections import LineCollection
+from numpy.polynomial.polynomial import polyval, polyfit
+from numpy.polynomial.chebyshev import chebval, chebfit
 c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
@@ -18,6 +20,65 @@ Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["size", I
 Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
+
+@staticmethod
+def eval_continuum(x, coefs, method="polyval", **kwargs):
+    """
+    Evaluates the continuum at given points using specified method.
+    
+    Parameters
+    ----------
+    x : array-like
+        Input values where the polynomial is evaluated.
+    coefs : array-like
+        Coefficients of the polynomial, ordered from lowest degree to highest.
+    method : str, optional
+        Method to use for evaluation. Default is "polyval".
+    **kwargs : dict
+        Additional keyword arguments passed to the evaluation function.
+    
+    Returns
+    -------
+    array-like
+        Evaluated polynomial values at x.
+    """
+    if method == "polyval":
+        return polyval(x, coefs, **kwargs)
+    elif method == "chebval":
+        return np.exp(chebval(x, coefs, **kwargs)) # forces positive continuum
+    else:
+        raise ValueError(f"Unknown method: '{method}', must be 'polyval' or 'chebval'.")
+
+@staticmethod
+def fit_continuum(x, y, degree, method="polyval", **kwargs):
+    """
+    Fits a polynomial of given degree to the data (x, y).
+    
+    Parameters
+    ----------
+    x : array-like
+        Independent variable data.
+    y : array-like
+        Dependent variable data.
+    degree : int
+        Degree of the polynomial to fit.
+    method : str, optional
+        Method to use for fitting, either "polyval" or "chebval". Default is "polyval".
+    **kwargs : dict
+        Additional keyword arguments passed to the fitting function.
+    
+    Returns
+    -------
+    array-like
+        Coefficients of the fitted polynomial.
+    """
+    if method == "polyval":
+        return polyfit(x, y, degree, **kwargs)
+
+    if method == "chebval":
+        return chebfit(x, np.log(y), degree, **kwargs)
+
+    raise ValueError(f"Unknown method: '{method}'")
 
 def convert_moves_to_emcee(moves:list[tuple]):
     """Converts a list of move specifications to emcee moves.
@@ -160,7 +221,7 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     output = output + (mask,) if return_mask else output
     return output
 
-def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
+def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, ions_linelist=None, pad=5):
     """
     Clips the linelist to only include lines within the wavelength range of the observed spectrum.
     Includes a pad either side of the wavelength range so that the wings of lines outside
@@ -174,6 +235,7 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
         Wavelengths from the linelist
     depths_linelist : np.ndarray
         Depths from the linelist
+    ions_linelist : np.ndarray | None, optional
     pad : float, optional
         Number of angstroms to pad on either side of the wavelength range. By default, 5.
 
@@ -183,9 +245,13 @@ def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
         Clipped wavelengths from the linelist
     depths_linelist : np.ndarray
         Clipped depths from the linelist
+    ions_linelist : np.ndarray | None
+        Clipped ions from the linelist, if provided
     """
     lower, upper = np.nanmin(wavelengths)-pad, np.nanmax(wavelengths)+pad
     idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
+    if ions_linelist is not None:
+        return wavelengths_linelist[idx], depths_linelist[idx], ions_linelist[idx]
     return wavelengths_linelist[idx], depths_linelist[idx]
 
 def drop_edges(array, n_pix=2):

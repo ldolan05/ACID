@@ -4,10 +4,11 @@ from numpy.linalg import norm
 from . import utils
 from .utils import Array1D, Array2D
 from beartype import beartype
-from numpy.polynomial import polynomial as P
 from scipy.linalg import cho_solve
 from .data import Data
 from .rassine import model
+from numpy.polynomial.chebyshev import chebval
+from .lsd import LSD
 
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
@@ -48,7 +49,8 @@ class MCMC:
             deterministic_profile : bool         = False,
             rassine               : bool         = False,
             sampler_type          : str          = "emcee",
-            od                    : bool         = True
+            od                    : bool         = True,
+            continuum_method      : str          = "polyval"
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
@@ -73,6 +75,13 @@ class MCMC:
             Precomputed c_factor for LSD profile calculation, by default None.
         deterministic_profile : bool, optional
             Whether to fit the full profile (True) or use the fast model (False), by default True.
+        sampler_type : str, optional
+            Type of sampler to use, by default "emcee".
+        od : bool, optional
+            Whether to use optical depth (True) or flux (False) for the profile points, by default True.
+        continuum_method : str, optional
+            Method to use for continuum fitting, by default "polyval".
+            Options are "polyval" for standard polynomial evaluation or "chebval" for Chebyshev polynomial evaluation.
         """
 
         # No checks are performed here - assume data is valid from ACID class checks,
@@ -89,6 +98,7 @@ class MCMC:
             self.rassine = data.config.rassine
             self.sampler_type = data.config.sampler_type
             self.od = data.config.od
+            self.continuum_method = data.config.continuum_method
         else:
             self.x = x_or_data
             self.y = y
@@ -99,6 +109,7 @@ class MCMC:
             self.deterministic_profile = deterministic_profile
             self.sampler_type = sampler_type
             self.od = od
+            self.continuum_method = continuum_method
             data = None
             self.rassine = rassine
 
@@ -124,6 +135,13 @@ class MCMC:
         if self.rassine:
             self.model_function = self.rassine_model
 
+        # For dynesty's sake, should delete later
+        if data is not None:
+            profile0 = np.asarray(data.profile["masked"][0]).reshape(-1)
+            self.model_inputs = np.concatenate((profile0, data.poly_inputs["masked"]))
+        else:
+            self.model_inputs = None
+
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
         return self.log_probability(*args, **kwargs)
@@ -145,9 +163,10 @@ class MCMC:
             Model spectrum and profile points (z).
         """
         # Extract profile points and continuum coefficients from theta
-        z = theta[:self.k_max]
-        z -= 1 if not self.od else 0 # if not using OD, profile points are in flux space and need to be shifted by 1
-        mdl = self.alpha @ z
+        z = np.asarray(theta[:self.k_max], dtype=float).copy()
+        if not self.od:
+            z -= 1 # if not using OD, profile points are in flux space and need to be shifted by 1
+        mdl = LSD.dot_alpha_and_profile(self.alpha, z) # handles the new ion_mode where multiple profiles are fitted simultaneously
 
         # Converting model from optical depth to flux
         mdl = np.exp(-mdl) if self.od else mdl+1 # if not using OD, just use flux directly
@@ -156,7 +175,7 @@ class MCMC:
         coefs = np.asarray(theta[self.k_max:], dtype=float)
 
         # Apply continuum model
-        mdl *= P.polyval(self.x, coefs)
+        mdl *= utils.eval_continuum(self.x, coefs, method=self.continuum_method)
 
         return mdl, z
 
@@ -178,14 +197,14 @@ class MCMC:
         coefs = np.asarray(theta, dtype=float)
 
         # Build continuum model
-        mdl = P.polyval(self.x, coefs)
+        mdl = utils.eval_continuum(self.x, coefs, method=self.continuum_method)
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
 
         if self.od:
-            if np.any(fitted_flux <= 0): # force positive flux at all points
-                return fitted_flux, np.full(self.k_max, -2) # return very low z to trigger prior rejection
+            if np.any(fitted_flux <= 0) or not np.all(np.isfinite(fitted_flux)):
+                return fitted_flux, np.full(self.k_max, -2)
 
         # Do OD/non-OD conversions
         if self.od:
@@ -199,7 +218,7 @@ class MCMC:
         z = cho_solve(self.c_factor, AtV @ flux, check_finite=False)
 
         # Convert back from optical depth to flux
-        dot_prod = self.alpha @ z
+        dot_prod = LSD.dot_alpha_and_profile(self.alpha, z)
         dot_prod = np.exp(-dot_prod) if self.od else dot_prod + 1
         forward = dot_prod * mdl
 
@@ -264,13 +283,29 @@ class MCMC:
 
         return forward, z
 
-    def log_prior(self, z):
+    def continuum_prior(self, coefs):
+        if self.continuum_method != "chebval":
+            return 0.0 # No prior for non-Chebyshev methods
+
+        k = np.arange(len(coefs), dtype=float)
+        sigma = 0.25 / (1.0 + k)**2
+        sigma[0] = 1.0
+
+        # logC = chebval(self.x, coefs)
+        # if np.any(np.abs(logC) > 1.0):
+        #     return -np.inf
+
+        return -0.5 * np.sum((coefs / sigma)**2)
+
+    def log_prior(self, theta, z):
         """
         Calculates the log prior probability of the profile points (z) and imposes the prior
-        restrictions on the inputs - rejects if profile point is less than -0.4 or greater than 1.6.
+        restrictions on the inputs - penalises if profile point is less than -0.4 or greater than 1.6.
 
         Parameters
         ----------
+        theta : array-like
+            Model parameters.
         z : array-like
             Profile points.
 
@@ -280,29 +315,29 @@ class MCMC:
             Log prior probability.
         """
 
-        # Hard box prior on each z[i]
+        lp = self.soft_z_prior(z)
+        if not np.isfinite(lp):
+            return -np.inf
+
+        coefs = theta[self.k_max:] if not self.deterministic_profile else theta
+        lp += self.continuum_prior(coefs)
+
+        return lp
+
+    def soft_z_prior(self, z):
+        """
+        Soft prior on the profile points (z) to prevent them from going too far outside the expected range.
+        """
         if self.od:
-            if np.any((z < -0.4) | (z > 1.6)):
-                return -np.inf
+            lo, hi = -0.4, 1.6
         else:
-            if np.any((z > 0.5) | (z <= -1)):
-                return -np.inf
+            lo, hi = -1.0, 0.5
 
-        # # excluding the continuum points in the profile (in flux)
-        # z_cont = []
-        # v_cont = []
-        # for i in range(0, 5):
-        #         z_cont.append(np.exp(z[len(z)-i-1])-1)
-        #         v_cont.append(self.velocities[len(self.velocities)-i-1])
-        #         z_cont.append(np.exp(z[i])-1)
-        #         v_cont.append(self.velocities[i])
+        scale = 0.05
+        below = np.maximum(lo - z, 0.0)
+        above = np.maximum(z - hi, 0.0)
 
-        # z_cont = np.array(z_cont)
-        # v_cont = np.array(v_cont)
-
-        # p_pent = np.sum((np.log((1/np.sqrt(2*np.pi*0.01**2)))-0.5*(z_cont/0.01)**2))
-
-        return 0 
+        return -0.5 * np.sum((below / scale)**2 + (above / scale)**2)
 
     def log_probability(self, theta):
         """
@@ -320,7 +355,7 @@ class MCMC:
         """
         forward, z = self.model_function(theta)
 
-        lp = self.log_prior(z)
+        lp = self.log_prior(theta, z)
         if not np.isfinite(lp):
             return -np.inf
         
@@ -401,7 +436,7 @@ class MCMC:
         if not np.all(np.isfinite(forward)):
             return -np.inf
 
-        lp = self.log_prior(z)
+        lp = self.log_prior(theta, z)
         if not np.isfinite(lp):
             return -np.inf
 
