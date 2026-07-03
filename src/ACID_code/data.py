@@ -246,6 +246,8 @@ class Config:
             ("DEMove", 0.1, {"gamma0": 1.0}),
         ],
         "run_mcmc" : True,
+        "rassine"  : False,
+        "sparse" : True,
     }
 
     #: Property list for error handling

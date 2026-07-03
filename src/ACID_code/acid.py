@@ -237,6 +237,7 @@ class Acid:
         n_sig                 : IntLike|None                = None,   # Config
         skips                 : IntLike|None                = None,   # Config
         od                    : bool|None                   = None,   # Config
+        sparse                : bool|None                   = None,   # Config
         sampler_type          : str|None                    = None,   # Config
         parallel              : bool|None                   = None,   # Config
         cores                 : IntLike|None                = None,   # Config
@@ -427,6 +428,7 @@ class Acid:
             "n_sig"                 : n_sig,
             "skips"                 : skips,
             "od"                    : od,
+            "sparse"                : sparse,
             "sampler_type"          : sampler_type,
             "parallel"              : parallel,
             "cores"                 : cores,
