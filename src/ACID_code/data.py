@@ -247,6 +247,7 @@ class Config:
         ],
         "run_mcmc" : True,
         "rassine"  : False,
+        "sparse" : True,
     }
 
     #: Property list for error handling

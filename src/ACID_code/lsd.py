@@ -26,6 +26,7 @@ class LSD:
             data    : object|None           = None,
             od      : bool                  = None,
             verbose : IntLike|bool|str|None = None,
+            sparse  : bool|None             = None,
             ) -> None:
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
@@ -42,12 +43,18 @@ class LSD:
             Verbosity level, if None, uses the :py:class:`Config` class existing value (in Data), or default of 2.
             Should follow the same format as :py:class:`Acid` verbosity. 
             Will overwrite the verbosity level in the config if a Data instance is input, by default None.
+        sparse : bool, optional
+            Whether to use sparse matrix calculations for the alpha matrix, by default True. If you use false it will use 
+            the legacy method for alpha calculation which is significantly longer and more memory intensive to no real benefit.
+            It is just kept for testing/backwards compatibility.
         """
         # Set class variables, taking from input data if it exists, else setting to defaults
+        # TODO: Add tests for new sparse option
         self.slurm    = "SLURM_JOB_ID" in os.environ
         self.data     = data if data is not None else Data()
         self.linelist = self.data.linelist if self.data is not None else None
         self.od       = od if od is not None else self.data.config.od
+        self.sparse   = sparse if sparse is not None else self.data.config.sparse
         try:
             self.config = self.data.config
         except:
@@ -216,6 +223,7 @@ class LSD:
         wavelengths_linelist : Array1D,
         depths_linelist      : Array1D,
         velocities           : Array1D|None = None,
+        sparse               : bool|None = None,
         ) -> Array2D:
         """
         Calculates the alpha matrix given flux and errors and a linelist.
@@ -233,13 +241,19 @@ class LSD:
             Array of depths from the linelist in optical depth space
         velocities : :py:type:`Array1D`, optional
             Array of velocities, needs to either be initialised by class with Acid instance, or input here, by default None
-        
+        sparse : bool, optional
+            Optionally override the sparse setting with a boolean True/False, by default None. If None, will use class variable stored
+            in the data instance.
+            
         Returns
         -------
         :py:type:`Array2D`
             The alpha matrix, to be used in the Cholesky decomposition and solving for the profile. 
             The units will match the units of the input linelist (OD or flux).
         """
+
+        if sparse is None:
+            sparse = self.sparse
 
         # Set velocities from input or from class variable if initialised with Acid instance, raise error if not provided in either way
         if velocities is not None:
@@ -259,50 +273,148 @@ class LSD:
 
         # Find differences and velocities
         blankwaves = wavelengths
-        diff = blankwaves[:, np.newaxis] - wavelengths_linelist
-        vel = c_kms * (diff / wavelengths_linelist)
 
-        # Get memory available depnding on whether were on slurm or not
-        available_memory = utils.get_available_memory() # in bytes
-        mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 # Matrix size in bytes
-        m_available = available_memory / 2  # Available memory in bytes (divided by 2 to be safe)
+        n_blank = len(blankwaves)
+        n_lines = len(wavelengths_linelist)
+        n_vel = len(self.data.velocities)
 
-        # Calculate alpha matrix in one go if it fits in memory
-        if mat_size < m_available:
-            # Calculating entire alpha matrix at once, broadcasts into a 3D array of shape (n_wl, n_lines, n_vel)
-            x = (vel[:, :, np.newaxis] - self.data.velocities) / deltav
-            delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
-            alpha = (depths_linelist[:, None] * delta).sum(axis=1)  # (n_wl, n_vel)
+        if n_vel < 2:
+            raise ValueError("At least two velocity bins are required.")
 
-        # Else, calculate in blocks to save memory
-        else:
-            n_blank = len(blankwaves)
-            n_vel   = len(self.data.velocities)
-            mem_size = available_memory // 2
-            bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
-            max_block = max(1, mem_size // bytes_per_row)
-            block = int(min(max_block, len(wavelengths_linelist)))
-            # Set initial alpha matrix to np.zeros
-            alpha  = np.zeros((len(blankwaves), len(self.data.velocities)), dtype=np.float64)
+        v0 = self.data.velocities[0]
 
-            # Use tqdm progress bar if verbose
-            if self.config.verbose>1:
-                iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
+        if sparse:
+
+            # Sparse triangular interpolation.
+            # This still returns a dense alpha matrix, so alpha itself may be large.
+            available_memory = utils.get_available_memory()
+
+            alpha_bytes = n_blank * n_vel * np.dtype(np.float64).itemsize
+
+            if alpha_bytes > 0.8 * available_memory:
+                raise MemoryError(
+                    f"Output alpha matrix alone requires {alpha_bytes/1024**3:.2f} GB, "
+                    f"but only {available_memory/1024**3:.2f} GB appears to be available.\n"
+                    f"This exception should only be tripped if you have extremely low memory "
+                    f"or if you are calculating an enormous alpha matrix."
+                )
+
+            alpha = np.zeros((n_blank, n_vel), dtype=np.float64)
+
+            # Re-check after allocating alpha.
+            available_memory = utils.get_available_memory()
+            work_memory = max(1, available_memory // 2)
+
+            # Conservative estimate for temporary arrays per wavelength-line pair:
+            # u/frac, k0, k1, rows, weights, masks, plus indexing overhead.
+            bytes_per_pair = 96
+            max_pairs = max(1, work_memory // bytes_per_pair)
+
+            # Prefer blocking over lines while keeping all wavelengths together.
+            # If even one line over all wavelengths is too big, also block wavelengths.
+            if n_blank <= max_pairs:
+                wave_block = n_blank
+                line_block = max(1, min(n_lines, max_pairs // n_blank))
             else:
-                iterable = range(0, len(wavelengths_linelist), block)
+                line_block = 1
+                wave_block = max(1, min(n_blank, max_pairs))
 
-            for start_pos in iterable:
-                # Ensure we don't go out of bounds on last iteration
-                end_pos = min(start_pos + block, len(wavelengths_linelist))
-                wl  = wavelengths_linelist[start_pos:end_pos]
-                dep = depths_linelist[start_pos:end_pos]
+            line_range = range(0, n_lines, line_block)
 
-                # Perform calculations for this block
-                vel_blk = c_kms * (blankwaves[:, None] - wl) / wl
-                x_blk   = (vel_blk[:, :, None] - self.data.velocities) / deltav
-                delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
+            if self.config.verbose > 1:
+                line_range = tqdm(line_range, desc="Calculating sparse alpha matrix")
 
-                alpha += (dep[:, None] * delta).sum(axis=1)
+            for line_start in line_range:
+                line_end = min(line_start + line_block, n_lines)
+
+                wl = wavelengths_linelist[line_start:line_end]
+                dep = depths_linelist[line_start:line_end]
+
+                for wave_start in range(0, n_blank, wave_block):
+                    wave_end = min(wave_start + wave_block, n_blank)
+
+                    waves = blankwaves[wave_start:wave_end]
+                    n_wave_block = len(waves)
+                    n_line_block = len(wl)
+
+                    # Compute u = (vel - v0) / deltav without forming separate diff/vel arrays.
+                    u = np.empty((n_wave_block, n_line_block), dtype=np.float64)
+                    np.subtract(waves[:, None], wl[None, :], out=u)
+                    u *= c_kms
+                    u /= wl[None, :]
+                    u -= v0
+                    u /= deltav
+
+                    k0 = np.floor(u).astype(np.intp)
+
+                    # Reuse u as frac to avoid another full temporary.
+                    frac = u
+                    frac -= k0
+                    k1 = k0 + 1
+
+                    rows = np.repeat(np.arange(wave_start, wave_end, dtype=np.intp), n_line_block)
+
+                    k0_flat = k0.ravel()
+                    k1_flat = k1.ravel()
+
+                    # Contribution to lower neighbour.
+                    w0 = 1.0 - frac
+                    w0 *= dep[None, :]
+                    w0 = w0.ravel()
+                    mask0 = (k0_flat >= 0) & (k0_flat < n_vel)
+                    np.add.at(alpha,(rows[mask0], k0_flat[mask0]), w0[mask0])
+
+                    # Contribution to upper neighbour.
+                    w1 = frac * dep[None, :]
+                    w1 = w1.ravel()
+                    mask1 = (k1_flat >= 0) & (k1_flat < n_vel)
+                    np.add.at(alpha, (rows[mask1], k1_flat[mask1]), w1[mask1])
+    
+        else:
+
+            # Get memory available depnding on whether were on slurm or not
+            available_memory = utils.get_available_memory() # in bytes
+            mat_size = len(wavelengths_linelist) * len(self.data.velocities) * len(blankwaves) * 8 # Matrix size in bytes
+            m_available = available_memory / 2  # Available memory in bytes (divided by 2 to be safe)
+
+            # Calculate alpha matrix in one go if it fits in memory
+            if mat_size < m_available:
+                diff = blankwaves[:, None] - wavelengths_linelist
+                vel = c_kms * (diff / wavelengths_linelist)
+                # Calculating entire alpha matrix at once, broadcasts into a 3D array of shape (n_wl, n_lines, n_vel)
+                x = (vel[:, :, np.newaxis] - self.data.velocities) / deltav
+                delta = np.clip(1.0 - np.abs(x), 0.0, 1.0)
+                alpha = (depths_linelist[:, None] * delta).sum(axis=1)  # (n_wl, n_vel)
+
+            # Else, calculate in blocks to save memory
+            else:
+                n_blank = len(blankwaves)
+                n_vel   = len(self.data.velocities)
+                mem_size = available_memory // 2
+                bytes_per_row = n_blank * n_vel * 8 * 3 # *8 for float64, *3 for vel, x, delta in a row
+                max_block = max(1, mem_size // bytes_per_row)
+                block = int(min(max_block, len(wavelengths_linelist)))
+                # Set initial alpha matrix to np.zeros
+                alpha  = np.zeros((len(blankwaves), len(self.data.velocities)), dtype=np.float64)
+
+                # Use tqdm progress bar if verbose
+                if self.config.verbose>1:
+                    iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
+                else:
+                    iterable = range(0, len(wavelengths_linelist), block)
+
+                for start_pos in iterable:
+                    # Ensure we don't go out of bounds on last iteration
+                    end_pos = min(start_pos + block, len(wavelengths_linelist))
+                    wl  = wavelengths_linelist[start_pos:end_pos]
+                    dep = depths_linelist[start_pos:end_pos]
+
+                    # Perform calculations for this block
+                    vel_blk = c_kms * (blankwaves[:, None] - wl) / wl
+                    x_blk   = (vel_blk[:, :, None] - self.data.velocities) / deltav
+                    delta   = np.clip(1.0 - np.abs(x_blk), 0.0, 1.0)                    
+
+                    alpha += (dep[:, None] * delta).sum(axis=1)
         return alpha
 
     @staticmethod
