@@ -160,7 +160,7 @@ class LSD:
             if ions_linelist is None or use_ions is False:
                 self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist, self.data.velocities, verbose=self.config.verbose)
             else:
-                ions_grouped = self.group_sparse_ions(
+                self.ions_grouped = self.group_sparse_ions(
                     ions_linelist,
                     min_lines_per_ion=20,
                     other_label="other",
@@ -170,7 +170,7 @@ class LSD:
                     self.data.velocities,
                     wavelengths_linelist,
                     depths_linelist,
-                    ions_grouped,
+                    self.ions_grouped,
                     verbose=self.config.verbose,
                 )
                 self.n_ions = len(self.unique_ions)
@@ -197,7 +197,7 @@ class LSD:
                     )
 
                 self.n_ions = self.alpha.shape[1] // self.n_velocities
-        
+
         ion_mode = (self.alpha_ion is not None) or (self.n_ions > 1)
         ion_mode = ion_mode and (use_ions is not False)  # Allow override
 
@@ -759,7 +759,13 @@ class LSD:
 
         alpha_blocks = []
 
-        for ion_label in unique_ions:
+        verbose = Config(verbose=verbose).verbose
+        if verbose:
+            iterator = tqdm(unique_ions, desc="Calculating alpha blocks for each ion")
+        else:
+            iterator = unique_ions
+
+        for ion_label in iterator:
             idx = linelist_ions == ion_label
 
             alpha_i = cls.calc_alpha(
@@ -767,7 +773,7 @@ class LSD:
                 wavelengths_linelist=linelist_wavelengths[idx],
                 depths_linelist=linelist_depths[idx],
                 velocities=velocities,
-                verbose=verbose,
+                verbose=0,
             )
 
             alpha_blocks.append(alpha_i)

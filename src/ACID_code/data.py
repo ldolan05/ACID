@@ -1387,11 +1387,42 @@ class LineList:
             raise ValueError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
         # All loops below set linelist_wl and linelist_depths from their own type sof input
         elif isinstance(linelist, str):
-            # VALD linelist code, will add more linelist formats in the future or if requested
-            full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
-            linelist_ions = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(0), dtype=str, invalid_raise=False)
-            linelist_wl = full_linelist[:,0]
-            linelist_depths = full_linelist[:,1]
+            import pandas as pd
+
+            full_linelist = pd.read_csv(
+                linelist,
+                skiprows=4,
+                delimiter=',',
+                usecols=[0, 1, 9],
+                names=['ion', 'wavelength', 'depth'],
+                dtype=str,
+                engine='python',
+                on_bad_lines='skip'
+            )
+
+            # Clean whitespace / quotes
+            full_linelist['ion'] = full_linelist['ion'].astype(str).str.strip().str.strip("'\"")
+            full_linelist['wavelength'] = full_linelist['wavelength'].astype(str).str.strip()
+            full_linelist['depth'] = full_linelist['depth'].astype(str).str.strip()
+
+            # Convert numeric columns safely
+            full_linelist['wavelength'] = pd.to_numeric(
+                full_linelist['wavelength'],
+                errors='coerce'
+            )
+
+            full_linelist['depth'] = pd.to_numeric(
+                full_linelist['depth'],
+                errors='coerce'
+            )
+
+            # Remove rows where numeric conversion failed
+            full_linelist = full_linelist.dropna(subset=['wavelength', 'depth'])
+
+            # Convert to NumPy arrays
+            linelist_wl = full_linelist['wavelength'].to_numpy(dtype=float)
+            linelist_depths = full_linelist['depth'].to_numpy(dtype=float)
+            linelist_ions = full_linelist['ion'].to_numpy(dtype=str)
         elif isinstance(linelist, LineList):
             linelist_wl = linelist[0]
             linelist_depths = linelist[1]
@@ -1426,7 +1457,9 @@ class LineList:
         if linelist_wl.ndim != 1 or linelist_depths.ndim != 1 or (linelist_ions is not None and linelist_ions.ndim != 1):
             raise ValueError("'wavelengths', 'depths', and 'ions' must be one-dimensional arrays or lists")
         if linelist_wl.shape != linelist_depths.shape or (linelist_ions is not None and linelist_wl.shape != linelist_ions.shape):
-            raise ValueError("'wavelengths', 'depths', and 'ions' must have the same length and shape")
+            raise ValueError("'wavelengths', 'depths', and 'ions' must have the same length and shape, \n"
+                             f" but have shapes: {linelist_wl.shape}, {linelist_depths.shape}, "
+                             f"{linelist_ions.shape if linelist_ions is not None else 'None'}")
         
         # Handle the ions input
         if linelist_ions is not None:
