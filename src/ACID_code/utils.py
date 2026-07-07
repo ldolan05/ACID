@@ -513,7 +513,7 @@ def combine_profiles(
     spectra     : Array2D,
     errors      : Array2D | None = None,
     covariances : Array3D | None = None,
-    ) -> tuple:
+    ) -> tuple|Array1D:
     """
     Combine multiple profiles into one.
 
