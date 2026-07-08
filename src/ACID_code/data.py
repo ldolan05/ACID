@@ -1572,6 +1572,7 @@ class DataList:
         self._save_dir = None
         self._data_list = None
         self._combined_profile = None
+        self._results = None
         self.overwrite = overwrite
         self.excluded_orders = []
         self.save_dir = save_dir
@@ -1996,7 +1997,7 @@ class DataList:
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
         d = {}
         d["verbose"] = self.verbose
-        # and maybe other class attributes later
+        # TODO:and maybe other class attributes later
         with open(save_loc, "wb") as f:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -2100,6 +2101,24 @@ class DataList:
     def data_list(self):
         return self._data_list
 
+    @property
+    def results(self):
+        """
+        Returns a list of Result objects for each Data instance in the DataList.
+        If a Data instance does not have a result, None is returned for that order.
+        This property is useful for not reaccessing ther result each time a plot is made.
+        
+        Returns:
+            list[Result|None]: A list of Result objects or None for each order in the DataList.
+        """
+        if self._results is None:
+            if self.verbose > 0:
+                print("Accessing results, the output below comes from initialising the Result object" \
+                " and will only be shown once for this DataList instance.")
+            self._results = [data.result for data in self.data_list]
+
+        return self._results
+
     @data_list.setter
     def data_list(self, data_list):
         """
@@ -2113,7 +2132,7 @@ class DataList:
         self._data_list = data_list
         self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
-    def combine_profiles(self, exclude:int|list|None=None, must_have_converged:bool=False) -> None:
+    def combine_profiles(self, exclude:int|Array1D|None=None, must_have_converged:bool=False) -> None:
         """
         Calculates the combined profile and its errors across all orders, excluding any orders specified in the exclude argument.
         
@@ -2205,6 +2224,92 @@ class DataList:
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
 
+    def plot_all_profiles(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+        """
+        Plots all the profiles for each order in the DataList.
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+        
+        norm = mpl.colors.Normalize(vmin=self.order_range[0], vmax=self.order_range[-1])
+        cmap = mpl.cm.get_cmap("viridis", len(self.order_range))
+
+        peak_vel_idx = np.argmin(self.combined_profile[0])
+        min_prof = 1
+        for data in self.data_list:
+            order = data.config.order
+            color = cmap(norm(order))
+            if "final" not in data.profile:
+                continue # failed orders
+            ax.plot(self.velocities, data.profile["final"][0], alpha=0.2, color=color)
+
+            if data.profile["final"][0][peak_vel_idx] < min_prof:
+                min_prof = data.profile["final"][0][peak_vel_idx]
+        
+        ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1],
+                    color="black", fmt=".-", ecolor="red", label="Combined profile", zorder=10)
+
+        ax.axhline(1, color="black", linestyle="--", alpha=0.5)
+
+        # Show colour map
+        sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        fig.colorbar(sm, ax=ax, orientation="vertical", label="Order")
+
+        # Set sensible limits
+        ax.set_ylim(max(min_prof-0.1, 0), 1.2)
+        ax.set_xlabel("Velocity (km/s)")
+        ax.set_ylabel("Relative Flux")
+        ax.set_title("All ACID profiles")
+        ax.grid(True)
+        ax.legend()
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    def plot_mean_profile_errors(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+        """
+        Plots the errors of all the profiles for each order in the DataList.
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+        errors = []
+        for data in self.data_list:
+            if "final" not in data.profile:
+                errors.append(np.nan)
+                continue
+            errors.append(np.mean(data.profile["final"][1]))
+
+        ax.plot(self.orders, errors, marker='o', linestyle='-', color='blue')
+        ax.set_xlabel("Order")
+        ax.set_ylabel("Mean Profile Error")
+        ax.set_title("Mean Profile Errors for each order")
+        ax.set_yscale("log")
+        ax.grid(True)
+
+        if return_fig:
+            return fig, ax
+        plt.show()
+
     def plot_chi2(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
         Plots the chi-squared values against order in the DataList.
@@ -2225,11 +2330,14 @@ class DataList:
         orders = []
         chi2_values = []
         for data in self.data_list:
-            if data.result is not None:
+            if "final" in data.profile:
                 orders.append(data.config.order)
                 try:
-                    res = scipy.stats.chisquare(f_obs=data.flux["final"], f_exp=data.forward_y["final"])
-                    chi2_values.append(res.statistic)
+                    flux = np.asarray(data.flux["final"])
+                    model = np.asarray(data.forward_y["final"])
+                    err = np.asarray(data.errors["final"])
+                    chi2 = np.sum(((flux-model)/err) ** 2)
+                    chi2_values.append(chi2)
                 except Exception as e:
                     print(f"Warning: Could not calculate chi-squared for order {data.config.order}. :\n{e}")
                     chi2_values.append(np.nan)
@@ -2237,6 +2345,7 @@ class DataList:
         ax.plot(orders, chi2_values, marker='o', linestyle='-', color='blue')
         ax.set_xlabel("Order")
         ax.set_ylabel("Chi-squared")
+        ax.set_yscale("log")
         ax.set_title("Chi-squared values for each order")
         ax.grid(True)
         
