@@ -632,7 +632,7 @@ class LSD:
         linelist_depths      : Array1D|None = None,
         linelist_ions        : Array1D|None = None,
         return_alpha         : bool = False,
-        ) -> tuple[Array1D, Array1D]|tuple[Array1D, Array1D, Array2D]:
+        ): # TODO: put back return hint
         """
         Convolve your profile either using an inputted alpha matrix or by calculating one using :py:meth:`calc_alpha` 
         with the inputted wavelengths and linelist. The units of the output convolved model spectrum will match the 

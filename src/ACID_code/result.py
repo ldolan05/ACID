@@ -184,9 +184,9 @@ class Result:
         self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
 
         # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
-        forward_model, forward_errors = lsd.convolve_profile(
+        forward_model = lsd.convolve_profile(
             profile              = utils.flux_to_od(self.data.profile["final"][0]),
-            profile_errors       = utils.flux_to_od(self.data.profile["final"][1]),
+            # profile_errors       = utils.flux_to_od(self.data.profile["final"][1]),
             alpha                = self.data.alpha["masked"],
         )
         if self.config.od:
@@ -210,7 +210,7 @@ class Result:
         continuum = utils.eval_continuum(norm_combined_wl, med_poly_coeffs, method=self.config.continuum_method)
         self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_x["final"] = self.data.wavelengths["combined"]
-        self.data.forward_yerr["final"] = forward_errors * continuum
+        # self.data.forward_yerr["final"] = forward_errors * continuum
         self.data.alpha["final"] = self.data.alpha["masked"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
@@ -567,7 +567,11 @@ class Result:
                 for i in range(x.shape[1]):
                     ax.errorbar(x[i], y[i]-1, yerr=yerr[i], **errorbar_kwargs)
             else:
-                ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
+                if x.shape != y.shape:
+                    for prof, err in zip(y, yerr):
+                        ax.errorbar(x, prof-1, yerr=err, **errorbar_kwargs)
+                else:
+                    ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
 
         # Add labels and titles
         ax.set_title(labels["title"])
@@ -673,6 +677,39 @@ class Result:
             ax[0].grid(grid)
             ax[1].grid(grid)
             plt.subplots_adjust(hspace=0.05)
+
+        if normalized:
+            flux /= continuum_model
+            model_flux /= continuum_model
+            continuum_model /= continuum_model # is just 1s
+
+        if divide_by_median:
+            median_continuum = np.median(continuum_model)
+            flux /= median_continuum
+            model_flux /= median_continuum
+            continuum_model /= median_continuum
+
+        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
+        ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
+
+        if show_continuum:
+            continuum_model = utils.drop_edges(self.data.continuum["final"])
+            ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
+        
+        if show_masking:
+            full_mask = self.data.full_mask
+
+            utils.plot_masked_line(ax[0], wavelengths, forward, full_mask, label=["Forward model", "Masked Forward model"])
+            utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])
+
+            dropped_full_mask = utils.drop_edges(full_mask)
+            max_diff = 0.1 * np.max(np.abs(residuals[dropped_full_mask]))
+            ymax = np.max(residuals[dropped_full_mask])
+            ymin = np.min(residuals[dropped_full_mask])
+            ax[1].set_ylim(ymin - max_diff, ymax + max_diff)
+        else:
+            ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
+            ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
 
         if return_fig:
             return fig, ax
