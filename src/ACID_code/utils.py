@@ -269,7 +269,6 @@ def guess_SNR(
 
 @beartype
 def guess_errors(
-    frame_wavelengths : Array1D | Array2D,
     frame_flux        : Array1D | Array2D,
     frame_sn          : Scalar  | Array1D
     ) -> Array1D | Array2D:
@@ -279,8 +278,6 @@ def guess_errors(
 
     Parameters
     ----------
-    frame_wavelengths : :py:type:`Array1D | Array2D`
-        Array/list of wavelengths for each frame.
     frame_flux : :py:type:`Array1D | Array2D`
         Array/list of flux values for each frame.
     frame_sn : :py:type:`Scalar | Array1D`
@@ -291,10 +288,9 @@ def guess_errors(
     :py:type:`Array1D | Array2D`
         Array of estimated error values for each frame. The dimensions will match those of frame_flux, with the same number of frames and pixels.
     """
-    if np.any(frame_flux) <= 0 or np.any(frame_wavelengths <= 0) or np.any(frame_sn <= 0):
-        raise ValueError("Flux, wavelengths and sn must all be positive non-zero to estimate errors.")
+    if np.any(frame_flux) <= 0 or np.any(frame_sn <= 0):
+        raise ValueError("Flux and sn must all be positive non-zero to estimate errors.")
 
-    frame_wavelengths = np.atleast_2d(frame_wavelengths)
     frame_flux = np.atleast_2d(frame_flux)
     frame_sn = np.atleast_1d(frame_sn)
     if frame_sn.ndim > 1 or (frame_sn.ndim == 1 and frame_sn.size != frame_flux.shape[0]):
@@ -566,8 +562,8 @@ def combine_profiles(
         # Otherwise we do a simple weighted average using the errors, which is equivalent 
         # to the above if the covariance matrices are diagonal.
         weights = 1.0 / errors**2
-        combined_profile = np.sum(weights * spectra, axis=0) / np.sum(weights, axis=0)
-        combined_errors = np.sqrt(1.0 / np.sum(weights, axis=0))
+        combined_profile = np.nansum(weights * spectra, axis=0) / np.nansum(weights, axis=0)
+        combined_errors = np.sqrt(1.0 / np.nansum(weights, axis=0))
 
         return combined_profile, combined_errors
 

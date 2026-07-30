@@ -849,7 +849,7 @@ class Data:
             if self.config.verbose > 1:
                 print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
         if input_errors is None and input_sn is not None:
-            input_errors = utils.guess_errors(input_wavelengths, input_flux, input_sn)
+            input_errors = utils.guess_errors(input_flux, input_sn)
             if self.config.verbose > 0:
                 print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
                       f"It is highly recommended to obtain correct per-pixel errors.")
