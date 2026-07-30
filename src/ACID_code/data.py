@@ -1817,6 +1817,7 @@ class DataList:
         nworkers          : IntLike|None         = None,
         overwrite         : bool|None            = None,
         overwrite_kwargs  : bool                 = False,
+        pack              : bool                 = False,
         **kwargs,
         ) -> None:
         """
@@ -1853,6 +1854,9 @@ class DataList:
         overwrite_kwargs : bool, optional
             If True, any keys in the kwargs that are also in the config for the Data instance will be overwritten by the kwargs values.
             Use with caution, by default False.
+        pack : bool, optional
+            If True, a copy of all the DataList instances are packed into a single pickle for faster loading. Only applies if this task is not being split
+            over multiple workers, otherwise, reverts back to False. By default, False.
         **kwargs :
             Additional keyword arguments to be passed to the ACID method for each order. These will not overwrite any existing keys unless
             overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
@@ -1967,14 +1971,14 @@ class DataList:
                     print(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
                           f"This is likely due to a corrupted Data instance.", flush=True)
 
-
-        # Once all the orders have been done, we can repack the all the data instances into one to speedup loading time
-        # The data instances are very light as they do not store the sampler, so we can afford to pack and store duplicates
-        self.save()
+        # Once all the orders have been done, we can repack the all the data instances (if asked) into one to speedup loading time
+        # The data instances are very light as they do not store the sampler, so we can usually afford to pack and store duplicates
+        if pack and np.array_equal(orders, self.orders):
+            self.save()
 
     def save(self, save_dir:str|None=None) -> None:
         """
-        Pack all of the DataList instances into a single DataList pickle, and save the state of the datalist to this pickle.
+        Packs all of the DataList instances into a single DataList pickle, and save the state of the datalist to this pickle.
         Otherwise, the data instances can always be reloaded separately from the inidividual resulting pickle files in the directory for their order.
         Or just wherever the Config has them stored.
         The pickle file contains a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
@@ -1992,13 +1996,11 @@ class DataList:
             self.save_dir = save_dir
         if self.save_dir is None:
             raise ValueError("No save directory provided and save_dir was not set.")
-        for data in self.data_list:
-            # Ensures that the save paths for each data instance are correct and updated to match the current save_dir,
-            # even if it was changed since initialization.
-            self._set_paths_for_data(data, self.save_dir)
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
-        d = {}
-        d["verbose"] = self.verbose
+        d = {
+            "verbose": self.verbose,
+            "data_list": [data.to_dict() for data in self.data_list],
+        }
         # TODO:and maybe other class attributes later
         with open(save_loc, "wb") as f:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -2038,15 +2040,27 @@ class DataList:
             raise ValueError(f"The provided path {path} is not a directory, or a datalist pickle file.\n"
                              f"You should provide a path to a directory containing the folders with the data pickles and sampler files.")
 
-        if verbose is not None:
-            pass # keep inputted verbosity
-        elif exists(join(path, "datalist.pkl")):
+        d = {}
+        if exists(join(path, "datalist.pkl")):
             with open(join(path, "datalist.pkl"), "rb") as f:
                 d = pickle.load(f)
-            verbose = d["verbose"]
-        else:
-            verbose = None
+
+        if verbose is None:
+            verbose = d.get("verbose", None)
         verbose = Config(verbose=verbose).verbose
+
+        # If the datalist was repacked, load directly from there
+        if "data_list" in d:
+            data_list = [Data().from_dict(payload) for payload in d["data_list"]]
+
+            folder_moved_flag = False
+            for data in data_list:
+                folder_moved_flag |= cls._set_paths_for_data(data, path)
+
+            if folder_moved_flag and verbose > 0:
+                print("Warning: At least one Data instance did not match the current location and has been updated.")
+
+            return cls.from_datalist(data_list, save_dir=path, verbose=verbose)
 
         dir_list = os.listdir(path)        
         data_list = []
@@ -2054,18 +2068,16 @@ class DataList:
         dir_list = dir_list if verbose < 2 else tqdm(dir_list, "Loading Data instances from directory", unit="folder")
         for folder in dir_list:
             if isdir(join(path, folder)) and folder.startswith("order_"):
-                save_path = join(path, folder, "data.pkl")
-                sampler_path = join(path, folder, "sampler.h5")
+                save_path = abspath(join(path, folder, "data.pkl"))
+                sampler_path = abspath(join(path, folder, "sampler.h5"))
                 if exists(save_path):
                     data = Data.load(save_path)
-                    if abspath(data.config.save_path) != save_path or abspath(data.config.sampler_path) != sampler_path:
-                        folder_moved_flag = True
-                        cls._set_paths_for_data(data, path)
+                    folder_moved_flag |= cls._set_paths_for_data(data, path)
                     data_list.append(data)
 
         if folder_moved_flag and verbose is not None and verbose > 0:
             print(f"Warning: At least one of the Data instances found in the directory does not match the current location, it has been updated.")
-                    
+
         obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
         return obj
 
@@ -2356,12 +2368,34 @@ class DataList:
         plt.show()
 
     @staticmethod
-    def _set_paths_for_data(data: Data, save_dir: str) -> None:
-        "Helper to set paths for a Data instance to a new one for a given order."
+    def _set_paths_for_data(data: Data, save_dir: str) -> bool:
+        """Update and save a Data instance only if its directory paths changed."""
         order = data.config.order
-        save_path = os.path.abspath(os.path.join(save_dir, f"order_{order}", "data.pkl"))
-        sampler_path = os.path.abspath(os.path.join(save_dir, f"order_{order}", "sampler.h5"))
 
-        data.config.save_path = save_path
-        data.config.sampler_path = sampler_path
-        data.save()
+        save_path = os.path.abspath(
+            os.path.join(save_dir, f"order_{order}", "data.pkl")
+        )
+        sampler_path = os.path.abspath(
+            os.path.join(save_dir, f"order_{order}", "sampler.h5")
+        )
+
+        stored_save_path = data.config.save_path
+        stored_sampler_path = data.config.sampler_path
+
+        changed = (
+            stored_save_path is None
+            or os.path.abspath(stored_save_path) != save_path
+            or stored_sampler_path is None
+            or os.path.abspath(stored_sampler_path) != sampler_path
+        )
+
+        if changed:
+            data.config.save_path = save_path
+            data.config.sampler_path = sampler_path
+
+            if os.path.exists(sampler_path):
+                data.sampler = sampler_path
+
+            data.save()
+
+        return changed
