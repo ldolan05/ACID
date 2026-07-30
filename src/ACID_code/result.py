@@ -180,19 +180,20 @@ class Result:
 
         # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
         forward_model, forward_errors = lsd.convolve_profile(
-            profile              = utils.flux_to_od(self.data.profile["final"][0]),
-            profile_errors       = utils.flux_to_od(self.data.profile["final"][1]),
-            alpha                = self.data.alpha["masked"],
+            profile        = lsd.profile, # in OD
+            profile_errors = lsd.profile_errors, # in OD
+            alpha          = self.data.alpha["masked"],
         )
         if self.config.od:
+            # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
             forward_model = utils.od_to_flux(forward_model)
         
         # Set the final LSD results
         norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
         continuum = P.polyval(norm_combined_wl, med_poly_coeffs)
-        self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_x["final"] = self.data.wavelengths["combined"]
-        self.data.forward_yerr["final"] = forward_errors
+        self.data.forward_y["final"] = forward_model * continuum
+        self.data.forward_yerr["final"] = forward_errors * continuum
         self.data.alpha["final"] = self.data.alpha["masked"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
@@ -268,8 +269,8 @@ class Result:
     def _run_continuum_corrected_LSD(self, continuum, continuum_error, wavelengths, flux, error, sn, alpha=None):
         """Helper to run LSD part on a continuum corrrected spectrum"""
         # correcting continuum
-        corrected_error = np.sqrt((error/continuum)**2 + (continuum_error/continuum)**2)
         corrected_flux = flux / continuum
+        corrected_error = np.sqrt((error/continuum)**2 + (corrected_flux*continuum_error/continuum)**2)
 
         lsd = LSD(self.data)
         lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
@@ -560,6 +561,7 @@ class Result:
         grid            :bool       = True,
         labels          :dict|None  = None,
         return_fig      :bool       = False,
+        figsize         :tuple      = None,
         subplot_kwargs  :dict|None  = None,
         ) -> None | tuple:
         """
@@ -589,6 +591,8 @@ class Result:
             Keys: 'xlabel', 'ylabel', 'title', and 'residuals_ylabel'. Allows label overrides, by default None
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
+        figsize : tuple, optional
+            Optionall use a figsize of your choice. To be passed directly to plt.subplots. Default is (16,8)
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
         
@@ -609,7 +613,7 @@ class Result:
 
         # Set default subplot kwargs
         subplot_kwargs = {
-            "figsize": (10, 8),
+            "figsize": (12, 6),
             "sharex": True,
             "gridspec_kw": {'height_ratios': [3, 1]}
         }
