@@ -18,7 +18,7 @@ from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
 try:
-    import dynesty
+    import dynesty # type: ignore
 except ImportError:
     dynesty = None
 
@@ -202,7 +202,7 @@ class Acid:
         if save_path is not None:
             if not save_path.endswith(".pkl"):
                 raise ValueError("'save_path' must end with '.pkl'.")
-        self.config.save_path = save_path
+        self.config.save_path = os.path.abspath(save_path)
 
         # Handle sampler path checks
         if sampler_path is not None:
@@ -213,7 +213,7 @@ class Acid:
                 if self.config.verbose > 0:
                     print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
                 os.remove(sampler_path)
-        self.config.sampler_path = sampler_path
+        self.config.sampler_path = os.path.abspath(sampler_path)
 
         return
 
@@ -1052,7 +1052,6 @@ class Acid:
                 self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
                 self.sampler.run_mcmc(**mcmc_kwargs)
             else:
-                import dynesty
                 if self.config.parallel:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
