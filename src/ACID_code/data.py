@@ -2255,7 +2255,7 @@ class DataList:
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
         
         norm = mpl.colors.Normalize(vmin=self.order_range[0], vmax=self.order_range[-1])
-        cmap = mpl.cm.get_cmap("viridis", len(self.order_range))
+        cmap = mpl.colormaps.get_cmap("viridis")#, len(self.order_range))
 
         peak_vel_idx = np.argmin(self.combined_profile[0])
         min_prof = 1
