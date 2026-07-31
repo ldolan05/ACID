@@ -2149,17 +2149,19 @@ class DataList:
         self._data_list = data_list
         self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
-    def combine_profiles(self, exclude:int|Array1D|None=None, must_have_converged:bool=False) -> None:
+    def combine_profiles(self, exclude:int|Array1D|None=None, must_have_converged:bool=False, od:bool=True) -> None:
         """
         Calculates the combined profile and its errors across all orders, excluding any orders specified in the exclude argument.
         
         Parameters
         ----------
-        exclude : int | list[int] | None
+        exclude : int | list[int] | None, optional
             Orders to exclude from the combined profile calculation.
-        must_have_converged : bool
+        must_have_converged : bool, optional
             If True, only includes orders that have converged in the combined profile calculation. Default is False, which 
             includes all orders regardless of convergence status.
+        od : bool, optional
+            If True, the combination is done in optical depth. The returned profile is always in flux. By default, True.
         """
         if isinstance(exclude, int):
             exclude = [exclude]
@@ -2182,11 +2184,22 @@ class DataList:
                 continue
             if "final" not in data.profile:
                 continue
-            profiles.append(data.profile["final"][0])
-            errors.append(data.profile["final"][1])
-            covariances.append(data.profile["final"][2])
+
+            # We actually want to combine in optical depth - more stable
+            if od:
+                p, e, c = utils.flux_to_od(data.profile["final"][0], data.profile["final"][1], cov_matrix=data.profile["final"][2])
+            else:
+                p, e, c = data.profile["final"][0], data.profile["final"][1], data.profile["final"][2]
+
+            profiles.append(p)
+            errors.append(e)
+            covariances.append(c)
 
         self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
+
+        if od:
+            self._combined_profile = utils.od_to_flux(self._combined_profile[0], self._combined_profile[1], cov_matrix=self._combined_profile[2])
+
         self.excluded_orders = exclude
         return
 
