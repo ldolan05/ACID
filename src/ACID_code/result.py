@@ -184,12 +184,13 @@ class Result:
         self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
 
         # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
-        forward_model = lsd.convolve_profile(
-            profile              = utils.flux_to_od(self.data.profile["final"][0]),
-            # profile_errors       = utils.flux_to_od(self.data.profile["final"][1]),
-            alpha                = self.data.alpha["masked"],
+        forward_model, forward_errors = lsd.convolve_profile(
+            profile        = lsd.profile, # in OD
+            profile_errors = lsd.profile_errors, # in OD
+            alpha          = self.data.alpha["masked"],
         )
         if self.config.od:
+            # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
             forward_model = utils.od_to_flux(forward_model)
 
         # alpha_masked = self.data.alpha["masked"]
@@ -210,7 +211,8 @@ class Result:
         continuum = utils.eval_continuum(norm_combined_wl, med_poly_coeffs, method=self.config.continuum_method)
         self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_x["final"] = self.data.wavelengths["combined"]
-        # self.data.forward_yerr["final"] = forward_errors * continuum
+        self.data.forward_y["final"] = forward_model * continuum
+        self.data.forward_yerr["final"] = forward_errors * continuum
         self.data.alpha["final"] = self.data.alpha["masked"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
@@ -289,14 +291,8 @@ class Result:
     def _run_continuum_corrected_LSD(self, continuum, continuum_error, wavelengths, flux, error, sn, alpha=None):
         """Helper to run LSD part on a continuum corrrected spectrum"""
         # correcting continuum
-        corrected_error = np.sqrt((error/continuum)**2 + (continuum_error/continuum)**2)
         corrected_flux = flux / continuum
-
-        # corrected_error = np.sqrt(
-        #     (error / continuum)**2
-        #     + (flux * continuum_error / continuum**2)**2
-        # )
-        # TODO: check above should if it should be error
+        corrected_error = np.sqrt((error/continuum)**2 + (corrected_flux*continuum_error/continuum)**2)
 
         lsd = LSD(self.data)
         lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
@@ -596,6 +592,7 @@ class Result:
         grid            :bool       = True,
         labels          :dict|None  = None,
         return_fig      :bool       = False,
+        figsize         :tuple      = None,
         subplot_kwargs  :dict|None  = None,
         ) -> None | tuple:
         """
@@ -625,6 +622,8 @@ class Result:
             Keys: 'xlabel', 'ylabel', 'title', and 'residuals_ylabel'. Allows label overrides, by default None
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
+        figsize : tuple, optional
+            Optionall use a figsize of your choice. To be passed directly to plt.subplots. Default is (16,8)
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
         
@@ -645,7 +644,7 @@ class Result:
 
         # Set default subplot kwargs
         subplot_kwargs = {
-            "figsize": (10, 8),
+            "figsize": (12, 6),
             "sharex": True,
             "gridspec_kw": {'height_ratios': [3, 1]}
         }
@@ -703,10 +702,15 @@ class Result:
             utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])
 
             dropped_full_mask = utils.drop_edges(full_mask)
-            max_diff = 0.1 * np.max(np.abs(residuals[dropped_full_mask]))
+            ymax = max(max(forward[dropped_full_mask]), max(flux))
+            ymin = min(min(forward[dropped_full_mask]), min(flux))
+            diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
+            ax[0].set_ylim(ymin - diff, ymax + diff)
+
             ymax = np.max(residuals[dropped_full_mask])
             ymin = np.min(residuals[dropped_full_mask])
-            ax[1].set_ylim(ymin - max_diff, ymax + max_diff)
+            diff = (ymax - ymin) * 0.1
+            ax[1].set_ylim(ymin - diff, ymax + diff)
         else:
             ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
             ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')

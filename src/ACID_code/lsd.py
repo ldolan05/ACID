@@ -145,6 +145,9 @@ class LSD:
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist, ions_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, ions_linelist, sn, skip_warnings)
 
+        # At this point we our mask for points with negative fluxes and large masked errors and nans
+        self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
+
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
         if self.od:
             flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)

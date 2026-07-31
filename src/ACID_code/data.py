@@ -246,9 +246,9 @@ class Config:
             ("DEMove", 0.1, {"gamma0": 1.0}),
         ],
         "run_mcmc" : True,
-        "rassine"  : False,
         "sparse" : True,
         "continuum_method" : None, # forced here or calculated in ACID based on poly order
+        "rassine"  : False,
     }
 
     #: Property list for error handling
@@ -850,7 +850,7 @@ class Data:
             if self.config.verbose > 1:
                 print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
         if input_errors is None and input_sn is not None:
-            input_errors = utils.guess_errors(input_wavelengths, input_flux, input_sn)
+            input_errors = utils.guess_errors(input_flux, input_sn)
             if self.config.verbose > 0:
                 print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
                       f"It is highly recommended to obtain correct per-pixel errors.")
@@ -1637,6 +1637,7 @@ class DataList:
         self._save_dir = None
         self._data_list = None
         self._combined_profile = None
+        self._results = None
         self.overwrite = overwrite
         self.excluded_orders = []
         self.save_dir = save_dir
@@ -1879,6 +1880,7 @@ class DataList:
         nworkers          : IntLike|None         = None,
         overwrite         : bool|None            = None,
         overwrite_kwargs  : bool                 = False,
+        pack              : bool                 = False,
         **kwargs,
         ) -> None:
         """
@@ -1915,6 +1917,9 @@ class DataList:
         overwrite_kwargs : bool, optional
             If True, any keys in the kwargs that are also in the config for the Data instance will be overwritten by the kwargs values.
             Use with caution, by default False.
+        pack : bool, optional
+            If True, a copy of all the DataList instances are packed into a single pickle for faster loading. Only applies if this task is not being split
+            over multiple workers, otherwise, reverts back to False. By default, False.
         **kwargs :
             Additional keyword arguments to be passed to the ACID method for each order. These will not overwrite any existing keys unless
             overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
@@ -2029,14 +2034,14 @@ class DataList:
                     print(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
                           f"This is likely due to a corrupted Data instance.", flush=True)
 
-
-        # Once all the orders have been done, we can repack the all the data instances into one to speedup loading time
-        # The data instances are very light as they do not store the sampler, so we can afford to pack and store duplicates
-        self.save()
+        # Once all the orders have been done, we can repack the all the data instances (if asked) into one to speedup loading time
+        # The data instances are very light as they do not store the sampler, so we can usually afford to pack and store duplicates
+        if pack and np.array_equal(orders, self.orders):
+            self.save()
 
     def save(self, save_dir:str|None=None) -> None:
         """
-        Pack all of the DataList instances into a single DataList pickle, and save the state of the datalist to this pickle.
+        Packs all of the DataList instances into a single DataList pickle, and save the state of the datalist to this pickle.
         Otherwise, the data instances can always be reloaded separately from the inidividual resulting pickle files in the directory for their order.
         Or just wherever the Config has them stored.
         The pickle file contains a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
@@ -2054,14 +2059,12 @@ class DataList:
             self.save_dir = save_dir
         if self.save_dir is None:
             raise ValueError("No save directory provided and save_dir was not set.")
-        for data in self.data_list:
-            # Ensures that the save paths for each data instance are correct and updated to match the current save_dir,
-            # even if it was changed since initialization.
-            self._set_paths_for_data(data, self.save_dir)
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
-        d = {}
-        d["verbose"] = self.verbose
-        # and maybe other class attributes later
+        d = {
+            "verbose": self.verbose,
+            "data_list": [data.to_dict() for data in self.data_list],
+        }
+        # TODO:and maybe other class attributes later
         with open(save_loc, "wb") as f:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -2100,15 +2103,27 @@ class DataList:
             raise ValueError(f"The provided path {path} is not a directory, or a datalist pickle file.\n"
                              f"You should provide a path to a directory containing the folders with the data pickles and sampler files.")
 
-        if verbose is not None:
-            pass # keep inputted verbosity
-        elif exists(join(path, "datalist.pkl")):
+        d = {}
+        if exists(join(path, "datalist.pkl")):
             with open(join(path, "datalist.pkl"), "rb") as f:
                 d = pickle.load(f)
-            verbose = d["verbose"]
-        else:
-            verbose = None
+
+        if verbose is None:
+            verbose = d.get("verbose", None)
         verbose = Config(verbose=verbose).verbose
+
+        # If the datalist was repacked, load directly from there
+        if "data_list" in d:
+            data_list = [Data().from_dict(payload) for payload in d["data_list"]]
+
+            folder_moved_flag = False
+            for data in data_list:
+                folder_moved_flag |= cls._set_paths_for_data(data, path)
+
+            if folder_moved_flag and verbose > 0:
+                print("Warning: At least one Data instance did not match the current location and has been updated.")
+
+            return cls.from_datalist(data_list, save_dir=path, verbose=verbose)
 
         dir_list = os.listdir(path)        
         data_list = []
@@ -2116,18 +2131,16 @@ class DataList:
         dir_list = dir_list if verbose < 2 else tqdm(dir_list, "Loading Data instances from directory", unit="folder")
         for folder in dir_list:
             if isdir(join(path, folder)) and folder.startswith("order_"):
-                save_path = join(path, folder, "data.pkl")
-                sampler_path = join(path, folder, "sampler.h5")
+                save_path = abspath(join(path, folder, "data.pkl"))
+                sampler_path = abspath(join(path, folder, "sampler.h5"))
                 if exists(save_path):
                     data = Data.load(save_path)
-                    if abspath(data.config.save_path) != save_path or abspath(data.config.sampler_path) != sampler_path:
-                        folder_moved_flag = True
-                        cls._set_paths_for_data(data, path)
+                    folder_moved_flag |= cls._set_paths_for_data(data, path)
                     data_list.append(data)
 
         if folder_moved_flag and verbose is not None and verbose > 0:
             print(f"Warning: At least one of the Data instances found in the directory does not match the current location, it has been updated.")
-                    
+
         obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
         return obj
 
@@ -2165,6 +2178,24 @@ class DataList:
     def data_list(self):
         return self._data_list
 
+    @property
+    def results(self):
+        """
+        Returns a list of Result objects for each Data instance in the DataList.
+        If a Data instance does not have a result, None is returned for that order.
+        This property is useful for not reaccessing ther result each time a plot is made.
+        
+        Returns:
+            list[Result|None]: A list of Result objects or None for each order in the DataList.
+        """
+        if self._results is None:
+            if self.verbose > 0:
+                print("Accessing results, the output below comes from initialising the Result object" \
+                " and will only be shown once for this DataList instance.")
+            self._results = [data.result for data in self.data_list]
+
+        return self._results
+
     @data_list.setter
     def data_list(self, data_list):
         """
@@ -2178,7 +2209,7 @@ class DataList:
         self._data_list = data_list
         self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
-    def combine_profiles(self, exclude:int|list|None=None, must_have_converged:bool=False) -> None:
+    def combine_profiles(self, exclude:int|Array1D|None=None, must_have_converged:bool=False) -> None:
         """
         Calculates the combined profile and its errors across all orders, excluding any orders specified in the exclude argument.
         
@@ -2270,6 +2301,92 @@ class DataList:
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
 
+    def plot_all_profiles(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+        """
+        Plots all the profiles for each order in the DataList.
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+        
+        norm = mpl.colors.Normalize(vmin=self.order_range[0], vmax=self.order_range[-1])
+        cmap = mpl.cm.get_cmap("viridis", len(self.order_range))
+
+        peak_vel_idx = np.argmin(self.combined_profile[0])
+        min_prof = 1
+        for data in self.data_list:
+            order = data.config.order
+            color = cmap(norm(order))
+            if "final" not in data.profile:
+                continue # failed orders
+            ax.plot(self.velocities, data.profile["final"][0], alpha=0.2, color=color)
+
+            if data.profile["final"][0][peak_vel_idx] < min_prof:
+                min_prof = data.profile["final"][0][peak_vel_idx]
+        
+        ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1],
+                    color="black", fmt=".-", ecolor="red", label="Combined profile", zorder=10)
+
+        ax.axhline(1, color="black", linestyle="--", alpha=0.5)
+
+        # Show colour map
+        sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        fig.colorbar(sm, ax=ax, orientation="vertical", label="Order")
+
+        # Set sensible limits
+        ax.set_ylim(max(min_prof-0.1, 0), 1.2)
+        ax.set_xlabel("Velocity (km/s)")
+        ax.set_ylabel("Relative Flux")
+        ax.set_title("All ACID profiles")
+        ax.grid(True)
+        ax.legend()
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    def plot_mean_profile_errors(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+        """
+        Plots the errors of all the profiles for each order in the DataList.
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+        errors = []
+        for data in self.data_list:
+            if "final" not in data.profile:
+                errors.append(np.nan)
+                continue
+            errors.append(np.mean(data.profile["final"][1]))
+
+        ax.plot(self.orders, errors, marker='o', linestyle='-', color='blue')
+        ax.set_xlabel("Order")
+        ax.set_ylabel("Mean Profile Error")
+        ax.set_title("Mean Profile Errors for each order")
+        ax.set_yscale("log")
+        ax.grid(True)
+
+        if return_fig:
+            return fig, ax
+        plt.show()
+
     def plot_chi2(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
         Plots the chi-squared values against order in the DataList.
@@ -2290,11 +2407,14 @@ class DataList:
         orders = []
         chi2_values = []
         for data in self.data_list:
-            if data.result is not None:
+            if "final" in data.profile:
                 orders.append(data.config.order)
                 try:
-                    res = scipy.stats.chisquare(f_obs=data.flux["final"], f_exp=data.forward_y["final"])
-                    chi2_values.append(res.statistic)
+                    flux = np.asarray(data.flux["final"])
+                    model = np.asarray(data.forward_y["final"])
+                    err = np.asarray(data.errors["final"])
+                    chi2 = np.sum(((flux-model)/err) ** 2)
+                    chi2_values.append(chi2)
                 except Exception as e:
                     print(f"Warning: Could not calculate chi-squared for order {data.config.order}. :\n{e}")
                     chi2_values.append(np.nan)
@@ -2302,6 +2422,7 @@ class DataList:
         ax.plot(orders, chi2_values, marker='o', linestyle='-', color='blue')
         ax.set_xlabel("Order")
         ax.set_ylabel("Chi-squared")
+        ax.set_yscale("log")
         ax.set_title("Chi-squared values for each order")
         ax.grid(True)
         
@@ -2310,12 +2431,34 @@ class DataList:
         plt.show()
 
     @staticmethod
-    def _set_paths_for_data(data: Data, save_dir: str) -> None:
-        "Helper to set paths for a Data instance to a new one for a given order."
+    def _set_paths_for_data(data: Data, save_dir: str) -> bool:
+        """Update and save a Data instance only if its directory paths changed."""
         order = data.config.order
-        save_path = os.path.abspath(os.path.join(save_dir, f"order_{order}", "data.pkl"))
-        sampler_path = os.path.abspath(os.path.join(save_dir, f"order_{order}", "sampler.h5"))
 
-        data.config.save_path = save_path
-        data.config.sampler_path = sampler_path
-        data.save()
+        save_path = os.path.abspath(
+            os.path.join(save_dir, f"order_{order}", "data.pkl")
+        )
+        sampler_path = os.path.abspath(
+            os.path.join(save_dir, f"order_{order}", "sampler.h5")
+        )
+
+        stored_save_path = data.config.save_path
+        stored_sampler_path = data.config.sampler_path
+
+        changed = (
+            stored_save_path is None
+            or os.path.abspath(stored_save_path) != save_path
+            or stored_sampler_path is None
+            or os.path.abspath(stored_sampler_path) != sampler_path
+        )
+
+        if changed:
+            data.config.save_path = save_path
+            data.config.sampler_path = sampler_path
+
+            if os.path.exists(sampler_path):
+                data.sampler = sampler_path
+
+            data.save()
+
+        return changed
