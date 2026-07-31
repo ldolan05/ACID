@@ -2057,10 +2057,13 @@ class DataList:
             for data in data_list:
                 folder_moved_flag |= cls._set_paths_for_data(data, path)
 
+            datalist = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+            datalist.save() # repack with new save locations
+
             if folder_moved_flag and verbose > 0:
                 print("Warning: At least one Data instance did not match the current location and has been updated.")
 
-            return cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+            return datalist
 
         dir_list = os.listdir(path)        
         data_list = []
