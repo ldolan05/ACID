@@ -321,7 +321,7 @@ class LSD:
 
             line_range = range(0, n_lines, line_block)
 
-            if self.config.verbose > 1:
+            if self.config.verbose > 1 and len(line_range) > 1:
                 line_range = tqdm(line_range, desc="Calculating sparse alpha matrix")
 
             for line_start in line_range:
@@ -338,6 +338,7 @@ class LSD:
                     n_line_block = len(wl)
 
                     # Compute u = (vel - v0) / deltav without forming separate diff/vel arrays.
+                    # u is the velocity bin position
                     u = np.empty((n_wave_block, n_line_block), dtype=np.float64)
                     np.subtract(waves[:, None], wl[None, :], out=u)
                     u *= c_kms
@@ -347,7 +348,7 @@ class LSD:
 
                     k0 = np.floor(u).astype(np.intp)
 
-                    # Reuse u as frac to avoid another full temporary.
+                    # Reuse u as frac for more temporary memory savings.
                     frac = u
                     frac -= k0
                     k1 = k0 + 1
@@ -398,7 +399,7 @@ class LSD:
                 alpha  = np.zeros((len(blankwaves), len(self.data.velocities)), dtype=np.float64)
 
                 # Use tqdm progress bar if verbose
-                if self.config.verbose>1:
+                if self.config.verbose>1 and len(wavelengths_linelist) > 1:
                     iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
                 else:
                     iterable = range(0, len(wavelengths_linelist), block)
