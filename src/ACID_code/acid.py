@@ -202,7 +202,7 @@ class Acid:
         if save_path is not None:
             if not save_path.endswith(".pkl"):
                 raise ValueError("'save_path' must end with '.pkl'.")
-        self.config.save_path = os.path.abspath(save_path)
+        self.config.save_path = os.path.abspath(save_path) if save_path is not None else None
 
         # Handle sampler path checks
         if sampler_path is not None:
@@ -213,7 +213,7 @@ class Acid:
                 if self.config.verbose > 0:
                     print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
                 os.remove(sampler_path)
-        self.config.sampler_path = os.path.abspath(sampler_path)
+        self.config.sampler_path = os.path.abspath(sampler_path) if sampler_path is not None else None
 
         return
 
