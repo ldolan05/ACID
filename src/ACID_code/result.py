@@ -536,13 +536,13 @@ class Result:
             # Override label in errorbar_kwargs if it is not already set, otherwise use the default label
             if "label" not in errorbar_kwargs:
                 errorbar_kwargs["label"] = label_default
-            ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
+            ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
 
         # Add labels and titles
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
         ax.set_ylabel(labels["ylabel"])
-        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+        ax.axhline(1, color='black', linestyle='--', linewidth=1)
         ax.legend()
         ax.grid(grid)
         if return_fig:
