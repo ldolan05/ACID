@@ -505,8 +505,9 @@ class Acid:
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
 
-        # Create the initial keys
-        self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.wavelengths["combined"])
+        # Create the initial keys, this is just the combined key, except the errors have masked out the masking lines.
+        # They are also used in the final step as these are the only regions masked in the final step
+        self.data.errors["initial"] = np.copy(np.where(self.data.line_mask, 1e12, self.data.errors["combined"]))
         self.data.wavelengths["initial"] = np.copy(self.data.wavelengths["combined"])
         self.data.flux["initial"] = np.copy(self.data.flux["combined"])
         self.data.sn["initial"] = np.copy(self.data.sn["combined"])
