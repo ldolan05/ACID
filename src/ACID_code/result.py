@@ -276,7 +276,7 @@ class Result:
         corrected_error = np.sqrt((error/continuum)**2 + (corrected_flux*continuum_error/continuum)**2)
 
         lsd = LSD(self.data)
-        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
+        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha, skip_warnings=True)
         return lsd
 
     @_require_profiles
