@@ -507,10 +507,10 @@ class Acid:
 
         # Create the initial keys, this is just the combined key, except the errors have masked out the masking lines.
         # They are also used in the final step as these are the only regions masked in the final step
-        self.data.errors["initial"] = np.copy(np.where(self.data.line_mask, 1e12, self.data.errors["combined"]))
-        self.data.wavelengths["initial"] = np.copy(self.data.wavelengths["combined"])
-        self.data.flux["initial"] = np.copy(self.data.flux["combined"])
-        self.data.sn["initial"] = np.copy(self.data.sn["combined"])
+        self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.errors["combined"])
+        self.data.wavelengths["initial"] = self.data.wavelengths["combined"]
+        self.data.flux["initial"] = self.data.flux["combined"]
+        self.data.sn["initial"] = self.data.sn["combined"]
 
         # Compute an initial continuum fit
         # poly inputs has polynomial coefficients and scale at the end
@@ -532,9 +532,9 @@ class Acid:
                 plot_type = "initial"
             )
         norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
-        self.data.continuum["initial"] = P.polyval(norm_wl, self.data.poly_inputs["initial"])
-        self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["initial"]) # Just to keep track
-        self.data.sn["fitted"]          = np.copy(self.data.sn["initial"]) # SN also is not changed here
+        self.data.continuum["initial"]  = P.polyval(norm_wl, self.data.poly_inputs["initial"])
+        self.data.wavelengths["fitted"] = self.data.wavelengths["initial"] # Just to keep track
+        self.data.sn["fitted"]          = self.data.sn["initial"] # SN also is not changed here
 
         # Get the initial LSD profile and set the alpha matrix (unchanged from masking) and model_inputs
         if "initial" in self.data.profile:
