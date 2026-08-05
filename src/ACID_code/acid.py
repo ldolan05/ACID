@@ -956,10 +956,11 @@ class Acid:
         self.data.forward_yerr["masked"] = LSD_masking.forward_model_errors * self.data.continuum["masked"]
 
         # Now that we have used the error mask, we apply the mask to remove the data for fitting
-        self.data.wavelengths["fitting"]   = utils.normalize_wavelengths(x)[self.data.full_mask]
         self.data.flux["fitting"]         = y[self.data.full_mask]
         self.data.errors["fitting"]       = yerr[self.data.full_mask]
         self.data.sn["fitting"]           = sn
+        # The wavelengths are also normalised for the fitting, this is the only normalised wavelength key
+        self.data.wavelengths["fitting"]  = utils.normalize_wavelengths(x)[self.data.full_mask]
 
         # Because of this, we similarly have to apply the mask to the alpha matrix and c_factor for fitting, as well as the profile
         self.data.alpha["fitting"] = self.data.alpha["masked"][self.data.full_mask, :]
