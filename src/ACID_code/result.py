@@ -161,19 +161,19 @@ class Result:
             print('Getting the final profiles...')
 
         # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
-        norm_wl = self.data.wavelengths["fitting"]
+        norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
         continuum = P.polyval(norm_wl, med_poly_coeffs)
 
         # Get continuum error
         continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
 
-        # Run a final LSD using the same inputs that the MCMC sampler got - but now including the error on the continuum - this is our final profile and error
-        wavelengths = self.data.wavelengths["masked"][self.data.full_mask]
-        flux = self.data.flux["fitting"]
-        error = self.data.errors["fitting"]
-        sn = self.data.sn["fitting"]
+        # Run a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
+        wavelengths = self.data.wavelengths["initial"]
+        flux = self.data.flux["initial"]
+        error = self.data.errors["initial"]
+        sn = self.data.sn["initial"]
 
-        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["fitting"])
+        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["initial"])
 
         # Use the above to get our combined profile and error
         self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
@@ -182,19 +182,17 @@ class Result:
         forward_model, forward_errors = lsd.convolve_profile(
             profile        = lsd.profile, # in OD
             profile_errors = lsd.profile_errors, # in OD
-            alpha          = self.data.alpha["masked"],
+            alpha          = self.data.alpha["initial"],
         )
         if self.config.od:
             # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
             forward_model = utils.od_to_flux(forward_model)
         
         # Set the final LSD results
-        norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
-        continuum = P.polyval(norm_combined_wl, med_poly_coeffs)
-        self.data.forward_x["final"] = self.data.wavelengths["combined"]
+        self.data.forward_x["final"] = wavelengths # carried over the initial wavelengths
         self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_yerr["final"] = forward_errors * continuum
-        self.data.alpha["final"] = self.data.alpha["masked"]
+        self.data.alpha["final"] = self.data.alpha["initial"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
 
@@ -209,6 +207,10 @@ class Result:
         for i in range(len(self.data.wavelengths["input"])):
             # Use nanmask as we cannot work with non-physical inputs like nan or negative fluxes
             # TODO: Need to interpolate onto potential new wavelength grids the mask
+            # TODO: This needs more care, it does not include the line masking onto the interpolated wavelength grid, should be fixed with above issue
+            # when looking at an older version of the code, therefore we do this cheeat for now:
+            profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
+            continue
             wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
             flux = self.data.flux["input"][i][self.data.nanmask]
             error = self.data.errors["input"][i][self.data.nanmask]
@@ -221,9 +223,10 @@ class Result:
                     profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
                     continue
                 else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
-                    alpha = self.data.alpha["masked"]
+                    alpha = self.data.alpha["final"]
             else:
                 alpha = None
+            
             norm_wl = utils.normalize_wavelengths(wavelengths)
             continuum = P.polyval(norm_wl, med_poly_coeffs)
             continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
