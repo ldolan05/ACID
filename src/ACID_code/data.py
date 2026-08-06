@@ -1094,7 +1094,7 @@ class Data:
 
         nremoved = np.sum(full_mask)
         if self.config.verbose > 1:
-            print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
+            print(f"{nremoved}/{len(residuals)} pixels remained after residual masking.")
 
         # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
@@ -1159,7 +1159,6 @@ class Data:
         plt.show()
 
         # Finally plot the forward model
-        from .mcmc import MCMC
         x = self.wavelengths["combined"]
         y = self.flux["combined"]
         forward = self.forward_y["masked"]
