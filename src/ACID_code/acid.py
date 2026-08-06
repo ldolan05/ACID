@@ -17,6 +17,7 @@ from .result import Result
 from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
+from astropy.stats.sigma_clipping import sigma_clip
 try:
     import dynesty # type: ignore
 except ImportError:
@@ -901,18 +902,12 @@ class Acid:
                 pix_mask[start:end] = True
         self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
 
-        # Sigma clipping
+        # Sigma clipping, use astropy's iterative sigma clipping
         # --------------
-        # Get median, sigma, and clip limits
-        m = np.median(masked_residuals)
-        sigma = np.std(masked_residuals)
-        clip = self.config.n_sig * sigma
-        lower_clip = m - clip
-        upper_clip = m + clip
-
-        # Find and apply mask
-        sigma_mask = (residuals <= lower_clip) | (residuals >= upper_clip)
+        result, lower_clip, upper_clip = sigma_clip(residuals, sigma_lower=self.config.n_sig, sigma_upper=np.inf, return_bounds=True)
+        sigma_mask = result.mask
         self.data.sigma_mask = sigma_mask
+        upper_clip = lower_clip # hack temporarily so the plot still comes out
 
         # Apply a error mask onto just y for the continuum fit and LSD call, later we fully mask for fitting
         self.data.full_mask = ~pix_mask & ~sigma_mask & ~self.data.line_mask
