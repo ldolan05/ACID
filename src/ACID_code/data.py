@@ -224,7 +224,7 @@ class Config:
         "poly_ord" : 3,
         "continuum_percentile" : 90,
         "bin_size" : 100,
-        "pix_chunk" : 20,
+        "pix_chunk" : 50, # TODO: document+test this increase from 20
         "dev_perc" : 25,
         "n_sig" : 3,
         "skips" : 1,
