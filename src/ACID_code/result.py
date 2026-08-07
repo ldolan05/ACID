@@ -634,7 +634,7 @@ class Result:
         wavelengths = utils.drop_edges(wavelengths)
         flux = utils.drop_edges(flux)
         forward = utils.drop_edges(forward)
-        residuals = forward - flux
+        residuals = flux - forward
 
         # Plotting
         if fig_ax is not None:
