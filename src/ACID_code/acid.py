@@ -887,7 +887,9 @@ class Acid:
         # -----------------------------------------------
 
         # Get bad pixels that deviate by a percentage greater than dev_perc
-        bad_idx = np.abs(masked_residuals) > (self.config.dev_perc / 100)
+        bad_idx = np.zeros_like(residuals, dtype=bool)
+        unmasked = ~self.data.line_mask
+        bad_idx[unmasked] = (np.abs(residuals[unmasked]) > (self.config.dev_perc / 100))
 
         # A trick to get the mask for continous regions of bad pixels, by padding the bad_idx 
         # with False on both sides and finding the start and end indices of the True regions
