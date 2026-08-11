@@ -69,8 +69,8 @@ class LSD:
         sn             : Scalar,
         linelist       : Array2D|str|LineList|dict|None = None,
         velocities     : Array1D|None                   = None,
-        alpha          : Array2D|Array3D|None                   = None,
-        use_ions       : bool|None = None,
+        alpha          : Array2D|Array3D|None           = None,
+        mp_lsd         : bool|None                      = None,
         skip_warnings  : bool = False,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
@@ -122,16 +122,16 @@ class LSD:
                     raise ValueError(f"Input 2D alpha second dimension {alpha.shape[1]} must be a multiple of n_velocities={self.n_velocities}.")
             elif alpha.ndim == 3:
                 if alpha.shape[1:] != (self.n_wavelengths, self.n_velocities):
-                    raise ValueError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_ions, {self.n_wavelengths}, {self.n_velocities}).")
+                    raise ValueError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_profs, {self.n_wavelengths}, {self.n_velocities}).")
             else:
                 raise ValueError("Input alpha must be either 2D or 3D.")
 
         # Unpack the linelist stored in data
         self.data.linelist = linelist # Raises if no linelist available, overwrites if input
-        wavelengths_linelist, depths_linelist, ions_linelist = self.data.linelist
+        wavelengths_linelist, depths_linelist = self.data.linelist
 
         # Clip linelist to wavelength range of spectrum
-        wavelengths_linelist, depths_linelist, ions_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, ions_linelist)
+        wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
         if len(wavelengths_linelist) == 0:
             error = LineListRangeError(
                 "No lines in linelist are within the wavelength range of the observed spectrum.\n"
@@ -143,7 +143,7 @@ class LSD:
             raise error
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist, ions_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, ions_linelist, sn, skip_warnings)
+        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn, skip_warnings)
 
         # At this point we our mask for points with negative fluxes and large masked errors and nans
         self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
@@ -154,39 +154,34 @@ class LSD:
             flux -= 1
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.alpha_ion = None
-        self.unique_ions = None
-        self.n_ions = 1
+        self.mp_alpha = None # multi profile alpha storage
+        self.n_profs  = 1    # number of profiles in alpha
         self.n_velocities = len(self.data.velocities)
         if alpha is None:
-            if ions_linelist is None or use_ions is False:
+            if mp_lsd is False:
                 self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist, self.data.velocities, verbose=self.config.verbose)
             else:
-                self.ions_grouped = self.group_sparse_ions(
-                    ions_linelist,
-                    min_lines_per_ion=20,
-                    other_label="other",
-                )
-                self.alpha_ion, self.unique_ions = self.calc_alpha_ion(
+                self.prof_groups = self.group_profs(depths_linelist, prof_group_rules=self.config.prof_group_rules)
+                self.mp_alpha, self.prof_groups = self.calc_mp_alpha(
                     wavelengths,
                     self.data.velocities,
                     wavelengths_linelist,
                     depths_linelist,
-                    self.ions_grouped,
+                    self.prof_groups,
                     verbose=self.config.verbose,
                 )
-                self.n_ions = len(self.unique_ions)
+                self.n_profs = len(self.prof_groups)
                 self.n_velocities = len(self.data.velocities)
-                self.alpha = self.flatten_alpha(self.alpha_ion)
+                self.alpha = self.flatten_alpha(self.mp_alpha)
         else:
             self.alpha = np.asarray(alpha)
 
             if self.alpha.ndim == 3:
-                self.n_ions = self.alpha.shape[0]
+                self.n_profs = self.alpha.shape[0]
                 self.n_velocities = self.alpha.shape[2]
-                self.unique_ions = np.arange(self.n_ions)  # Placeholder if ions are not provided
-                self.alpha_ion = self.alpha
-                self.alpha = self.flatten_alpha(self.alpha_ion)
+                self.prof_groups = np.arange(self.n_profs)  # Placeholder if profs are not provided
+                self.mp_alpha = self.alpha
+                self.alpha = self.flatten_alpha(self.mp_alpha)
             
             elif alpha.ndim == 2:
                 self.alpha = alpha
@@ -198,23 +193,20 @@ class LSD:
                         f"n_velocities={self.n_velocities}."
                     )
 
-                self.n_ions = self.alpha.shape[1] // self.n_velocities
+                self.n_profs = self.alpha.shape[1] // self.n_velocities
 
-        ion_mode = (self.alpha_ion is not None) or (self.n_ions > 1)
-        ion_mode = ion_mode and (use_ions is not False)  # Allow override
+        mp_lsd_mode = (self.mp_alpha is not None) or (self.n_profs > 1)
+        mp_lsd_mode = mp_lsd_mode and (mp_lsd is not False)  # Allow override
 
-        print(self.alpha.shape)
-        print(self.n_ions, self.n_velocities, self.alpha.shape, ion_mode, self.unique_ions)
-
-        # Now solve for profile using Cholesky decomposition, independent of ion mode since alpha is flattened in both cases
+        # Now solve for profile using Cholesky decomposition, independent of mp_lsd mode since alpha is flattened in both cases
         self.c_factor = self.calc_cholesky(self.alpha, errors)
 
         # Solve for profile and profile errors using Cholesky factors
         self.profile_flat, self.profile_errors_flat, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_error=True, return_cov=True)
 
-        if ion_mode:
-            self.profile = self.profile_flat.reshape(self.n_ions, self.n_velocities)
-            self.profile_errors = self.profile_errors_flat.reshape(self.n_ions, self.n_velocities)
+        if mp_lsd_mode:
+            self.profile = self.profile_flat.reshape(self.n_profs, self.n_velocities)
+            self.profile_errors = self.profile_errors_flat.reshape(self.n_profs, self.n_velocities)
         else:
             self.profile = self.profile_flat
             self.profile_errors = self.profile_errors_flat
@@ -231,9 +223,9 @@ class LSD:
                 cov_matrix=self.cov_z,
             )
 
-            if ion_mode:
-                self.profile_F = self.profile_F_flat.reshape(self.n_ions, self.n_velocities)
-                self.profile_errors_F = self.profile_errors_F_flat.reshape(self.n_ions, self.n_velocities)
+            if mp_lsd_mode:
+                self.profile_F = self.profile_F_flat.reshape(self.n_profs, self.n_velocities)
+                self.profile_errors_F = self.profile_errors_F_flat.reshape(self.n_profs, self.n_velocities)
             else:
                 self.profile_F = self.profile_F_flat
                 self.profile_errors_F = self.profile_errors_F_flat
@@ -246,9 +238,9 @@ class LSD:
         else:
             self.profile_flat += 1
 
-            if ion_mode:
-                self.profile = self.profile_flat.reshape(self.n_ions, self.n_velocities)
-                self.profile_errors = self.profile_errors_flat.reshape(self.n_ions, self.n_velocities)
+            if mp_lsd_mode:
+                self.profile = self.profile_flat.reshape(self.n_profs, self.n_velocities)
+                self.profile_errors = self.profile_errors_flat.reshape(self.n_profs, self.n_velocities)
             else:
                 self.profile = self.profile_flat
                 self.profile_errors = self.profile_errors_flat
@@ -266,7 +258,6 @@ class LSD:
             self,
             wavelengths_linelist : Array1D,
             depths_linelist      : Array1D,
-            ions_linelist        : Array1D,
             sn                   : Scalar,
             skip_warnings       : bool = False,
             ) -> tuple[Array1D, Array1D, Array1D]:
@@ -279,8 +270,6 @@ class LSD:
             Wavelengths from the linelist
         depths_linelist : :py:type:`Array1D`
             Depths from the linelist
-        ions_linelist : :py:type:`Array1D`
-            Ions from the linelist
         sn : :py:type:`Scalar`
             Signal-to-noise ratio threshold
         skip_warnings : bool, optional
@@ -290,14 +279,12 @@ class LSD:
         Returns
         -------
         tuple[:py:type:`Array1D`, :py:type:`Array1D`, :py:type:`Array1D`]
-            Clipped wavelengths, depths, and ions from the linelist
+            Clipped wavelengths and depths from the linelist
         """
         # Selecting lines deeper than 1/(3*sn)
         idx = (depths_linelist >= 1/(3*sn))
         wavelengths_linelist = wavelengths_linelist[idx]
         depths_linelist = depths_linelist[idx]
-        if ions_linelist is not None:
-            ions_linelist = ions_linelist[idx]
 
         # Analyse remaining lines
         if not skip_warnings:
@@ -314,7 +301,7 @@ class LSD:
                     print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
                 if self.config.verbose > 2:
                     print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
-        return wavelengths_linelist, depths_linelist, ions_linelist
+        return wavelengths_linelist, depths_linelist
 
     @staticmethod
     def calc_alpha(
@@ -633,7 +620,7 @@ class LSD:
         wavelengths          : Array1D|None = None,
         linelist_wavelengths : Array1D|None = None,
         linelist_depths      : Array1D|None = None,
-        linelist_ions        : Array1D|None = None,
+        # mp_groups input here
         return_alpha         : bool = False,
         ): # TODO: put back return hint
         """
@@ -646,11 +633,11 @@ class LSD:
         Parameters
         ----------
         profile : :py:type:`Array1D` | :py:type:`Array2D`
-            1D or 2D array of the LSD profile to be convolved. If 2D, the first dimension should correspond to ions and the second to velocities.
+            1D or 2D array of the LSD profile to be convolved. If 2D, the first dimension should correspond to the profile groups and the second to velocities.
             Should be in the same units as the alpha matrix (OD or flux)
         alpha : :py:type:`Array2D` | :py:type:`Array3D` | None, optional
             Precomputed alpha matrix, if already calculated and you want to skip directly to the convolution, by default None.
-            Can be 2D (n_wavelengths, n_velocities) or 3D (n_ions, n_wavelengths, n_velocities). If 3D, the first dimension should correspond to ions.
+            Can be 2D (n_wavelengths, n_velocities) or 3D (n_profs, n_wavelengths, n_velocities). If 3D, the first dimension should correspond to profile groups.
         velocities : :py:type:`Array1D` | None, optional
             Array of velocities corresponding to the observed spectrum, required if alpha is not input, by default None
         wavelengths : :py:type:`Array1D` | None, optional
@@ -660,8 +647,6 @@ class LSD:
         linelist_depths : :py:type:`Array1D` | None, optional
             Array of depths from the linelist, required if alpha is not input. Must be in the same units
             as the alpha matrix (OD or flux), by default None
-        linelist_ions : :py:type:`Array1D` | None, optional
-            Array of ions from the linelist, required if alpha is not input, by default None
         """
 
         if alpha is None:
@@ -676,21 +661,20 @@ class LSD:
                     "linelist_wavelengths, and linelist_depths are required."
                 )
 
-            if linelist_ions is None:
-                alpha = cls.calc_alpha(
-                    wavelengths=wavelengths,
-                    wavelengths_linelist=linelist_wavelengths,
-                    depths_linelist=linelist_depths,
-                    velocities=velocities,
-                )
-            else:
-                alpha, _ = cls.calc_alpha_ion(
-                    wavelengths=wavelengths,
-                    velocities=velocities,
-                    linelist_wavelengths=linelist_wavelengths,
-                    linelist_depths=linelist_depths,
-                    linelist_ions=linelist_ions,
-                )
+            # if ___ is None:
+            alpha = cls.calc_alpha(
+                wavelengths=wavelengths,
+                wavelengths_linelist=linelist_wavelengths,
+                depths_linelist=linelist_depths,
+                velocities=velocities,
+            )
+            # else:
+            #     alpha, _ = cls.calc_alpha_ion(
+            #         wavelengths=wavelengths,
+            #         velocities=velocities,
+            #         linelist_wavelengths=linelist_wavelengths,
+            #         linelist_depths=linelist_depths,
+            #     )
 
         model_spectrum = cls.dot_alpha_and_profile(alpha, profile)
 
@@ -716,93 +700,93 @@ class LSD:
             return alpha @ profile_flat
 
         if alpha.ndim == 3:
-            n_ions, _, n_velocities = alpha.shape
+            n_profs, _, n_velocities = alpha.shape
 
             if profile.ndim == 1:
-                if profile.size != n_ions * n_velocities:
+                if profile.size != n_profs * n_velocities:
                     raise ValueError(
                         f"Flat profile length {profile.size} does not match "
-                        f"n_ions*n_velocities={n_ions * n_velocities}."
+                        f"n_profs*n_velocities={n_profs * n_velocities}."
                     )
-                profile = profile.reshape(n_ions, n_velocities)
+                profile = profile.reshape(n_profs, n_velocities)
 
-            if profile.shape != (n_ions, n_velocities):
+            if profile.shape != (n_profs, n_velocities):
                 raise ValueError(
                     f"3D alpha shape {alpha.shape} requires profile shape "
-                    f"{(n_ions, n_velocities)}, got {profile.shape}."
+                    f"{(n_profs, n_velocities)}, got {profile.shape}."
                 )
 
             return np.einsum("inw,iw->n", alpha, profile)
 
         raise ValueError("Alpha matrix must be either 2D or 3D.")
 
-    @classmethod
-    def calc_alpha_ion(
-        cls,
-        wavelengths: Array1D,
-        velocities: Array1D,
-        linelist_wavelengths: Array1D,
-        linelist_depths: Array1D,
-        linelist_ions: Array1D,
-        verbose: IntLike | bool | str | None = None,
-    ) -> tuple[Array3D, Array1D]:
-        """
-        Build one alpha block per ion.
+    # @classmethod
+    # def calc_mp_alpha(
+    #     cls,
+    #     wavelengths: Array1D,
+    #     velocities: Array1D,
+    #     linelist_wavelengths: Array1D,
+    #     linelist_depths: Array1D,
+    #     linelist_ions: Array1D,
+    #     verbose: IntLike | bool | str | None = None,
+    # ) -> tuple[Array3D, Array1D]:
+    #     """
+    #     Build one alpha block per ion.
 
-        Returns
-        -------
-        alpha_ion : Array3D
-            Shape: (n_ions, n_wavelengths, n_velocities)
+    #     Returns
+    #     -------
+    #     alpha_ion : Array3D
+    #         Shape: (n_ions, n_wavelengths, n_velocities)
 
-        unique_ions : Array1D
-            Ion labels in the same order as alpha_ion.
-        """
-        linelist_ions = np.asarray(linelist_ions)
-        unique_ions = np.unique(linelist_ions)
+    #     unique_ions : Array1D
+    #         Ion labels in the same order as alpha_ion.
+    #     """
+    #     linelist_ions = np.asarray(linelist_ions)
+    #     unique_ions = np.unique(linelist_ions)
 
-        alpha_blocks = []
+    #     alpha_blocks = []
 
-        verbose = Config(verbose=verbose).verbose
-        if verbose:
-            iterator = tqdm(unique_ions, desc="Calculating alpha blocks for each ion")
-        else:
-            iterator = unique_ions
+    #     verbose = Config(verbose=verbose).verbose
+    #     if verbose:
+    #         iterator = tqdm(unique_ions, desc="Calculating alpha blocks for each ion")
+    #     else:
+    #         iterator = unique_ions
 
-        for ion_label in iterator:
-            idx = linelist_ions == ion_label
+    #     for ion_label in iterator:
+    #         idx = linelist_ions == ion_label
 
-            alpha_i = cls.calc_alpha(
-                wavelengths=wavelengths,
-                wavelengths_linelist=linelist_wavelengths[idx],
-                depths_linelist=linelist_depths[idx],
-                velocities=velocities,
-                verbose=0,
-            )
+    #         alpha_i = cls.calc_alpha(
+    #             wavelengths=wavelengths,
+    #             wavelengths_linelist=linelist_wavelengths[idx],
+    #             depths_linelist=linelist_depths[idx],
+    #             velocities=velocities,
+    #             verbose=0,
+    #         )
 
-            alpha_blocks.append(alpha_i)
+    #         alpha_blocks.append(alpha_i)
 
-        alpha_ion = np.stack(alpha_blocks, axis=0)
-        return alpha_ion, unique_ions
+    #     alpha_ion = np.stack(alpha_blocks, axis=0)
+    #     return alpha_ion, unique_ions
     
-    @staticmethod
-    def flatten_alpha(alpha:Array3D) -> Array2D:
-        if alpha.ndim != 3:
-            raise ValueError(f"Expected 3D alpha_ion, got shape {alpha.shape}")
-        return np.concatenate(alpha, axis=1)
+    # @staticmethod
+    # def flatten_alpha(alpha:Array3D) -> Array2D:
+    #     if alpha.ndim != 3:
+    #         raise ValueError(f"Expected 3D alpha_ion, got shape {alpha.shape}")
+    #     return np.concatenate(alpha, axis=1)
 
-    @staticmethod
-    def group_sparse_ions(
-        ions_linelist,
-        min_lines_per_ion=10,
-        other_label="other",
-    ):
-        ions_linelist = np.asarray(ions_linelist).astype(object)
+    # @staticmethod
+    # def group_sparse_ions(
+    #     ions_linelist,
+    #     min_lines_per_ion=10,
+    #     other_label="other",
+    # ):
+    #     ions_linelist = np.asarray(ions_linelist).astype(object)
 
-        unique_ions, counts = np.unique(ions_linelist, return_counts=True)
-        good_ions = unique_ions[counts >= min_lines_per_ion]
+    #     unique_ions, counts = np.unique(ions_linelist, return_counts=True)
+    #     good_ions = unique_ions[counts >= min_lines_per_ion]
 
-        grouped_ions = ions_linelist.copy()
-        sparse = ~np.isin(grouped_ions, good_ions)
-        grouped_ions[sparse] = other_label
+    #     grouped_ions = ions_linelist.copy()
+    #     sparse = ~np.isin(grouped_ions, good_ions)
+    #     grouped_ions[sparse] = other_label
 
-        return grouped_ions
+    #     return grouped_ions

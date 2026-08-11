@@ -683,19 +683,19 @@ class Data:
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
             # The method names are self explaining, see the respective methods for more details on their process
-            linelist_wl, linelist_depths, linelist_ions = LineList.validate_linelist(linelist)
-            linelist_wl, linelist_depths, linelist_ions = LineList.drop_invalid_lines(linelist_wl, linelist_depths, linelist_ions, verbose=self.config.verbose)
+            linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
+            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
 
             # Check if the new linelist is different from the existing one
             overwriting = False
             if self._linelist is not None:
-                if len(self._linelist["wavelengths"]) != len(linelist_wl) or len(self._linelist["depths"]) != len(linelist_depths) or len(self._linelist["ions"]) != len(linelist_ions):
+                if len(self._linelist["wavelengths"]) != len(linelist_wl) or len(self._linelist["depths"]) != len(linelist_depths):
                     overwriting = True
-                elif not np.allclose(self._linelist["wavelengths"], linelist_wl) or not np.allclose(self._linelist["depths"], linelist_depths) or not self._linelist["ions"] == linelist_ions:
+                elif not np.allclose(self._linelist["wavelengths"], linelist_wl) or not np.allclose(self._linelist["depths"], linelist_depths):
                     overwriting = True
 
             # Set new linelist
-            self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths, "ions": linelist_ions}
+            self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
             # If overwriting, reset variables and warn
             if overwriting:
@@ -1351,16 +1351,13 @@ class LineList:
             return self.ll["wavelengths"]
         if k == 1:
             return self.ll["depths"]
-        if k == 2:
-            return self.ll["ions"]
         if isinstance(k, int):
-            raise IndexError("LineList only has keys 0, 1, and 2, or 'wavelengths', 'depths', and 'ions'")
-        return self.ll[k]  # allow "wavelengths"/"depths"/"ions"
+            raise IndexError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
+        return self.ll[k]  # allow "wavelengths"/"depths"
 
     def __iter__(self):
         yield self.ll["wavelengths"]
         yield self.ll["depths"]
-        yield self.ll["ions"]
 
     @staticmethod
     def validate_linelist(linelist) -> tuple[np.ndarray, np.ndarray]:
@@ -1378,13 +1375,11 @@ class LineList:
         tuple[np.ndarray, np.ndarray]
             The validated linelist wavelengths and depths as numpy arrays.
         """
-
-        linelist_ions = None # default to None if not provided in the instances belo
-
         # Run through every possible input type and issue, I'm not going to comment everything but the logic is fairly
         # self-explanatory, and the error messages should be helpful for debugging if the input is not in the correct format.
         if linelist is None:
             raise ValueError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
+
         # All loops below set linelist_wl and linelist_depths from their own type sof input
         elif isinstance(linelist, str):
             import pandas as pd
@@ -1393,15 +1388,14 @@ class LineList:
                 linelist,
                 skiprows=4,
                 delimiter=',',
-                usecols=[0, 1, 9],
-                names=['ion', 'wavelength', 'depth'],
+                usecols=[1, 9],
+                names=['wavelength', 'depth'],
                 dtype=str,
                 engine='python',
                 on_bad_lines='skip'
             )
 
             # Clean whitespace / quotes
-            full_linelist['ion'] = full_linelist['ion'].astype(str).str.strip().str.strip("'\"")
             full_linelist['wavelength'] = full_linelist['wavelength'].astype(str).str.strip()
             full_linelist['depth'] = full_linelist['depth'].astype(str).str.strip()
 
@@ -1422,26 +1416,19 @@ class LineList:
             # Convert to NumPy arrays
             linelist_wl = full_linelist['wavelength'].to_numpy(dtype=float)
             linelist_depths = full_linelist['depth'].to_numpy(dtype=float)
-            linelist_ions = full_linelist['ion'].to_numpy(dtype=str)
         elif isinstance(linelist, LineList):
             linelist_wl = linelist[0]
             linelist_depths = linelist[1]
-            linelist_ions = linelist[2]
         elif isinstance(linelist, dict):
             if "wavelengths" not in linelist or "depths" not in linelist:
                 raise ValueError("If 'linelist' is a dict, it must contain keys 'wavelengths' and 'depths'")
             linelist_wl = linelist["wavelengths"]
             linelist_depths = linelist["depths"]
-            if "ions" in linelist:
-                linelist_ions = linelist["ions"]
         elif isinstance(linelist, (list, np.ndarray)):
             if len(linelist) != 2 and len(linelist) != 3:
-                raise ValueError("If 'linelist' is a list or array, it must have length 2 or 3, with index 0 being wavelengths, index 1 being depths,"
-                "and optionally index 2 being ions")
+                raise ValueError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths, and index 1 being depths")
             linelist_wl = linelist[0]
             linelist_depths = linelist[1]
-            if len(linelist) == 3:
-                linelist_ions = linelist[2]
         else:
             raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
@@ -1450,30 +1437,18 @@ class LineList:
         try:
             linelist_wl = np.array(linelist_wl)
             linelist_depths = np.array(linelist_depths)
-            if linelist_ions is not None:
-                linelist_ions = np.array(linelist_ions)
         except Exception as e:
             raise ValueError(f"Failed to convert linelist inputs into numpy arrays with exception:\n{e}")
-        if linelist_wl.ndim != 1 or linelist_depths.ndim != 1 or (linelist_ions is not None and linelist_ions.ndim != 1):
-            raise ValueError("'wavelengths', 'depths', and 'ions' must be one-dimensional arrays or lists")
-        if linelist_wl.shape != linelist_depths.shape or (linelist_ions is not None and linelist_wl.shape != linelist_ions.shape):
-            raise ValueError("'wavelengths', 'depths', and 'ions' must have the same length and shape, \n"
-                             f" but have shapes: {linelist_wl.shape}, {linelist_depths.shape}, "
-                             f"{linelist_ions.shape if linelist_ions is not None else 'None'}")
-        
-        # Handle the ions input
-        if linelist_ions is not None:
-            print(linelist_ions)
-            for i, ion in enumerate(linelist_ions):
-                if not isinstance(ion, str):
-                    raise ValueError(f"'ions' must be a list or array of strings, but element {i} is not a string: {ion}")
-                
-                linelist_ions[i] = ion.split(" ")[0]
+        if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
+            raise ValueError("'wavelengths' and 'depths' must be one-dimensional arrays or lists")
+        if linelist_wl.shape != linelist_depths.shape:
+            raise ValueError("'wavelengths' and 'depths' must have the same length and shape, \n"
+                             f" but have shapes: {linelist_wl.shape}, {linelist_depths.shape}")
 
-        return linelist_wl, linelist_depths, linelist_ions
+        return linelist_wl, linelist_depths
 
     @staticmethod
-    def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, ions:Array1D=None, return_mask:bool=False, verbose:IntLike|bool|str=None) -> tuple:
+    def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False, verbose:IntLike|bool|str=None) -> tuple:
         """Removes NaN, non-finite, negative, and greater than 1 values from the wavelengths and depths arrays.
         This is used internally in the set_linelist method.
 
@@ -1483,8 +1458,6 @@ class LineList:
             The array of linelist wavelengths.
         depths : np.ndarray
             The array of linelist depths.
-        ions : np.ndarray, optional
-            The array of linelist ions. Default is None.
         return_mask : bool, optional
             If True, also returns the boolean mask of valid lines. Default is False.
         verbose : int, bool, or str, optional
@@ -1494,8 +1467,8 @@ class LineList:
         Returns
         -------
         tuple or np.ndarray
-            If return_mask is True, returns a tuple of (wavelengths, depths, ions, mask).
-            Otherwise, returns a tuple of (wavelengths, depths, ions) with invalid lines removed.
+            If return_mask is True, returns a tuple of (wavelengths, depths, mask).
+            Otherwise, returns a tuple of (wavelengths, depths) with invalid lines removed.
         """
         # Set verbose level using config verbose validation, handles a verbose=None input
         verbose = Config(verbose=verbose).verbose
@@ -1516,8 +1489,8 @@ class LineList:
 
         # Apply mask and return results
         if return_mask:
-            return wavelengths[mask], depths[mask], ions[mask], mask
-        return wavelengths[mask], depths[mask], ions[mask]
+            return wavelengths[mask], depths[mask], mask
+        return wavelengths[mask], depths[mask]
 
 @beartype
 class DataList:
