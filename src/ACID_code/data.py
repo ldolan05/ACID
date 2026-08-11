@@ -250,7 +250,6 @@ class Config:
         "run_mcmc" : True,
         "sparse" : True,
         "continuum_method" : None, # forced here or calculated in ACID based on poly order
-        "rassine"  : False,
     }
 
     #: Property list for error handling

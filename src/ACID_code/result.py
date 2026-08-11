@@ -11,7 +11,6 @@ from .lsd import LSD
 from . import utils
 from .data import Data
 from .utils import IntLike, Scalar
-from .rassine import model
 try:
     from dynesty.sampler import Sampler
     from dynesty import plotting as dyplot

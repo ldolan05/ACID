@@ -17,7 +17,6 @@ from .result import Result
 from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
-from .rassine import model
 from astropy.stats.sigma_clipping import sigma_clip
 try:
     import dynesty # type: ignore
@@ -254,7 +253,6 @@ class Acid:
         moves                 : list|None                   = None,   # Config
         continuum_method      : str|None                    = None,   # Config
         run_mcmc              : bool|None                   = None,   # Config
-        rassine               : bool|None                   = None,   # Config
         _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
@@ -458,7 +456,6 @@ class Acid:
             "moves"                 : moves,
             "run_mcmc"              : run_mcmc,
             "continuum_method"      : continuum_method,
-            "rassine"               : rassine,
         }
 
         # Update config if any of the above config settings are new
@@ -598,14 +595,6 @@ class Acid:
 
         # Get the initial state from all of the above calculated data
         self.data.initial_state = self.get_initial_state()
-
-        # For the rassine branch, leave everything above the same, we just now need to change the model_inputs to Rassine type inputs
-        if self.config.rassine:
-            self.data.model_inputs = np.array([10])
-            self.data.nwalkers = 10
-            self.data.ndim = 1
-            rng = np.random.default_rng(self.config.seed)
-            initial_state = rng.uniform(1, 100, (self.data.nwalkers, self.data.ndim))
 
         ### ACID initialialised ###
         self.data.setup_time += time.time() - init_t0
