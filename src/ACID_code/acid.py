@@ -917,11 +917,17 @@ class Acid:
         self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
 
         # Sigma clipping, use astropy's iterative sigma clipping
+        # Only sigma clip residuals that are not already line masked
         # --------------
-        result, lower_clip, upper_clip = sigma_clip(residuals, sigma_lower=self.config.n_sig, sigma_upper=np.inf, return_bounds=True)
-        sigma_mask = result.mask
+        result, lower_clip, upper_clip = sigma_clip(masked_residuals, sigma_lower=self.config.n_sig, sigma_upper=5, return_bounds=True)
+
+        # Put the sigma mask back onto the full pixel grid
+        sigma_mask = np.zeros_like(residuals, dtype=bool)
+        sigma_mask[unmasked] = np.ma.getmaskarray(result)
+
         self.data.sigma_mask = sigma_mask
-        upper_clip = lower_clip # hack temporarily so the plot still comes out
+        upper_clip = upper_clip if np.isfinite(upper_clip) else lower_clip # hack temporarily so the plot still comes out
+
 
         # Apply a error mask onto just y for the continuum fit and LSD call, later we fully mask for fitting
         self.data.full_mask = ~pix_mask & ~sigma_mask & ~self.data.line_mask
