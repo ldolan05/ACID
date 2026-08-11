@@ -2255,13 +2255,15 @@ class DataList:
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
 
-    def plot_all_profiles(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+    def plot_all_profiles(self, od:bool=False, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
-        Plots all the profiles for each order in the DataList.
+        Plots all the profiles for each order in the DataList. The combined profile is also shown.
 
         Parameters
         ----------
-        return_fig : bool
+        od : bool, optional
+            If True, shows the profiles in optical depth.
+        return_fig : bool, optional
             If True, returns the figure and axis objects instead of displaying the plot.
 
         Returns
@@ -2274,19 +2276,20 @@ class DataList:
         norm = mpl.colors.Normalize(vmin=self.order_range[0], vmax=self.order_range[-1])
         cmap = mpl.colormaps.get_cmap("viridis")#, len(self.order_range))
 
-        peak_vel_idx = np.argmin(self.combined_profile[0])
+        peak_vel_idx = np.nanargmin(self.combined_profile[0])
         min_prof = 1
         for data in self.data_list:
             order = data.config.order
             color = cmap(norm(order))
             if "final" not in data.profile:
                 continue # failed orders
-            ax.plot(self.velocities, data.profile["final"][0], alpha=0.2, color=color)
+            ax.plot(self.velocities, utils.flux_to_od(data.profile["final"][0], od=od), alpha=0.2, color=color)
 
             if data.profile["final"][0][peak_vel_idx] < min_prof:
                 min_prof = data.profile["final"][0][peak_vel_idx]
         
-        ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1],
+        ax.errorbar(self.velocities, # self.combined_profile[0], self.combined_profile[1],
+                    *utils.flux_to_od(self.combined_profile[0], self.combined_profile[1], od=od),
                     color="black", fmt=".-", ecolor="red", label="Combined profile", zorder=10)
 
         ax.axhline(1, color="black", linestyle="--", alpha=0.5)
@@ -2297,7 +2300,9 @@ class DataList:
         fig.colorbar(sm, ax=ax, orientation="vertical", label="Order")
 
         # Set sensible limits
-        ax.set_ylim(max(min_prof-0.1, 0), 1.2)
+        if not od:
+            ax.set_ylim(max(min_prof-0.1, 0), 1.2)
+        # if od, limits are usually sensible due to log scaling
         ax.set_xlabel("Velocity (km/s)")
         ax.set_ylabel("Relative Flux")
         ax.set_title("All ACID profiles")
