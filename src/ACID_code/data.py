@@ -2187,10 +2187,7 @@ class DataList:
                 continue
 
             # We actually want to combine in optical depth - more stable
-            if od:
-                p, e, c = utils.flux_to_od(data.profile["final"][0], data.profile["final"][1], cov_matrix=data.profile["final"][2])
-            else:
-                p, e, c = data.profile["final"][0], data.profile["final"][1], data.profile["final"][2]
+            p, e, c = utils.flux_to_od(data.profile["final"][0], data.profile["final"][1], cov_matrix=data.profile["final"][2], od=od)
 
             profiles.append(p)
             errors.append(e)
@@ -2198,8 +2195,7 @@ class DataList:
 
         self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
 
-        if od:
-            self._combined_profile = utils.od_to_flux(self._combined_profile[0], self._combined_profile[1], cov_matrix=self._combined_profile[2])
+        self._combined_profile = utils.od_to_flux(self._combined_profile[0], self._combined_profile[1], cov_matrix=self._combined_profile[2], od=od)
 
         self.excluded_orders = exclude
         return

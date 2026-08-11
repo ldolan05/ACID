@@ -184,9 +184,8 @@ class Result:
             profile_errors = lsd.profile_errors, # in OD
             alpha          = self.data.alpha["initial"],
         )
-        if self.config.od:
-            # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
-            forward_model = utils.od_to_flux(forward_model)
+        # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
+        forward_model = utils.od_to_flux(forward_model, od=self.config.od)
         
         # Set the final LSD results
         self.data.forward_x["final"] = wavelengths # carried over the initial wavelengths

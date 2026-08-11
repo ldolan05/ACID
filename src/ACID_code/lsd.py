@@ -137,9 +137,8 @@ class LSD:
         self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
-        if self.od:
-            flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
-        else:
+        flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist, od=self.od)
+        if not self.od:
             flux -= 1
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
@@ -157,13 +156,11 @@ class LSD:
         self.forward_model = self.alpha @ self.profile
         self.forward_model_errors = np.sqrt(np.sum((self.alpha * self.profile_errors)**2, axis=1))
 
-        # Convert profile back to flux if needed
-        if self.od:
-            self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z)
-            self.forward_model, self.forward_model_errors = utils.od_to_flux(self.forward_model, self.forward_model_errors)
-        else:
+        # Convert profile back to flux for the _F variables
+        self.profile_F, self.profile_errors_F, self.cov_z_F = utils.od_to_flux(self.profile, self.profile_errors, cov_matrix=self.cov_z, od=self.od)
+        self.forward_model, self.forward_model_errors = utils.od_to_flux(self.forward_model, self.forward_model_errors, od=self.od)
+        if not self.od: # Add one to bring back normalisation to 1 for Flux case
             self.profile += 1
-            self.profile_F, self.profile_errors_F, self.cov_z_F = self.profile, self.profile_errors, self.cov_z
             self.forward_model += 1
 
         return
