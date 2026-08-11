@@ -166,19 +166,19 @@ class Result:
             print('Getting the final profiles...')
 
         # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
-        norm_wl = self.data.wavelengths["fitting"]
+        norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
         continuum = utils.eval_continuum(norm_wl, med_poly_coeffs, method=self.config.continuum_method)
 
         # Get continuum error
         continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
 
-        # Run a final LSD using the same inputs that the MCMC sampler got - but now including the error on the continuum - this is our final profile and error
-        wavelengths = self.data.wavelengths["masked"][self.data.full_mask]
-        flux = self.data.flux["fitting"]
-        error = self.data.errors["fitting"]
-        sn = self.data.sn["fitting"]
+        # Run a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
+        wavelengths = self.data.wavelengths["initial"]
+        flux = self.data.flux["initial"]
+        error = self.data.errors["initial"]
+        sn = self.data.sn["initial"]
 
-        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["fitting"])
+        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["initial"])
 
         # Use the above to get our combined profile and error
         self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
@@ -187,11 +187,10 @@ class Result:
         forward_model, forward_errors = lsd.convolve_profile(
             profile        = lsd.profile, # in OD
             profile_errors = lsd.profile_errors, # in OD
-            alpha          = self.data.alpha["masked"],
+            alpha          = self.data.alpha["initial"],
         )
-        if self.config.od:
-            # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
-            forward_model = utils.od_to_flux(forward_model)
+        # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
+        forward_model = utils.od_to_flux(forward_model, od=self.config.od)
 
         # alpha_masked = self.data.alpha["masked"]
         # forward_model = LSD.dot_alpha_and_profile(alpha_masked, lsd.profile_flat)
@@ -207,13 +206,10 @@ class Result:
         #     forward_model += 1
         
         # Set the final LSD results # TODO: move to a new data.set_LSD_result method (from Acid one)
-        norm_combined_wl = utils.normalize_wavelengths(self.data.wavelengths["combined"])
-        continuum = utils.eval_continuum(norm_combined_wl, med_poly_coeffs, method=self.config.continuum_method)
-        self.data.forward_y["final"] = forward_model * continuum
-        self.data.forward_x["final"] = self.data.wavelengths["combined"]
+        self.data.forward_x["final"] = wavelengths
         self.data.forward_y["final"] = forward_model * continuum
         self.data.forward_yerr["final"] = forward_errors * continuum
-        self.data.alpha["final"] = self.data.alpha["masked"]
+        self.data.alpha["final"] = self.data.alpha["initial"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
 
@@ -231,6 +227,10 @@ class Result:
         for i in range(len(self.data.wavelengths["input"])):
             # Use nanmask as we cannot work with non-physical inputs like nan or negative fluxes
             # TODO: Need to interpolate onto potential new wavelength grids the mask
+            # TODO: This needs more care, it does not include the line masking onto the interpolated wavelength grid, should be fixed with above issue
+            # when looking at an older version of the code, therefore we do this cheeat for now:
+            profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
+            continue
             wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
             flux = self.data.flux["input"][i][self.data.nanmask]
             error = self.data.errors["input"][i][self.data.nanmask]
@@ -243,9 +243,10 @@ class Result:
                     profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
                     continue
                 else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
-                    alpha = self.data.alpha["masked"]
+                    alpha = self.data.alpha["final"]
             else:
                 alpha = None
+            
             norm_wl = utils.normalize_wavelengths(wavelengths)
             continuum = utils.eval_continuum(norm_wl, med_poly_coeffs, method=self.config.continuum_method)
             continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
@@ -295,7 +296,7 @@ class Result:
         corrected_error = np.sqrt((error/continuum)**2 + (corrected_flux*continuum_error/continuum)**2)
 
         lsd = LSD(self.data)
-        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha)
+        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha, skip_warnings=True)
         return lsd
 
     @_require_profiles
@@ -561,19 +562,19 @@ class Result:
             
             if x.ndim > 1:
                 for i in range(x.shape[1]):
-                    ax.errorbar(x[i], y[i]-1, yerr=yerr[i], **errorbar_kwargs)
+                    ax.errorbar(x[i], y[i], yerr=yerr[i], **errorbar_kwargs)
             else:
                 if x.shape != y.shape:
                     for prof, err in zip(y, yerr):
-                        ax.errorbar(x, prof-1, yerr=err, **errorbar_kwargs)
+                        ax.errorbar(x, prof, yerr=err, **errorbar_kwargs)
                 else:
-                    ax.errorbar(x, y-1, yerr=yerr, **errorbar_kwargs)
+                    ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
 
         # Add labels and titles
         ax.set_title(labels["title"])
         ax.set_xlabel(labels["xlabel"])
         ax.set_ylabel(labels["ylabel"])
-        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+        ax.axhline(1, color='black', linestyle='--', linewidth=1)
         ax.legend()
         ax.grid(grid)
         if return_fig:
@@ -662,7 +663,7 @@ class Result:
         wavelengths = utils.drop_edges(wavelengths)
         flux = utils.drop_edges(flux)
         forward = utils.drop_edges(forward)
-        residuals = forward - flux
+        residuals = flux - forward
 
         # Plotting
         if fig_ax is not None:

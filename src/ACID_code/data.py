@@ -222,9 +222,11 @@ class Config:
         # RUN_ACID CONFIGURATION
         "deterministic_profile" : True,
         "poly_ord" : 3,
-        "continuum_percentile" : 90,
-        "bin_size" : 50,
-        "pix_chunk" : 20,
+        # TODO: update docs for 3 below changes
+        "continuum_percentile" : 99,
+        "n_bins" : 10,
+        "bin_size" : None,
+        "pix_chunk" : 50, # TODO: document+test this increase from 20
         "dev_perc" : 25,
         "n_sig" : 3,
         "skips" : 1,
@@ -1095,7 +1097,7 @@ class Data:
 
         nremoved = np.sum(full_mask)
         if self.config.verbose > 1:
-            print(f"Residual masking has removed {nremoved}/{len(residuals)} points.")
+            print(f"{nremoved}/{len(residuals)} pixels remained after residual masking.")
 
         # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
@@ -1163,7 +1165,6 @@ class Data:
         plt.show()
 
         # Finally plot the forward model
-        from .mcmc import MCMC
         x = self.wavelengths["combined"]
         y = self.flux["combined"]
         forward = self.forward_y["masked"]
@@ -2120,10 +2121,13 @@ class DataList:
             for data in data_list:
                 folder_moved_flag |= cls._set_paths_for_data(data, path)
 
+            datalist = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+            datalist.save() # repack with new save locations
+
             if folder_moved_flag and verbose > 0:
                 print("Warning: At least one Data instance did not match the current location and has been updated.")
 
-            return cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+            return datalist
 
         dir_list = os.listdir(path)        
         data_list = []
@@ -2209,17 +2213,19 @@ class DataList:
         self._data_list = data_list
         self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
-    def combine_profiles(self, exclude:int|Array1D|None=None, must_have_converged:bool=False) -> None:
+    def combine_profiles(self, exclude:int|Array1D|None=None, must_have_converged:bool=False, od:bool=True) -> None:
         """
         Calculates the combined profile and its errors across all orders, excluding any orders specified in the exclude argument.
         
         Parameters
         ----------
-        exclude : int | list[int] | None
+        exclude : int | list[int] | None, optional
             Orders to exclude from the combined profile calculation.
-        must_have_converged : bool
+        must_have_converged : bool, optional
             If True, only includes orders that have converged in the combined profile calculation. Default is False, which 
             includes all orders regardless of convergence status.
+        od : bool, optional
+            If True, the combination is done in optical depth. The returned profile is always in flux. By default, True.
         """
         if isinstance(exclude, int):
             exclude = [exclude]
@@ -2242,11 +2248,18 @@ class DataList:
                 continue
             if "final" not in data.profile:
                 continue
-            profiles.append(data.profile["final"][0])
-            errors.append(data.profile["final"][1])
-            covariances.append(data.profile["final"][2])
+
+            # We actually want to combine in optical depth - more stable
+            p, e, c = utils.flux_to_od(data.profile["final"][0], data.profile["final"][1], cov_matrix=data.profile["final"][2], od=od)
+
+            profiles.append(p)
+            errors.append(e)
+            covariances.append(c)
 
         self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
+
+        self._combined_profile = utils.od_to_flux(self._combined_profile[0], self._combined_profile[1], cov_matrix=self._combined_profile[2], od=od)
+
         self.excluded_orders = exclude
         return
 
@@ -2301,13 +2314,15 @@ class DataList:
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
 
-    def plot_all_profiles(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+    def plot_all_profiles(self, od:bool=False, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
-        Plots all the profiles for each order in the DataList.
+        Plots all the profiles for each order in the DataList. The combined profile is also shown.
 
         Parameters
         ----------
-        return_fig : bool
+        od : bool, optional
+            If True, shows the profiles in optical depth.
+        return_fig : bool, optional
             If True, returns the figure and axis objects instead of displaying the plot.
 
         Returns
@@ -2318,21 +2333,22 @@ class DataList:
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
         
         norm = mpl.colors.Normalize(vmin=self.order_range[0], vmax=self.order_range[-1])
-        cmap = mpl.cm.get_cmap("viridis", len(self.order_range))
+        cmap = mpl.colormaps.get_cmap("viridis")#, len(self.order_range))
 
-        peak_vel_idx = np.argmin(self.combined_profile[0])
+        peak_vel_idx = np.nanargmin(self.combined_profile[0])
         min_prof = 1
         for data in self.data_list:
             order = data.config.order
             color = cmap(norm(order))
             if "final" not in data.profile:
                 continue # failed orders
-            ax.plot(self.velocities, data.profile["final"][0], alpha=0.2, color=color)
+            ax.plot(self.velocities, utils.flux_to_od(data.profile["final"][0], od=od), alpha=0.2, color=color)
 
             if data.profile["final"][0][peak_vel_idx] < min_prof:
                 min_prof = data.profile["final"][0][peak_vel_idx]
         
-        ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1],
+        ax.errorbar(self.velocities, # self.combined_profile[0], self.combined_profile[1],
+                    *utils.flux_to_od(self.combined_profile[0], self.combined_profile[1], od=od),
                     color="black", fmt=".-", ecolor="red", label="Combined profile", zorder=10)
 
         ax.axhline(1, color="black", linestyle="--", alpha=0.5)
@@ -2343,7 +2359,9 @@ class DataList:
         fig.colorbar(sm, ax=ax, orientation="vertical", label="Order")
 
         # Set sensible limits
-        ax.set_ylim(max(min_prof-0.1, 0), 1.2)
+        if not od:
+            ax.set_ylim(max(min_prof-0.1, 0), 1.2)
+        # if od, limits are usually sensible due to log scaling
         ax.set_xlabel("Velocity (km/s)")
         ax.set_ylabel("Relative Flux")
         ax.set_title("All ACID profiles")

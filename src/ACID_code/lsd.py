@@ -149,9 +149,8 @@ class LSD:
         self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
-        if self.od:
-            flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist)
-        else:
+        flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist, od=self.od)
+        if not self.od:
             flux -= 1
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
@@ -415,7 +414,7 @@ class LSD:
 
             line_range = range(0, n_lines, line_block)
 
-            if verbose > 1:
+            if verbose > 1 and len(line_range) > 1:
                 line_range = tqdm(line_range, desc="Calculating sparse alpha matrix")
 
             for line_start in line_range:
@@ -432,6 +431,7 @@ class LSD:
                     n_line_block = len(wl)
 
                     # Compute u = (vel - v0) / deltav without forming separate diff/vel arrays.
+                    # u is the velocity bin position
                     u = np.empty((n_wave_block, n_line_block), dtype=np.float64)
                     np.subtract(waves[:, None], wl[None, :], out=u)
                     u *= c_kms
@@ -441,7 +441,7 @@ class LSD:
 
                     k0 = np.floor(u).astype(np.intp)
 
-                    # Reuse u as frac to avoid another full temporary.
+                    # Reuse u as frac for more temporary memory savings.
                     frac = u
                     frac -= k0
                     k1 = k0 + 1
@@ -492,7 +492,7 @@ class LSD:
                 alpha  = np.zeros((len(blankwaves), len(velocities)), dtype=np.float64)
 
                 # Use tqdm progress bar if verbose
-                if verbose > 1:
+                if verbose > 1 and len(wavelengths_linelist) > 1:
                     iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
                 else:
                     iterable = range(0, len(wavelengths_linelist), block)

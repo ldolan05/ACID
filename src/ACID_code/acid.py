@@ -18,8 +18,9 @@ from .data import Data, Config, MaskingLines, LineList, DataList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
 from .rassine import model
+from astropy.stats.sigma_clipping import sigma_clip
 try:
-    import dynesty
+    import dynesty # type: ignore
 except ImportError:
     dynesty = None
 
@@ -203,7 +204,7 @@ class Acid:
         if save_path is not None:
             if not save_path.endswith(".pkl"):
                 raise ValueError("'save_path' must end with '.pkl'.")
-        self.config.save_path = save_path
+        self.config.save_path = os.path.abspath(save_path) if save_path is not None else None
 
         # Handle sampler path checks
         if sampler_path is not None:
@@ -214,7 +215,7 @@ class Acid:
                 if self.config.verbose > 0:
                     print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
                 os.remove(sampler_path)
-        self.config.sampler_path = sampler_path
+        self.config.sampler_path = os.path.abspath(sampler_path) if sampler_path is not None else None
 
         return
 
@@ -232,6 +233,7 @@ class Acid:
         deterministic_profile : bool|None                   = None,   # Config
         poly_ord              : IntLike|None                = None,   # Config
         continuum_percentile  : IntLike|None                = None,   # Config
+        n_bins                : IntLike|None                = None,   # Config
         bin_size              : IntLike|None                = None,   # Config
         pix_chunk             : IntLike|None                = None,   # Config
         dev_perc              : IntLike|None                = None,   # Config
@@ -298,15 +300,20 @@ class Acid:
         poly_ord : :py:type:`IntLike`, optional
             Order of polynomial to fit as the continuum, by default 3
         continuum_percentile : :py:type:`IntLike`, optional
-            The percentile to use when fitting the continuum, by default 90. For example, if 90, the continuum fit will be performed
-            on the points in the spectra that are above the 90th percentile in flux in each spectral bin (determined by bin_size below).
+            The percentile to use when fitting the continuum, by default 99. For example, if 99, the continuum fit will be performed
+            on the points in the spectra that are above the 99th percentile in flux in each spectral bin (determined by n_bins/bin_size below).
+        n_bins : :py:type:`IntLike`, optional
+            The number of bins to use when performing the continuum fit. The spectra are evenly split into this many bins and the 
+            continuum is fit to the median wavelength and the specified percentile (continuum_percentile) of flux in each bin.
+            By default 10.
         bin_size : :py:type:`IntLike`, optional
-            The size of bins to use when performing the continuum fit. The spectra are split into bins with this number of pixels, and 
-            the continuum is fit to the median wavelength and the specified percentile of flux in each bin. By default 100 pixels.
+            Instead of specifying the total number of bins in your spectrum (nbins), specify the number of pixels to go in each bin.
+            The spectra are split into bins with this number of pixels, and the continuum is fit to the median wavelength 
+            and the specified percentile of flux in each bin. If a value is input it will override n_bins. By default None.
         pix_chunk : :py:type:`IntLike`, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
             and the data. If the residuals deviate by a specified percentage (see dev_perc below) for this number (pix_chunk) of pixels,
-            then this chunk of pixels are masked in the spectra. By default 20
+            then this chunk of pixels are masked in the spectra. By default 20.
         dev_perc : :py:type:`IntLike`, optional
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
             and the data. If a residual deviates by this percentage for a specified number of pixels,
@@ -429,6 +436,7 @@ class Acid:
         ACID_config = {
             "poly_ord"              : poly_ord,
             "continuum_percentile"  : continuum_percentile,
+            "n_bins"                : n_bins,
             "bin_size"              : bin_size,
             "pix_chunk"             : pix_chunk,
             "dev_perc"              : dev_perc,
@@ -522,11 +530,12 @@ class Acid:
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
 
-        # Create the initial keys
-        self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.wavelengths["combined"])
-        self.data.wavelengths["initial"] = np.copy(self.data.wavelengths["combined"])
-        self.data.flux["initial"] = np.copy(self.data.flux["combined"])
-        self.data.sn["initial"] = np.copy(self.data.sn["combined"])
+        # Create the initial keys, this is just the combined key, except the errors have masked out the masking lines.
+        # They are also used in the final step as these are the only regions masked in the final step
+        self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.errors["combined"])
+        self.data.wavelengths["initial"] = self.data.wavelengths["combined"]
+        self.data.flux["initial"] = self.data.flux["combined"]
+        self.data.sn["initial"] = self.data.sn["combined"]
 
         # Compute an initial continuum fit
         # poly inputs has polynomial coefficients and scale at the end
@@ -548,9 +557,9 @@ class Acid:
                 plot_type = "initial"
             )
         norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
-        self.data.continuum["initial"] = utils.eval_continuum(norm_wl, self.data.poly_inputs["initial"], method=self.config.continuum_method)
-        self.data.wavelengths["fitted"] = np.copy(self.data.wavelengths["initial"]) # Just to keep track
-        self.data.sn["fitted"]          = np.copy(self.data.sn["initial"]) # SN also is not changed here
+        self.data.continuum["initial"]  = utils.eval_continuum(norm_wl, self.data.poly_inputs["initial"], method=self.config.continuum_method)
+        self.data.wavelengths["fitted"] = self.data.wavelengths["initial"] # Just to keep track
+        self.data.sn["fitted"]          = self.data.sn["initial"] # SN also is not changed here
 
         # Get the initial LSD profile and set the alpha matrix (unchanged from masking) and model_inputs
         if "initial" in self.data.profile:
@@ -810,8 +819,13 @@ class Acid:
         f = fluxes[idx]
         e = errors[idx]
 
-        # Get nbins and bin_size, reshape into 2D array of bins
-        binsize = self.config.bin_size
+        # Get bin size. Explicit bin_size overrides n_bins.
+        if self.config.bin_size is not None:
+            binsize = self.config.bin_size
+        else:
+            binsize = max(1, len(w) // self.config.n_bins)
+
+        # Get binsize, reshape into 2D array of bins
         n = len(w) // binsize  # full bins only
         w2 = w[:n*binsize].reshape(n, binsize)
         f2 = f[:n*binsize].reshape(n, binsize)
@@ -900,7 +914,9 @@ class Acid:
         # -----------------------------------------------
 
         # Get bad pixels that deviate by a percentage greater than dev_perc
-        bad_idx = np.abs(masked_residuals) > (self.config.dev_perc / 100)
+        bad_idx = np.zeros_like(residuals, dtype=bool)
+        unmasked = ~self.data.line_mask
+        bad_idx[unmasked] = (np.abs(residuals[unmasked]) > (self.config.dev_perc / 100))
 
         # A trick to get the mask for continous regions of bad pixels, by padding the bad_idx 
         # with False on both sides and finding the start and end indices of the True regions
@@ -915,18 +931,18 @@ class Acid:
                 pix_mask[start:end] = True
         self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
 
-        # Sigma clipping
+        # Sigma clipping, use astropy's iterative sigma clipping
+        # Only sigma clip residuals that are not already line masked
         # --------------
-        # Get median, sigma, and clip limits
-        m = np.median(masked_residuals)
-        sigma = np.std(masked_residuals)
-        clip = self.config.n_sig * sigma
-        lower_clip = m - clip
-        upper_clip = m + clip
+        result, lower_clip, upper_clip = sigma_clip(masked_residuals, sigma_lower=self.config.n_sig, sigma_upper=5, return_bounds=True)
 
-        # Find and apply mask
-        sigma_mask = (residuals <= lower_clip) | (residuals >= upper_clip)
+        # Put the sigma mask back onto the full pixel grid
+        sigma_mask = np.zeros_like(residuals, dtype=bool)
+        sigma_mask[unmasked] = np.ma.getmaskarray(result)
+
         self.data.sigma_mask = sigma_mask
+        upper_clip = upper_clip if np.isfinite(upper_clip) else lower_clip # hack temporarily so the plot still comes out
+
 
         # Apply a error mask onto just y for the continuum fit and LSD call, later we fully mask for fitting
         self.data.full_mask = ~pix_mask & ~sigma_mask & ~self.data.line_mask
@@ -966,10 +982,11 @@ class Acid:
         self.store_LSD_result(key="masked", wl_key="masked", lsd=LSD_masking, continuum=self.data.continuum["masked"])
 
         # Now that we have used the error mask, we apply the mask to remove the data for fitting
-        self.data.wavelengths["fitting"]   = utils.normalize_wavelengths(x)[self.data.full_mask]
         self.data.flux["fitting"]         = y[self.data.full_mask]
         self.data.errors["fitting"]       = yerr[self.data.full_mask]
         self.data.sn["fitting"]           = sn
+        # The wavelengths are also normalised for the fitting, this is the only normalised wavelength key
+        self.data.wavelengths["fitting"]  = utils.normalize_wavelengths(x)[self.data.full_mask]
 
         # Because of this, we similarly have to apply the mask to the alpha matrix and c_factor for fitting, as well as the profile
         self.data.alpha["fitting"] = self.data.alpha["masked"][self.data.full_mask, :]
@@ -1065,7 +1082,6 @@ class Acid:
                 self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
                 self.sampler.run_mcmc(**mcmc_kwargs)
             else:
-                import dynesty
                 if self.config.parallel:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)

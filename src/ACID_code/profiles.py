@@ -54,16 +54,21 @@ class Profiles:
             if velocities is None or flux is None:
                 raise ValueError("If no data instance is provided, then at least velocities and flux must be provided.")
 
-        self.velocities = velocities
-        self.flux = flux-1 # Subtract 1 to convert from normalized flux to absorption depth
-        self.flux_err = flux_err
-        self.cov_matrix = cov_matrix
+        self.velocities = None
+        self.flux = None
+        self.flux_err = None
+        self.cov_matrix = None
+
+        # Subtract flux by one to go to normalised depth, this may change later
+        self.velocities, self.flux, self.flux_err, self.cov_matrix = self._remove_nans(
+            *self._copy_inputs(velocities, flux-1, flux_err, cov_matrix)
+        )
 
         self.fitted_y    = {}
         self.fitted_yerr = {}
         self.fit_on_x    = {} # Store fitted values on original x for residuals
 
-        self.fitted_x = np.linspace(np.min(velocities), np.max(velocities), 1000)
+        self.fitted_x = np.linspace(np.min(self.velocities), np.max(self.velocities), 1000)
         pass
 
     def plot_fit(self, model:str|None='voigt', return_fig=False, **kwargs) -> tuple|None:
@@ -148,11 +153,16 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr, cov_matrix = self._copy_inputs(x, y, yerr, cov_matrix)
+        x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
+
+        bounds = (
+            [-1.5, np.min(x), 0, 0, -np.inf], # Lower bounds
+            [0, np.max(x), np.inf, np.inf, np.inf] # Upper
+        )
 
         if p0 is None:
-            amplitude_guess = np.min(y)
-            centre_guess = x[np.argmin(y)]
+            amplitude_guess = np.nanmin(y)
+            centre_guess = x[np.nanargmin(y)]
 
             half = 0.5 * (np.nanmax(y) + np.nanmin(y))
             above = np.flatnonzero(y < half)
@@ -165,10 +175,7 @@ class Profiles:
             gamma0 = sigma0 * 0.1
             offset = 0
             p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
-            bounds = (
-                [-1.5, np.min(x), 0, 0, -np.inf], # Lower bounds
-                [0, np.max(x), np.inf, np.inf, np.inf] # Upper
-            )
+
             # Raise an error if the initial guess is outside the bounds
             for i in range(len(p0)):
                 if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
@@ -201,11 +208,16 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr, cov_matrix = self._copy_inputs(x, y, yerr, cov_matrix)
+        x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
+
+        bounds = (
+            [-1.5, np.min(x), 0, -np.inf], # Lower bounds
+            [0, np.max(x), np.inf, np.inf] # Upper bounds
+        )
 
         if p0 is None:
-            amplitude_guess = np.min(y)
-            mean_guess = x[np.argmin(y)]
+            amplitude_guess = np.nanmin(y)
+            mean_guess = x[np.nanargmin(y)]
             half = 0.5 * (np.nanmax(y) + np.nanmin(y))
             above = np.flatnonzero(y < half)
             if above.size >= 2:
@@ -215,10 +227,7 @@ class Profiles:
             sigma0 = fwhm / 2.355
             offset = 0
             p0 = [amplitude_guess, mean_guess, sigma0, offset]
-            bounds = (
-                [-1.5, np.min(x), 0, -np.inf], # Lower bounds
-                [0, np.max(x), np.inf, np.inf] # Upper bounds
-            )
+            
             for i in range(len(p0)):
                 if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
                     raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
@@ -250,11 +259,16 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr, cov_matrix = self._copy_inputs(x, y, yerr, cov_matrix)
+        x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
+
+        bounds = (
+            [-1, np.min(x), 0, -np.inf], # Lower bounds
+            [0, np.max(x), np.inf, np.inf] # Upper bounds
+        )
 
         if p0 is None:
-            amplitude_guess = np.min(y)
-            centre_guess = x[np.argmin(y)]
+            amplitude_guess = np.nanmin(y)
+            centre_guess = x[np.nanargmin(y)]
             half = 0.5 * (np.nanmax(y) + np.nanmin(y))
             above = np.flatnonzero(y < half)
             if above.size >= 2:
@@ -265,13 +279,33 @@ class Profiles:
             gamma0 = sigma0 * 0.1
             offset = 0
             p0 = [amplitude_guess, centre_guess, gamma0, offset]
-            bounds = (
-                [-1, np.min(x), 0, -np.inf], # Lower bounds
-                [0, np.max(x), np.inf, np.inf] # Upper bounds
-            )
+
+            for i in range(len(p0)):
+                if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
+                    raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                                        f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
         popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
         return popt, pcov
+
+    @staticmethod
+    def _remove_nans(x, y, yerr, cov_matrix):
+        mask = np.isfinite(x) & np.isfinite(y)
+
+        if yerr is not None:
+            mask &= np.isfinite(yerr) & (yerr > 0)
+
+        x = x[mask]
+        y = y[mask]
+
+        if yerr is not None:
+            yerr = yerr[mask]
+
+        if cov_matrix is not None:
+            idx = np.where(mask)[0]
+            cov_matrix = cov_matrix[np.ix_(idx, idx)]
+
+        return x, y, yerr, cov_matrix
 
     def _copy_inputs(self, x, y, yerr, cov_matrix) -> tuple:
         """Internal method to copy input data or use class attributes.
@@ -331,7 +365,8 @@ class Profiles:
 
         # Perform the curve fitting
         sigma = yerr if cov_matrix is None else cov_matrix
-        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, bounds=bounds, absolute_sigma=True, **kwargs)
+        absolute_sigma = kwargs.pop("absolute_sigma", sigma is not None) # If sigma is None, then absolute_sigma is False, else True
+        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, bounds=bounds, absolute_sigma=absolute_sigma, **kwargs)
         self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
         self.fit_on_x[model_name] = model_func(x, *popt)
 
