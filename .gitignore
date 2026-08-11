@@ -1,7 +1,7 @@
 # User added
 *.h5
 test.py
-test_data/
+tmp/*
 
 # Standard Python ignores
 .vscode/
