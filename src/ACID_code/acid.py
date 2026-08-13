@@ -225,35 +225,37 @@ class Acid:
 
     def ACID(
         self,
-        wavelengths           : Array1D|Array2D|None        = None,   # Data
-        flux                  : Array1D|Array2D|None        = None,   # Data
-        errors                : Array1D|Array2D|None        = None,   # Data
-        sn                    : Array1D|Array2D|Scalar|None = None,   # Data
-        deterministic_profile : bool|None                   = None,   # Config
-        poly_ord              : IntLike|None                = None,   # Config
-        continuum_percentile  : IntLike|None                = None,   # Config
-        n_bins                : IntLike|None                = None,   # Config
-        bin_size              : IntLike|None                = None,   # Config
-        pix_chunk             : IntLike|None                = None,   # Config
-        dev_perc              : IntLike|None                = None,   # Config
-        n_sig                 : IntLike|None                = None,   # Config
-        skips                 : IntLike|None                = None,   # Config
-        od                    : bool|None                   = None,   # Config
-        sparse                : bool|None                   = None,   # Config
-        sampler_type          : str|None                    = None,   # Config
-        parallel              : bool|None                   = None,   # Config
-        cores                 : IntLike|None                = None,   # Config
-        nwalkers              : IntLike|None                = None,   # Config, then Data just before MCMC
-        nsteps                : IntLike|None                = None,   # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
-        max_steps             : IntLike|None                = None,   # Config
-        check_interval        : IntLike|None                = None,   # Config
-        min_checks            : IntLike|None                = None,   # Config
-        min_tau_factor        : IntLike|None                = None,   # Config
-        tau_tol               : float|None                  = None,   # Config
-        moves                 : list|None                   = None,   # Config
-        continuum_method      : str|None                    = None,   # Config
-        run_mcmc              : bool|None                   = None,   # Config
-        _all_frames                                         = None,   # To work with legacy code, not to be used, silently ignored
+        wavelengths           : Array1D|Array2D|None        = None, # Data
+        flux                  : Array1D|Array2D|None        = None, # Data
+        errors                : Array1D|Array2D|None        = None, # Data
+        sn                    : Array1D|Array2D|Scalar|None = None, # Data
+        deterministic_profile : bool|None                   = None, # Config
+        poly_ord              : IntLike|None                = None, # Config
+        continuum_percentile  : IntLike|None                = None, # Config
+        n_bins                : IntLike|None                = None, # Config
+        bin_size              : IntLike|None                = None, # Config
+        pix_chunk             : IntLike|None                = None, # Config
+        dev_perc              : IntLike|None                = None, # Config
+        n_sig                 : IntLike|None                = None, # Config
+        skips                 : IntLike|None                = None, # Config
+        od                    : bool|None                   = None, # Config
+        sparse                : bool|None                   = None, # Config
+        depth_group_rules     : dict|None                   = None, # Config
+        profile_groups        : Array1D|None                = None, # Config
+        sampler_type          : str|None                    = None, # Config
+        parallel              : bool|None                   = None, # Config
+        cores                 : IntLike|None                = None, # Config
+        nwalkers              : IntLike|None                = None, # Config, then Data just before MCMC
+        nsteps                : IntLike|None                = None, # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
+        max_steps             : IntLike|None                = None, # Config
+        check_interval        : IntLike|None                = None, # Config
+        min_checks            : IntLike|None                = None, # Config
+        min_tau_factor        : IntLike|None                = None, # Config
+        tau_tol               : float|None                  = None, # Config
+        moves                 : list|None                   = None, # Config
+        continuum_method      : str|None                    = None, # Config
+        run_mcmc              : bool|None                   = None, # Config
+        _all_frames                                         = None, # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
         """
@@ -442,6 +444,8 @@ class Acid:
             "skips"                 : skips,
             "od"                    : od,
             "sparse"                : sparse,
+            "depth_group_rules"     : depth_group_rules,
+            "profile_groups"        : profile_groups,
             "sampler_type"          : sampler_type,
             "parallel"              : parallel,
             "cores"                 : cores,

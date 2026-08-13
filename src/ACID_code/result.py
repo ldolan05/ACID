@@ -183,31 +183,18 @@ class Result:
         self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
 
         # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
-        forward_model, forward_errors = lsd.convolve_profile(
+        forward_model = lsd.convolve_profile(
             profile        = lsd.profile, # in OD
-            profile_errors = lsd.profile_errors, # in OD
+            # profile_errors = lsd.profile_errors, # in OD
             alpha          = self.data.alpha["initial"],
         )
         # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
         forward_model = utils.od_to_flux(forward_model, od=self.config.od)
-
-        # alpha_masked = self.data.alpha["masked"]
-        # forward_model = LSD.dot_alpha_and_profile(alpha_masked, lsd.profile_flat)
-        # forward_errors = np.sqrt(
-        #     np.sum((alpha_masked @ lsd.cov_z) * alpha_masked, axis=1)
-        # )
-        # if self.config.od:
-        #     forward_model, forward_errors = utils.od_to_flux(
-        #         forward_model,
-        #         forward_errors,
-        #     )
-        # else:
-        #     forward_model += 1
         
         # Set the final LSD results # TODO: move to a new data.set_LSD_result method (from Acid one)
         self.data.forward_x["final"] = wavelengths
         self.data.forward_y["final"] = forward_model * continuum
-        self.data.forward_yerr["final"] = forward_errors * continuum
+        # self.data.forward_yerr["final"] = forward_errors * continuum
         self.data.alpha["final"] = self.data.alpha["initial"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs

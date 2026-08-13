@@ -12,6 +12,18 @@ from .errors import LineListRangeError, SNCutError
 from .data import Config, Data, LineList
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D, Array3D
 
+# The depth groups go by this logic:
+# min_lines is global mininimum lines: if unable to put this many lines -> exception
+# n_groups is how many groups you want
+# then, any other dictionary entries (which should correspond to the group depth number,
+# i.e. 0 is the deepest) Specifies the minimum depth of that line group. The rest
+# of the groups will be filled such that each group has equal numbers of lines. eg:
+# depth_group_rules = {
+#     "n_groups": 4,
+#     "min_lines": 20,
+#     "0": 0.8,
+# }
+
 @beartype
 class LSD:
     """
@@ -23,11 +35,13 @@ class LSD:
     """
     def __init__(
             self,
-            data    : object|None           = None,
-            od      : bool                  = None,
-            verbose : IntLike|bool|str|None = None,
-            sparse  : bool|None             = None,
-            ) -> None:
+            data              : object|None           = None,
+            od                : bool                  = None,
+            verbose           : IntLike|bool|str|None = None,
+            sparse            : bool|None             = None,
+            depth_group_rules : dict|None             = None,
+            profile_groups    : Array1D|None          = None,
+        ) -> None:
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
         Parameters
@@ -49,12 +63,13 @@ class LSD:
             It is just kept for testing/backwards compatibility.
         """
         # Set class variables, taking from input data if it exists, else setting to defaults
-        # TODO: Add tests for new sparse option
-        self.slurm    = "SLURM_JOB_ID" in os.environ
-        self.data     = data if data is not None else Data()
-        self.linelist = self.data.linelist if self.data is not None else None
-        self.od       = od if od is not None else self.data.config.od
-        self.sparse   = sparse if sparse is not None else self.data.config.sparse
+        self.slurm             = "SLURM_JOB_ID" in os.environ
+        self.data              = data if data is not None else Data()
+        self.linelist          = self.data.linelist if self.data is not None else None
+        self.od                = od if od is not None else self.data.config.od
+        self.sparse            = sparse if sparse is not None else self.data.config.sparse
+        self.depth_group_rules = depth_group_rules if depth_group_rules is not None else self.data.config.depth_group_rules
+        self.profile_groups    = profile_groups if profile_groups is not None else self.data.config.profile_groups
         try:
             self.config = self.data.config
         except:
@@ -63,15 +78,14 @@ class LSD:
 
     def run_LSD(
         self,
-        wavelengths    : Array1D,
-        flux           : Array1D,
-        errors         : Array1D,
-        sn             : Scalar,
-        linelist       : Array2D|str|LineList|dict|None = None,
-        velocities     : Array1D|None                   = None,
-        alpha          : Array2D|Array3D|None           = None,
-        mp_lsd         : bool|None                      = None,
-        skip_warnings  : bool = False,
+        wavelengths       : Array1D,
+        flux              : Array1D,
+        errors            : Array1D,
+        sn                : Scalar,
+        linelist          : Array2D|str|LineList|dict|None = None,
+        velocities        : Array1D|None                   = None,
+        alpha             : Array2D|Array3D|None           = None,
+        skip_warnings     : bool                           = False,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -116,22 +130,25 @@ class LSD:
         if alpha is not None:
             alpha = np.asarray(alpha)
             if alpha.ndim == 2:
-                if alpha.shape[0] != self.n_wavelengths:
-                    raise ValueError(f"Input alpha first dimension {alpha.shape[0]} must match n_wavelengths={self.n_wavelengths}.")
-                if alpha.shape[1] % self.n_velocities != 0:
-                    raise ValueError(f"Input 2D alpha second dimension {alpha.shape[1]} must be a multiple of n_velocities={self.n_velocities}.")
+                if alpha.shape != (self.n_wavelengths, self.n_velocities):
+                    raise ValueError(f"Input 2D alpha shape {alpha.shape} does not match expected ({self.n_wavelengths}, {self.n_velocities}).")
             elif alpha.ndim == 3:
                 if alpha.shape[1:] != (self.n_wavelengths, self.n_velocities):
                     raise ValueError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_profs, {self.n_wavelengths}, {self.n_velocities}).")
             else:
                 raise ValueError("Input alpha must be either 2D or 3D.")
 
+        if self.depth_group_rules is not None and self.profile_groups is not None:
+            raise ValueError("Cannot provide both depth_group_rules and profile_groups. profile_groups are generated from the depth_group_rules.")
+
+        mp_lsd_mode = self.depth_group_rules is not None or self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
+
         # Unpack the linelist stored in data
         self.data.linelist = linelist # Raises if no linelist available, overwrites if input
         wavelengths_linelist, depths_linelist = self.data.linelist
 
         # Clip linelist to wavelength range of spectrum
-        wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+        wavelengths_linelist, depths_linelist, self.profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, self.profile_groups)
         if len(wavelengths_linelist) == 0:
             error = LineListRangeError(
                 "No lines in linelist are within the wavelength range of the observed spectrum.\n"
@@ -143,7 +160,17 @@ class LSD:
             raise error
 
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn, skip_warnings)
+        wavelengths_linelist, depths_linelist, self.profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, self.profile_groups, skip_warnings)
+
+        # Group profiles while depths are still in linear space
+        if alpha is None and mp_lsd_mode:
+            if self.profile_groups is None:
+                self.profile_groups = self.group_profs(depths_linelist, prof_group_rules=self.depth_group_rules)
+            else:
+                self.profile_groups = np.asarray(self.profile_groups)
+                if len(self.profile_groups) != len(depths_linelist):
+                    raise ValueError(f"profile_groups has {len(self.profile_groups)} entries but the linelist has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
+                                     f"Please check len(profile_groups) matches len(depths_linelist).")
 
         # At this point we our mask for points with negative fluxes and large masked errors and nans
         self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
@@ -154,56 +181,45 @@ class LSD:
             flux -= 1
 
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.mp_alpha = None # multi profile alpha storage
-        self.n_profs  = 1    # number of profiles in alpha
+        self.n_profs = 1
         self.n_velocities = len(self.data.velocities)
+
         if alpha is None:
-            if mp_lsd is False:
-                self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist, self.data.velocities, verbose=self.config.verbose)
-            else:
-                self.prof_groups = self.group_profs(depths_linelist, prof_group_rules=self.config.prof_group_rules)
-                self.mp_alpha, self.prof_groups = self.calc_mp_alpha(
+            if mp_lsd_mode:
+                self.alpha, self.unique_prof_groups = self.calc_mp_alpha(
                     wavelengths,
                     self.data.velocities,
                     wavelengths_linelist,
                     depths_linelist,
-                    self.prof_groups,
+                    self.profile_groups,
                     verbose=self.config.verbose,
+                    sparse=self.sparse
                 )
-                self.n_profs = len(self.prof_groups)
-                self.n_velocities = len(self.data.velocities)
-                self.alpha = self.flatten_alpha(self.mp_alpha)
+                self.n_profs = len(self.unique_prof_groups)
+                self.alpha_flat = self.flatten_alpha(self.alpha)
+            else:
+                self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist, self.data.velocities, verbose=self.config.verbose, sparse=self.sparse)
+                self.alpha_flat = self.alpha
         else:
             self.alpha = np.asarray(alpha)
 
             if self.alpha.ndim == 3:
                 self.n_profs = self.alpha.shape[0]
                 self.n_velocities = self.alpha.shape[2]
-                self.prof_groups = np.arange(self.n_profs)  # Placeholder if profs are not provided
-                self.mp_alpha = self.alpha
-                self.alpha = self.flatten_alpha(self.mp_alpha)
-            
-            elif alpha.ndim == 2:
-                self.alpha = alpha
-                self.n_velocities = len(self.data.velocities)
+                self.unique_prof_groups = np.arange(self.n_profs)
+                self.alpha_flat = self.flatten_alpha(self.alpha)
 
-                if self.alpha.shape[1] % self.n_velocities != 0:
-                    raise ValueError(
-                        f"2D alpha shape {self.alpha.shape} is incompatible with "
-                        f"n_velocities={self.n_velocities}."
-                    )
-
-                self.n_profs = self.alpha.shape[1] // self.n_velocities
-
-        mp_lsd_mode = (self.mp_alpha is not None) or (self.n_profs > 1)
-        mp_lsd_mode = mp_lsd_mode and (mp_lsd is not False)  # Allow override
+            elif self.alpha.ndim == 2:
+                self.n_profs = 1
+                self.alpha_flat = self.alpha
 
         # Now solve for profile using Cholesky decomposition, independent of mp_lsd mode since alpha is flattened in both cases
-        self.c_factor = self.calc_cholesky(self.alpha, errors)
+        self.c_factor = self.calc_cholesky(self.alpha_flat, errors)
 
         # Solve for profile and profile errors using Cholesky factors
-        self.profile_flat, self.profile_errors_flat, self.cov_z = self.solve_z(self.alpha, flux, errors, self.c_factor, return_error=True, return_cov=True)
+        self.profile_flat, self.profile_errors_flat, self.cov_z = self.solve_z(self.alpha_flat, flux, errors, self.c_factor, return_error=True, return_cov=True)
 
+        # Profile in LSD fitting space
         if mp_lsd_mode:
             self.profile = self.profile_flat.reshape(self.n_profs, self.n_velocities)
             self.profile_errors = self.profile_errors_flat.reshape(self.n_profs, self.n_velocities)
@@ -211,46 +227,35 @@ class LSD:
             self.profile = self.profile_flat
             self.profile_errors = self.profile_errors_flat
 
-        self.forward_model = self.alpha @ self.profile_flat
-        self.forward_model_errors = np.sqrt((self.alpha**2) @ (self.profile_errors_flat**2))
-        # self.forward_model_errors = np.sqrt(np.sum((self.alpha @ self.cov_z) * self.alpha, axis=1))
+        self.forward_model = self.alpha_flat @ self.profile_flat
+        # self.forward_model_errors = np.sqrt((self.alpha**2) @ (self.profile_errors_flat**2))
+        self.forward_model_errors = np.sqrt(np.sum((self.alpha_flat @ self.cov_z) * self.alpha_flat, axis=1))
 
-        # Convert profile back to flux if needed
-        if self.od:
-            self.profile_F_flat, self.profile_errors_F_flat, self.cov_z_F = utils.od_to_flux(
-                self.profile_flat,
-                self.profile_errors_flat,
-                cov_matrix=self.cov_z,
-            )
+        # Convert profile and forward model to flux space
+        self.profile_F_flat, self.profile_errors_F_flat, self.cov_z_F = utils.od_to_flux(
+            self.profile_flat,
+            self.profile_errors_flat,
+            cov_matrix=self.cov_z,
+            od=self.od,
+        )
 
-            if mp_lsd_mode:
-                self.profile_F = self.profile_F_flat.reshape(self.n_profs, self.n_velocities)
-                self.profile_errors_F = self.profile_errors_F_flat.reshape(self.n_profs, self.n_velocities)
-            else:
-                self.profile_F = self.profile_F_flat
-                self.profile_errors_F = self.profile_errors_F_flat
+        self.forward_model, self.forward_model_errors = utils.od_to_flux(
+            self.forward_model,
+            self.forward_model_errors,
+            od=self.od,
+        )
 
-            self.forward_model, self.forward_model_errors = utils.od_to_flux(
-                self.forward_model,
-                self.forward_model_errors,
-            )
-
-        else:
-            self.profile_flat += 1
-
-            if mp_lsd_mode:
-                self.profile = self.profile_flat.reshape(self.n_profs, self.n_velocities)
-                self.profile_errors = self.profile_errors_flat.reshape(self.n_profs, self.n_velocities)
-            else:
-                self.profile = self.profile_flat
-                self.profile_errors = self.profile_errors_flat
-
-            self.profile_F = self.profile
-            self.profile_errors_F = self.profile_errors
-            self.cov_z_F = self.cov_z
+        # Flux-space LSD is fitted to flux - 1
+        if not self.od:
+            self.profile_F_flat += 1
             self.forward_model += 1
-            self.profile_F_flat = self.profile_flat
-            self.profile_errors_F_flat = self.profile_errors_flat
+
+        if mp_lsd_mode:
+            self.profile_F = self.profile_F_flat.reshape(self.n_profs, self.n_velocities)
+            self.profile_errors_F = self.profile_errors_F_flat.reshape(self.n_profs, self.n_velocities)
+        else:
+            self.profile_F = self.profile_F_flat
+            self.profile_errors_F = self.profile_errors_F_flat
 
         return
 
@@ -259,8 +264,9 @@ class LSD:
             wavelengths_linelist : Array1D,
             depths_linelist      : Array1D,
             sn                   : Scalar,
-            skip_warnings       : bool = False,
-            ) -> tuple[Array1D, Array1D, Array1D]:
+            profile_groups       : Array1D | None = None,
+            skip_warnings        : bool = False,
+        ) -> tuple[Array1D, Array1D, Array1D | None]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
 
@@ -272,6 +278,8 @@ class LSD:
             Depths from the linelist
         sn : :py:type:`Scalar`
             Signal-to-noise ratio threshold
+        profile_groups : :py:type:`Array1D` | None, optional
+            The profile group mask, if provided. If None, no profile grouping is applied.
         skip_warnings : bool, optional
             Whether to skip warnings about the number of lines remaining after the S/N cut,
             by default False
@@ -279,7 +287,7 @@ class LSD:
         Returns
         -------
         tuple[:py:type:`Array1D`, :py:type:`Array1D`, :py:type:`Array1D`]
-            Clipped wavelengths and depths from the linelist
+            Clipped wavelengths, depths, and profile groups from the linelist
         """
         # Selecting lines deeper than 1/(3*sn)
         idx = (depths_linelist >= 1/(3*sn))
@@ -287,21 +295,54 @@ class LSD:
         depths_linelist = depths_linelist[idx]
 
         # Analyse remaining lines
+        ncut = np.sum(~idx)
+        nrest = np.sum(idx)
+        perc = 100 * nrest / (nrest + ncut)
+        if nrest == 0:
+            error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+            self.data.exception = error
+            self.data.traceback = traceback.format_stack()
+            raise error
         if not skip_warnings:
-            ncut = np.sum(~idx)
-            nrest = np.sum(idx)
-            perc = 100 * nrest / (nrest + ncut)
-            if nrest == 0:
-                error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
-                self.data.exception = error
-                self.data.traceback = traceback.format_stack()
-                raise error
             if self.config.verbose > 0 and not skip_warnings:
                 if perc < 5:
                     print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
                 if self.config.verbose > 2:
                     print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
-        return wavelengths_linelist, depths_linelist
+        return wavelengths_linelist, depths_linelist, profile_groups[idx] if profile_groups is not None else None
+
+    @staticmethod
+    def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups=None, pad=5):
+        """
+        Clips the linelist to only include lines within the wavelength range of the observed spectrum.
+        Includes a pad either side of the wavelength range so that the wings of lines outside
+        the range can also contribute to the fit.
+
+        Parameters
+        ----------
+        wavelengths : np.ndarray
+            Wavelengths of the observed spectrum
+        wavelengths_linelist : np.ndarray
+            Wavelengths from the linelist
+        depths_linelist : np.ndarray
+            Depths from the linelist
+        profile_groups : np.ndarray | None, optional
+            The profile group mask.
+        pad : float, optional
+            Number of angstroms to pad on either side of the wavelength range. By default, 5.
+
+        Returns
+        -------
+        wavelengths_linelist : np.ndarray
+            Clipped wavelengths from the linelist
+        depths_linelist : np.ndarray
+            Clipped depths from the linelist
+        profile_groups : np.ndarray | None
+            Clipped profile group mask, if provided
+        """
+        lower, upper = np.nanmin(wavelengths)-pad, np.nanmax(wavelengths)+pad
+        idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
+        return wavelengths_linelist[idx], depths_linelist[idx], profile_groups[idx] if profile_groups is not None else None
 
     @staticmethod
     def calc_alpha(
@@ -349,7 +390,7 @@ class LSD:
         deltav = velocities[1] - velocities[0]
 
         # Clip linelist to wavelength range of spectrum (again just in case this is called without run_LSD, saves memory by reducing lines)
-        wavelengths_linelist, depths_linelist = utils.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+        wavelengths_linelist, depths_linelist, _ = LSD.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
 
         # Find differences and velocities
         blankwaves = wavelengths
@@ -720,73 +761,144 @@ class LSD:
 
         raise ValueError("Alpha matrix must be either 2D or 3D.")
 
-    # @classmethod
-    # def calc_mp_alpha(
-    #     cls,
-    #     wavelengths: Array1D,
-    #     velocities: Array1D,
-    #     linelist_wavelengths: Array1D,
-    #     linelist_depths: Array1D,
-    #     linelist_ions: Array1D,
-    #     verbose: IntLike | bool | str | None = None,
-    # ) -> tuple[Array3D, Array1D]:
-    #     """
-    #     Build one alpha block per ion.
+    @classmethod
+    def calc_mp_alpha(
+        cls,
+        wavelengths: Array1D,
+        velocities: Array1D,
+        linelist_wavelengths: Array1D,
+        linelist_depths: Array1D,
+        profile_groups: Array1D,
+        sparse: bool = True,
+        verbose: IntLike|bool|str|None = None,
+        ) -> tuple[Array3D, Array1D]:
+        """
+        Build one alpha block per line-depth profile group.
 
-    #     Returns
-    #     -------
-    #     alpha_ion : Array3D
-    #         Shape: (n_ions, n_wavelengths, n_velocities)
+        Returns
+        -------
+        mp_alpha : Array3D
+            Shape: (n_profs, n_wavelengths, n_velocities)
 
-    #     unique_ions : Array1D
-    #         Ion labels in the same order as alpha_ion.
-    #     """
-    #     linelist_ions = np.asarray(linelist_ions)
-    #     unique_ions = np.unique(linelist_ions)
+        unique_groups : Array1D
+            Profile group labels in the same order as mp_alpha.
+        """
+        profile_groups = np.asarray(profile_groups)
 
-    #     alpha_blocks = []
+        if len(profile_groups) != len(linelist_depths):
+            raise ValueError("profile_groups must have the same length as the linelist.")
 
-    #     verbose = Config(verbose=verbose).verbose
-    #     if verbose:
-    #         iterator = tqdm(unique_ions, desc="Calculating alpha blocks for each ion")
-    #     else:
-    #         iterator = unique_ions
+        unique_profile_groups = np.unique(profile_groups)
+        alpha_blocks = []
 
-    #     for ion_label in iterator:
-    #         idx = linelist_ions == ion_label
-
-    #         alpha_i = cls.calc_alpha(
-    #             wavelengths=wavelengths,
-    #             wavelengths_linelist=linelist_wavelengths[idx],
-    #             depths_linelist=linelist_depths[idx],
-    #             velocities=velocities,
-    #             verbose=0,
-    #         )
-
-    #         alpha_blocks.append(alpha_i)
-
-    #     alpha_ion = np.stack(alpha_blocks, axis=0)
-    #     return alpha_ion, unique_ions
+        verbose = Config(verbose=verbose).verbose
+        if verbose > 1:
+            iterator = tqdm(unique_profile_groups, desc="Calculating alpha blocks for each profile group")
+        else:
+            iterator = unique_profile_groups
     
-    # @staticmethod
-    # def flatten_alpha(alpha:Array3D) -> Array2D:
-    #     if alpha.ndim != 3:
-    #         raise ValueError(f"Expected 3D alpha_ion, got shape {alpha.shape}")
-    #     return np.concatenate(alpha, axis=1)
+        for group in iterator:
+            idx = profile_groups == group
+            alpha_i = cls.calc_alpha(wavelengths, linelist_wavelengths[idx], linelist_depths[idx], velocities, sparse=sparse, verbose=0)
+            alpha_blocks.append(alpha_i)
 
-    # @staticmethod
-    # def group_sparse_ions(
-    #     ions_linelist,
-    #     min_lines_per_ion=10,
-    #     other_label="other",
-    # ):
-    #     ions_linelist = np.asarray(ions_linelist).astype(object)
+        mp_alpha = np.stack(alpha_blocks, axis=0)
+        return mp_alpha, unique_profile_groups
 
-    #     unique_ions, counts = np.unique(ions_linelist, return_counts=True)
-    #     good_ions = unique_ions[counts >= min_lines_per_ion]
+    @staticmethod
+    def flatten_alpha(alpha:Array3D) -> Array2D:
+        if alpha.ndim != 3:
+            raise ValueError(f"Expected 3D alpha matrix, got shape {alpha.shape}")
+        return np.concatenate(alpha, axis=1)
 
-    #     grouped_ions = ions_linelist.copy()
-    #     sparse = ~np.isin(grouped_ions, good_ions)
-    #     grouped_ions[sparse] = other_label
+    @staticmethod
+    def group_profs(depths_linelist:Array1D, prof_group_rules:dict|None=None) -> Array1D:
+        """
+        Assign each line to a profile group based on its linear line depth.
 
-    #     return grouped_ions
+        Explicit group rules specify the minimum depth for that group. Each
+        group takes all available lines down to that depth, or continues
+        shallower until min_lines is reached. Groups without an explicit depth
+        rule split the remaining lines equally.
+        """
+        depths_linelist = np.asarray(depths_linelist)
+
+        rules = prof_group_rules
+
+        n_groups = int(rules["n_groups"])
+        min_lines = int(rules["min_lines"])
+
+        if len(depths_linelist) < n_groups*min_lines:
+            raise ValueError(f"Cannot make {n_groups} profile groups with at least {min_lines} lines each from {len(depths_linelist)} lines.")
+        if n_groups < 1:
+            raise ValueError("n_groups must be at least 1.")
+        if min_lines < 1:
+            raise ValueError("min_lines must be at least 1.")
+
+        depth_rules = {}
+        for key, value in rules.items():
+            if key in ["n_groups", "min_lines"]:
+                continue
+
+            group = int(key)
+
+            if group < 0 or group >= n_groups:
+                raise ValueError(f"Profile group rule {group} is outside n_groups={n_groups}.")
+
+            depth_rules[group] = float(value)
+
+        depth_groups = sorted(depth_rules)
+
+        if depth_groups != list(range(len(depth_groups))):
+            raise ValueError("Explicit depth rules must be consecutive starting from group 0.")
+
+        depth_values = [depth_rules[group] for group in depth_groups]
+        if not all(depth_values[i] > depth_values[i+1] for i in range(len(depth_values)-1)):
+            raise ValueError("Profile group minimum depths must decrease from deepest to shallowest group.")
+
+        # Sort lines deepest to shallowest
+        sorted_idx = np.argsort(depths_linelist)[::-1]
+        sorted_depths = depths_linelist[sorted_idx]
+
+        prof_groups = np.full(len(depths_linelist), -1, dtype=int)
+        start = 0
+
+        # Fill groups with explicit depth rules
+        for group in depth_groups:
+
+            remaining_depths = sorted_depths[start:]
+
+            # Take all remaining lines down to this group's minimum depth
+            n_take = np.sum(remaining_depths >= depth_rules[group])
+
+            # If that is not enough, continue shallower until min_lines
+            n_take = max(n_take, min_lines)
+
+            if start + n_take > len(sorted_idx):
+                raise ValueError(f"Not enough lines remaining to give profile group {group} at least {min_lines} lines.")
+
+            end = start + n_take
+            prof_groups[sorted_idx[start:end]] = group
+            start = end
+
+        # Fill groups without explicit depth rules equally
+        remaining_groups = list(range(len(depth_groups), n_groups))
+        remaining_idx = sorted_idx[start:]
+
+        if len(remaining_groups) > 0:
+
+            if len(remaining_idx) < len(remaining_groups)*min_lines:
+                raise ValueError(
+                    f"Only {len(remaining_idx)} lines remain for {len(remaining_groups)} profile groups with min_lines={min_lines}.\n"
+                    f"Try reducing n_groups or reducing min_lines (we don't recommend reducing min_lines below 10)."
+                )
+
+            for group, idx in zip(remaining_groups, np.array_split(remaining_idx, len(remaining_groups))):
+                prof_groups[idx] = group
+
+        # If depths were specified for every group, the shallowest group
+        # contains any lines remaining after its minimum requirements
+        elif len(remaining_idx) > 0:
+            prof_groups[remaining_idx] = n_groups - 1
+
+        return prof_groups

@@ -231,6 +231,9 @@ class Config:
         "n_sig" : 3,
         "skips" : 1,
         "od"    : True,
+        "sparse" : True, # TODO: doccument and test this and 2 below
+        "depth_group_rules" : None,
+        "profile_groups" : None,
         "sampler_type" : "emcee",
         "parallel" : True,
         "cores" : None,
@@ -248,7 +251,6 @@ class Config:
             ("DEMove", 0.1, {"gamma0": 1.0}),
         ],
         "run_mcmc" : True,
-        "sparse" : True,
         "continuum_method" : None, # forced here or calculated in ACID based on poly order
     }
 
@@ -1001,7 +1003,8 @@ class Data:
         # Only plot the 20 strongest lines to avoid overcrowding.
         ll_wl = self.linelist["wavelengths"]
         ll_depths = self.linelist["depths"]
-        ll_wl, ll_depths = utils.clip_wavelengths(unnormalized_wavelengths, ll_wl, ll_depths)
+        from .lsd import LSD
+        ll_wl, ll_depths, _ = LSD.clip_wavelengths(unnormalized_wavelengths, ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
         ll_depths = ll_depths[idx]
