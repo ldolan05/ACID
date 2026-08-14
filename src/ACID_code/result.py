@@ -185,7 +185,6 @@ class Result:
         # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
         forward_model = lsd.convolve_profile(
             profile        = lsd.profile, # in OD
-            # profile_errors = lsd.profile_errors, # in OD
             alpha          = self.data.alpha["initial"],
         )
         # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
@@ -194,7 +193,6 @@ class Result:
         # Set the final LSD results # TODO: move to a new data.set_LSD_result method (from Acid one)
         self.data.forward_x["final"] = wavelengths
         self.data.forward_y["final"] = forward_model * continuum
-        # self.data.forward_yerr["final"] = forward_errors * continuum
         self.data.alpha["final"] = self.data.alpha["initial"]
         self.data.continuum["final"] = continuum
         self.data.poly_inputs["final"] = med_poly_coeffs
@@ -683,7 +681,7 @@ class Result:
             ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
         
         if show_masking:
-            full_mask = self.data.full_mask
+            full_mask = ~self.data.full_mask
 
             utils.plot_masked_line(ax[0], wavelengths, forward, full_mask, label=["Forward model", "Masked Forward model"])
             utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])

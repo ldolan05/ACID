@@ -9,6 +9,8 @@ from .data import Data
 from numpy.polynomial.chebyshev import chebval
 from .lsd import LSD
 
+# TODO: see if we can get a jax speedup
+
 # The following two wrapper functions are required for multiprocessing
 # support, without it, the fork method would need to reserialize everything
 # which is very inefficient. See parallelization in the emcee documentation

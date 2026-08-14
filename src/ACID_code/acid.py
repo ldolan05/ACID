@@ -236,7 +236,8 @@ class Acid:
         bin_size              : IntLike|None                = None, # Config
         pix_chunk             : IntLike|None                = None, # Config
         dev_perc              : IntLike|None                = None, # Config
-        n_sig                 : IntLike|None                = None, # Config
+        sigma_lower           : IntLike|None                = None, # Config
+        sigma_upper           : IntLike|None                = None, # Config
         skips                 : IntLike|None                = None, # Config
         od                    : bool|None                   = None, # Config
         sparse                : bool|None                   = None, # Config
@@ -318,11 +319,21 @@ class Acid:
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
             and the data. If a residual deviates by this percentage for a specified number of pixels,
             then this chunk of pixels are masked in the spectra. By default 25
-        n_sig : :py:type:`IntLike`, optional
+        sigma_lower : :py:type:`IntLike`, optional
             Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
-            residuals between an inital model and the data. Regions that lie outside the median +- n_sig STDEVs are clipped.
-            The clipped regions will be masked in the spectra. This masking is only applied to find the continuum fit and is removed when
+            residuals between an inital model and the data (with masking_lines already removed).
+            Regions that lie outside the median - sigma_lower STDEVs are clipped.
+            The clipped regions will be masked in the spectra.
+            This masking is only applied to find the MCMC continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 3
+        sigma_upper : :py:type:`IntLike`, optional
+            Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
+            residuals between an inital model and the data (with masking_lines already removed).
+            Regions that lie outside the median + sigma_upper STDEVs are clipped.
+            The clipped regions will be masked in the spectra.
+            This masking is only applied to find the MCMC continuum fit and is removed when
+            LSD is applied to obtain the final profiles, by default 5.
+            The default is higher to allow ACID to find a better continuum fit in MCMC fitting (try reducing sigma_lower yourself!).
         skips : :py:type:`IntLike`, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
@@ -418,6 +429,14 @@ class Acid:
         if self.config.verbose>1:
             print('Initialising...')
 
+        # TODO: add this legacy kward to legacy ACID and ACID_HARPS
+        # TODO: Dont forget also about legacy ACID tests in new testing suite eventually
+        if "n_sig" in kwargs:
+            sigma_lower = kwargs.pop("n_sig")
+            if self.config.verbose > 0:
+                print("Warning: 'n_sig' is a legacy argument for inputting sigma_lower.\n" \
+                f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.")
+
         # Check for any potential conflicts in input arguments that are meant for the class initialisation.
         overlap = self._INIT_KEYS & kwargs.keys()
         if overlap and self.config.verbose > 0:
@@ -440,7 +459,8 @@ class Acid:
             "bin_size"              : bin_size,
             "pix_chunk"             : pix_chunk,
             "dev_perc"              : dev_perc,
-            "n_sig"                 : n_sig,
+            "sigma_lower"           : sigma_lower,
+            "sigma_upper"           : sigma_upper,
             "skips"                 : skips,
             "od"                    : od,
             "sparse"                : sparse,
@@ -531,54 +551,29 @@ class Acid:
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
 
-        # Create the initial keys, this is just the combined key, except the errors have masked out the masking lines.
+        # Prepare the "initial" keys, this is just the combined key, except the errors have masked out the masking lines.
         # They are also used in the final step as these are the only regions masked in the final step
+        # TODO: Convert masks to np.ma masks
         self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.errors["combined"])
         self.data.wavelengths["initial"] = self.data.wavelengths["combined"]
         self.data.flux["initial"] = self.data.flux["combined"]
         self.data.sn["initial"] = self.data.sn["combined"]
 
-        # Compute an initial continuum fit
-        # poly inputs has polynomial coefficients and scale at the end
+        # Check if the initial LSD run has been performed
         if all((
-            hasattr(self.data.flux, "fitted"),
-            hasattr(self.data.errors, "fitted"),
+            # We only bother to check for one of these keys generated in the scipy_continuum_fit and LSD runs
+            "initial" in self.data.poly_coeffs,
+            "initial" in self.data.alpha,
         )):
             if self.config.verbose > 2:
-                print("Continuum fit already exists, skipping initial fit step.")
+                print("Initial fit and LSD run already exists, skipping this step.")
         else:
             if self.config.verbose > 2:
-                print("Performing initial continuum fit...")
-            self.data.poly_inputs["initial"], self.data.flux["fitted"], self.data.errors["fitted"] = self.continuumfit(
-                self.data.wavelengths["initial"],
-                self.data.flux["initial"],
-                self.data.errors["initial"],
-                poly_ord = self.config.poly_ord,
-                plot_result = self.config.verbose > 2,
-                plot_type = "initial"
-            )
-        norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
-        self.data.continuum["initial"]  = utils.eval_continuum(norm_wl, self.data.poly_inputs["initial"], method=self.config.continuum_method)
-        self.data.wavelengths["fitted"] = self.data.wavelengths["initial"] # Just to keep track
-        self.data.sn["fitted"]          = self.data.sn["initial"] # SN also is not changed here
+                print("Performing initial fit and LSD...")
 
-        # Get the initial LSD profile and set the alpha matrix (unchanged from masking) and model_inputs
-        if "initial" in self.data.profile:
-            if self.config.verbose > 1:
-                print("Initial LSD profile already exists, skipping initial LSD step.")
-        else:
-            if self.config.verbose > 1:
-                print("Calculating initial LSD profile...")
-            # Get the initial LSD profile using the initial fit
-            initial_LSD = LSD(self.data) # Initialise LSD class with standard Acid attributes (verbosity, linelist, velocities, etc)
-            initial_LSD.run_LSD(
-                wavelengths = self.data.wavelengths["fitted"],
-                flux = self.data.flux["fitted"],
-                errors = self.data.errors["fitted"],
-                sn = self.data.sn["fitted"]
-            )
-
-            self.store_LSD_result(initial_LSD, key="initial", wl_key="fitted", continuum=self.data.continuum["initial"]) # Store the results in the data class
+            # Uses all information stored in data, accessing and storing the data attributed with the key
+            self.scipy_continuum_fit(self.data, key="initial")
+            LSD.runlsd_and_store(self.data, key="initial")
 
         # Masking based off residuals
         if all((
@@ -595,12 +590,109 @@ class Acid:
         else:
             if self.config.verbose>1:
                 print('Residual masking...')
-            self.residual_mask()
+
+            # Use the initial LSD run to get the scaled residuals
+            residuals = self.data.residuals["initial"]
+            
+            # Masking pixel chunks based on deviation from residuals
+            # -----------------------------------------------
+            # Get bad pixels that deviate by a percentage greater than dev_perc on the full residuals
+            bad_idx = np.zeros_like(residuals, dtype=bool)
+            unmasked = ~self.data.line_mask
+            bad_idx[unmasked] = (np.abs(residuals[unmasked]) > (self.config.dev_perc / 100))
+
+            # A trick to get the mask for continuous regions of bad pixels, by padding the bad_idx 
+            # with False on both sides and finding the start and end indices of the True regions
+            padded = np.concatenate(([False], bad_idx, [False]))
+            starts = np.flatnonzero(~padded[:-1] & padded[1:])
+            ends = np.flatnonzero(padded[:-1] & ~padded[1:])
+            pix_mask = np.zeros_like(residuals, dtype=bool)
+
+            # Then make pix_mask for regions that are greater than pix_chunk in length
+            for start, end in zip(starts, ends):
+                if (end - start) >= self.config.pix_chunk:
+                    pix_mask[start:end] = True
+            self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
+
+            # Sigma Clipping
+            # --------------
+            # Use astropy's iterative sigma clipping, only sigma clip residuals that are not already line masked
+            masked_residuals = residuals[~self.data.line_mask] # so that we can get the std on the masked residuals
+
+            # Use the iterative sigma clipping from astropy, returning a masked array of clipped residuals
+            result, lower_clip, upper_clip = sigma_clip(
+                masked_residuals,
+                sigma_lower=self.config.sigma_lower,
+                sigma_upper=self.config.sigma_upper,
+                return_bounds=True
+            )
+
+            # Put the sigma mask back onto the full pixel grid
+            sigma_mask = np.zeros_like(residuals, dtype=bool)
+            sigma_mask[unmasked] = np.ma.getmaskarray(result)
+
+            self.data.sigma_mask = sigma_mask
+            # TODO: Allow plotting of upper and lower clipping boundaries to accept np.inf (if input)
+
+            # Combine all masks
+            self.data.full_mask = pix_mask | sigma_mask | self.data.line_mask
+            
+            # Warn if more than 50% of spectrum is masked this way
+            if np.sum(self.data.full_mask) < 0.5 * len(self.data.full_mask):
+                if self.config.verbose > 0:
+                    print(f"Warning: More than 50% of the spectrum is masked. \n" \
+                    "Please check your initial continuum fit and masking (by using verbose=3 when initialising). \n" \
+                    "If you are aware that you have bad spectra, then this can be ignored.")
+
+            # Apply a error mask onto just y for the continuum fit and LSD call, later we fully remove them with the full mask for fitting
+            self.data.errors["masked"]      = np.where(self.data.full_mask, 1e12, self.data.errors["combined"])
+            self.data.wavelengths["masked"] = self.data.wavelengths["combined"]
+            self.data.flux["masked"]        = self.data.flux["combined"]
+            self.data.sn["masked"]          = self.data.sn["combined"]
+
+            # We can also skip alpha recalculation as it is unchanged
+            self.data.alpha["masked"] = self.data.alpha["initial"]
+
+
+            # Second Continuum Fit and LSD run with new masked errors
+            # -------------------------------------------------------
+            # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
+            self.scipy_continuum_fit(self.data, key="masked")
+            lsd = LSD.runlsd_and_store(self.data, key="masked", return_cls=True)
+
+
+            # Applying Residual Masks to the Data for Fitting
+            #------------------------------------------------
+            # First apply to the flattened alpha, and then bin the lsd class to save memory.
+            # Slicing alpha like this avoids a recalculation because we know which wavelengths are masked
+            self.data.alpha["fitting"] = lsd.alpha_flat[~self.data.full_mask, :]
+            lsd = None
+
+            # Apply to the rest of the data
+            self.data.flux["fitting"]   = self.data.flux["combined"][~self.data.full_mask]
+            self.data.errors["fitting"] = self.data.errors["combined"][~self.data.full_mask]
+            self.data.sn["fitting"]     = self.data.sn["combined"][~self.data.full_mask]
+            # The wavelengths are also normalised for the fitting, this is the only saved wavelength key that is normalised
+            self.data.wavelengths["fitting"]  = utils.normalize_wavelengths(self.data.wavelengths["combined"])[~self.data.full_mask]
+
+            # For the Cholesky factor, we need to recalculate them on the new wavelength grid, and convert to OD if needed
+            errors = self.data.errors["fitting"] if not self.config.od else self.data.errors["fitting"]/self.data.flux["fitting"]
+            self.data.c_factor["fitting"] = LSD.calc_cholesky(alpha=self.data.alpha["fitting"], error=errors)
+            
+            # Save extra variables for plotting in the Data class
+            if "masking" not in self.data.plotting_variables:
+                self.data.plotting_variables["masking"] = {}
+            self.data.plotting_variables["masking"]["residuals"]        = residuals
+            self.data.plotting_variables["masking"]["masked_residuals"] = masked_residuals
+            if self.config.verbose > 2: # Plot now if verbose enough
+                self.data.plot_residual_masking()
+
 
         # Get the initial state from all of the above calculated data
         self.data.initial_state = self.get_initial_state()
 
-        ### ACID initialialised ###
+        # ACID Initialialised
+        # -------------------
         self.data.setup_time += time.time() - init_t0
         mcmc_t0 = time.time()
         if self.config.verbose>1:
@@ -611,6 +703,7 @@ class Acid:
             print(f"Using deterministic profile?: {self.config.deterministic_profile}")
             print(f"Number of walkers: {self.data.nwalkers}")
             print(f"Number of dimensions: {self.data.ndim}")
+            # TODO: print more diagnostics
 
         # Run MCMC
         if self.config.run_mcmc is True:
@@ -769,42 +862,20 @@ class Acid:
             # ie if called as a function rather than from ACID function
             return combined_wavelengths, combined_flux, combined_errors, combined_sn
 
-    def continuumfit(
-        self,
-        wavelengths      : Array1D,
-        fluxes           : Array1D,
-        errors           : Array1D,
-        poly_ord         : IntLike = 3,
-        plot_result      : bool    = False,
-        plot_type        : str     = "initial"
-        ) -> tuple:
-        """Provides an initial, normalised continuum fit using inputted spectra.
-
-        Parameters
-        ----------
-        wavelengths : np.ndarray
-            The wavelengths corresponding to the spectrum.
-        fluxes : np.ndarray
-            The flux values of the spectrum.
-        errors : np.ndarray
-            The error values associated with the spectrum.
-        poly_ord : int
-            The order of the polynomial to fit to the continuum. By default 3.
-        plot_result : bool, optional
-            Whether to plot the continuum fit result, by default False.
-        plot_type : str, optional
-            The type of plot to generate, either "initial" or "masked", by default "initial"
-
-        Returns
-        -------
-        tuple containing:
-            - Polynomial coefficients: The coefficients of the fitted polynomial, ordered from highest degree to lowest.
-            - Normalized flux: The flux values normalized by the fitted continuum.
-            - Normalized errors: The error values normalized by the fitted continuum.
+    @staticmethod
+    def scipy_continuum_fit(data:Data, key:str) -> None:
         """
+        Fits the continuum of a spectrum using the specified order and method.
+        """
+        config = data.config
+        wavelengths = data.wavelengths[key]
+        fluxes = data.flux[key]
+        errors = data.errors[key]
+
         # Normalise wavelengths
-        unnormalized_wavelengths = np.copy(wavelengths)
+        unnormalized_wavelengths = wavelengths
         norm_wavelengths = utils.normalize_wavelengths(wavelengths)
+        data.norm_wavelengths[key] = norm_wavelengths
 
         # Sort to ensure smooth binning and fitting
         idx = np.argsort(norm_wavelengths)
@@ -813,10 +884,10 @@ class Acid:
         e = errors[idx]
 
         # Get bin size. Explicit bin_size overrides n_bins.
-        if self.config.bin_size is not None:
-            binsize = self.config.bin_size
+        if config.bin_size is not None:
+            binsize = config.bin_size
         else:
-            binsize = max(1, len(w) // self.config.n_bins)
+            binsize = max(1, len(w) // config.n_bins)
 
         # Get binsize, reshape into 2D array of bins
         n = len(w) // binsize  # full bins only
@@ -825,12 +896,12 @@ class Acid:
         e2 = e[:n*binsize].reshape(n, binsize)
 
         # Get the median wavelength, specified percentile flux, and median error in each bin
-        clipped_flux = np.nanpercentile(f2, self.config.continuum_percentile, axis=1)
+        clipped_flux = np.nanpercentile(f2, config.continuum_percentile, axis=1)
         clipped_waves = np.nanmedian(w2, axis=1)
         clipped_errs = np.nanmedian(e2, axis=1)
 
         # # Also add as a safeguard an extra point for high orders at start and end of spectrum to avoid edge effects in high order fits
-        if poly_ord > 5 and self.config.continuum_method == "polyval":
+        if config.poly_ord > 5 and config.continuum_method == "polyval":
             max_wl_idx = np.nanargmax(w)
             min_wl_idx = np.nanargmin(w)
             clipped_waves = np.concatenate(([w[min_wl_idx]], clipped_waves, [w[max_wl_idx]]))
@@ -846,155 +917,37 @@ class Acid:
             & (clipped_errs < 1e11) # 1e12 is the default mask error value, which can be picked up in the median error binning
         )
 
-        # TODO: Here, add a check to see if len(good) is less than poly_ord + 1, and if so,
-        # raise an error or warning that the polynomial fit cannot be performed due to insufficient good points.
-        # This could be due to too over masking, which could be another thing to raise/warn against
+        # Check if there are enough good points for the polynomial fit
+        if np.sum(good) < config.poly_ord + 1:
+            raise ValueError("Insufficient good points for polynomial fit. "
+                             "Consider reducing the polynomial order or adjusting the masking.")
 
         # Fit with MCMC to get the polynomial coefficients and evaluate the continuum fit
-        poly_coeffs = utils.fit_continuum(clipped_waves[good], clipped_flux[good], poly_ord, method=self.config.continuum_method, w=1/clipped_errs[good])
-        fit = utils.eval_continuum(norm_wavelengths, poly_coeffs, method=self.config.continuum_method)
+        # The fitting and had different methods added, so they've been moved to their own function
+        data.poly_coeffs[key] = utils.fit_continuum(clipped_waves[good], clipped_flux[good], config.poly_ord, method=config.continuum_method, w=1/clipped_errs[good])
+        data.continuum[key] = utils.eval_continuum(norm_wavelengths, data.poly_coeffs[key], method=config.continuum_method)
 
         # Get the model fitted flux and errors from the fit
-        flux_obs = fluxes / fit
-        new_errors = errors / fit
+        data.fitted_flux[key] = fluxes / data.continuum[key]
+        data.fitted_errors[key] = errors / data.continuum[key]
 
         # Save to Data the required variables for the plot
-        if plot_type not in self.data.plotting_variables:
-            self.data.plotting_variables[plot_type] = {}
-            # TODO: Show line_mask in plot too
-        self.data.plotting_variables[plot_type]["unnormalized_wavelengths"] = unnormalized_wavelengths
-        self.data.plotting_variables[plot_type]["fluxes"]                   = fluxes
-        self.data.plotting_variables[plot_type]["fit"]                      = fit
-        self.data.plotting_variables[plot_type]["clipped_waves"]            = clipped_waves
-        self.data.plotting_variables[plot_type]["clipped_flux"]             = clipped_flux
-        self.data.plotting_variables[plot_type]["good"]                     = good
-        if plot_result is True:
-            self.data.plot_continuum_fit(plot_type=plot_type)
+        if key not in data.plotting_variables:
+            data.plotting_variables[key] = {}
+        # TODO: Show line_mask in plot too
+        data.plotting_variables[key]["clipped_waves"]            = clipped_waves
+        data.plotting_variables[key]["clipped_flux"]             = clipped_flux
+        data.plotting_variables[key]["good"]                     = good
+        if config.verbose > 2:
+                data.plot_continuum_fit(key=key)
 
-        if np.any(flux_obs[~self.data.line_mask] <= 0) or np.any(new_errors[~self.data.line_mask] <= 0):
+        if np.any(data.fitted_flux[key][~data.line_mask] <= 0) or np.any(data.fitted_errors[key][~data.line_mask] <= 0):
             error = ContinuumError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
-            "Consider adjusting the polynomial order or continuum percentile. Use verbose=3 to see the plot of the continuum fit.\n " \
+            "Consider adjusting the polynomial order. Use verbose=3 to see the plot of the continuum fit.\n " \
             "Note that this will only work for interactive terminals or displays which work with plt.show()")
-            self.data.exception = error
-            self.data.traceback = traceback.format_stack()
+            data.exception = error
+            data.traceback = traceback.format_stack()
             raise error
-
-        return poly_coeffs, flux_obs, new_errors
-
-    def residual_mask(self) -> None:
-        """
-        Masks regions of the spectrum based on residuals from an initial model fit. A purely class method not to be used elsewhere.
-        This function is really only supposed to be used in the class, so no inputs are accepted. It is only used once in ACID 
-        and could be put directly in the method, but this allows a clearer checkpoint which segments saving the result of the mask for analysis.
-        """
-
-        # Residual masking - mask continuous areas first - then possibly progress to masking the narrow lines
-
-        # Set standard variables - note we are getting the combined spectrum here, not the line masked spectrum,
-        # as we want to mask based on the full spectrum
-        x = np.copy(self.data.wavelengths["combined"])
-        y = np.copy(self.data.flux["combined"])
-        yerr = np.copy(self.data.errors["combined"])
-        sn = np.copy(self.data.sn["combined"])
-
-        # Use the initial LSD run to get the scaled residuals
-        residuals = (self.data.flux["initial"] - self.data.forward_y["initial"]) / self.data.forward_y["initial"]
-
-        # We often only want to be searching on the residuals that have not already been masked by the line_mask
-        masked_residuals = residuals[~self.data.line_mask] 
-        
-        # Chunk masking based on deviation from residuals
-        # -----------------------------------------------
-
-        # Get bad pixels that deviate by a percentage greater than dev_perc
-        bad_idx = np.zeros_like(residuals, dtype=bool)
-        unmasked = ~self.data.line_mask
-        bad_idx[unmasked] = (np.abs(residuals[unmasked]) > (self.config.dev_perc / 100))
-
-        # A trick to get the mask for continous regions of bad pixels, by padding the bad_idx 
-        # with False on both sides and finding the start and end indices of the True regions
-        padded = np.concatenate(([False], bad_idx, [False]))
-        starts = np.flatnonzero(~padded[:-1] & padded[1:])
-        ends = np.flatnonzero(padded[:-1] & ~padded[1:])
-        pix_mask = np.zeros_like(residuals, dtype=bool)
-
-        # Then mask those regions that are greater than pix_chunk in length
-        for start, end in zip(starts, ends):
-            if (end - start) >= self.config.pix_chunk:
-                pix_mask[start:end] = True
-        self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
-
-        # Sigma clipping, use astropy's iterative sigma clipping
-        # Only sigma clip residuals that are not already line masked
-        # --------------
-        result, lower_clip, upper_clip = sigma_clip(masked_residuals, sigma_lower=self.config.n_sig, sigma_upper=5, return_bounds=True)
-
-        # Put the sigma mask back onto the full pixel grid
-        sigma_mask = np.zeros_like(residuals, dtype=bool)
-        sigma_mask[unmasked] = np.ma.getmaskarray(result)
-
-        self.data.sigma_mask = sigma_mask
-        upper_clip = upper_clip if np.isfinite(upper_clip) else lower_clip # hack temporarily so the plot still comes out
-
-
-        # Apply a error mask onto just y for the continuum fit and LSD call, later we fully mask for fitting
-        self.data.full_mask = ~pix_mask & ~sigma_mask & ~self.data.line_mask
-        
-        # Warn if more than 50% of spectrum is masked this way
-        if np.sum(self.data.full_mask) < 0.5 * len(self.data.full_mask):
-            if self.config.verbose > 0:
-                print(f"Warning: More than 50% of the spectrum is masked. \n" \
-                "Please check your initial continuum fit and masking (by using verbose=3 when initialising). \n" \
-                "If you are aware that you have bad spectra, then this can be ignored.")
-
-        yerr[~self.data.full_mask] = 1e12
-        self.data.wavelengths["masked"] = x
-        self.data.flux["masked"]        = y
-        self.data.errors["masked"]      = yerr
-        self.data.sn["masked"]          = sn
-
-        # Second Continuum Fit
-        # --------------------
-        # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
-        poly_inputs, fitted_flux, fitted_errors  = self.continuumfit(x, y, yerr, self.config.poly_ord,
-                                                   plot_result=self.config.verbose > 2,
-                                                   plot_type="masked")
-
-        # Run LSD again with the new fitted flux and errors
-        LSD_masking = LSD(self.data)
-        # Since the above ONLY modifies yerr, and the alpha matrix is independent of yerr, we can input previous 
-        # alpha since it wil be the same. We still run LSD to get c_factor and the profile
-        # alpha is only dependent on wavelengths and linelist, which are unchanged
-        LSD_masking.run_LSD(x, fitted_flux, fitted_errors, sn, alpha=self.data.alpha["initial"], skip_warnings=True)
-
-        # Set new variables with the masked key
-        self.data.poly_inputs["masked"] = poly_inputs
-        norm_wl = utils.normalize_wavelengths(x)
-        self.data.continuum["masked"] = utils.eval_continuum(norm_wl, poly_inputs, method=self.config.continuum_method)
-
-        self.store_LSD_result(key="masked", wl_key="masked", lsd=LSD_masking, continuum=self.data.continuum["masked"])
-
-        # Now that we have used the error mask, we apply the mask to remove the data for fitting
-        self.data.flux["fitting"]         = y[self.data.full_mask]
-        self.data.errors["fitting"]       = yerr[self.data.full_mask]
-        self.data.sn["fitting"]           = sn
-        # The wavelengths are also normalised for the fitting, this is the only normalised wavelength key
-        self.data.wavelengths["fitting"]  = utils.normalize_wavelengths(x)[self.data.full_mask]
-
-        # Because of this, we similarly have to apply the mask to the alpha matrix and c_factor for fitting, as well as the profile
-        self.data.alpha["fitting"] = self.data.alpha["masked"][self.data.full_mask, :]
-        errors = self.data.errors["fitting"] if not self.config.od else self.data.errors["fitting"]/self.data.flux["fitting"]
-        self.data.c_factor["fitting"] = LSD.calc_cholesky(alpha=self.data.alpha["fitting"], error=errors)
-        
-        # Set required variables for plotting in the Data class
-        if "residual_masking" not in self.data.plotting_variables:
-            self.data.plotting_variables["residual_masking"] = {}
-        self.data.plotting_variables["residual_masking"]["residuals"] = residuals
-        self.data.plotting_variables["residual_masking"]["masked_residuals"] = masked_residuals
-        self.data.plotting_variables["residual_masking"]["upper_clip"] = upper_clip
-        self.data.plotting_variables["residual_masking"]["lower_clip"] = lower_clip
-        if self.config.verbose > 2:
-            self.data.plot_residual_masking()
 
         return
 
@@ -1252,29 +1205,6 @@ class Acid:
 
         if return_sampler:
             return self.sampler
-
-    def store_LSD_result(self, lsd:LSD, key:str, wl_key:str, continuum:Array1D):
-        """Store the results of the LSD run in the Data class for a given key.
-
-        Parameters
-        ----------
-        lsd : LSD
-            The LSD object containing the results of the LSD run.
-        key : str
-            The key under which to store the results in the Data class.
-        wl_key : str
-            The key corresponding to the wavelengths used in the LSD run.
-        continuum : np.ndarray
-            The fitted continuum values corresponding to the wavelengths. Note
-            that the continuum is not stored, but is used for scaling the forward model before storing.
-        """
-        self.data.c_factor[key] = lsd.c_factor
-        self.data.alpha[key] = lsd.alpha
-        self.data.profile[key] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
-        self.data.forward_x[key] = self.data.wavelengths[wl_key]
-        self.data.forward_y[key] = lsd.forward_model * continuum
-        self.data.forward_yerr[key] = lsd.forward_model_errors * continuum
-
 
     @property
     def result(self) -> Result:

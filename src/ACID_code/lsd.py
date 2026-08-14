@@ -110,6 +110,8 @@ class LSD:
             decomposition and solving for the profile, by default None
         """
 
+        # TODO: Add check that the flux is at least somewhat normalised
+
         # Ensure inputs are numpy arrays
         wavelengths = np.array(wavelengths)
         flux = np.array(flux)
@@ -238,7 +240,6 @@ class LSD:
             cov_matrix=self.cov_z,
             od=self.od,
         )
-
         self.forward_model, self.forward_model_errors = utils.od_to_flux(
             self.forward_model,
             self.forward_model_errors,
@@ -902,3 +903,30 @@ class LSD:
             prof_groups[remaining_idx] = n_groups - 1
 
         return prof_groups
+
+    @classmethod
+    def runlsd_and_store(cls, data:Data, key:str, return_cls:bool=False) -> None:
+        """
+        Extracts the wavelength, flux, etc. from the Data instance using they key.
+        Runs LSD with the Config in the Data instance and stores the result.
+        Used both in Acid and Result. Can also be used by the user if Data has been preconfigured.
+        """
+        # First check if alpha can be reused, they need to specify in the Data class if so.
+        alpha = data.alpha[key] if key in data.alpha else None
+
+        lsd = cls(data)
+        lsd.run_LSD(
+            wavelengths = data.wavelengths[key],
+            flux        = data.flux[key],
+            errors      = data.errors[key],
+            sn          = data.sn[key],
+            alpha       = alpha,
+        )
+        data.c_factor[key]  = lsd.c_factor
+        data.alpha[key]     = lsd.alpha
+        data.forward_x[key] = data.wavelengths[key]
+        data.forward_y[key] = lsd.forward_model * data.continuum[key]
+        data.profile[key]   = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+        data.residuals[key] = (data.flux[key] - data.forward_y[key]) / data.forward_y[key]
+        if return_cls:
+            return lsd
