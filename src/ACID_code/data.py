@@ -516,13 +516,15 @@ class Data:
     #: The normalised wavelengths to be used with the poly_coeffs to generate the continuum
     norm_wavelengths : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The fitted flux from either the initial continuum fits, or the final mcmc fitted continua
-    fitted_flux   : Dict[str, np.ndarray] = field(default_factory=dict)
+    fitted_flux      : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The fitted errors from either the initial continuum fits, or the final mcmc fitted continua
-    fitted_errors : Dict[str, np.ndarray] = field(default_factory=dict)
+    fitted_errors    : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The fitted continuum from either the initial continuum fits, or the final mcmc fitted continua
-    continuum     : Dict[str, np.ndarray] = field(default_factory=dict)
+    continuum        : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The error on the fitted continuum, only used after mcmc fitting, as this is the only important error for final profiles
+    continuum_error  : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The corresponding polynomial coefficients for just the above continuum
-    poly_coeffs   : Dict[str, np.ndarray] = field(default_factory=dict)
+    poly_coeffs      : Dict[str, np.ndarray] = field(default_factory=dict)
 
     # Cached LSD products that can be expensive and useful for resuming or loading runs
     # ---------------------------------------------------------
@@ -586,6 +588,8 @@ class Data:
     exception          : Optional[Exception] = None
     #: The traceback string if an error was raised during the run
     traceback          : Optional[str] = None
+    #: A tracker for if warnings have been printed in any LSD call
+    lsd_warnings_flag  : bool = False
 
     # Initialise the properties
     # -------------------------
@@ -930,6 +934,7 @@ class Data:
 
     def reset(self) -> None:
         """Resets all data attributes to their default empty states, except for the array inputs, linelist, velocities, and config."""
+        # TODO: update this, also check If I had made a method to reset automatically rather than listing
         self.alpha = {}
         self.c_factor = None
         self.nanmask = None
@@ -980,30 +985,28 @@ class Data:
             If provided, the path to save the figure. If None, the figure will not be saved. Default is None.
         """
         # Check we have all inputs needed for plot
-        if plot_type not in ["initial", "masked"]:
+        if key not in ["initial", "masked"]:
             raise ValueError("plot_type must be either 'initial' or 'masked'")
-        if plot_type not in self.plotting_variables:
-            raise ValueError(f"No plotting variables found for plot_type={plot_type!r}. " \
+        if key not in self.plotting_variables:
+            raise ValueError(f"No plotting variables found for plot_type={key!r}. " \
                              "Please ensure that the continuum fit has been performed for this plot_type.")
         if not all(
-            attr in self.plotting_variables[plot_type] for attr in [
-                "unnormalized_wavelengths", "fluxes", "fit", "clipped_waves", "clipped_flux", "good"]
+            attr in self.plotting_variables[key] for attr in [
+                "clipped_waves", "clipped_flux", "good"]
             ):
             raise ValueError("To plot the continuum fit, the following attributes must be set: unnormalized_wavelengths, fluxes, fit, clipped_waves, clipped_flux, good")
 
         # Unpack variables
-        unnormalized_wavelengths = self.plotting_variables[plot_type]["unnormalized_wavelengths"]
-        fluxes                   = self.plotting_variables[plot_type]["fluxes"]
-        good                     = self.plotting_variables[plot_type]["good"]
-        fit                      = self.plotting_variables[plot_type]["fit"]
-        clipped_waves            = self.plotting_variables[plot_type]["clipped_waves"]
-        clipped_flux             = self.plotting_variables[plot_type]["clipped_flux"]
+        good                     = self.plotting_variables[key]["good"]
+        clipped_waves            = self.plotting_variables[key]["clipped_waves"]
+        clipped_flux             = self.plotting_variables[key]["clipped_flux"]
 
         # Normalise wavelengths and plot flux and fit
-        a, b = utils.get_normalisation_coeffs(unnormalized_wavelengths)
         fig, ax = plt.subplots(figsize=(15, 9))
-        ax.plot(unnormalized_wavelengths, fluxes, label='Original Spectrum', color="C0", alpha=0.7)
-        ax.plot(unnormalized_wavelengths, fit, label='Fitted Continuum', color='red')
+       
+        ax.plot(self.wavelengths[key], self.flux[key], label='Original Spectrum', color="C0", alpha=0.7)
+        ax.plot(self.wavelengths[key], self.continuum[key], label='Fitted Continuum', color='red')
+        a, b = utils.get_normalisation_coeffs(self.wavelengths[key])
         ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
 
         # Plot the linelist points, with a color corresponding to their depth in the linelist within the range
@@ -1011,7 +1014,7 @@ class Data:
         ll_wl = self.linelist["wavelengths"]
         ll_depths = self.linelist["depths"]
         from .lsd import LSD
-        ll_wl, ll_depths, _ = LSD.clip_wavelengths(unnormalized_wavelengths, ll_wl, ll_depths)
+        ll_wl, ll_depths, _ = LSD.clip_wavelengths(self.wavelengths[key], ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
         ll_depths = ll_depths[idx]
@@ -1042,7 +1045,7 @@ class Data:
             pass
 
         # Plot the line masks with their names
-        x = unnormalized_wavelengths
+        x = self.wavelengths[key]
         line_mask = self.config.masking_lines.get_masks(x, with_names=True)
         for i, (name, masks) in enumerate(line_mask.items()):
             padded = np.concatenate(([False], masks, [False]))
@@ -1053,7 +1056,7 @@ class Data:
                         label=f"{name} Line masks" if j == 0 else None)
         
         # Plot the other two masking regions if in the masked plot type, these masking are only done after the initial fit
-        if plot_type == "masked":
+        if key == "masked":
             masked = self.pix_mask | self.sigma_mask
             padded = np.concatenate(([False], masked, [False]))
             starts = np.flatnonzero(~padded[:-1] & padded[1:])
@@ -1063,10 +1066,10 @@ class Data:
                             color='red', alpha=0.15, label="Sigma masking and pixel deviation regions" if i == 0 else None)
 
         # Add labels and legend, and save or show figure
-        plot_title = "Initial Continuum Fit" if plot_type == "initial" else "Continuum Fit after Residual Masking"
+        plot_title = "Initial Continuum Fit" if key == "initial" else "Continuum Fit after Residual Masking"
         ax.set_title(plot_title)
         ax.legend()
-        ax.set_ylim(np.min(fluxes)*0.9, np.max(fluxes)*1.1)
+        ax.set_ylim(np.min(self.flux[key])*0.9, np.max(self.flux[key])*1.1)
         if save_fig is not None:
             plt.savefig(save_fig)
         if return_fig:
@@ -1085,8 +1088,8 @@ class Data:
             If None, the figure will not be saved. Default is None.
         """
         # Check we have all inputs needed for plot
-        if "residual_masking" not in self.plotting_variables:
-            raise ValueError("No plotting variables found for residual_masking. ")
+        if "masked" not in self.plotting_variables:
+            raise ValueError("No plotting variables found for masking. Residual masking likely has not been performed in Acid.")
         if "masked" not in self.wavelengths and "masked" not in self.flux:
             raise ValueError("No masked wavelengths or fluxes found. Please ensure that the residual masking step has been performed")
         if save_fig is not None:
@@ -1096,23 +1099,22 @@ class Data:
         # Unpack variables
         x = self.wavelengths["combined"]
         y = self.flux["combined"]
-        residuals = self.plotting_variables["residual_masking"]["residuals"]
-        upper_clip = self.plotting_variables["residual_masking"]["upper_clip"]
-        lower_clip = self.plotting_variables["residual_masking"]["lower_clip"]
-
+        residuals = self.residuals["masked"]
+        upper_clip = self.config.sigma_upper
+        lower_clip = self.config.sigma_lower
         pix_mask = self.pix_mask
         line_mask = self.line_mask
         full_mask = self.full_mask
 
-        nremoved = np.sum(full_mask)
+        nremoved = np.sum(~full_mask)
         if self.config.verbose > 1:
-            print(f"{nremoved}/{len(residuals)} pixels remained after residual masking.")
+            print(f"{nremoved}/{len(residuals)} pixels were removed after residual masking.")
 
         # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
         ax.axhline(0, color='black', linestyle='--', linewidth=1)
 
-        utils.plot_masked_line(ax, x, residuals, full_mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"])
+        utils.plot_masked_line(ax, x, residuals, ~full_mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"])
 
         # Show sigma clipping
         ax.axhline(upper_clip, color='C0', linestyle='--', label='Sigma Clip Thresholds', linewidth=2)
@@ -1142,8 +1144,8 @@ class Data:
         ax.hlines([-dev, dev], xmin=np.min(x), xmax=np.max(x), color='C1', linestyle='--', linewidth=2, label="Chunk deviation masking range")
 
         # Set a good ylim off everything but the masked points
-        ymax = np.max([dev, upper_clip, np.max(residuals[full_mask])])
-        ymin = np.min([-dev, lower_clip, np.min(residuals[full_mask])])
+        ymax = np.max([dev, upper_clip, np.max(residuals[~full_mask])])
+        ymin = np.min([-dev, lower_clip, np.min(residuals[~full_mask])])
         diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
         ax.set_ylim(ymin - diff, ymax + diff)
 
@@ -1185,14 +1187,14 @@ class Data:
         # ax[0].set_xlabel('Wavelength')
         ax[0].set_ylabel('Flux')
         ax[0].grid(True)
-        utils.plot_masked_line(ax[0], x, forward, full_mask, label=["Forward model", "Masked Forward model"])
+        utils.plot_masked_line(ax[0], x, forward, ~full_mask, label=["Forward model", "Masked Forward model"])
         ax[0].legend()
         
-        utils.plot_masked_line(ax[1], x, residuals, full_mask, label=["Residuals", "Masked Residuals"])
+        utils.plot_masked_line(ax[1], x, residuals, ~full_mask, label=["Residuals", "Masked Residuals"])
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
 
-        ymax = np.max(residuals[full_mask])
-        ymin = np.min(residuals[full_mask])
+        ymax = np.max(residuals[~full_mask])
+        ymin = np.min(residuals[~full_mask])
         diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
         ax[1].set_ylim(ymin - diff, ymax + diff)
 

@@ -88,12 +88,12 @@ class MCMC:
         # else user is on their own!
         if isinstance(x_or_data, Data):
             data = x_or_data
-            self.x = data.wavelengths["fitting"]
-            self.y = data.flux["fitting"]
-            self.yerr = data.errors["fitting"]
-            self.alpha = data.alpha["fitting"]
+            self.x = data.norm_wavelengths["mcmc"]
+            self.y = data.flux["mcmc"]
+            self.yerr = data.errors["mcmc"]
+            self.alpha = data.alpha["mcmc"]
             self.velocities = data.velocities
-            self.c_factor = data.c_factor["fitting"]
+            self.c_factor = data.c_factor["mcmc"]
             self.deterministic_profile = data.config.deterministic_profile
             self.sampler_type = data.config.sampler_type
             self.od = data.config.od
@@ -133,7 +133,7 @@ class MCMC:
         # For dynesty's sake, should delete later
         if data is not None:
             profile0 = np.asarray(data.profile["masked"][0]).reshape(-1)
-            self.model_inputs = np.concatenate((profile0, data.poly_inputs["masked"]))
+            self.model_inputs = np.concatenate((profile0, data.poly_coeffs["masked"]))
         else:
             self.model_inputs = None
 

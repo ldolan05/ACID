@@ -148,63 +148,41 @@ class Result:
         else:
             flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
+        # Get approximate 1 sigma errors on the parameters using the 16th and 84th percentiles
+        # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
+        # param_errors_upanddown = np.diff(quartiles, axis=0)
+        # param_errors = np.max(param_errors_upanddown, axis=0)
+
         # Getting the final profile and continuum values
+        # Slice the samples to get the poly_coeffs, as the profile params are included in the non-determinstic model
         n_profile_params = 0
         if not self.config.deterministic_profile:
-            n_profile_params = self.data.alpha["fitting"].shape[1]
+            n_profile_params = self.data.alpha["mcmc"].shape[1]
 
-        quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
-        param_errors = np.diff(quartiles, axis=0)
-        param_errors = np.max(param_errors, axis=0)
-
-        med_poly_coeffs = quartiles[1, n_profile_params:]
-        med_poly_coeffs_err = param_errors[n_profile_params:]
-        poly_coeffs = flat_samples[:, n_profile_params:]
+        # med_poly_coeffs = quartiles[1, n_profile_params:]
+        # med_poly_coeffs_err = param_errors[n_profile_params:] # may be used in a future update
+        all_poly_coeffs = flat_samples[:, n_profile_params:]
 
         if self.config.verbose > 1:
             print('Getting the final profiles...')
 
-        # Normalise the wavelengths to get the same grid as the MCMC sampler had and get continuum model
-        norm_wl = utils.normalize_wavelengths(self.data.wavelengths["initial"])
-        continuum = utils.eval_continuum(norm_wl, med_poly_coeffs, method=self.config.continuum_method)
+        # We first run LSD on the final state of the sampler (mainly for debugging, but this can be useful to see how masking is affecting the sampler)
+        # TODO: Only run this step if self.config.debugging is True, otherwise skip
+        # TODO: the below needs to get the 3D alpha from the combined/initial/masked, and reapply the full_mask to the 3d matrix (not the 2D one that is used for the MCMC fitting)
+        # Otherwise, all other keys are already set
+        # self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs)
 
-        # Get continuum error
-        continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
+        # Set the inputs for a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
+        self.data.wavelengths["final"] = self.data.wavelengths["initial"]
+        self.data.flux["final"]        = self.data.flux["initial"]
+        self.data.errors["final"]       = self.data.errors["initial"] # includes the line_mask set to 1e12 (and hence masked for LSD)
+        self.data.sn["final"]          = self.data.sn["initial"]
+        self.data.alpha["final"]       = self.data.alpha["initial"]
 
-        # Run a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
-        wavelengths = self.data.wavelengths["initial"]
-        flux = self.data.flux["initial"]
-        error = self.data.errors["initial"]
-        sn = self.data.sn["initial"]
+        # Final continuum correction and LSD run on the unmasked spectrum, generates the final profiles
+        self._continuum_correct_and_store("final", all_poly_coeffs)
 
-        lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=self.data.alpha["initial"])
-
-        # Use the above to get our combined profile and error
-        self.data.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
-
-        # But now we want the forward model and continuum model to be on the original non-masked combined wavelength grid
-        forward_model = lsd.convolve_profile(
-            profile        = lsd.profile, # in OD
-            alpha          = self.data.alpha["initial"],
-        )
-        # TODO: OD=False is currently disabled, but need to get it to work again with newest version, it should be somewhere here
-        forward_model = utils.od_to_flux(forward_model, od=self.config.od)
-        
-        # Set the final LSD results # TODO: move to a new data.set_LSD_result method (from Acid one)
-        self.data.forward_x["final"] = wavelengths
-        self.data.forward_y["final"] = forward_model * continuum
-        self.data.alpha["final"] = self.data.alpha["initial"]
-        self.data.continuum["final"] = continuum
-        self.data.poly_inputs["final"] = med_poly_coeffs
-
-        # For completeness of the final key, also carry over the wavelengths and flux values
-        self.data.wavelengths["final"] = self.data.wavelengths["combined"]
-        self.data.flux["final"] = self.data.flux["combined"]
-        self.data.errors["final"] = self.data.errors["combined"]
-        self.data.sn["final"] = self.data.sn["combined"]
-
-        # We also want to have a final single profile where we force LSD to run not in ion mode
-        # self.profile["final_single"]
+        # TODO: We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
 
         # Iterate through each frame to get per-frame profiles
         profiles = []
@@ -213,6 +191,7 @@ class Result:
             # TODO: Need to interpolate onto potential new wavelength grids the mask
             # TODO: This needs more care, it does not include the line masking onto the interpolated wavelength grid, should be fixed with above issue
             # when looking at an older version of the code, therefore we do this cheeat for now:
+            # Nah just dont interpolate
             profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
             continue
             wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
@@ -247,14 +226,43 @@ class Result:
             self.save() # the sampler is already saved if specified
         return
 
-    def _get_continuum_error(self, norm_wl, poly_coeffs):
-        ncoeffs = poly_coeffs.shape[1]
+    def _continuum_correct_and_store(self, key, all_poly_coeffs):
+
+        data = self.data
+
+        # Get the poly coeffs as the median of all samples
+        poly_coeffs = np.median(all_poly_coeffs, axis=0)
+
+        # Normalise the wavelengths and evaluate the continuum and error from the median
+        norm_wavelengths = utils.normalize_wavelengths(data.wavelengths[key])
+        continuum = utils.eval_continuum(norm_wavelengths, poly_coeffs, method=data.config.continuum_method)
+        continuum_error = self._get_continuum_error(norm_wavelengths, all_poly_coeffs)
+
+        # Fit the flux and error with the continuum
+        fitted_flux = data.flux[key] / continuum
+        fitted_errors = np.sqrt((data.errors[key]/continuum)**2 + (fitted_flux*continuum_error/continuum)**2)
+
+        # Store all the results, which are then used in LSD.runlsd_and_store
+        data.poly_coeffs[key] = poly_coeffs
+        data.norm_wavelengths[key] = norm_wavelengths
+        data.continuum[key] = continuum
+        data.continuum_error[key] = continuum_error
+        data.fitted_flux[key] = fitted_flux
+        data.fitted_errors[key] = fitted_errors
+
+        # Handles running LSD logic and storing all results in Data
+        LSD.runlsd_and_store(data, key)
+
+        return
+
+    def _get_continuum_error(self, norm_wl, all_poly_coeffs):
+        ncoeffs = all_poly_coeffs.shape[1]
         powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
 
         # First check memory to see if all samples can be used
         available_memory = utils.get_available_memory() # in bytes
         m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
-        n_samples, ncoeffs = poly_coeffs.shape
+        n_samples, ncoeffs = all_poly_coeffs.shape
         npix = powers.shape[0]
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
@@ -264,30 +272,21 @@ class Result:
                 "Calculating with a max of 1000 random samples instead.")
             indices_size = min(1000, n_samples)
             random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
-            coeffs = poly_coeffs[random_indices, :]
+            coeffs = all_poly_coeffs[random_indices, :]
         else:
-            coeffs = poly_coeffs
+            coeffs = all_poly_coeffs
 
         # Then get the error from the conts matrix above
         conts = (coeffs @ powers.T)
         continuum_error = np.std(conts, axis=0)
         return continuum_error
 
-    def _run_continuum_corrected_LSD(self, continuum, continuum_error, wavelengths, flux, error, sn, alpha=None):
-        """Helper to run LSD part on a continuum corrrected spectrum"""
-        # correcting continuum
-        corrected_flux = flux / continuum
-        corrected_error = np.sqrt((error/continuum)**2 + (corrected_flux*continuum_error/continuum)**2)
-
-        lsd = LSD(self.data)
-        lsd.run_LSD(wavelengths, corrected_flux, corrected_error, sn, alpha=alpha, skip_warnings=True)
-        return lsd
-
     @_require_profiles
     def __getitem__(self, item) -> list|np.ndarray:
         """
         Allows indexing into the profiles array directly from the Result object.
         """
+        # TODO: needs a relook
         if isinstance(item, tuple):
             # Tuples allow for array-like indexing of the list
             if len(item) == 3:

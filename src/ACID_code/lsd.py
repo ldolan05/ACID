@@ -85,7 +85,7 @@ class LSD:
         linelist          : Array2D|str|LineList|dict|None = None,
         velocities        : Array1D|None                   = None,
         alpha             : Array2D|Array3D|None           = None,
-        skip_warnings     : bool                           = False,
+        skip_warnings     : bool|None                      = None,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -108,9 +108,15 @@ class LSD:
         alpha : :py:type:`Array2D | Array3D | None`, optional
             Precomputed alpha matrix, if already calculated and you want to skip directly to the Cholesky 
             decomposition and solving for the profile, by default None
+        skip_warnings : bool, optional
+            Override with True/False, otherwise (if None) takes from the Data instance and checks the lsd_warnings_flag.
+            If True, skips warnings about the inputs.
+            This function will always set the flag to True at the end of the function, by default None
         """
 
         # TODO: Add check that the flux is at least somewhat normalised
+        if skip_warnings is None:
+            skip_warnings = self.data.lsd_warnings_flag
 
         # Ensure inputs are numpy arrays
         wavelengths = np.array(wavelengths)
@@ -257,6 +263,8 @@ class LSD:
         else:
             self.profile_F = self.profile_F_flat
             self.profile_errors_F = self.profile_errors_F_flat
+
+        self.data.lsd_warnings_flag = True # Future calls will now skip warnings
 
         return
 
@@ -905,7 +913,7 @@ class LSD:
         return prof_groups
 
     @classmethod
-    def runlsd_and_store(cls, data:Data, key:str, return_cls:bool=False) -> None:
+    def runlsd_and_store(cls, data:Data, key:str, return_cls:bool=False) -> None|LSD:
         """
         Extracts the wavelength, flux, etc. from the Data instance using they key.
         Runs LSD with the Config in the Data instance and stores the result.
@@ -916,11 +924,11 @@ class LSD:
 
         lsd = cls(data)
         lsd.run_LSD(
-            wavelengths = data.wavelengths[key],
-            flux        = data.flux[key],
-            errors      = data.errors[key],
-            sn          = data.sn[key],
-            alpha       = alpha,
+            wavelengths   = data.wavelengths[key],
+            flux          = data.fitted_flux[key],
+            errors        = data.fitted_errors[key],
+            sn            = data.sn[key],
+            alpha         = alpha,
         )
         data.c_factor[key]  = lsd.c_factor
         data.alpha[key]     = lsd.alpha

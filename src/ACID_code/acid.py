@@ -577,13 +577,14 @@ class Acid:
 
         # Masking based off residuals
         if all((
+            # TODO: Fix these
             "masked" in self.data.alpha,
             "masked" in self.data.c_factor,
             "masked" in self.data.profile,
             "masked" in self.data.forward_y,
-            "masked" in self.data.poly_inputs,
+            "masked" in self.data.poly_coeffs,
             "masked" in self.data.wavelengths,
-            "fitting" in self.data.c_factor,
+            "mcmc" in self.data.c_factor,
         )):
             if self.config.verbose > 1:
                 print("Residual masks already exists, skipping residual masking step.")
@@ -665,31 +666,28 @@ class Acid:
             #------------------------------------------------
             # First apply to the flattened alpha, and then bin the lsd class to save memory.
             # Slicing alpha like this avoids a recalculation because we know which wavelengths are masked
-            self.data.alpha["fitting"] = lsd.alpha_flat[~self.data.full_mask, :]
+            self.data.alpha["mcmc"] = lsd.alpha_flat[~self.data.full_mask, :]
             lsd = None
 
             # Apply to the rest of the data
-            self.data.flux["fitting"]   = self.data.flux["combined"][~self.data.full_mask]
-            self.data.errors["fitting"] = self.data.errors["combined"][~self.data.full_mask]
-            self.data.sn["fitting"]     = self.data.sn["combined"][~self.data.full_mask]
-            # The wavelengths are also normalised for the fitting, this is the only saved wavelength key that is normalised
-            self.data.wavelengths["fitting"]  = utils.normalize_wavelengths(self.data.wavelengths["combined"])[~self.data.full_mask]
+            self.data.wavelengths["mcmc"] = self.data.wavelengths["combined"][~self.data.full_mask]
+            self.data.flux["mcmc"]        = self.data.flux["combined"][~self.data.full_mask]
+            self.data.errors["mcmc"]      = self.data.errors["combined"][~self.data.full_mask]
+            self.data.sn["mcmc"]          = self.data.sn["combined"] # no change as its single valued per frame
+            # Normalisation occurs on the full grid, then select masked wavelengths
+            self.data.norm_wavelengths["mcmc"] = utils.normalize_wavelengths(self.data.wavelengths["combined"])[~self.data.full_mask]
 
             # For the Cholesky factor, we need to recalculate them on the new wavelength grid, and convert to OD if needed
-            errors = self.data.errors["fitting"] if not self.config.od else self.data.errors["fitting"]/self.data.flux["fitting"]
-            self.data.c_factor["fitting"] = LSD.calc_cholesky(alpha=self.data.alpha["fitting"], error=errors)
-            
+            errors = self.data.errors["mcmc"] if not self.config.od else self.data.errors["mcmc"]/self.data.flux["mcmc"]
+            self.data.c_factor["mcmc"] = LSD.calc_cholesky(alpha=self.data.alpha["mcmc"], error=errors)
+
             # Save extra variables for plotting in the Data class
-            if "masking" not in self.data.plotting_variables:
-                self.data.plotting_variables["masking"] = {}
-            self.data.plotting_variables["masking"]["residuals"]        = residuals
-            self.data.plotting_variables["masking"]["masked_residuals"] = masked_residuals
+            if "masked" not in self.data.plotting_variables:
+                self.data.plotting_variables["masked"] = {}
+            self.data.plotting_variables["masked"]["residuals"]        = residuals
+            self.data.plotting_variables["masked"]["masked_residuals"] = masked_residuals
             if self.config.verbose > 2: # Plot now if verbose enough
                 self.data.plot_residual_masking()
-
-
-        # Get the initial state from all of the above calculated data
-        self.data.initial_state = self.get_initial_state()
 
         # ACID Initialialised
         # -------------------
@@ -705,7 +703,12 @@ class Acid:
             print(f"Number of dimensions: {self.data.ndim}")
             # TODO: print more diagnostics
 
-        # Run MCMC
+        # Prepare and Run MCMC
+        #----------------------
+        # Get the initial state from all of the above calculated data
+        self.data.initial_state = self.get_initial_state()
+
+        # Run MCMC if requested
         if self.config.run_mcmc is True:
             # Default run for just nsteps steps
             if self.config.max_steps is None:
@@ -963,14 +966,14 @@ class Acid:
         # Set rng seed off of config seed if desired, otherwise default config seed is None and rng will be random
         rng = np.random.default_rng(self.config.seed)
 
-        n_profile_params = self.data.alpha["fitting"].shape[1]
+        n_profile_params = self.data.alpha["mcmc"].shape[1]
 
         self.data.ndim = self.config.poly_ord + 1
         if not self.config.deterministic_profile:
             self.data.ndim += n_profile_params
 
         if self.config.sampler_type == "emcee":
-            theta0 = self.data.poly_inputs["masked"]
+            theta0 = self.data.poly_coeffs["masked"]
 
             if not self.config.deterministic_profile:
                 profile0 = np.asarray(self.data.profile["masked"][0]).reshape(-1)
