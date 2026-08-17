@@ -182,8 +182,15 @@ class Result:
         # Final continuum correction and LSD run on the unmasked spectrum, generates the final profiles
         self._continuum_correct_and_runlsd("final", all_poly_coeffs)
 
-        # TODO: We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
-        # if self.data.profile_groups
+        # We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
+        if self.data.profile_groups is not None:
+            # Set the inputs, reset alpha, force LSD to use non multi-profile mode
+            self.data.alpha["single_profile"] = None
+            self.data.wavelengths["single_profile"] = self.data.wavelengths["initial"]
+            self.data.flux["single_profile"] = self.data.flux["initial"]
+            self.data.errors["single_profile"] = self.data.errors["initial"]
+            self.data.sn["single_profile"] = self.data.sn["initial"]
+            self._continuum_correct_and_runlsd("single_profile", all_poly_coeffs, mp_lsd=False)
 
         # Iterate through each frame to get per-frame profiles
         profiles = []
@@ -227,7 +234,7 @@ class Result:
             self.save() # the sampler is already saved if specified
         return
 
-    def _continuum_correct_and_runlsd(self, key, all_poly_coeffs):
+    def _continuum_correct_and_runlsd(self, key, all_poly_coeffs, **kwargs):
 
         data = self.data
 
@@ -252,13 +259,17 @@ class Result:
         data.fitted_errors[key] = fitted_errors
 
         # Handles running LSD logic and storing all results in Data
-        LSD.runlsd_and_store(data, key)
+        LSD.runlsd_and_store(data, key, **kwargs)
 
         return
 
     def _get_continuum_error(self, norm_wl, all_poly_coeffs):
         ncoeffs = all_poly_coeffs.shape[1]
-        powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+
+        if self.data.config.continuum_method == "polyval":
+            powers = np.vander(norm_wl, N=ncoeffs, increasing=True)
+        else:
+            powers = np.polynomial.chebyshev.chebvander(norm_wl, ncoeffs-1)
 
         # First check memory to see if all samples can be used
         available_memory = utils.get_available_memory() # in bytes
@@ -278,7 +289,10 @@ class Result:
             coeffs = all_poly_coeffs
 
         # Then get the error from the conts matrix above
-        conts = (coeffs @ powers.T)
+        if self.data.config.continuum_method == "polyval":
+            conts = (coeffs @ powers.T)
+        else:
+            conts = np.exp(coeffs @ powers.T)
         continuum_error = np.std(conts, axis=0)
         return continuum_error
 
@@ -647,7 +661,7 @@ class Result:
         wavelengths = utils.drop_edges(wavelengths)
         flux = utils.drop_edges(flux)
         forward = utils.drop_edges(forward)
-        residuals = flux - forward
+        continuum_model = utils.drop_edges(self.data.continuum["final"])
 
         # Plotting
         if fig_ax is not None:
@@ -664,36 +678,36 @@ class Result:
 
         if normalized:
             flux /= continuum_model
-            model_flux /= continuum_model
+            forward /= continuum_model
             continuum_model /= continuum_model # is just 1s
 
         if divide_by_median:
             median_continuum = np.median(continuum_model)
             flux /= median_continuum
-            model_flux /= median_continuum
+            forward /= median_continuum
             continuum_model /= median_continuum
+
+        residuals = flux - forward
 
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
         ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
 
         if show_continuum:
-            continuum_model = utils.drop_edges(self.data.continuum["final"])
             ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
         
         if show_masking:
-            full_mask = ~self.data.full_mask
+            full_mask = utils.drop_edges(~self.data.full_mask)
 
             utils.plot_masked_line(ax[0], wavelengths, forward, full_mask, label=["Forward model", "Masked Forward model"])
             utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])
 
-            dropped_full_mask = utils.drop_edges(full_mask)
-            ymax = max(max(forward[dropped_full_mask]), max(flux))
-            ymin = min(min(forward[dropped_full_mask]), min(flux))
+            ymax = max(max(forward[full_mask]), max(flux))
+            ymin = min(min(forward[full_mask]), min(flux))
             diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
             ax[0].set_ylim(ymin - diff, ymax + diff)
 
-            ymax = np.max(residuals[dropped_full_mask])
-            ymin = np.min(residuals[dropped_full_mask])
+            ymax = np.max(residuals[full_mask])
+            ymin = np.min(residuals[full_mask])
             diff = (ymax - ymin) * 0.1
             ax[1].set_ylim(ymin - diff, ymax + diff)
         else:

@@ -284,7 +284,7 @@ def guess_SNR(
     :py:type:`Array1D | Scalar`
         Array of estimated signal-to-noise ratios for each frame.
     """
-    if np.any(frame_flux) <= 0 or np.any(frame_errors) <= 0 or np.any(frame_wavelengths <= 0):
+    if np.any(frame_flux <= 0) or np.any(frame_errors <= 0) or np.any(frame_wavelengths <= 0):
         raise ValueError("Flux, errors, and wavelengths must all be positive non-zero to estimate S/N.")
 
     frame_wavelengths = np.atleast_2d(frame_wavelengths)
@@ -297,7 +297,7 @@ def guess_SNR(
     frame_errors = np.where(mask, frame_errors, np.nan)
 
     sn_per_pixel = frame_flux / frame_errors
-    return np.nanpercentile(sn_per_pixel, 99, axis=-1).squeeze()
+    return np.nanmedian(sn_per_pixel, axis=-1).squeeze()
 
 @beartype
 def guess_errors(
@@ -320,7 +320,7 @@ def guess_errors(
     :py:type:`Array1D | Array2D`
         Array of estimated error values for each frame. The dimensions will match those of frame_flux, with the same number of frames and pixels.
     """
-    if np.any(frame_flux) <= 0 or np.any(frame_sn <= 0):
+    if np.any(frame_flux <= 0) or np.any(frame_sn <= 0):
         raise ValueError("Flux and sn must all be positive non-zero to estimate errors.")
 
     frame_flux = np.atleast_2d(frame_flux)

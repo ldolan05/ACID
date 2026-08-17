@@ -2,7 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from beartype import beartype
 from tqdm import tqdm
-import scipy
+import copy
+from scipy.interpolate import interp1d
 import traceback as tb
 from typing import Any, Dict, Optional
 from emcee import EnsembleSampler
@@ -575,23 +576,25 @@ class Data:
     # Other useful data and figures
     # -----------------------------
     #: The grouping of the profiles based on their depth, used for plotting and analysis
-    profile_groups     : Optional[dict] = None
+    profile_groups       : Optional[np.ndarray] = None
+    #: Defining if the user inputted groups, helps distinguish in the LSD class between generated vs input groups
+    input_profile_groups : Optional[np.ndarray] = None
     #: Internal variables used for plotting the continuum_fit and the residual masks
-    plotting_variables : Dict[str, Any]  = field(default_factory=dict)
+    plotting_variables   : Dict[str, Any]  = field(default_factory=dict)
     #: setup_time (float) - The time taken for initialization
-    setup_time         : Optional[float] = 0  # time taken for initialization and setup
+    setup_time           : Optional[float] = 0  # time taken for initialization and setup
     #: mcmc_time (float) - The time taken for MCMC sampling
-    mcmc_time          : Optional[float] = 0  # time taken for MCMC sampling
+    mcmc_time            : Optional[float] = 0  # time taken for MCMC sampling
     #: results_time (float) - The time taken to get the final profiles
-    results_time       : Optional[float] = 0 
+    results_time         : Optional[float] = 0 
     #: total_time (float) - The total time for the full run
-    total_time         : Optional[float] = 0
+    total_time           : Optional[float] = 0
     #: The exception class if an error was raised during the run
-    exception          : Optional[Exception] = None
+    exception            : Optional[Exception] = None
     #: The traceback string if an error was raised during the run
-    traceback          : Optional[str] = None
+    traceback            : Optional[str] = None
     #: A tracker for if warnings have been printed in any LSD call
-    lsd_warnings_flag  : bool = False
+    lsd_warnings_flag    : bool = False
 
     # Initialise the properties
     # -------------------------
@@ -717,7 +720,7 @@ class Data:
                 if self.config.verbose > 0:
                     print("Warning: the input linelist has been modified. \n" \
                     f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
-                self.reset()
+                self.reset(preserve_input_profile_groups=False)
 
     def plot_linelist(self, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
         """
@@ -815,10 +818,12 @@ class Data:
                         f"Some of the inputs you provided are None. \n" \
                         f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
                         f"The current input wavelengths, flux, and errors will be kept.")
+                self.combine_spec(output=False)
                 return
             elif not any_inputs_not_none:
                 if self.config.verbose > 2:
                     print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
+                self.combine_spec(output=False)
                 return
             # Else continue with the rest of the function to update inputs, later on, the code will check if new inputs are 
             # different from the existing ones, if so, deletes variables that need to be recalculated.
@@ -910,7 +915,7 @@ class Data:
         # In case these are set when input values already exist, check if they are the same, if not, reset variables to be recalculated.
         # This checks basically if self.wavelengths["input"] is the same as input_wavelengths, and same for flux and errors, if they exist. 
         overwriting = False
-        for check in input_keys:
+        for check in ["wavelengths", "flux", "errors", "sn"]:
             if getattr(self, check).get("input", None) is not None and eval(f"input_{check}") is not None:
                 if getattr(self, check)["input"].shape != eval(f"input_{check}").shape:
                     overwriting = True
@@ -928,45 +933,214 @@ class Data:
             if self.config.verbose > 0:
                 print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
                 f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.")
-            self.reset()
+            self.reset(preserve_combined=False)
 
-    def reset(self) -> None:
-        """Resets all data attributes to their default empty states, except for the array inputs, linelist, velocities, and config."""
-        # TODO: update this, also check If I had made a method to reset automatically rather than listing
-        self.alpha = {}
-        self.c_factor = None
-        self.nanmask = None
-        self.line_mask = None
-        self.sigma_mask = None
-        self.pix_mask = None
-        self.full_mask = None
-        self.nwalkers = None
-        self.ndim = None
-        self.profiles = None
-        self.profile = {}
-        self.continuum = {}
-        self.poly_inputs = {}
-        self.forward_x = {}
-        self.forward_y = {}
-        self.forward_yerr = {}
-        self.nsteps = 0
-        self.sampler = None
-        self.complete = False
-        self.plotting_variables = {}
-        self.setup_time = 0
-        self.mcmc_time = 0
-        self.results_time = 0
-        self.total_time = 0
-        if "input" in self.wavelengths and self.wavelengths["input"] is not None:
-            self.wavelengths = {"input": self.wavelengths["input"]}
-            self.flux = {"input": self.flux["input"]}
-            self.errors = {"input": self.errors["input"]}
-            self.sn = {"input": self.sn["input"]}
+        # Now generate the combined dataset (previously done in Acid class)
+        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra.
+        # If only one frame, just uses that frame. We also check if this step has already been done and skips if so.
+        self.combine_spec(output=False)
+
+    def combine_spec(
+        self,
+        frame_wavelengths: Array1D|Array2D|None = None,
+        frame_flux:        Array1D|Array2D|None = None,
+        frame_errors:      Array1D|Array2D|None = None,
+        frame_sns:         Array1D|Array2D|None = None,
+        output:            bool                 = True
+        ) -> tuple | None:
+        """
+        Combines the multiple inputted spectral frames into one spectrum, or just passes through the single frame if only one was input. 
+        The frames are interpolated onto a common wavelength grid of the spectrum with the highest S/N, and then a weighted average is used based on the errors. 
+        The S/N of the combined spectrum is also calculated based on the input S/N and the weights.
+
+        Parameters
+        ----------
+        frame_wavelengths : :py:type:`Array1D` | :py:type:`Array2D`, optional
+            Wavelengths for the spectral frames, by default None
+        frame_flux : :py:type:`Array1D` | :py:type:`Array2D`, optional
+            Fluxes for the spectral frames, by default None
+        frame_errors : :py:type:`Array1D` | :py:type:`Array2D`, optional
+            Errors for the spectral frames, by default None
+        frame_sns : :py:type:`Array1D` | :py:type:`Array2D`, optional
+            Signal-to-noise ratio for the spectral frames, by default None
+        output : bool, optional
+            Whether to output the combined spectrum, by default True
+
+        Returns
+        -------
+        tuple | None, if output is True, containing:
+            combined_wavelengths : np.ndarray
+                Wavelengths for the combined spectrum
+            combined_spectrum : np.ndarray
+                Fluxes for the combined spectrum
+            combined_errors : np.ndarray
+                Errors for the combined spectrum
+            combined_sn : float
+                Signal-to-noise ratio for the combined spectrum
+        None, if output is False, but the combined spectrum is still saved in the data class attributes.
+        """
+
+        if frame_wavelengths is not None: # This should only be for testing
+            self.wavelengths["input"] = np.copy(frame_wavelengths)
+            self.flux["input"]        = np.copy(frame_flux)
+            self.errors["input"]      = np.copy(frame_errors)
+            self.sn["input"]          = np.copy(frame_sns)
+
+        # Set simple names for variables (just used in this function)
+        wavelengths = np.copy(self.wavelengths["input"])
+        flux        = np.copy(self.flux["input"])
+        errors      = np.copy(self.errors["input"])
+        sn          = np.copy(self.sn["input"])
+
+        # Return as is if only one spectrum
+        if len(self.wavelengths["input"])==1:
+            combined_wavelengths = wavelengths[0]
+            combined_flux        = flux[0]
+            combined_errors      = errors[0]
+            combined_sn          = sn[0]
+
+            self.wavelengths["combined"] = combined_wavelengths
+            self.flux["combined"]        = combined_flux
+            self.errors["combined"]      = combined_errors
+            self.sn["combined"]          = combined_sn
+
         else:
-            self.wavelengths = {}
-            self.flux = {}
-            self.errors = {}
-            self.sn = {}
+            # Get wavelength grid with highest S/N
+            combined_wavelengths = wavelengths[np.argmax(sn)]
+
+            interpolated_flux   = np.zeros_like(flux)
+            interpolated_errors = np.zeros_like(errors)
+
+            # combine all spectra to one spectrum
+            for n in range(len(flux)):
+
+                # Interpolate each spectrum onto the combined wavelength grid
+                f2 = interp1d(wavelengths[n], flux[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
+                interpolated_flux[n] = f2(combined_wavelengths)
+                interpolated_errors[n] = f2_err(combined_wavelengths)
+
+                # Mask out out extrapolated areas
+                idx_ex = np.logical_and(combined_wavelengths<=np.max(wavelengths[n]),
+                                        combined_wavelengths>=np.min(wavelengths[n]))
+                idx_ex = tuple([idx_ex==False])
+
+                interpolated_flux[n][idx_ex] = 1.
+                interpolated_errors[n][idx_ex] = 1e12
+
+                # Mask out nans and zeros (these do not contribute to the main spectrum)
+                where_are_NaNs = np.isnan(interpolated_flux[n])
+                interpolated_errors[n][where_are_NaNs] = 1e12
+                where_are_zeros = np.where(interpolated_flux[n] == 0)[0]
+                interpolated_errors[n][where_are_zeros] = 1e12
+
+                where_are_NaNs = np.isnan(interpolated_errors[n])
+                interpolated_errors[n][where_are_NaNs] = 1e12
+                where_are_zeros = np.where(interpolated_errors[n] == 0)[0]
+                interpolated_errors[n][where_are_zeros] = 1e12
+
+            invvars = 1 / interpolated_errors**2
+            invvars[interpolated_errors >= 1e12] = 0
+
+            weights = np.sum(invvars, axis=0)
+            non_zero = weights > 0
+            
+            weighted_flux   = np.sum(interpolated_flux * invvars, axis=0)
+            
+            combined_flux = np.full_like(weights, 1.0)      # or np.nan
+            combined_errors = np.full_like(weights, 1e12)
+
+            combined_flux[non_zero] = weighted_flux[non_zero] / weights[non_zero]
+            combined_errors[non_zero] = 1 / np.sqrt(weights[non_zero])
+
+            frame_weights = np.sum(invvars, axis=1)
+            combined_sn   = np.sum(frame_weights * sn) / np.sum(frame_weights)
+
+            self.wavelengths["combined"] = combined_wavelengths
+            self.flux["combined"]        = combined_flux
+            self.errors["combined"]      = combined_errors
+            self.sn["combined"]          = combined_sn
+
+        # Clean combined spectra of NaNs
+        wavelengths, flux, errors, nanmask = utils.drop_invalid(self.wavelengths["combined"], self.flux["combined"],
+                                                                self.errors["combined"], return_mask=True)
+        self.wavelengths["combined"] = wavelengths
+        self.flux["combined"] = flux
+        self.errors["combined"] = errors
+        self.nanmask = nanmask
+
+        if output is True:
+            # ie if called as a function rather than from ACID function
+            return (
+            self.wavelengths["combined"],
+            self.flux["combined"],
+            self.errors["combined"],
+            self.sn["combined"]
+        )
+
+    def reset(self, preserve_combined:bool=True, preserve_input_profile_groups:bool=True) -> None:
+        """
+        Resets all derived states while preserving:
+        - raw input arrays
+        - combined spectrum, unless explicitly invalidated
+        - manually supplied profile groups, unless explicitly invalidated
+        - linelist
+        - velocity grid
+        - Config
+        """
+        # Preserve desired inputs
+        inputs = {}
+        for name in ("wavelengths", "flux", "errors", "sn"):
+            value = getattr(self, name).get("input", None)
+            inputs[name] = None if value is None else value.copy()
+
+        combined = {}
+        for name in ("wavelengths", "flux", "errors", "sn"):
+            value = getattr(self, name).get("combined", None)
+            combined[name] = copy.deepcopy(value)
+
+        nanmask = (
+            None if self.nanmask is None
+            else self.nanmask.copy()
+        )
+
+        input_profile_groups = (
+            None if self.input_profile_groups is None
+            else self.input_profile_groups.copy()
+        )
+
+        # Preserve these directly rather than through their property setters,
+        # otherwise the setters can trigger reset() again.
+        linelist = copy.deepcopy(self._linelist)
+        velocities = (
+            None if self._velocities is None
+            else self._velocities.copy()
+        )
+        config = self._config
+
+        # Reinitialise every dataclass field to its default.
+        self.__init__()
+
+        # Restore persistent state
+        self._config = config
+        self._linelist = linelist
+        self._velocities = velocities
+
+        # Restore desired values
+        if preserve_combined:
+            for name, value in combined.items():
+                if value is not None:
+                    getattr(self, name)["combined"] = value
+            self.nanmask = nanmask
+
+        if preserve_input_profile_groups:
+            self.input_profile_groups = input_profile_groups
+
+        # Restore raw inputs
+        for name, value in inputs.items():
+            if value is not None:
+                getattr(self, name)["input"] = value
+
 
     def plot_continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None:
         """
@@ -1098,13 +1272,13 @@ class Data:
         x = self.wavelengths["combined"]
         y = self.flux["combined"]
         residuals = self.residuals["masked"]
-        upper_clip = self.config.sigma_upper
-        lower_clip = self.config.sigma_lower
+        upper_clip = self.plotting_variables["masked"]["upper_clip"]
+        lower_clip = self.plotting_variables["masked"]["lower_clip"]
         pix_mask = self.pix_mask
         line_mask = self.line_mask
         full_mask = self.full_mask
 
-        nremoved = np.sum(~full_mask)
+        nremoved = np.sum(full_mask)
         if self.config.verbose > 1:
             print(f"{nremoved}/{len(residuals)} pixels were removed after residual masking.")
 
@@ -1247,8 +1421,16 @@ class Data:
         # Now save the Data object itself, with the sampler path included to be used when reloaded
         self.config.save_path = save_path # update and overwrite config with save path for future reference
         save_path = self.config.save_path # now use the save path in the config
+        if save_path is None:
+            if self.config.verbose > 0:
+                print("No save_path provided. Data will not be saved.")
+            return
+
         payload = self.to_dict() # generates a dictionary of the data object for easy pickling
-        os.makedirs(os.path.dirname(save_path), exist_ok=True) # create directory if it does not exist
+
+        save_dir = os.path.dirname(save_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True) # create directory if it does not exist
         with open(save_path, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
         if self.config.verbose > 1:
@@ -1485,7 +1667,7 @@ class LineList:
 
         # Get mask
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
-        mask &= (depths >= 0) & (depths <= 1)
+        mask &= (depths >= 0) & (depths < 1)
         mask &= (wavelengths > 0)
 
         # Count the number of dropped lines for verbose output

@@ -1,12 +1,8 @@
 from __future__ import annotations
-import traceback
-import warnings
-warnings.filterwarnings("ignore")
+import traceback, warnings
 import sys, emcee, os, time, inspect, inspect, contextlib
 from emcee import EnsembleSampler
 import numpy as np
-from math import log10, floor
-from scipy.interpolate import interp1d
 import multiprocessing as mp
 from beartype import beartype
 from contextlib import nullcontext
@@ -155,16 +151,22 @@ class Acid:
         self.config = self.data.config # Either was None (on Data initialisation above) or had a previous config stored in the old or
         # overwritten Data class
 
+        # Verbosity validation handled in config property setter
+        self.config.verbose = verbose
+        self.config.sampler_progress = sampler_progress
+
+        # Temp testing
+        if self.config.verbose <= 2:
+            warnings.filterwarnings("ignore")
+        else:
+            pass # will put stuff here as we test
+
         # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
         if velocities is not None:
             if velocities.ndim != 1:
                 raise ValueError("'velocities' must be a one-dimensional array")
         # data.velocities defaults to None in Data class, will be set in ACID function from wavelengths if not provided
         self.data.velocities = velocities if velocities is not None else self.data.velocities
-
-        # Verbosity validation handled in config property setter
-        self.config.verbose = verbose
-        self.config.sampler_progress = sampler_progress
 
         # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
         if "linelist_path" in kwargs:
@@ -340,6 +342,12 @@ class Acid:
         od : :py:type:`bool`, optional
             If True, runs ACID in optical depth, otherwise, the LSD methods and ACID fitting is performed in flux. By default None which defaults to True.
             Note that the whole point of ACID is to run LSD in OD, we highly recommend leaving this unless you specifically want to compare.
+        sparse : bool, optional
+            Whether to use "sparse" matrix calculations for the alpha matrix in the LSD class, by default True. If you set it to false it will use 
+            the legacy method for alpha calculation which is slower and more memory intensive to no real benefit.
+            It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
+            we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
+            For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
         sampler_type : :py:type:`str`, optional
             If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
@@ -522,7 +530,10 @@ class Acid:
                 "spectrum with the corresponding profile_groups.")
             if depth_group_rules is not None and self.config.verbose > 0:
                 print("Warning: depth_group_rules is set, but profile_groups is also set. The depth_group_rules will be ignored.")
-            self.data.profile_groups = profile_groups
+            if len(profile_groups) != len(self.data.linelist["wavelengths"]):
+                raise ValueError(f"profile_groups must have the same length as the input linelist. "
+                                 f"Got {len(profile_groups)} groups for {len(self.data.linelist['wavelengths'])} lines.")
+            self.data.input_profile_groups = profile_groups.copy()
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -533,38 +544,12 @@ class Acid:
             deltav = utils.calc_deltav(self.data.wavelengths["input"][0])
             self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
 
-        ### Begin ACID process
-
-        # Combines spectra from each frame (weighted based of S/N), returns to S/N of combined spectra.
-        # If only one frame, just uses that frame. We also check if this step has already been done and skips if so.
-        if all((
-            "combined" in self.data.wavelengths,
-            "combined" in self.data.flux,
-            "combined" in self.data.errors,
-            "combined" in self.data.sn,
-            self.data.nanmask is not None
-        )):
-            if self.config.verbose > 2:
-                print("Combined spectra already exists, skipping combination step.")
-        else:
-            if self.config.verbose > 2:
-                print("Combining spectra...")
-            self.combine_spec(output=False)
-
-            # Clean combined spectra of NaNs
-            wavelengths, flux, errors, nanmask = utils.drop_invalid(self.data.wavelengths["combined"], self.data.flux["combined"],
-                                                                    self.data.errors["combined"], return_mask=True)
-            self.data.wavelengths["combined"] = wavelengths
-            self.data.flux["combined"] = flux
-            self.data.errors["combined"] = errors
-            self.data.nanmask = nanmask
 
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
 
         # Prepare the "initial" keys, this is just the combined key, except the errors have masked out the masking lines.
         # They are also used in the final step as these are the only regions masked in the final step
-        # TODO: Convert masks to np.ma masks
         self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.errors["combined"])
         self.data.wavelengths["initial"] = self.data.wavelengths["combined"]
         self.data.flux["initial"] = self.data.flux["combined"]
@@ -632,10 +617,11 @@ class Acid:
             masked_residuals = residuals[~self.data.line_mask] # so that we can get the std on the masked residuals
 
             # Use the iterative sigma clipping from astropy, returning a masked array of clipped residuals
-            result = sigma_clip(
+            result, lower_clip, upper_clip = sigma_clip(
                 masked_residuals,
                 sigma_lower=self.config.sigma_lower,
                 sigma_upper=self.config.sigma_upper,
+                return_bounds=True
             )
 
             # Put the sigma mask back onto the full pixel grid
@@ -649,7 +635,7 @@ class Acid:
             self.data.full_mask = pix_mask | sigma_mask | self.data.line_mask
             
             # Warn if more than 50% of spectrum is masked this way
-            if np.sum(self.data.full_mask) < 0.5 * len(self.data.full_mask):
+            if np.sum(self.data.full_mask) > 0.5 * len(self.data.full_mask):
                 if self.config.verbose > 0:
                     print(f"Warning: More than 50% of the spectrum is masked. \n" \
                     "Please check your initial continuum fit and masking (by using verbose=3 when initialising). \n" \
@@ -697,6 +683,8 @@ class Acid:
                 self.data.plotting_variables["masked"] = {}
             self.data.plotting_variables["masked"]["residuals"]        = residuals
             self.data.plotting_variables["masked"]["masked_residuals"] = masked_residuals
+            self.data.plotting_variables["masked"]["lower_clip"]       = lower_clip
+            self.data.plotting_variables["masked"]["upper_clip"]       = upper_clip
             if self.config.verbose > 2: # Plot now if verbose enough
                 self.data.plot_residual_masking()
 
@@ -726,13 +714,16 @@ class Acid:
                 if self.config.verbose > 1:
                     print("Running MCMC for %s steps..."%self.config.nsteps)
                 self.run_mcmc(self.config.nsteps, self.data.initial_state)
-                self.data.nsteps += self.config.nsteps
+                self.data.nsteps = self.sampler.backend.iteration
+
             # Else use max_steps path
             else:
                 if self.config.verbose > 1:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
-                self.run_mcmc_until_converged(self.config.max_steps, self.data.initial_state)
-                self.data.nsteps = self.step_number
+
+                self.run_mcmc_until_converged(self.config.max_steps, state=self.data.initial_state)
+                self.data.nsteps = self.sampler.backend.iteration
+
             self.data.mcmc_time += time.time() - mcmc_t0
 
             if self.config.verbose>1:
@@ -755,126 +746,6 @@ class Acid:
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
         f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
-
-    def combine_spec(
-        self,
-        frame_wavelengths: Array1D|Array2D|None = None,
-        frame_flux:        Array1D|Array2D|None = None,
-        frame_errors:      Array1D|Array2D|None = None,
-        frame_sns:         Array1D|Array2D|None = None,
-        output:            bool                 = True
-        ) -> tuple | None:
-        """
-        Combines the multiple inputted spectral frames into one spectrum, or just passes through the single frame if only one was input. 
-        The frames are interpolated onto a common wavelength grid of the spectrum with the highest S/N, and then a weighted average is used based on the errors. 
-        The S/N of the combined spectrum is also calculated based on the input S/N and the weights.
-
-        Parameters
-        ----------
-        frame_wavelengths : :py:type:`Array1D` | :py:type:`Array2D`, optional
-            Wavelengths for the spectral frames, by default None
-        frame_flux : :py:type:`Array1D` | :py:type:`Array2D`, optional
-            Fluxes for the spectral frames, by default None
-        frame_errors : :py:type:`Array1D` | :py:type:`Array2D`, optional
-            Errors for the spectral frames, by default None
-        frame_sns : :py:type:`Array1D` | :py:type:`Array2D`, optional
-            Signal-to-noise ratio for the spectral frames, by default None
-        output : bool, optional
-            Whether to output the combined spectrum, by default True
-
-        Returns
-        -------
-        tuple | None, if output is True, containing:
-            combined_wavelengths : np.ndarray
-                Wavelengths for the combined spectrum
-            combined_spectrum : np.ndarray
-                Fluxes for the combined spectrum
-            combined_errors : np.ndarray
-                Errors for the combined spectrum
-            combined_sn : float
-                Signal-to-noise ratio for the combined spectrum
-        None, if output is False, but the combined spectrum is still saved in the data class attributes.
-        """
-
-        if frame_wavelengths is not None: # This should only be for testing
-            self.data.wavelengths["input"] = np.copy(frame_wavelengths)
-            self.data.flux["input"]        = np.copy(frame_flux)
-            self.data.errors["input"]      = np.copy(frame_errors)
-            self.data.sn["input"]          = np.copy(frame_sns)
-
-        # Set simple names for variables (just used in this function)
-        wavelengths = np.copy(self.data.wavelengths["input"])
-        flux        = np.copy(self.data.flux["input"])
-        errors      = np.copy(self.data.errors["input"])
-        sn          = np.copy(self.data.sn["input"])
-
-        # Return as is if only one spectrum
-        if len(self.data.wavelengths["input"])==1:
-            self.data.wavelengths["combined"] = np.copy(self.data.wavelengths["input"][0])
-            self.data.flux["combined"]        = np.copy(self.data.flux["input"][0])
-            self.data.errors["combined"]      = np.copy(self.data.errors["input"][0])
-            self.data.sn["combined"]          = np.copy(self.data.sn["input"][0])
-
-        else:
-            # Get wavelength grid with highest S/N
-            combined_wavelengths = wavelengths[np.argmax(sn)]
-
-            interpolated_flux   = np.zeros_like(flux)
-            interpolated_errors = np.zeros_like(errors)
-
-            # combine all spectra to one spectrum
-            for n in range(len(flux)):
-
-                # Interpolate each spectrum onto the combined wavelength grid
-                f2 = interp1d(wavelengths[n], flux[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                f2_err = interp1d(wavelengths[n], errors[n], kind = 'linear', bounds_error=False, fill_value = 'extrapolate')
-                interpolated_flux[n] = f2(combined_wavelengths)
-                interpolated_errors[n] = f2_err(combined_wavelengths)
-
-                # Mask out out extrapolated areas
-                idx_ex = np.logical_and(combined_wavelengths<=np.max(wavelengths[n]),
-                                        combined_wavelengths>=np.min(wavelengths[n]))
-                idx_ex = tuple([idx_ex==False])
-
-                interpolated_flux[n][idx_ex] = 1.
-                interpolated_errors[n][idx_ex] = 1e12
-
-                # Mask out nans and zeros (these do not contribute to the main spectrum)
-                where_are_NaNs = np.isnan(interpolated_flux[n])
-                interpolated_errors[n][where_are_NaNs] = 1e12
-                where_are_zeros = np.where(interpolated_flux[n] == 0)[0]
-                interpolated_errors[n][where_are_zeros] = 1e12
-
-                where_are_NaNs = np.isnan(interpolated_errors[n])
-                interpolated_errors[n][where_are_NaNs] = 1e12
-                where_are_zeros = np.where(interpolated_errors[n] == 0)[0]
-                interpolated_errors[n][where_are_zeros] = 1e12
-
-            invvars = 1 / interpolated_errors**2
-            invvars[interpolated_errors >= 1e12] = 0
-
-            weights = np.sum(invvars, axis=0)
-            non_zero = weights > 0
-            
-            weighted_flux   = np.sum(interpolated_flux * invvars, axis=0)
-            
-            combined_flux = np.full_like(weights, 1.0)      # or np.nan
-            combined_errors = np.full_like(weights, 1e12)
-
-            combined_flux[non_zero] = weighted_flux[non_zero] / weights[non_zero]
-            combined_errors[non_zero] = 1 / np.sqrt(weights[non_zero])
-
-            frame_weights = np.sum(invvars, axis=1)
-            combined_sn   = np.sum(frame_weights * sn) / np.sum(frame_weights)
-
-            self.data.wavelengths["combined"] = combined_wavelengths
-            self.data.flux["combined"]        = combined_flux
-            self.data.errors["combined"]      = combined_errors
-            self.data.sn["combined"]          = combined_sn
-
-        if output is True:
-            # ie if called as a function rather than from ACID function
-            return combined_wavelengths, combined_flux, combined_errors, combined_sn
 
     @staticmethod
     def scipy_continuum_fit(data:Data, key:str) -> None:
@@ -966,22 +837,19 @@ class Acid:
         return
 
     def get_initial_state(self) -> np.ndarray:
-
-        # Set the number of dimensions, add the no. of velocity points if also fitting the profile
-        self.data.ndim = self.config.poly_ord + 1
-        self.data.ndim += len(self.data.velocities) if not self.config.deterministic_profile else 0
-
-        # emcee recommendation is 3 times the number of dimensions (we add a +3 buffer as well), but can be overridden by user input
-        self.data.nwalkers = 3 + self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
-        
+    
         # Set rng seed off of config seed if desired, otherwise default config seed is None and rng will be random
         rng = np.random.default_rng(self.config.seed)
 
         n_profile_params = self.data.alpha["mcmc"].shape[1]
 
+        # Set the number of dimensions, add the no. of velocity points if also fitting the profile
         self.data.ndim = self.config.poly_ord + 1
         if not self.config.deterministic_profile:
             self.data.ndim += n_profile_params
+
+        # emcee recommendation is 3 times the number of dimensions (we add a +3 buffer as well), but can be overridden by user input
+        self.data.nwalkers = 3 + self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
 
         if self.config.sampler_type == "emcee":
             theta0 = self.data.poly_coeffs["masked"]
@@ -990,14 +858,21 @@ class Acid:
                 profile0 = np.asarray(self.data.profile["masked"][0]).reshape(-1)
                 theta0 = np.concatenate((profile0, theta0))
 
-            # Test to see if the starting position is valid
+            # Test to see if the starting position is valid, up to a max of 1000 attempts
             test_mcmc = mcmc.MCMC(self.data)
             width = np.maximum(0.5 * np.abs(theta0), 1e-3)
             walkers = []
+            max_attempts = 1000
+            n_attempt = 0
             while len(walkers) < self.data.nwalkers:
                 theta = rng.normal(theta0, width)
                 if np.isfinite(test_mcmc.log_probability(theta)):
                     walkers.append(theta)
+
+                n_attempt += 1
+                if n_attempt == max_attempts:
+                    raise RuntimeError("Reached the max number of attempts for finding an initial state for MCMC walkers.")
+
             initial_state = np.array(walkers)
         else:
             initial_state = None
@@ -1060,7 +935,7 @@ class Acid:
         # Set variables to be updated within the convergence loop
         step_number = 0
         tau_list = []
-        max_samples = max_steps // self.config.check_interval
+        max_samples = int(np.ceil(max_steps / self.config.check_interval))
         last_tolerance = np.inf
         last_neff = 0
         condition = False
@@ -1082,11 +957,15 @@ class Acid:
             self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn)
 
             for i in range(max_samples):
+                steps_this_run = min(self.config.check_interval, max_steps-step_number)
+                mcmc_kwargs["nsteps"] = steps_this_run
+
                 tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
                 mcmc_kwargs["progress_kwargs"] = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                 self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
                 mcmc_kwargs["initial_state"] = None
-                step_number += self.config.check_interval
+
+                step_number += steps_this_run
 
                 # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
                 # It scales with the number of steps, so thin by the number of steps taken divided by 
@@ -1095,17 +974,18 @@ class Acid:
                     with open(os.devnull, "w") as devnull, \
                         contextlib.redirect_stdout(devnull), \
                         contextlib.redirect_stderr(devnull):
-                        tau = self.sampler.get_autocorr_time(tol=0, thin=step_number//self.config.check_interval)
+                        tau = self.sampler.get_autocorr_time(tol=0, thin=max(1, self.sampler.backend.iteration//self.config.check_interval))
                 except emcee.autocorr.AutocorrError:
                     continue
                 tau_list.append(tau)
 
                 # The stopping criterion function below handles the logic for determining stopping condition
-                condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, step_number, *stopping_criterion_args)
+                total_step_number = self.sampler.backend.iteration
+                condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, total_step_number, *stopping_criterion_args)
 
                 if condition is True:
                     if self.config.verbose > 1:
-                        print(f"Converged at step {step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
+                        print(f"Converged at step {total_step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                     break
 
         # Warn if convergence not reached after either parallel or non-parallel version
@@ -1135,6 +1015,8 @@ class Acid:
         if backend is None and self.config.sampler_path is not None:
             os.makedirs(os.path.dirname(self.config.sampler_path), exist_ok=True)
             backend = emcee.backends.HDFBackend(self.config.sampler_path)
+            if state is not None:
+                backend.reset(self.data.nwalkers, self.data.ndim)
             if self.config.verbose > 1:
                 print(f"Using sampler backend at {self.config.sampler_path}")
         # else: leave none and a normal in-memory sampler backend is used
@@ -1211,11 +1093,19 @@ class Acid:
         if max_steps is not None:
             if max_steps_kwargs is not None:
                 self.config.update_hipri(**max_steps_kwargs)
-            self.run_mcmc_until_converged(max_steps, state=None) # continue from current state
-            self.data.nsteps += self.step_number
+            remaining_steps = max_steps - self.sampler.backend.iteration
+            if remaining_steps > 0:
+                self.run_mcmc_until_converged(remaining_steps, state=None)
+                self.data.complete = False
+
         else:
-            self.run_mcmc(nsteps, state=None) # continue from current state
-            self.data.nsteps += nsteps
+            if nsteps is None:
+                raise ValueError("Either nsteps or max_steps must be provided.")
+
+            self.run_mcmc(nsteps, state=None)
+            self.data.complete = False
+
+        self.data.nsteps = self.sampler.backend.iteration
 
         if return_sampler:
             return self.sampler

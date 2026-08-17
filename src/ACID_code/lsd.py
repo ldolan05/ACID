@@ -35,11 +35,9 @@ class LSD:
     """
     def __init__(
             self,
-            data              : object|None           = None,
-            od                : bool                  = None,
-            verbose           : IntLike|bool|str|None = None,
-            sparse            : bool|None             = None,
-            profile_groups    : Array1D|None          = None,
+            data    : object|None           = None,
+            od      : bool                  = None,
+            verbose : IntLike|bool|str|None = None,
         ) -> None:
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
@@ -56,19 +54,13 @@ class LSD:
             Verbosity level, if None, uses the :py:class:`Config` class existing value (in Data), or default of 2.
             Should follow the same format as :py:class:`Acid` verbosity. 
             Will overwrite the verbosity level in the config if a Data instance is input, by default None.
-        sparse : bool, optional
-            Whether to use sparse matrix calculations for the alpha matrix, by default True. If you use false it will use 
-            the legacy method for alpha calculation which is significantly longer and more memory intensive to no real benefit.
-            It is just kept for testing/backwards compatibility.
         """
         # Set class variables, taking from input data if it exists, else setting to defaults
         self.slurm             = "SLURM_JOB_ID" in os.environ
         self.data              = data if data is not None else Data()
         self.linelist          = self.data.linelist if self.data is not None else None
         self.od                = od if od is not None else self.data.config.od
-        self.sparse            = sparse if sparse is not None else self.data.config.sparse
-        self.profile_groups    = profile_groups if profile_groups is not None else self.data.profile_groups
-        try:
+        try: # try access the provided config, otherwise just use all defaults
             self.config = self.data.config
         except:
             self.config = Config() # uses defaults
@@ -76,27 +68,38 @@ class LSD:
 
     def run_LSD(
         self,
-        wavelengths       : Array1D,
-        flux              : Array1D,
-        errors            : Array1D,
-        sn                : Scalar,
-        linelist          : Array2D|str|LineList|dict|None = None,
-        velocities        : Array1D|None                   = None,
-        alpha             : Array2D|Array3D|None           = None,
-        skip_warnings     : bool|None                      = None,
+        wavelengths    : Array1D|None                   = None,
+        flux           : Array1D|None                   = None,
+        errors         : Array1D|None                   = None,
+        sn             : Scalar|None                    = None,
+        key            : str|None                       = None,
+        linelist       : Array2D|str|LineList|dict|None = None,
+        velocities     : Array1D|None                   = None,
+        alpha          : Array2D|Array3D|None           = None,
+        profile_groups : Array1D|None                   = None,
+        mp_lsd         : bool|None                      = None,
+        sparse         : bool|None                      = None,
+        skip_warnings  : bool|None                      = None,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
         Parameters
         ----------
-        wavelengths : :py:type:`Array1D`
-            Array of wavelengths of the observed spectrum in Angstroms
-        flux : :py:type:`Array1D`
-            Array of flux values corresponding to the wavelengths (in linear space, and should be continuum normalized)
-        errors : :py:type:`Array1D`
-            Array of error values corresponding to the flux
-        sn : :py:type:`Scalar`
-            Signal-to-noise ratio of the observed spectrum
+        wavelengths : :py:type:`Array1D`, optional
+            Array of wavelengths of the observed spectrum in Angstroms. By default None.
+            Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
+        flux : :py:type:`Array1D`, optional
+            Array of flux values corresponding to the wavelengths (in linear space, and should be continuum normalized).
+            Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
+        errors : :py:type:`Array1D`, optional
+            Array of error values corresponding to the flux.
+            Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
+        sn : :py:type:`Scalar`, optional
+            Signal-to-noise ratio of the observed spectrum.
+            Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
+        key : str, optional
+            The dictionary key to pull wavelengths, flux, errors, and sn from the Data instance provided in initialisation.
+            If provided, will ignore the 4 previous parameters. By default None.
         linelist : :py:type:`Array2D | str | LineList | dict | None`, optional
             Linelist to use for LSD, should follow the same format as :py:class:`Acid`. 
             If None, uses the linelist already stored in the class, if it exists, by default None.
@@ -106,15 +109,53 @@ class LSD:
         alpha : :py:type:`Array2D | Array3D | None`, optional
             Precomputed alpha matrix, if already calculated and you want to skip directly to the Cholesky 
             decomposition and solving for the profile, by default None
+        profile_groups : :py:type:`Array1D | None`, optional
+            A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
+            If provided, the resulting profiles will be a 2D array in with the same order as the index of the group.
+            The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match the inputted linelist, otherwise,
+            we attempt to cut the linelist to the input wavelength range and apply the S/N cut, after which they must match.
+            If None, then just one profile is generated (as if the mask was [0,0,0,0,0,...]). By default None.
+        mp_lsd : bool, optional
+            An override to the automatic multi-profile LSD detection. If profile_groups is input and this has been overriden
+            to False, then profile_groups is ignored and you will only receive one profile. By default None.
+        sparse : bool, optional
+            Whether to use "sparse" matrix calculations for the alpha matrix, by default True. If you set it to false it will use 
+            the legacy method for alpha calculation which is slower and more memory intensive to no real benefit.
+            It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
+            we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
+            For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
         skip_warnings : bool, optional
             Override with True/False, otherwise (if None) takes from the Data instance and checks the lsd_warnings_flag.
             If True, skips warnings about the inputs.
             This function will always set the flag to True at the end of the function, by default None
-        """
 
-        # TODO: Add check that the flux is at least somewhat normalised
+        Returns
+        -------
+        None : Extract all the results you need from the class attributes shown below.
+
+        Attributes
+        ----------
+        # TODO: write this
+
+        """
         if skip_warnings is None:
             skip_warnings = self.data.lsd_warnings_flag
+
+        if key is not None:
+            wavelengths = self.data.wavelengths[key]
+            flux        = self.data.flux[key]
+            errors      = self.data.errors[key]
+            sn          = self.data.sn[key]
+        elif any((
+            wavelengths is None,
+            flux is None,
+            errors is None,
+            sn is None,
+        )):
+            raise ValueError(f"If key is not provided; wavelengths, flux, errors, and SN must be provided.")
+
+        sparse         = sparse if sparse is not None else self.config.sparse
+        profile_groups = profile_groups if profile_groups is not None else self.data.input_profile_groups
 
         # Ensure inputs are numpy arrays
         wavelengths = np.array(wavelengths)
@@ -125,6 +166,12 @@ class LSD:
         if not wavelengths.shape == flux.shape == errors.shape:
             raise ValueError("Input wavelengths, flux, and errors must have the same shape.")
         self.n_wavelengths = len(wavelengths)
+
+        # Check the flux has been at least somewhat normalised:
+        # TODO: Test
+        if np.nanpercentile(flux, 95) > 1.5:
+            raise ValueError(f"The top 95th percentile of fluxes inputted to LSD lie above 1.5.\n" \
+                             f"The fluxes should be normalised.")
 
         # Set velocities either from inputs or from Data class if initialised with Acid instance
         self.data.velocities = velocities if velocities is not None else self.data.velocities
@@ -148,11 +195,11 @@ class LSD:
         self.data.linelist = linelist # Raises if no linelist available, overwrites if input
         wavelengths_linelist, depths_linelist = self.data.linelist
 
-        # This is a hack so that if the profile_groups have already been cut to the shortened list, we dont recut them to avoid indexing errors.
-        if self.profile_groups is not None:
-            profile_groups = None if len(self.profile_groups) != len(wavelengths_linelist) else self.profile_groups
-        else:
-            profile_groups = None # will be calculated later
+        # # This is a hack so that if the profile_groups have already been cut to the shortened list, we dont recut them to avoid indexing errors.
+        # if self.profile_groups is not None:
+        #     profile_groups = None if len(self.profile_groups) != len(wavelengths_linelist) else self.profile_groups
+        # else:
+        #     profile_groups = None # will be calculated later
 
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist, profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups)
@@ -169,22 +216,25 @@ class LSD:
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups, skip_warnings)
 
-        # Bring them back
-        self.profile_groups = profile_groups if profile_groups is not None else self.profile_groups
-
         # Handle multi-profile groups logic
-        if self.profile_groups is None and self.config.depth_group_rules is not None:
-            # Group profiles while depths are still in linear space, and after all the cuts have been made
-            self.profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
-            # Save to the data instance so its not recalculated each time
-            self.data.profile_groups = self.profile_groups
-        elif self.profile_groups is not None:
-            # Ensure np.ndarray and validate its dimensions
-            self.profile_groups = np.asarray(self.profile_groups)
+        if profile_groups is not None:
+            self.profile_groups = np.asarray(profile_groups)
             if len(self.profile_groups) != len(depths_linelist):
-                raise ValueError(f"profile_groups has {len(self.profile_groups)} entries but the linelist has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
-                                    f"Please check len(profile_groups) matches len(depths_linelist).")
+                raise ValueError(f"profile_groups has {len(self.profile_groups)} entries but the linelist "
+                                f"has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
+                                f"Please check len(profile_groups) matches len(depths_linelist). "
+                                f"Also see profile_groups parameter description.")
+        elif self.config.depth_group_rules is not None:
+            self.profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
+        else:
+            self.profile_groups = None
+
+        self.data.profile_groups = self.profile_groups
+
         mp_lsd_mode = self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
+        # Finally, we allow the mp_lsd override, this override is only a False override
+        if mp_lsd is False:
+            mp_lsd_mode = False
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist, od=self.od)
@@ -207,12 +257,19 @@ class LSD:
                     depths_linelist,
                     self.profile_groups,
                     verbose=self.config.verbose,
-                    sparse=self.sparse
+                    sparse=sparse
                 )
                 self.n_profs = len(self.unique_prof_groups)
                 self.alpha_flat = self.flatten_alpha(self.alpha)
             else:
-                self.alpha = self.calc_alpha(wavelengths, wavelengths_linelist, depths_linelist, self.data.velocities, verbose=self.config.verbose, sparse=self.sparse)
+                self.alpha = self.calc_alpha(
+                    wavelengths,
+                    wavelengths_linelist,
+                    depths_linelist,
+                    self.data.velocities,
+                    verbose=self.config.verbose,
+                    sparse=sparse
+                )
                 self.alpha_flat = self.alpha
         else:
             self.alpha = np.asarray(alpha)
@@ -918,7 +975,7 @@ class LSD:
         return prof_groups
 
     @classmethod
-    def runlsd_and_store(cls, data:Data, key:str, return_cls:bool=False) -> None|LSD:
+    def runlsd_and_store(cls, data:Data, key:str, return_cls:bool=False, **kwargs) -> None|LSD:
         """
         Extracts the wavelength, flux, etc. from the Data instance using they key.
         Runs LSD with the Config in the Data instance and stores the result.
@@ -928,13 +985,7 @@ class LSD:
         alpha = data.alpha[key] if key in data.alpha else None
 
         lsd = cls(data)
-        lsd.run_LSD(
-            wavelengths   = data.wavelengths[key],
-            flux          = data.fitted_flux[key],
-            errors        = data.fitted_errors[key],
-            sn            = data.sn[key],
-            alpha         = alpha,
-        )
+        lsd.run_LSD(key=key, alpha=alpha, **kwargs)
         data.c_factor[key]  = lsd.c_factor
         data.alpha[key]     = lsd.alpha
         data.forward_x[key] = data.wavelengths[key]

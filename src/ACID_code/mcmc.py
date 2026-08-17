@@ -4,7 +4,7 @@ from numpy.linalg import norm
 from . import utils
 from .utils import Array1D, Array2D
 from beartype import beartype
-from scipy.linalg import cho_solve
+from scipy.linalg import cho_solve, cho_factor
 from .data import Data
 from numpy.polynomial.chebyshev import chebval
 from .lsd import LSD
@@ -118,6 +118,7 @@ class MCMC:
             err_od = self.yerr / self.y # independent of continuum, since it's a ratio
             V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
         else:
+            # TODO: This may be mathematically incorrect, need to relook how to move forward with this
             # For non-OD case, we need to precompute the variance vector in flux space for the likelihood calculation
             V = 1.0 / (self.yerr ** 2) # variance vector in flux space
 
@@ -380,7 +381,7 @@ class MCMC:
         var = self.yerr * self.yerr
 
         return -0.5 * np.sum(diff * diff / var + np.log(2 * np.pi * var))
-    
+
     def ptform(self, u):
         """
         Prior transform for dynesty.
@@ -411,4 +412,3 @@ class MCMC:
 
         return lower + u * (upper - lower)
 
-            
