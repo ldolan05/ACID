@@ -21,7 +21,7 @@ Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Sc
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
 
-@staticmethod
+
 def eval_continuum(x, coefs, method="polyval", **kwargs):
     """
     Evaluates the continuum at given points using specified method.
@@ -49,7 +49,6 @@ def eval_continuum(x, coefs, method="polyval", **kwargs):
     else:
         raise ValueError(f"Unknown method: '{method}', must be 'polyval' or 'chebval'.")
 
-@staticmethod
 def fit_continuum(x, y, degree, method="polyval", **kwargs):
     """
     Fits a polynomial of given degree to the data (x, y).

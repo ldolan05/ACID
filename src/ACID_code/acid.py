@@ -242,7 +242,7 @@ class Acid:
         od                    : bool|None                   = None, # Config
         sparse                : bool|None                   = None, # Config
         depth_group_rules     : dict|None                   = None, # Config
-        profile_groups        : Array1D|None                = None, # Config
+        profile_groups        : Array1D|Array2D|None        = None, # Data
         sampler_type          : str|None                    = None, # Config
         parallel              : bool|None                   = None, # Config
         cores                 : IntLike|None                = None, # Config
@@ -465,7 +465,6 @@ class Acid:
             "od"                    : od,
             "sparse"                : sparse,
             "depth_group_rules"     : depth_group_rules,
-            "profile_groups"        : profile_groups,
             "sampler_type"          : sampler_type,
             "parallel"              : parallel,
             "cores"                 : cores,
@@ -492,6 +491,7 @@ class Acid:
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
 
+        # Validate some of the inputs
         if self.config.sampler_type == "dynesty":
             if dynesty is None:
                 raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")
@@ -512,6 +512,17 @@ class Acid:
 
         # Setup and data validation done in data class and applies skips
         self.data.set_inputs(wavelengths, flux, errors, sn)
+
+        # Validate profile group inputs (needs to be done after inputs set)
+        if profile_groups is not None:
+            profile_groups = np.asarray(profile_groups)
+            if profile_groups.ndim == 2:
+                raise ValueError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
+                "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
+                "spectrum with the corresponding profile_groups.")
+            if depth_group_rules is not None and self.config.verbose > 0:
+                print("Warning: depth_group_rules is set, but profile_groups is also set. The depth_group_rules will be ignored.")
+            self.data.profile_groups = profile_groups
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -621,11 +632,10 @@ class Acid:
             masked_residuals = residuals[~self.data.line_mask] # so that we can get the std on the masked residuals
 
             # Use the iterative sigma clipping from astropy, returning a masked array of clipped residuals
-            result, lower_clip, upper_clip = sigma_clip(
+            result = sigma_clip(
                 masked_residuals,
                 sigma_lower=self.config.sigma_lower,
                 sigma_upper=self.config.sigma_upper,
-                return_bounds=True
             )
 
             # Put the sigma mask back onto the full pixel grid
@@ -665,9 +675,10 @@ class Acid:
             # Applying Residual Masks to the Data for Fitting
             #------------------------------------------------
             # First apply to the flattened alpha, and then bin the lsd class to save memory.
+            # The flatted alpha mechanic is important for multi-profile LSD, otherwise alpha_flat is the same as alpha
             # Slicing alpha like this avoids a recalculation because we know which wavelengths are masked
             self.data.alpha["mcmc"] = lsd.alpha_flat[~self.data.full_mask, :]
-            lsd = None
+            lsd = None # Discard to save memory once the alpha is sliced
 
             # Apply to the rest of the data
             self.data.wavelengths["mcmc"] = self.data.wavelengths["combined"][~self.data.full_mask]
@@ -678,7 +689,7 @@ class Acid:
             self.data.norm_wavelengths["mcmc"] = utils.normalize_wavelengths(self.data.wavelengths["combined"])[~self.data.full_mask]
 
             # For the Cholesky factor, we need to recalculate them on the new wavelength grid, and convert to OD if needed
-            errors = self.data.errors["mcmc"] if not self.config.od else self.data.errors["mcmc"]/self.data.flux["mcmc"]
+            _, errors = utils.flux_to_od(self.data.flux["mcmc"], self.data.errors["mcmc"], od=self.config.od) # only need errors for c_factor
             self.data.c_factor["mcmc"] = LSD.calc_cholesky(alpha=self.data.alpha["mcmc"], error=errors)
 
             # Save extra variables for plotting in the Data class

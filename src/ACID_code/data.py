@@ -574,6 +574,8 @@ class Data:
 
     # Other useful data and figures
     # -----------------------------
+    #: The grouping of the profiles based on their depth, used for plotting and analysis
+    profile_groups     : Optional[dict] = None
     #: Internal variables used for plotting the continuum_fit and the residual masks
     plotting_variables : Dict[str, Any]  = field(default_factory=dict)
     #: setup_time (float) - The time taken for initialization
@@ -717,16 +719,12 @@ class Data:
                     f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
                 self.reset()
 
-    def plot_linelist(self, min_depth:Scalar=0.2, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
+    def plot_linelist(self, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
         """
         Plots the linelist points with their corresponding depths as delta-function lines.
 
         Parameters
         ----------
-        min_depth : :py:type:`Scalar`, optional
-            The minimum depth for plotting the linelist points. By default 0.2.
-        bounds : tuple or list, optional
-            The wavelength bounds for clipping the linelist. If None, no clipping is applied.
         return_fig : bool, optional
             If True, returns the figure and axis objects instead of displaying the plot.
 
@@ -741,11 +739,11 @@ class Data:
         depths = self.linelist["depths"]
 
         # Clip the linelist to the specified bounds if provided, and to the min_depth
-        if bounds is not None:
-            wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
-            depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
-        wl = wl[depths >= min_depth]
-        depths = depths[depths >= min_depth]
+        # if bounds is not None:
+        #     wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
+        #     depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
+        # wl = wl[depths >= min_depth]
+        # depths = depths[depths >= min_depth]
 
         # Plot linelist
         fig, ax = plt.subplots(figsize=(15, 9))

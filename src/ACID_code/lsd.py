@@ -39,7 +39,6 @@ class LSD:
             od                : bool                  = None,
             verbose           : IntLike|bool|str|None = None,
             sparse            : bool|None             = None,
-            depth_group_rules : dict|None             = None,
             profile_groups    : Array1D|None          = None,
         ) -> None:
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
@@ -68,8 +67,7 @@ class LSD:
         self.linelist          = self.data.linelist if self.data is not None else None
         self.od                = od if od is not None else self.data.config.od
         self.sparse            = sparse if sparse is not None else self.data.config.sparse
-        self.depth_group_rules = depth_group_rules if depth_group_rules is not None else self.data.config.depth_group_rules
-        self.profile_groups    = profile_groups if profile_groups is not None else self.data.config.profile_groups
+        self.profile_groups    = profile_groups if profile_groups is not None else self.data.profile_groups
         try:
             self.config = self.data.config
         except:
@@ -146,17 +144,18 @@ class LSD:
             else:
                 raise ValueError("Input alpha must be either 2D or 3D.")
 
-        if self.depth_group_rules is not None and self.profile_groups is not None:
-            raise ValueError("Cannot provide both depth_group_rules and profile_groups. profile_groups are generated from the depth_group_rules.")
-
-        mp_lsd_mode = self.depth_group_rules is not None or self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
-
         # Unpack the linelist stored in data
         self.data.linelist = linelist # Raises if no linelist available, overwrites if input
         wavelengths_linelist, depths_linelist = self.data.linelist
 
+        # This is a hack so that if the profile_groups have already been cut to the shortened list, we dont recut them to avoid indexing errors.
+        if self.profile_groups is not None:
+            profile_groups = None if len(self.profile_groups) != len(wavelengths_linelist) else self.profile_groups
+        else:
+            profile_groups = None # will be calculated later
+
         # Clip linelist to wavelength range of spectrum
-        wavelengths_linelist, depths_linelist, self.profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, self.profile_groups)
+        wavelengths_linelist, depths_linelist, profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups)
         if len(wavelengths_linelist) == 0:
             error = LineListRangeError(
                 "No lines in linelist are within the wavelength range of the observed spectrum.\n"
@@ -166,32 +165,39 @@ class LSD:
             self.data.exception = error
             self.data.traceback = traceback.format_stack()
             raise error
-
+        
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist, self.profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, self.profile_groups, skip_warnings)
+        wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups, skip_warnings)
 
-        # Group profiles while depths are still in linear space
-        if alpha is None and mp_lsd_mode:
-            if self.profile_groups is None:
-                self.profile_groups = self.group_profs(depths_linelist, prof_group_rules=self.depth_group_rules)
-            else:
-                self.profile_groups = np.asarray(self.profile_groups)
-                if len(self.profile_groups) != len(depths_linelist):
-                    raise ValueError(f"profile_groups has {len(self.profile_groups)} entries but the linelist has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
-                                     f"Please check len(profile_groups) matches len(depths_linelist).")
+        # Bring them back
+        self.profile_groups = profile_groups if profile_groups is not None else self.profile_groups
 
-        # At this point we our mask for points with negative fluxes and large masked errors and nans
-        self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
+        # Handle multi-profile groups logic
+        if self.profile_groups is None and self.config.depth_group_rules is not None:
+            # Group profiles while depths are still in linear space, and after all the cuts have been made
+            self.profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
+            # Save to the data instance so its not recalculated each time
+            self.data.profile_groups = self.profile_groups
+        elif self.profile_groups is not None:
+            # Ensure np.ndarray and validate its dimensions
+            self.profile_groups = np.asarray(self.profile_groups)
+            if len(self.profile_groups) != len(depths_linelist):
+                raise ValueError(f"profile_groups has {len(self.profile_groups)} entries but the linelist has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
+                                    f"Please check len(profile_groups) matches len(depths_linelist).")
+        mp_lsd_mode = self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
 
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist, od=self.od)
-        if not self.od:
-            flux -= 1
+        flux -= 1 if not self.od else 0 # If in flux space, we want to fit to flux-1 as per LSD convention
 
+        # TODO: Check why this mask was here, does the main branch have it?
+        # # At this point we our mask for points with negative fluxes and large masked errors and nans
+        # self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
+        # TODO: If in debug mode, save lsd.__dict__
+        
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
-        self.n_profs = 1
         self.n_velocities = len(self.data.velocities)
-
+        self.n_profs = 1 # overwritten by mp_lsd_mode with n_profs if applicable
         if alpha is None:
             if mp_lsd_mode:
                 self.alpha, self.unique_prof_groups = self.calc_mp_alpha(
@@ -218,7 +224,6 @@ class LSD:
                 self.alpha_flat = self.flatten_alpha(self.alpha)
 
             elif self.alpha.ndim == 2:
-                self.n_profs = 1
                 self.alpha_flat = self.alpha
 
         # Now solve for profile using Cholesky decomposition, independent of mp_lsd mode since alpha is flattened in both cases
@@ -821,7 +826,7 @@ class LSD:
         return np.concatenate(alpha, axis=1)
 
     @staticmethod
-    def group_profs(depths_linelist:Array1D, prof_group_rules:dict|None=None) -> Array1D:
+    def group_profs_by_depth(depths_linelist:Array1D, prof_group_rules:dict|None=None) -> Array1D:
         """
         Assign each line to a profile group based on its linear line depth.
 

@@ -63,6 +63,7 @@ class Profiles:
         self.velocities, self.flux, self.flux_err, self.cov_matrix = self._remove_nans(
             *self._copy_inputs(velocities, flux-1, flux_err, cov_matrix)
         )
+        # TODO: remove the -1, our profiles are norm at 1 by convention
 
         self.fitted_y    = {}
         self.fitted_yerr = {}

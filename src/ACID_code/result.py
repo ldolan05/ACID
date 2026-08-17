@@ -175,14 +175,15 @@ class Result:
         # Set the inputs for a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
         self.data.wavelengths["final"] = self.data.wavelengths["initial"]
         self.data.flux["final"]        = self.data.flux["initial"]
-        self.data.errors["final"]       = self.data.errors["initial"] # includes the line_mask set to 1e12 (and hence masked for LSD)
+        self.data.errors["final"]      = self.data.errors["initial"] # includes the line_mask set to 1e12 (and hence masked for LSD)
         self.data.sn["final"]          = self.data.sn["initial"]
         self.data.alpha["final"]       = self.data.alpha["initial"]
 
         # Final continuum correction and LSD run on the unmasked spectrum, generates the final profiles
-        self._continuum_correct_and_store("final", all_poly_coeffs)
+        self._continuum_correct_and_runlsd("final", all_poly_coeffs)
 
         # TODO: We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
+        # if self.data.profile_groups
 
         # Iterate through each frame to get per-frame profiles
         profiles = []
@@ -226,7 +227,7 @@ class Result:
             self.save() # the sampler is already saved if specified
         return
 
-    def _continuum_correct_and_store(self, key, all_poly_coeffs):
+    def _continuum_correct_and_runlsd(self, key, all_poly_coeffs):
 
         data = self.data
 
@@ -536,22 +537,22 @@ class Result:
             fig, ax = fig_ax
 
         # Iterate through and plot frames
+        # TODO: Create a data.plot_profile() method that takes the key and plots that profile
+        # This one will just be dedicated to the final profiles
         for f, frame in enumerate(self.data.profiles):
             x, y, yerr = self.data.velocities, frame[0], frame[1]
-            label_default = f"Frame {f+1}" if nframes > 1 else None
-            # Override label in errorbar_kwargs if it is not already set, otherwise use the default label
-            if "label" not in errorbar_kwargs:
-                errorbar_kwargs["label"] = label_default
-            
-            if x.ndim > 1:
-                for i in range(x.shape[1]):
-                    ax.errorbar(x[i], y[i], yerr=yerr[i], **errorbar_kwargs)
-            else:
-                if x.shape != y.shape:
-                    for prof, err in zip(y, yerr):
-                        ax.errorbar(x, prof, yerr=err, **errorbar_kwargs)
-                else:
-                    ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
+
+            if x.shape == y.shape:
+                errorbar_kwargs["label"] = f"Frame {f+1}" if nframes > 1 else None
+                ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
+
+            else: # multi-profile case
+                groups = np.unique(self.data.profile_groups)
+                for prof, err, g in zip(y, yerr, groups):
+                    errorbar_kwargs["label"] = f"Group {g}"
+                    errorbar_kwargs["ecolor"] = None
+                    ax.errorbar(x, prof, yerr=err, **errorbar_kwargs)               
+                
 
         # Add labels and titles
         ax.set_title(labels["title"])
