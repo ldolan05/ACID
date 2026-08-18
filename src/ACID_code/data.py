@@ -218,8 +218,10 @@ class Config:
             },
         },
         "seed" : None,
+        "dir" : None,
         "save_path" : None,
         "sampler_path" : None,
+        "figure_dir" : None,
 
         # RUN_ACID CONFIGURATION
         "deterministic_profile" : True,
@@ -628,8 +630,7 @@ class Data:
         print(f"Verbosity: {self.config.verbose}")
         print(f"Save path: {self.config.save_path}")
         print(f"Sampler path: {self.config.sampler_path}")
-        # TODO: Add below
-        print(f"Figure saving path: {self.config.figure_path}")
+        print(f"Figure saving path: {self.config.figure_dir}")
         
         print(f"Using deterministic profile?: {self.config.deterministic_profile}")
         print(f"Polynomial order: {self.config.poly_ord}")

@@ -38,8 +38,10 @@ class Acid:
         sampler_progress : bool|None                                          = None,   # Config
         masking_lines    : dict|MaskingLines|None                             = None,   # Config
         seed             : IntLike|None                                       = None,   # Config
+        dir              : str|None                                           = None,   # Config
         save_path        : str|None                                           = None,   # Config
         sampler_path     : str|None                                           = None,   # Config
+        figure_dir       : str|None                                           = None,   # Config
         data             : Data|DataList|None                                 = None,   # Data
         config           : Config|None                                        = None,   # Config
         **kwargs,
@@ -106,18 +108,28 @@ class Acid:
             optical and near infrared. For a guide on using your own/modifying the defaults, see :ref:`masking_lines`. By default None, stored in the Config instance.
         seed : :py:type:`IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
+        dir : :py:type:`str`, optional
+            Sets the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
+            Any inputted paths for save_path, sampler_path, or figure_dir will override this input.
+            If None, the save_path, sampler_path, and figure_dir are not set. By default None.
+            To ensure you understand a directory is required and avoid mistakes, the "/" at the end of the path is required, otherwise an exception is raised.
         save_path : :py:type:`str`, optional
             The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
             If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
             Should be a valid file path that ends with ".pkl". If the directory containing it does not exist, it will be created.
             If a file already exists at this path, it will be overwritten on Acid initialization.
+            Note that we separate the save and sampler paths, as the sampler can be very large and may not be desired to be saved.
         sampler_path : :py:type:`str`, optional
             The path to save the sampler HDF5 backend file to.
             If None, the sampler is not saved and only stored in memory. By default None.
             Note that if your path points to an existing file, it will be overwritten on Acid initialization.
             If existing, we use the emcee HDF5 backend to store and load the sampler.
             Should be a valid file path that ends with ".h5". If the directory containing it does not exist, it will be created.
-            Note that if you later try and save the sampler through the data class, it is converted to a HD5 backend.
+            Note that if you later try and save the sampler through the data class, it is converted to a HDF5 backend.
+        figure_dir : :py:type:`str`, optional
+            A directory to save the figures to.
+            If None, figures are not saved to disk and figures are instead shown (if asked) with plt.show(), by default None.
+            To ensure you understand a directory is required and avoid mistakes, the "/" at the end of the path is required, otherwise an exception is raised.
         data : :py:class:`Data` | :py:class:`DataList`, optional
             An optional backend :py:class:`Data` object to use for storing data. Allows previously calculated results to be used skipped.
             If None, a new :py:class:`Data` object is created. Please note that if the :py:class:`Data` class already has a saved ACID config
@@ -202,6 +214,18 @@ class Acid:
         self.config.order_range = order_range
         self.config.order = order
 
+        # Handle dir input
+        if dir is not None:
+            if not dir.endswith("/"):
+                raise ValueError("'dir' must end with a '/' to ensure it is a directory.")
+            dir = os.path.abspath(dir)
+            if save_path is None:
+                save_path = os.path.join(dir, "data.pkl")
+            if sampler_path is None:
+                sampler_path = os.path.join(dir, "sampler.h5")
+            if figure_dir is None:
+                figure_dir = os.path.join(dir, "figures/")
+
         # Handle data saving paths checks
         if save_path is not None:
             if not save_path.endswith(".pkl"):
@@ -218,6 +242,12 @@ class Acid:
                     print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
                 os.remove(sampler_path)
         self.config.sampler_path = os.path.abspath(sampler_path) if sampler_path is not None else None
+
+        # Handle figure saving path checks
+        if figure_dir is not None:
+            if not figure_dir.endswith("/"):
+                raise ValueError("'figure_dir' must end with a '/' to ensure it is a directory.")
+        self.config.figure_dir = os.path.abspath(figure_dir) if figure_dir is not None else None
 
         return
 
