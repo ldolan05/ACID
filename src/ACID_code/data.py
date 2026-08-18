@@ -542,6 +542,8 @@ class Data:
     profile                : Dict[str, list]       = field(default_factory=dict)
     #: The residuals between the forward model and flux used to generate said model. Scaled to the forward model flux.
     residuals              : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: The indexes from the full linelist that was used in this LSD run
+    ll_mask                : Dict[str, np.ndarray] = field(default_factory=dict)
 
     # Products generated from residual masking
     # ---------------------------------------------------------
@@ -1627,7 +1629,7 @@ class LineList:
             raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
 
-        # Finally, convert to numpy arrays to ensure their dimensions are correct
+        # Convert to numpy arrays to ensure their dimensions are correct
         try:
             linelist_wl = np.array(linelist_wl)
             linelist_depths = np.array(linelist_depths)
@@ -1638,6 +1640,11 @@ class LineList:
         if linelist_wl.shape != linelist_depths.shape:
             raise ValueError("'wavelengths' and 'depths' must have the same length and shape, \n"
                              f" but have shapes: {linelist_wl.shape}, {linelist_depths.shape}")
+
+        # Finally, sort the arrays by wavelength
+        sort_idx = np.argsort(linelist_wl)
+        linelist_wl = linelist_wl[sort_idx]
+        linelist_depths = linelist_depths[sort_idx]
 
         return linelist_wl, linelist_depths
 

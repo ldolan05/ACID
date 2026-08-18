@@ -194,12 +194,7 @@ class LSD:
         # Unpack the linelist stored in data
         self.data.linelist = linelist # Raises if no linelist available, overwrites if input
         wavelengths_linelist, depths_linelist = self.data.linelist
-
-        # # This is a hack so that if the profile_groups have already been cut to the shortened list, we dont recut them to avoid indexing errors.
-        # if self.profile_groups is not None:
-        #     profile_groups = None if len(self.profile_groups) != len(wavelengths_linelist) else self.profile_groups
-        # else:
-        #     profile_groups = None # will be calculated later
+        original_wavelengths = wavelengths_linelist
 
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist, profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups)
@@ -215,6 +210,9 @@ class LSD:
         
         # Apply S/N cut (of 1/(3*SN)) to linelist
         wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups, skip_warnings)
+
+        # Save the mask that constructs the clipped linelist from the original, wavelengths are sorted already
+        self.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
 
         # Handle multi-profile groups logic
         if profile_groups is not None:
@@ -992,5 +990,6 @@ class LSD:
         data.forward_y[key] = lsd.forward_model * data.continuum[key]
         data.profile[key]   = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
         data.residuals[key] = (data.flux[key] - data.forward_y[key]) / data.forward_y[key]
+        data.ll_mask[key] = lsd.ll_mask
         if return_cls:
             return lsd
