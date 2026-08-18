@@ -614,6 +614,50 @@ class Data:
     #: The velocities are stored as a 1D numpy array
     _velocities : Optional[np.ndarray] = None
 
+    def __str__(self) -> str:
+        """String representation of the Data object, showing all stored attributes in a user-friendly format."""
+        print(f"Number of velocity points: {len(self.velocities)}")
+        print(f"deltav: {self.velocities[1] - self.velocities[0]} km/s")
+        ll_wl = self.linelist["wavelengths"]
+        print(f"Number of linelist points (clipped/full): {len(self.ll_mask["masked"])} / {len(ll_wl)}")
+        full_ll_range = [np.min(ll_wl), np.max(ll_wl)]
+        cut_ll_range = [np.min(self.ll_mask["masked"]), np.max(self.ll_mask["masked"])]
+        print(f"Linelist range (from-to, clipped/full): {cut_ll_range[0]}-{cut_ll_range[1]} / {full_ll_range[0]}-{full_ll_range[1]}")
+        print(f"Order: {self.config.order}")
+        print(f"Order range (min-max): {np.min(self.config.order_range)} - {np.max(self.config.order_range)}")
+        print(f"Verbosity: {self.config.verbose}")
+        print(f"Save path: {self.config.save_path}")
+        print(f"Sampler path: {self.config.sampler_path}")
+        # TODO: Add below
+        print(f"Figure saving path: {self.config.figure_path}")
+        
+        print(f"Using deterministic profile?: {self.config.deterministic_profile}")
+        print(f"Polynomial order: {self.config.poly_ord}")
+        print(f"Continuum percentile: {self.config.continuum_percentile}")
+        print(f"Number of bins: {self.config.n_bins}")
+        print(f"Bin size (number of points per bin, can be None): {self.config.bin_size}")
+        print(f"Pixel chunk size: {self.config.pix_chunk}")
+        print(f"Deviation percentage: {self.config.dev_perc}")
+        print(f"Sigma lower: {self.config.sigma_lower}")
+        print(f"Sigma upper: {self.config.sigma_upper}")
+        print(f"Skips: {self.config.skips}")
+        print(f"Using optical depth?: {self.config.od}")
+        mp_lsd = self.profile_groups is not None
+        print(f"Using multi-profile LSD?: {mp_lsd}")
+        if mp_lsd:
+            print(f"Depth group rules (can be None): {self.config.depth_group_rules}")
+            print(f"Number of groups: {len(np.unique(self.profile_groups))}")
+        print(f"Sampler type: {self.config.sampler_type}")
+        print(f"Parallel processing?: {self.config.parallel}")
+        print(f"Number of cores: {self.config.cores}")
+        print(f"Number of walkers: {self.nwalkers}")
+        print(f"Number of dimensions: {self.ndim}")
+        print(f"Number of steps (can be None): {self.config.nsteps}")
+        print(f"Maximum number of steps (can be None): {self.config.max_steps}")
+        print(f"Continuum method: {self.config.continuum_method}")
+
+        print(f"Exception raised: {self.config.exception}")
+
     @property
     def sampler(self) -> EnsembleSampler|None:
         """

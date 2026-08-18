@@ -706,13 +706,9 @@ class Acid:
         mcmc_t0 = time.time()
         if self.config.verbose>1:
             print('Initialised in %ss'%round((self.data.setup_time), 3))
-        if self.config.verbose>2:
-            print('ACID Configuration before MCMC run:')
-            print(f"Polynomial order: {self.config.poly_ord}")
-            print(f"Using deterministic profile?: {self.config.deterministic_profile}")
-            print(f"Number of walkers: {self.data.nwalkers}")
-            print(f"Number of dimensions: {self.data.ndim}")
-            # TODO: print more diagnostics
+        if self.config.verbose >= 3:
+            print('State of Data before MCMC run:')
+            print(self.data) # use the __repr__ method of the Data class to print a nice summary
 
         # Prepare and Run MCMC
         #----------------------
