@@ -485,7 +485,7 @@ class Config:
         ax.legend()
         if return_fig:
              return fig, ax
-        plt.show()
+        utils.show_or_save(plt, self.figure_dir, "masking_lines.png", self.verbose)
 
     @classmethod
     def print_defaults(cls) -> None:
@@ -809,7 +809,7 @@ class Data:
         ax.legend()
         if return_fig:
             return fig, ax
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "linelist.png", self.verbose)
 
     # Store config as a property for handling it to/from dictionary on saving
     @property
@@ -1297,27 +1297,19 @@ class Data:
             plt.savefig(save_fig)
         if return_fig:
             return fig, ax
-        plt.show()
+        title = "continuum_fit_initial.png" if key == "initial" else "continuum_fit_masked.png"
+        utils.show_or_save(plt, self.config.figure_dir, title, self.verbose)
 
-    def plot_residual_masking(self, save_fig:str|None=None) -> None:
+    def plot_residual_masking(self) -> None:
         """
         Creates 3 plots to show the result of the residual masking step, showing the residuals with the sigma clipping thresholds, 
         the masked regions, and the initial profile after masking.
-
-        Parameters
-        ----------
-        save_fig : str or None, optional
-            If provided, a directory to save the figure, will create one if it does not exist. 
-            If None, the figure will not be saved. Default is None.
         """
         # Check we have all inputs needed for plot
         if "masked" not in self.plotting_variables:
             raise ValueError("No plotting variables found for masking. Residual masking likely has not been performed in Acid.")
         if "masked" not in self.wavelengths and "masked" not in self.flux:
             raise ValueError("No masked wavelengths or fluxes found. Please ensure that the residual masking step has been performed")
-        if save_fig is not None:
-            if not os.path.isdir(save_fig):
-                raise ValueError(f"save_fig must be a valid path to a directory to save the figures, or None to show the figures. Got: {save_fig}")
 
         # Unpack variables
         x = self.wavelengths["combined"]
@@ -1378,9 +1370,7 @@ class Data:
         ax.set_xlabel('Wavelength')
         ax.set_ylabel('Residuals')
         ax.legend()
-        if save_fig is not None:
-            plt.savefig(f"{save_fig}/residuals.png")
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "masking_residuals.png", self.verbose)
 
         # Plot the LSD profile
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -1394,9 +1384,7 @@ class Data:
         ax.axhline(1, color='black', linestyle='--')
         ax.legend()
         ax.grid(True)
-        if save_fig is not None:
-            plt.savefig(f"{save_fig}/initial_profile.png")
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "masking_profile.png", self.verbose)
 
         # Finally plot the forward model
         x = self.wavelengths["combined"]
@@ -1430,9 +1418,7 @@ class Data:
         ax[1].legend()
         plt.tight_layout()
 
-        if save_fig is not None:
-            plt.savefig(f"{save_fig}/forward_model.png")
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "initial_forward_model.png", self.verbose)
 
     def save(self, save_path:str|None=None, sampler_path:str|None=None) -> None:
         """

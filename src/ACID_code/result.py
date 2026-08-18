@@ -446,7 +446,7 @@ class Result:
         plt.subplots_adjust(hspace=0.05)
         if return_fig:
             return fig, ax
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "walkers.png", self.config.verbose)
 
     @_require_sampler
     def plot_traceplot(self, return_fig:bool=False) -> None | tuple:
@@ -456,7 +456,7 @@ class Result:
         plt.suptitle('Dynesty Traceplot')
         if return_fig:
             return fig, ax
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png", self.config.verbose)
 
     @_require_sampler
     def plot_corner(
@@ -486,7 +486,7 @@ class Result:
             plt.suptitle('Dynesty Corner Plot')
             if return_fig:
                 return fig, axes
-            plt.show()
+            utils.show_or_save(plt, self.config.figure_dir, "corner.png", self.config.verbose)
             return
 
         # Get samples and thin and burnin from the class variables
@@ -498,7 +498,7 @@ class Result:
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "corner.png", self.config.verbose)
 
     @_require_profiles
     def plot_profiles(
@@ -585,8 +585,7 @@ class Result:
         ax.grid(grid)
         if return_fig:
             return fig, ax
-        else:
-            plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png", self.config.verbose)
 
     @_require_profiles
     def plot_forward_model(
@@ -724,8 +723,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        else:
-            plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png", self.config.verbose)
 
     @_require_sampler
     def plot_autocorrelation(
@@ -803,7 +801,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png", self.config.verbose)
 
         return
 
@@ -869,7 +867,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        plt.show()
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png", self.config.verbose)
 
     def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
         """

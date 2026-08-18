@@ -295,13 +295,6 @@ class MCMC:
         lp = self.log_prior(theta, z)
         if not np.isfinite(lp):
             return -np.inf
-        
-        # import matplotlib.pyplot as plt
-        # plt.plot(self.x, self.y, label="Data")
-        # plt.plot(self.x, forward, label="Model")
-        # plt.show()
-        # plt.plot(self.velocities, z)
-        # plt.show()
 
         diff = self.y - forward
         var = self.yerr * self.yerr

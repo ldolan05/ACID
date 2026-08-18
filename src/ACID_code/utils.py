@@ -862,3 +862,18 @@ def sampler_nbytes(sampler) -> IntLike:
             if arr is not None and hasattr(arr, "nbytes"):
                 nbytes += arr.nbytes
         return nbytes
+
+def show_or_save(plt, figure_path, name, verbose):
+    """A helper function to either show a matplotlib figure or save it to a specified path."""
+    if figure_path is None:
+        plt.show()
+    else:
+        os.makedirs(figure_path, exist_ok=True)
+        filename = os.path.join(figure_path, name)
+        plt.savefig(
+            filename,
+            bbox_inches="tight",
+        )
+        if verbose >= 1:
+            print(f"Saved figure to {filename}")
+        plt.close()
