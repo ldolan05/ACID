@@ -643,7 +643,7 @@ class Result:
 
         # Set default subplot kwargs
         subplot_kwargs = {
-            "figsize": (12, 6),
+            "figsize": (12, 8),
             "sharex": True,
             "gridspec_kw": {'height_ratios': [3, 1]}
         }

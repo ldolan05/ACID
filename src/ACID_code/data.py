@@ -1141,7 +1141,6 @@ class Data:
             if value is not None:
                 getattr(self, name)["input"] = value
 
-
     def plot_continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None:
         """
         Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
@@ -1351,9 +1350,11 @@ class Data:
         x = self.wavelengths["combined"]
         y = self.flux["combined"]
         forward = self.forward_y["masked"]
+        continuum = self.continuum["masked"]
         residuals = (y - forward) / forward
         fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
         ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
+        ax[0].plot(x, continuum, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
         # ax[0].plot(x, forward, label='Forward model from initial fit after masking', color='C0', linewidth=1)
         ax[0].set_title('Masked Forward Model')
         # ax[0].set_xlabel('Wavelength')
