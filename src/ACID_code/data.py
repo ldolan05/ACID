@@ -415,12 +415,12 @@ class Config:
         if value is None:
             return
         elif value is True:
-            value = self.defaults["verbose"]
+            value = self.defaults["verbose"] # normally 2
         elif value is False:
             value = 0
         elif isinstance(value, (int, np.integer)):
-            if value < 0 or value > 3:
-                raise ValueError("verbose must be an integer between 0 and 3")
+            if value < 0 or value > 4:
+                raise ValueError("verbose must be an integer between 0 and 4")
         elif isinstance(value, str):
             value = value.lower()
             if value in ["none", "no", "false", "off", "n", "0"]:
@@ -429,12 +429,14 @@ class Config:
                 value = 1
             elif value in ["medium", "med", "m", "2"]:
                 value = 2
-            elif value in ["high", "hi", "h", "3"]:
+            elif value in ["high", "all", "hi", "h", "3"]:
                 value = 3
+            elif value in ["debug", "dbg", "d", "4"]:
+                value = 4
             else:
-                raise ValueError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high' or their common variants")
+                raise ValueError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high', 'debug' or their common variants")
         else:
-            raise ValueError("verbose must be an integer between 0 and 3, a boolean, or a string indicating the verbosity level")
+            raise ValueError("verbose must be an integer between 0 and 4, a boolean, or a string indicating the verbosity level")
 
         self._verbose = value
 
@@ -598,6 +600,8 @@ class Data:
     traceback            : Optional[str] = None
     #: A tracker for if warnings have been printed in any LSD call
     lsd_warnings_flag    : bool = False
+    #: If in debug mode (verbose = 4), debug data is stored as a dictionary here:
+    debug                : Dict = field(default_factory=dict)
 
     # Initialise the properties
     # -------------------------

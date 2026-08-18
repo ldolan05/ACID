@@ -180,7 +180,11 @@ class Result:
         self.data.alpha["final"]       = self.data.alpha["initial"]
 
         # Final continuum correction and LSD run on the unmasked spectrum, generates the final profiles
-        self._continuum_correct_and_runlsd("final", all_poly_coeffs)
+        _lsd = self._continuum_correct_and_runlsd("final", all_poly_coeffs, return_cls=True)
+
+        if self.config.verbose == 4: # save if debugging is on
+            self.data.debug["lsd_final"] = _lsd.__dict__
+        _lsd = None
 
         # We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
         if self.data.profile_groups is not None:
@@ -190,7 +194,11 @@ class Result:
             self.data.flux["single_profile"] = self.data.flux["initial"]
             self.data.errors["single_profile"] = self.data.errors["initial"]
             self.data.sn["single_profile"] = self.data.sn["initial"]
-            self._continuum_correct_and_runlsd("single_profile", all_poly_coeffs, mp_lsd=False)
+            _lsd = self._continuum_correct_and_runlsd("single_profile", all_poly_coeffs, mp_lsd=False, return_cls=True)
+
+            if self.config.verbose == 4: # save if debugging is on
+                self.data.debug["lsd_single_profile"] = _lsd.__dict__
+            _lsd = None
 
         # Iterate through each frame to get per-frame profiles
         profiles = []
@@ -259,9 +267,9 @@ class Result:
         data.fitted_errors[key] = fitted_errors
 
         # Handles running LSD logic and storing all results in Data
-        LSD.runlsd_and_store(data, key, **kwargs)
+        _lsd = LSD.runlsd_and_store(data, key, **kwargs)
 
-        return
+        return _lsd
 
     def _get_continuum_error(self, norm_wl, all_poly_coeffs):
         ncoeffs = all_poly_coeffs.shape[1]

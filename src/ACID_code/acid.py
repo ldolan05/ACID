@@ -91,10 +91,11 @@ class Acid:
             1: Only printing warnings.
             2: Printing progress and warnings.
             3: Printing progress and warnings, as well as additional plots and helpful information about the run.
+            4: Debugging mode, printing all information and saving all internal variables to the Data instance for debugging. Not recommended; this will take more memory and space.
             The possible input types are described below:
-            - Integer: Must be between 0 and 3, corresponding to the verbosities described above.
+            - Integer: Must be between 0 and 4, corresponding to the verbosities described above.
             - Boolean: If True, defaults to 2. If False, defaults to 0.
-            - String: Can be one of ["none", "low", "medium", "high"] or their common variants.
+            - String: Can be one of ["none", "low", "medium", "high", "debug"] or their common variants.
             By default 2 (medium).
         sampler_progress : :py:type:`bool`, optional
             A verbosity override for just the MCMC sampling progress.
@@ -570,7 +571,13 @@ class Acid:
 
             # Uses all information stored in data, accessing and storing the data attributed with the key
             self.scipy_continuum_fit(self.data, key="initial")
-            LSD.runlsd_and_store(self.data, key="initial")
+            _lsd = LSD.runlsd_and_store(self.data, key="initial", return_cls=True)
+
+            # Save lsd dict if debugging mode
+            if self.config.verbose == 4:
+                self.data.debug["lsd_initial"] = _lsd.__dict__
+
+            _lsd = None # discard to save memory
 
         # Masking based off residuals
         if all((
@@ -657,6 +664,10 @@ class Acid:
             # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
             self.scipy_continuum_fit(self.data, key="masked")
             lsd = LSD.runlsd_and_store(self.data, key="masked", return_cls=True)
+
+            # Save lsd dict if debugging mode
+            if self.config.verbose == 4:
+                self.data.debug["lsd_masked"] = lsd.__dict__
 
 
             # Applying Residual Masks to the Data for Fitting
