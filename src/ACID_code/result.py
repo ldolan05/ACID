@@ -313,14 +313,14 @@ class Result:
         """
         Allows indexing into the profiles array directly from the Result object.
         """
-        # TODO: needs a relook
         if isinstance(item, tuple):
             # Tuples allow for array-like indexing of the list
             if len(item) == 3:
                 _order, frame, velocity = item
                 return self.data.profiles[frame][velocity]
             elif len(item) == 2:
-                return self.data.profiles[item[0]][item[1]]
+                frame, velocity = item
+                return self.data.profiles[frame][velocity]
             elif len(item) == 1:
                 return self.data.profile["final"][item[0]]
             else:

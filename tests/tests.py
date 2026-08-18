@@ -15,6 +15,13 @@ np.random.seed(0) # Set random seed for reproducibility in tests
 start = time()
 skips = 5
 
+# TODO: Dont forget also about legacy ACID tests in new testing suite eventually
+# TODO: Test LSD input check for normalisation works correctly
+# test that the result class performs extra lsd run in debugging mode
+# test indexing for results class for multi-profiles lsd too
+# TODO: SORT out the colours and looks of plot_masking_lines and the below continuum fit plot?? check plots when testing for that
+# TODO: chisquared datalist plot tests
+
 def legacy_test():
 
     def quickstart():

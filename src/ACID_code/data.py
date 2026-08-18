@@ -226,7 +226,6 @@ class Config:
         # RUN_ACID CONFIGURATION
         "deterministic_profile" : True,
         "poly_ord" : 3,
-        # TODO: update docs for 3 below changes
         "continuum_percentile" : 99,
         "n_bins" : 10,
         "bin_size" : None,
@@ -236,7 +235,7 @@ class Config:
         "sigma_upper" : 5,
         "skips" : 1,
         "od"    : True,
-        "sparse" : True, # TODO: doccument and test this and 2 below
+        "sparse" : True,
         "depth_group_rules" : None,
         "profile_groups" : None,
         "sampler_type" : "emcee",
@@ -466,7 +465,6 @@ class Config:
         If return_fig is True, returns a tuple of (fig, ax) where fig is the matplotlib figure object and ax is the axis object.
         Otherwise, returns None and shows the plot.
         """
-        # TODO: SORT out the colours and looks of this and the below continuum fit plot
         fig, ax = plt.subplots(figsize=(10, 6))
         for i, (name, line_data) in enumerate(self.masking_lines):
             for line, width in zip(line_data["lines"], line_data["widths"]):
@@ -770,12 +768,16 @@ class Data:
                     f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
                 self.reset(preserve_input_profile_groups=False)
 
-    def plot_linelist(self, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
+    def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
         """
         Plots the linelist points with their corresponding depths as delta-function lines.
 
         Parameters
         ----------
+        idx : np.ndarray or list, optional
+            The indices of the linelist points to plot. If None, plots all points.
+        bounds : tuple or list, optional
+            The wavelength bounds (min, max) to clip the linelist for plotting. If None, plots all points.
         return_fig : bool, optional
             If True, returns the figure and axis objects instead of displaying the plot.
 
@@ -789,10 +791,14 @@ class Data:
         wl = self.linelist["wavelengths"]
         depths = self.linelist["depths"]
 
+        if idx is not None:
+            wl = wl[idx]
+            depths = depths[idx]
+
         # Clip the linelist to the specified bounds if provided, and to the min_depth
-        # if bounds is not None:
-        #     wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
-        #     depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
+        if bounds is not None:
+            wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
+            depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
         # wl = wl[depths >= min_depth]
         # depths = depths[depths >= min_depth]
 
@@ -1213,7 +1219,7 @@ class Data:
             attr in self.plotting_variables[key] for attr in [
                 "clipped_waves", "clipped_flux", "good"]
             ):
-            raise ValueError("To plot the continuum fit, the following attributes must be set: unnormalized_wavelengths, fluxes, fit, clipped_waves, clipped_flux, good")
+            raise ValueError("To plot the continuum fit, please first run the continuum fitting in ACID step for the specified plot_type.")
 
         # Unpack variables
         good                     = self.plotting_variables[key]["good"]
@@ -2497,7 +2503,6 @@ class DataList:
         ax.set_ylabel("Relative Flux")
         ax.set_title("Combined ACID profiles")
         ax.grid(True)
-        # TODO: allow new idx input for plotting linelist in data
         if return_fig:
             return fig, ax
         plt.show()
@@ -2626,7 +2631,6 @@ class DataList:
         tuple[plt.Figure, plt.Axes] | None
             The figure and axis objects if return_fig is True, otherwise None.
         """
-        # TODO: test for this
         fig, ax = plt.subplots(figsize=(12, 6))
         orders = []
         chi2_values = []

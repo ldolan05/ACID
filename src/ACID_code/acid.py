@@ -497,8 +497,6 @@ class Acid:
         if self.config.verbose>1:
             print('Initialising...')
 
-        # TODO: add this legacy kward to legacy ACID and ACID_HARPS
-        # TODO: Dont forget also about legacy ACID tests in new testing suite eventually
         if "n_sig" in kwargs:
             sigma_lower = kwargs.pop("n_sig")
             if self.config.verbose > 0:
@@ -879,7 +877,6 @@ class Acid:
         # Save to Data the required variables for the plot
         if key not in data.plotting_variables:
             data.plotting_variables[key] = {}
-        # TODO: Show line_mask in plot too
         data.plotting_variables[key]["clipped_waves"]            = clipped_waves
         data.plotting_variables[key]["clipped_flux"]             = clipped_flux
         data.plotting_variables[key]["good"]                     = good
@@ -1237,6 +1234,7 @@ def ACID(*args, **kwargs):
         "line": "linelist",
         "poly_or": "poly_ord",
         "all_frames": "_all_frames",
+        "n_sig": "sigma_lower",
     }
 
     # Split args and kwargs into init and run kwargs using helper function

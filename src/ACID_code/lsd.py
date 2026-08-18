@@ -157,7 +157,6 @@ class LSD:
         self.n_wavelengths = len(wavelengths)
 
         # Check the flux has been at least somewhat normalised:
-        # TODO: Test
         if np.nanpercentile(flux, 95) > 1.5:
             raise ValueError(f"The top 95th percentile of fluxes inputted to LSD lie above 1.5.\n" \
                              f"The fluxes should be normalised.")
@@ -716,7 +715,7 @@ class LSD:
         linelist_wavelengths : Array1D|None = None,
         linelist_depths      : Array1D|None = None,
         return_alpha         : bool = False,
-        ): # TODO: put back return hint
+        ) -> Array1D|Array2D|tuple:
         """
         Convolve your profile either using an inputted alpha matrix or by calculating one using :py:meth:`calc_alpha` 
         with the inputted wavelengths and linelist. The units of the output convolved model spectrum will match the 
@@ -743,6 +742,18 @@ class LSD:
         linelist_depths : :py:type:`Array1D` | None, optional
             Array of depths from the linelist, required if alpha is not input. Must be in the same units
             as the alpha matrix (OD or flux), by default None
+        return_alpha : bool, optional
+            Whether to return the calculated alpha matrix along with the convolved model spectrum, by default False
+        
+        Returns
+        -------
+        model_spectrum : :py:type:`Array1D` | :py:type:`Array2D`
+            The convolved model spectrum, in the same units as the input profile and alpha matrix/linelist depths.
+            If the input profile is 1D, the output will be 1D. If the input profile is 2D, the output will be 2D with shape (n_profs, n_wavelengths).
+        alpha : :py:type:`Array2D` | :py:type:`Array3D`
+            The calculated alpha matrix, only returned if return_alpha is True. Will be 2D 
+            (n_wavelengths, n_velocities) or 3D (n_profs, n_wavelengths, n_velocities) 
+            depending on whether profile_groups is provided.
         """
 
         if alpha is None:
