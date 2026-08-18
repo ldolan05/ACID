@@ -348,6 +348,7 @@ class Acid:
             It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
             we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
             For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
+        #TODO: New profile groups
         sampler_type : :py:type:`str`, optional
             If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
@@ -516,11 +517,6 @@ class Acid:
         elif self.config.continuum_method not in ["polyval", "chebval"]:
             raise ValueError("Invalid 'continuum_method' input, must be one of ['polyval', 'chebval'].")
 
-        # --- Start of the ACID method ---
-
-        # Setup and data validation done in data class and applies skips
-        self.data.set_inputs(wavelengths, flux, errors, sn)
-
         # Validate profile group inputs (needs to be done after inputs set)
         if profile_groups is not None:
             profile_groups = np.asarray(profile_groups)
@@ -532,8 +528,13 @@ class Acid:
                 print("Warning: depth_group_rules is set, but profile_groups is also set. The depth_group_rules will be ignored.")
             if len(profile_groups) != len(self.data.linelist["wavelengths"]):
                 raise ValueError(f"profile_groups must have the same length as the input linelist. "
-                                 f"Got {len(profile_groups)} groups for {len(self.data.linelist['wavelengths'])} lines.")
+                                    f"Got {len(profile_groups)} groups for {len(self.data.linelist['wavelengths'])} lines.")
             self.data.input_profile_groups = profile_groups.copy()
+
+        # --- Start of the ACID method ---
+
+        # Setup and data validation done in data class and applies skips
+        self.data.set_inputs(wavelengths, flux, errors, sn)
 
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
@@ -541,7 +542,7 @@ class Acid:
             if self.config.verbose > 0:
                 print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
                 "It is highly recommended to input your own velocity grid, especially if you need a different wavelength range.")
-            deltav = utils.calc_deltav(self.data.wavelengths["input"][0])
+            deltav = utils.calc_deltav(self.data.wavelengths["combined"])
             self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
 
 
