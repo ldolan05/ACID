@@ -28,7 +28,8 @@ dependencies = [
     "psutil",
     "corner",
     "beartype",
-    "h5py"
+    "h5py",
+    "pandas",
 ]
 dynamic = ["version"]
 

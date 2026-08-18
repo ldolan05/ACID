@@ -16,4 +16,5 @@ dependencies:
   - beartype
   - psutil
   - h5py
+  - pandas
 prefix: /Users/benjamincadell/miniforge3/envs/acid

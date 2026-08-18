@@ -12,6 +12,7 @@ from emcee.backends.hdf import HDFBackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pickle, os, traceback
+import pandas as pd
 import numpy as np
 from . import utils
 from .errors import *

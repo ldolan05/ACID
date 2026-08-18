@@ -9,3 +9,4 @@ psutil
 corner
 beartype
 h5py
+pandas
