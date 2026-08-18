@@ -269,13 +269,13 @@ class Acid:
         bin_size              : IntLike|None                = None, # Config
         pix_chunk             : IntLike|None                = None, # Config
         dev_perc              : IntLike|None                = None, # Config
-        sigma_lower           : IntLike|None                = None, # Config
-        sigma_upper           : IntLike|None                = None, # Config
+        sigma_lower           : Scalar|None                 = None, # Config
+        sigma_upper           : Scalar|None                 = None, # Config
         skips                 : IntLike|None                = None, # Config
         od                    : bool|None                   = None, # Config
         sparse                : bool|None                   = None, # Config
-        depth_group_rules     : dict|None                   = None, # Config
         profile_groups        : Array1D|Array2D|None        = None, # Data
+        depth_group_rules     : dict|None                   = None, # Config
         sampler_type          : str|None                    = None, # Config
         parallel              : bool|None                   = None, # Config
         cores                 : IntLike|None                = None, # Config
@@ -379,7 +379,35 @@ class Acid:
             It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
             we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
             For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
-        #TODO: New profile groups
+        profile_groups : :py:type:`Array1D | None`, optional
+            A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
+            If provided, the resulting profiles will be a 2D array in with the same order as the index of the group.
+            The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match the inputted linelist.
+            If None, then just one profile is generated (as if the mask was [0,0,0,0,0,...]). By default None.
+        depth_group_rules : :py:type:`dict`, optional
+            A way to automatically generate the profile_groups based on a set of rules.
+            This was set up as a way to seperate the the linelist into groups of similar depth.
+            The dictionary must have the following two keys:
+
+            - "n_groups" (int), total number of depth groups
+            - "min_lines" (int), the minimum number of lines that are required in each group, we recommend at least 20 for a sensible profile.
+            
+            If just those two keys were put, then the program will fill the 4 groups with the same number of lines. However, you can additionally
+            specify the depth of lines for each group starting from the deepest group. Here is an example:
+            
+            depth_group_rules = {
+                "n_groups": 4,
+                "min_lines": 20,
+                "0": 0.8,
+                "1": 0.5,
+            }
+
+            This will mean that the deepest group, 0, will contain all lines from 1-0.8, or lower if that range does not contain min_lines.
+            The next group will contain all lines from 0.8-0.5, or lower if not filled with min_lines. The rest of the unspecified groups
+            are filled evenly with the remaining lines.
+            Any additional dictionary keys should corresond to integer indices and float absorption depths as shown in the example above.
+            The groups will only be generated with this ruleset after the linelist wavelength ranges and S/N cuts have been applied.
+            Note that providing profile_groups will override this parameter, causing it to have no effect.
         sampler_type : :py:type:`str`, optional
             If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
@@ -576,7 +604,6 @@ class Acid:
             deltav = utils.calc_deltav(self.data.wavelengths["combined"])
             self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
 
-
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
 
@@ -587,7 +614,7 @@ class Acid:
         self.data.flux["initial"] = self.data.flux["combined"]
         self.data.sn["initial"] = self.data.sn["combined"]
 
-        # Check if the initial LSD run has been performed
+        # Check if the initial continuum fit and LSD run has been performed
         if all((
             # We only bother to check for one of these keys generated in the scipy_continuum_fit and LSD runs
             "initial" in self.data.poly_coeffs,
@@ -611,12 +638,7 @@ class Acid:
 
         # Masking based off residuals
         if all((
-            # TODO: Fix these
-            "masked" in self.data.alpha,
-            "masked" in self.data.c_factor,
-            "masked" in self.data.profile,
-            "masked" in self.data.forward_y,
-            "masked" in self.data.poly_coeffs,
+            # Again we only need to check if some of the keys have been made, not all of them
             "masked" in self.data.wavelengths,
             "mcmc" in self.data.c_factor,
         )):
@@ -654,7 +676,7 @@ class Acid:
             # Use astropy's iterative sigma clipping, only sigma clip residuals that are not already line masked
             masked_residuals = residuals[~self.data.line_mask] # so that we can get the std on the masked residuals
 
-            # Use the iterative sigma clipping from astropy, returning a masked array of clipped residuals
+            # Use the iterative sigma clipping in astropy, returning a masked array of clipped residuals
             result, lower_clip, upper_clip = sigma_clip(
                 masked_residuals,
                 sigma_lower=self.config.sigma_lower,
@@ -667,7 +689,6 @@ class Acid:
             sigma_mask[unmasked] = np.ma.getmaskarray(result)
 
             self.data.sigma_mask = sigma_mask
-            # TODO: Allow plotting of upper and lower clipping boundaries to accept np.inf (if input)
 
             # Combine all masks
             self.data.full_mask = pix_mask | sigma_mask | self.data.line_mask
@@ -706,6 +727,7 @@ class Acid:
             # The flatted alpha mechanic is important for multi-profile LSD, otherwise alpha_flat is the same as alpha
             # Slicing alpha like this avoids a recalculation because we know which wavelengths are masked
             self.data.alpha["mcmc"] = lsd.alpha_flat[~self.data.full_mask, :]
+
             lsd = None # Discard to save memory once the alpha is sliced
 
             # Apply to the rest of the data
@@ -734,7 +756,7 @@ class Acid:
         # -------------------
         self.data.setup_time += time.time() - init_t0
         mcmc_t0 = time.time()
-        if self.config.verbose>1:
+        if self.config.verbose >= 2:
             print('Initialised in %ss'%round((self.data.setup_time), 3))
         if self.config.verbose >= 3:
             print('State of Data before MCMC run:')
@@ -749,14 +771,14 @@ class Acid:
         if self.config.run_mcmc is True:
             # Default run for just nsteps steps
             if self.config.max_steps is None:
-                if self.config.verbose > 1:
+                if self.config.verbose >= 2:
                     print("Running MCMC for %s steps..."%self.config.nsteps)
                 self.run_mcmc(self.config.nsteps, self.data.initial_state)
                 self.data.nsteps = self.sampler.backend.iteration
 
             # Else use max_steps path
             else:
-                if self.config.verbose > 1:
+                if self.config.verbose >= 2:
                     print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
 
                 self.run_mcmc_until_converged(self.config.max_steps, state=self.data.initial_state)
@@ -764,7 +786,7 @@ class Acid:
 
             self.data.mcmc_time += time.time() - mcmc_t0
 
-            if self.config.verbose>1:
+            if self.config.verbose >= 2:
                 print('MCMC finished after %ss'%(round(self.data.mcmc_time, 3)))
 
             return Result(self)

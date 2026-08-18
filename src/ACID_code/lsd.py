@@ -12,17 +12,6 @@ from .errors import LineListRangeError, SNCutError
 from .data import Config, Data, LineList
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D, Array3D
 
-# The depth groups go by this logic:
-# min_lines is global mininimum lines: if unable to put this many lines -> exception
-# n_groups is how many groups you want
-# then, any other dictionary entries (which should correspond to the group depth number,
-# i.e. 0 is the deepest) Specifies the minimum depth of that line group. The rest
-# of the groups will be filled such that each group has equal numbers of lines. eg:
-# depth_group_rules = {
-#     "n_groups": 4,
-#     "min_lines": 20,
-#     "0": 0.8,
-# }
 
 @beartype
 class LSD:
@@ -135,7 +124,7 @@ class LSD:
 
         Attributes
         ----------
-        # TODO: write this
+        profile : 
 
         """
         if skip_warnings is None:
@@ -237,11 +226,6 @@ class LSD:
         # Convert to optical depth space for the linelist and the spectrum if needed, and convert errors accordingly
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist, od=self.od)
         flux -= 1 if not self.od else 0 # If in flux space, we want to fit to flux-1 as per LSD convention
-
-        # TODO: Check why this mask was here, does the main branch have it?
-        # # At this point we our mask for points with negative fluxes and large masked errors and nans
-        # self.mask = (flux > 0) & (errors < 1e11) & (errors > 0) & ~np.isnan(flux) & ~np.isnan(errors)
-        # TODO: If in debug mode, save lsd.__dict__
         
         # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
         self.n_velocities = len(self.data.velocities)
@@ -726,11 +710,11 @@ class LSD:
         cls,
         profile              : Array1D|Array2D,
         alpha                : Array2D|Array3D|None = None,
+        profile_groups       : Array1D|None = None,
         velocities           : Array1D|None = None,
         wavelengths          : Array1D|None = None,
         linelist_wavelengths : Array1D|None = None,
         linelist_depths      : Array1D|None = None,
-        # mp_groups input here
         return_alpha         : bool = False,
         ): # TODO: put back return hint
         """
@@ -748,6 +732,8 @@ class LSD:
         alpha : :py:type:`Array2D` | :py:type:`Array3D` | None, optional
             Precomputed alpha matrix, if already calculated and you want to skip directly to the convolution, by default None.
             Can be 2D (n_wavelengths, n_velocities) or 3D (n_profs, n_wavelengths, n_velocities). If 3D, the first dimension should correspond to profile groups.
+        profile_groups : :py:type:`Array1D` | None, optional
+            Profile groups to calculate the alpha matrix if not input. If None, the alpha matrix to be calculated (if needed) will not be grouped.
         velocities : :py:type:`Array1D` | None, optional
             Array of velocities corresponding to the observed spectrum, required if alpha is not input, by default None
         wavelengths : :py:type:`Array1D` | None, optional
@@ -771,20 +757,21 @@ class LSD:
                     "linelist_wavelengths, and linelist_depths are required."
                 )
 
-            # if ___ is None:
+            if profile_groups is not None:
+                alpha, _ = cls.calc_mp_alpha(
+                    wavelengths,
+                    velocities,
+                    linelist_wavelengths,
+                    linelist_depths,
+                    profile_groups,
+                )
+
             alpha = cls.calc_alpha(
                 wavelengths=wavelengths,
                 wavelengths_linelist=linelist_wavelengths,
                 depths_linelist=linelist_depths,
                 velocities=velocities,
             )
-            # else:
-            #     alpha, _ = cls.calc_alpha_ion(
-            #         wavelengths=wavelengths,
-            #         velocities=velocities,
-            #         linelist_wavelengths=linelist_wavelengths,
-            #         linelist_depths=linelist_depths,
-            #     )
 
         model_spectrum = cls.dot_alpha_and_profile(alpha, profile)
 

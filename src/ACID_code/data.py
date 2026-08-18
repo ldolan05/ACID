@@ -317,10 +317,6 @@ class Config:
             f"valid attributes are: {list(self.defaults.keys())}"
         )
 
-    def __repr__(self) -> str:
-        full_dict = self.to_dict()
-        return f"Config({full_dict})"
-
     def __str__(self) -> str:
         """String representation of the Config object, showing all settings in a user-friendly format."""
         full_dict = self.to_dict()
@@ -1317,6 +1313,8 @@ class Data:
         residuals = self.residuals["masked"]
         upper_clip = self.plotting_variables["masked"]["upper_clip"]
         lower_clip = self.plotting_variables["masked"]["lower_clip"]
+        uc_finite = np.isfinite(upper_clip) # useful for plotting
+        lc_finite = np.isfinite(lower_clip)
         pix_mask = self.pix_mask
         line_mask = self.line_mask
         full_mask = self.full_mask
@@ -1332,8 +1330,11 @@ class Data:
         utils.plot_masked_line(ax, x, residuals, ~full_mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"])
 
         # Show sigma clipping
-        ax.axhline(upper_clip, color='C0', linestyle='--', label='Sigma Clip Thresholds', linewidth=2)
-        ax.axhline(lower_clip, color='C0', linestyle='--', linewidth=2)
+        if uc_finite:
+            ax.axhline(upper_clip, color='C0', linestyle='--', label='Sigma Clip Thresholds', linewidth=2)
+        if lc_finite:
+            lc_label = 'Sigma Clip Thresholds' if not uc_finite else None
+            ax.axhline(lower_clip, color='C0', linestyle='--', linewidth=2, label=lc_label)
 
         # Show line masking regions
         line_mask = self.config.masking_lines.get_masks(x, with_names=True)
@@ -1359,8 +1360,8 @@ class Data:
         ax.hlines([-dev, dev], xmin=np.min(x), xmax=np.max(x), color='C1', linestyle='--', linewidth=2, label="Chunk deviation masking range")
 
         # Set a good ylim off everything but the masked points
-        ymax = np.max([dev, upper_clip, np.max(residuals[~full_mask])])
-        ymin = np.min([-dev, lower_clip, np.min(residuals[~full_mask])])
+        ymax = np.nanmax([dev, upper_clip if uc_finite else np.nan, np.max(residuals[~full_mask])])
+        ymin = np.nanmin([-dev, lower_clip if lc_finite else np.nan, np.min(residuals[~full_mask])])
         diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
         ax.set_ylim(ymin - diff, ymax + diff)
 
@@ -1395,12 +1396,10 @@ class Data:
         fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
         ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
         ax[0].plot(x, continuum, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        # ax[0].plot(x, forward, label='Forward model from initial fit after masking', color='C0', linewidth=1)
+        utils.plot_masked_line(ax[0], x, forward, ~full_mask, label=["Forward model", "Masked Forward model"])
         ax[0].set_title('Masked Forward Model')
-        # ax[0].set_xlabel('Wavelength')
         ax[0].set_ylabel('Flux')
         ax[0].grid(True)
-        utils.plot_masked_line(ax[0], x, forward, ~full_mask, label=["Forward model", "Masked Forward model"])
         ax[0].legend()
         
         utils.plot_masked_line(ax[1], x, residuals, ~full_mask, label=["Residuals", "Masked Residuals"])
@@ -1613,7 +1612,6 @@ class LineList:
 
         # All loops below set linelist_wl and linelist_depths from their own type sof input
         elif isinstance(linelist, str):
-            import pandas as pd
 
             full_linelist = pd.read_csv(
                 linelist,
@@ -2273,7 +2271,6 @@ class DataList:
             "verbose": self.verbose,
             "data_list": [data.to_dict() for data in self.data_list],
         }
-        # TODO:and maybe other class attributes later
         with open(save_loc, "wb") as f:
             pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -2500,6 +2497,7 @@ class DataList:
         ax.set_ylabel("Relative Flux")
         ax.set_title("Combined ACID profiles")
         ax.grid(True)
+        # TODO: allow new idx input for plotting linelist in data
         if return_fig:
             return fig, ax
         plt.show()
@@ -2670,7 +2668,7 @@ class DataList:
 
         stored_save_path = data.config.save_path
         stored_sampler_path = data.config.sampler_path
-
+        # TODO: on kelvin this was printing and moving unexpectedly, print the locations and find out why
         changed = (
             stored_save_path is None
             or os.path.abspath(stored_save_path) != save_path

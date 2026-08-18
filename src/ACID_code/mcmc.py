@@ -404,4 +404,3 @@ class MCMC:
         upper = theta0 + width
 
         return lower + u * (upper - lower)
-
