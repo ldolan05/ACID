@@ -165,11 +165,9 @@ class Result:
         if self.config.verbose > 1:
             print('Getting the final profiles...')
 
-        # We first run LSD on the final state of the sampler (mainly for debugging, but this can be useful to see how masking is affecting the sampler)
-        # TODO: Only run this step if self.config.debugging is True, otherwise skip
-        # TODO: the below needs to get the 3D alpha from the combined/initial/masked, and reapply the full_mask to the 3d matrix (not the 2D one that is used for the MCMC fitting)
-        # Otherwise, all other keys are already set
-        # self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs)
+        # We first run LSD on the final state of the sampler (for debugging, but this can be useful to see how masking is affecting the sampler)
+        if self.config.verbose == 4: # debugging mode
+            self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs) # alpha is recalculated
 
         # Set the inputs for a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
         self.data.wavelengths["final"] = self.data.wavelengths["initial"]
@@ -199,36 +197,43 @@ class Result:
                 self.data.debug["lsd_single_profile"] = _lsd.__dict__
             _lsd = None
 
-        # Iterate through each frame to get per-frame profiles
         profiles = []
+        # Iterate through each frame to get per-frame profiles
         for i in range(len(self.data.wavelengths["input"])):
-            # Use nanmask as we cannot work with non-physical inputs like nan or negative fluxes
-            # TODO: Need to interpolate onto potential new wavelength grids the mask
-            # TODO: This needs more care, it does not include the line masking onto the interpolated wavelength grid, should be fixed with above issue
-            # when looking at an older version of the code, therefore we do this cheeat for now:
-            # Nah just dont interpolate
-            profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
-            continue
-            wavelengths = self.data.wavelengths["input"][i][self.data.nanmask]
-            flux = self.data.flux["input"][i][self.data.nanmask]
-            error = self.data.errors["input"][i][self.data.nanmask]
+
+            # Get the wavelengths, flux, error, and sn for this frame
+            wavelengths = self.data.wavelengths["input"][i]
+            flux = self.data.flux["input"][i]
+            errors = self.data.errors["input"][i]
             sn = self.data.sn["input"][i]
 
+            # Clean NaNs
+            wavelengths, flux, errors = utils.drop_invalid(wavelengths, flux, errors)
+
+            # Reapply the line_mask to the errors
+            line_mask = self.config.masking_lines.get_1d_mask_on_grid(wavelengths)
+            errors = np.where(line_mask, 1e12, errors) # set masked errors to 1e12 (so that those points are ignored in LSD)
+
             # Avoid alpha recalculation if the input wavelengths are the same as the combined wavelengths, always true for single frame LSD
-            if np.array_equal(wavelengths, self.data.wavelengths["combined"]):
-                if np.array_equal(flux, self.data.flux["combined"]) and np.array_equal(error, self.data.errors["combined"]) and np.array_equal(sn, self.data.sn["combined"]):
-                    # in this case, the input frame is the same as the combined frame, so we can just directly use the combined profile
+            if np.array_equal(wavelengths, self.data.wavelengths["final"]):
+                if np.array_equal(flux, self.data.flux["final"]) and np.array_equal(errors, self.data.errors["final"]) and np.array_equal(sn, self.data.sn["final"]):
+                    # in this case, the input frame is the same as the combined frame, so we can just directly use the final profile
                     profiles.append((self.data.profile["final"][0], self.data.profile["final"][1], self.data.profile["final"][2]))
                     continue
                 else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
                     alpha = self.data.alpha["final"]
             else:
                 alpha = None
-            
+
+            # The process below is almost identical to self._continuum_correct_and_runlsd, see that for more details.
+            poly_coeffs = np.median(all_poly_coeffs, axis=0)
             norm_wl = utils.normalize_wavelengths(wavelengths)
-            continuum = utils.eval_continuum(norm_wl, med_poly_coeffs, method=self.config.continuum_method)
-            continuum_error = self._get_continuum_error(norm_wl, poly_coeffs)
-            lsd = self._run_continuum_corrected_LSD(continuum, continuum_error, wavelengths, flux, error, sn, alpha=alpha)
+            continuum = utils.eval_continuum(norm_wl, poly_coeffs, method=self.config.continuum_method)
+            continuum_error = self._get_continuum_error(norm_wl, all_poly_coeffs)
+            fitted_flux = flux / continuum
+            fitted_errors = np.sqrt((errors/continuum)**2 + (fitted_flux*continuum_error/continuum)**2)
+            lsd = LSD.LSD(self.data)
+            lsd.run_LSD(wavelengths, fitted_flux, fitted_errors, sn, alpha=alpha)
             profiles.append((lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F))
 
         self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
