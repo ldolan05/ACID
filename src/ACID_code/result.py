@@ -17,7 +17,6 @@ try:
 except ImportError:
     Sampler = None
     dyplot = None
-#TODO: utils.set_dict_defaults for plots
 
 warnings.filterwarnings("ignore")
 
@@ -405,7 +404,10 @@ class Result:
         sampler    : EnsembleSampler|None = None,
         burnin     : IntLike|None         = None,
         thin       : IntLike|None         = None,
-        return_fig : bool                 = False
+        plot_kwargs  : dict|None         = None,
+        subplot_kwargs : dict|None         = None,
+        return_fig : bool                 = False,
+        **kwargs
         ) -> None | tuple:
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
@@ -432,11 +434,18 @@ class Result:
         samples = self.sampler.get_chain(thin=int(thin))
         steps = np.arange(samples.shape[0]) * thin
 
+        # Use dict defaults
+        plot_defaults = {"fmt": "k", "alpha": 0.3}
+        plot_kwargs = utils.set_dict_defaults(plot_kwargs, plot_defaults)
+
+        subplot_defaults = {"figsize": (10, 20), "sharex": True}
+        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, subplot_defaults)
+
         # Setup plot and plot the walkers for the default parameters
         naxes = len(self.default_params)
-        fig, ax = plt.subplots(naxes, 1, figsize=(10, 20), sharex=True)
+        fig, ax = plt.subplots(naxes, 1, **subplot_kwargs)
         for i in range(naxes):
-            ax[i].plot(steps, samples[:, :, self.default_params[i]], "k", alpha=0.3)
+            ax[i].plot(steps, samples[:, :, self.default_params[i]], **plot_kwargs)
             ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
             ax[i].set_ylabel(self.default_param_labels[i])
         ax[-1].legend()
@@ -449,10 +458,10 @@ class Result:
         utils.show_or_save(plt, self.config.figure_dir, "walkers.png", self.config.verbose)
 
     @_require_sampler
-    def plot_traceplot(self, return_fig:bool=False) -> None | tuple:
+    def plot_traceplot(self, return_fig:bool=False, **kwargs) -> None | tuple:
         if not self.dynesty:
             raise ValueError("Traceplot is only available for dynesty samplers, as emcee traceplots are already plotted in plot_walkers.")
-        fig, ax = dyplot.traceplot(self.sampler.results, labels=self.default_param_labels)
+        fig, ax = dyplot.traceplot(self.sampler.results, labels=self.default_param_labels, **kwargs)
         plt.suptitle('Dynesty Traceplot')
         if return_fig:
             return fig, ax
@@ -475,7 +484,7 @@ class Result:
         return_fig : bool, optional
             Whether to return the figure object instead of showing the plot, by default False
         **kwargs:
-            Additional keyword arguments to pass to corner.corner().
+            Additional keyword arguments to pass to corner.corner() or dynesty.cornerplot().
         
         Returns
         ----------
@@ -493,8 +502,12 @@ class Result:
         samples = self.sampler.get_chain()
         samples = self.sampler.get_chain(discard=self.burnin, flat=True, thin=self.thin)[:, self.default_params]
 
+        # Set defaults:
+        default_kwargs = {"show_title": True, "title_fmt": ".3f", "title_kwargs": {"fontsize": 16}}
+        kwargs = utils.set_dict_defaults(kwargs, default_kwargs)
+
         # Use corner.corner to handle corner plot
-        fig = corner.corner(samples, labels=self.default_param_labels, show_title=True, title_fmt=".3f", title_kwargs={"fontsize": 16}, **kwargs)
+        fig = corner.corner(samples, labels=self.default_param_labels, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
@@ -598,7 +611,6 @@ class Result:
         grid            :bool       = True,
         labels          :dict|None  = None,
         return_fig      :bool       = False,
-        figsize         :tuple      = None,
         subplot_kwargs  :dict|None  = None,
         ) -> None | tuple:
         """
@@ -628,8 +640,6 @@ class Result:
             Keys: 'xlabel', 'ylabel', 'title', and 'residuals_ylabel'. Allows label overrides, by default None
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
-        figsize : tuple, optional
-            Optionall use a figsize of your choice. To be passed directly to plt.subplots. Default is (16,8)
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
         
@@ -649,12 +659,12 @@ class Result:
         labels = utils.set_dict_defaults(labels, default_labels)
 
         # Set default subplot kwargs
-        subplot_kwargs = {
+        default_kwargs = {
             "figsize": (12, 8),
             "sharex": True,
             "gridspec_kw": {'height_ratios': [3, 1]}
         }
-        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 8)})
+        subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, default_kwargs)
 
         # Get input data
         wavelengths = np.copy(self.data.forward_x["final"])
@@ -782,7 +792,6 @@ class Result:
                 y = chain[:n, :, p].T
                 tau_estimates[p][i] = utils.autocorr_new(y, c=c)
 
-        subplot_kwargs = {} if subplot_kwargs is None else dict(subplot_kwargs)
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, {"figsize": (10, 6)})
 
         fig, ax = plt.subplots(**subplot_kwargs)
