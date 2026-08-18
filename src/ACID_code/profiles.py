@@ -29,7 +29,7 @@ class Profiles:
             The velocity values corresponding to the spectral line profile.
             Must be provided if no data instance is passed, by default None.
         flux : :py:type:`Array1D`, optional
-            The flux values of the spectral line profile
+            The flux values of the spectral line profile, normalized to a continuum at 1.
             Must be provided if no data instance is passed, by default None.
         flux_err : :py:type:`Array1D`, optional
             The errors associated with the flux values, by default None. If not
@@ -59,11 +59,10 @@ class Profiles:
         self.flux_err = None
         self.cov_matrix = None
 
-        # Subtract flux by one to go to normalised depth, this may change later
+        # Remove NaNs from the input data and copy them to the class attributes
         self.velocities, self.flux, self.flux_err, self.cov_matrix = self._remove_nans(
-            *self._copy_inputs(velocities, flux-1, flux_err, cov_matrix)
+            *self._copy_inputs(velocities, flux, flux_err, cov_matrix)
         )
-        # TODO: remove the -1, our profiles are norm at 1 by convention
 
         self.fitted_y    = {}
         self.fitted_yerr = {}
@@ -162,7 +161,7 @@ class Profiles:
         )
 
         if p0 is None:
-            amplitude_guess = np.nanmin(y)
+            amplitude_guess = np.nanmin(y) - 1
             centre_guess = x[np.nanargmin(y)]
 
             half = 0.5 * (np.nanmax(y) + np.nanmin(y))
@@ -217,7 +216,7 @@ class Profiles:
         )
 
         if p0 is None:
-            amplitude_guess = np.nanmin(y)
+            amplitude_guess = np.nanmin(y) - 1
             mean_guess = x[np.nanargmin(y)]
             half = 0.5 * (np.nanmax(y) + np.nanmin(y))
             above = np.flatnonzero(y < half)
@@ -268,7 +267,7 @@ class Profiles:
         )
 
         if p0 is None:
-            amplitude_guess = np.nanmin(y)
+            amplitude_guess = np.nanmin(y) - 1
             centre_guess = x[np.nanargmin(y)]
             half = 0.5 * (np.nanmax(y) + np.nanmin(y))
             above = np.flatnonzero(y < half)
@@ -410,7 +409,7 @@ class Profiles:
         peak = np.real(wofz(z0)) / (sigma * np.sqrt(2*np.pi))
 
         profile = profile / peak
-        return amplitude * profile + offset
+        return 1 + amplitude * profile + offset
 
     @staticmethod
     def gaussian_func(x, amplitude, mean, stddev, offset=0) -> Array1D:
@@ -434,7 +433,7 @@ class Profiles:
         array_like
             The Gaussian profile evaluated at the input x values.
         """
-        return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + offset
+        return 1 + amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + offset
     
     @staticmethod
     def lorentzian_func(x, amplitude, centre, gamma, offset=0) -> Array1D:
@@ -458,4 +457,4 @@ class Profiles:
         array_like
             The Lorentzian profile evaluated at the input x values.
         """
-        return (amplitude * (gamma**2)) / ((x - centre)**2 + gamma**2) + offset
+        return 1 + (amplitude * (gamma**2)) / ((x - centre)**2 + gamma**2) + offset
