@@ -207,7 +207,12 @@ class MCMC:
             flux = (-np.log(fitted_flux))
             AtV = self.AtV
         else:
-            AtV = self.AtV * (mdl * mdl)
+            # AtV = self.AtV * (mdl * mdl) # This is for when we get around to fixing non-OD deterministic
+            # The errors, and hence AtV, must update with the continuum 
+            # (not necessary in the OD case, since the errors are already in log space), for now we use precomputed
+            # AtV on the assumption that the continuum does not move much from the initial guess.
+            # TODO: Warn on initialisation about this
+            AtV = self.AtV
             flux = fitted_flux - 1
 
         # Solve for the profile points
