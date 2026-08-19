@@ -34,12 +34,20 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+]
 docs = [
     "sphinx_rtd_theme"
 ]
 
 [project.urls]
 Homepage = "https://github.com/ldolan05/ACID"
+Documentation = "https://acid-code.readthedocs.io/en/stable/"
+Repository = "https://github.com/ldolan05/ACID"
+Issues = "https://github.com/ldolan05/ACID/issues"
+Paper = "https://doi.org/10.1093/mnras/stae710"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
