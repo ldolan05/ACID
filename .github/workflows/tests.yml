@@ -1,0 +1,51 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out the repository without fetching the private science submodule.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Match the Python version used by the release and documentation workflows.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      # Install ACID together with the dependencies declared for its test suite.
+      - name: Install ACID and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      # Long-running convergence and full-s1d tests remain opt-in with --long.
+      - name: Run tests and collect coverage
+        run: |
+          pytest tests \
+            --cov=ACID_code \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=xml
+
+      # Coveralls creates the public project on first upload and needs no stored secret.
+      - name: Upload coverage to Coveralls
+        if: always() && github.event_name == 'push'
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage.xml
+          format: cobertura
+          fail-on-error: true
