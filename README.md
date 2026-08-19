@@ -1,9 +1,14 @@
 A.C.I.D (Accurate Continuum fItting and Deconvolution)
 ==============================================================
 
-Since the original ACID code was developed for Lucy Dolan's PhD in 2024, it has had devlopment continued by Benjamin Cadell from October 2025. The version was
-originally forked from the original code and renamed ([ACID_v2](https://github.com/Benjamin-Cadell/ACID_v2)). The code has now been merged to the original and development
-will continue here. The ACID_v2 repository will continue to exist on GitHub and will be kept up for reference, but all new development will be on the merged codebase here.
+[![Tests](https://github.com/ldolan05/ACID/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/ldolan05/ACID/actions/workflows/tests.yml)
+[![Coverage Status](https://coveralls.io/repos/github/ldolan05/ACID/badge.svg?branch=main)](https://coveralls.io/github/ldolan05/ACID?branch=main)
+[![Documentation Status](https://app.readthedocs.org/projects/acid-code/badge/?version=stable)](https://acid-code.readthedocs.io/en/stable/?badge=stable)
+[![PyPI version](https://img.shields.io/pypi/v/ACID-code.svg)](https://pypi.org/project/ACID-code/)
+[![License](https://img.shields.io/github/license/ldolan05/ACID.svg)](https://github.com/ldolan05/ACID/blob/main/LICENSE)
+[![Paper DOI](https://img.shields.io/badge/DOI-10.1093%2Fmnras%2Fstae710-blue)](https://doi.org/10.1093/mnras/stae710)
+
+The original ACID code was developed by Lucy Dolan as part of her PhD and published in 2024. Development has continued in this repository by Benjamin Cadell since October 2025 as part of his PhD.
 
 Since 2024, the most signficant changes to ACID have been:
     - Updating packages and code to work with newer and stable versions of python.
@@ -13,7 +18,7 @@ Since 2024, the most signficant changes to ACID have been:
     - Methods to extract fits formats for common instruments (e.g. ESPRESSO, HARPS, UVES) and to load them directly into ACID.
     - Updated documentation and examples
 
-An more complete list of changes can be found in the CHANGELOG.md file in the repository. 
+A more complete list of changes can be found in the [changelog](changelog.md).
 
 The documentation will be kept up to date until at least 2029.
 
@@ -24,4 +29,4 @@ In a basic sense, ACID simulatenously fits the stellar continuum and profile usi
 Installation
 ============
 
-See the [ReadTheDocs](https://acid-code.readthedocs.io/en/stable/installation.html) for the instructions on installation.
+See the [Read the Docs documentation](https://acid-code.readthedocs.io/en/stable/installation.html) for installation instructions.
