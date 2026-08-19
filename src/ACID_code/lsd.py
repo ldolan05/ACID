@@ -132,8 +132,8 @@ class LSD:
 
         if key is not None:
             wavelengths = self.data.wavelengths[key]
-            flux        = self.data.flux[key]
-            errors      = self.data.errors[key]
+            flux        = self.data.fitted_flux[key]
+            errors      = self.data.fitted_errors[key]
             sn          = self.data.sn[key]
         elif any((
             wavelengths is None,
@@ -157,8 +157,9 @@ class LSD:
         self.n_wavelengths = len(wavelengths)
 
         # Check the flux has been at least somewhat normalised:
-        if np.nanpercentile(flux, 95) > 1.5:
-            raise ValueError(f"The top 95th percentile of fluxes inputted to LSD lie above 1.5.\n" \
+        fluxpercentile = np.nanpercentile(flux, 95)
+        if fluxpercentile > 1.5:
+            raise ValueError(f"The top 95th percentile of fluxes inputted to LSD lie above 1.5 (95th% = {fluxpercentile}).\n" \
                              f"The fluxes should be normalised.")
 
         # Set velocities either from inputs or from Data class if initialised with Acid instance
