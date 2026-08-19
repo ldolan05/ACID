@@ -151,10 +151,10 @@ All notable future changes to this project are documented here.
 
 ### Added
 - The Result class, which can plot the ACID profiles, MCMC walkers, corner plots, continue MCMC sampling, save and load the result
-- The utils.py (accesible at top level of ACID_code_v2), which include calc_deltav, input rescaling, and SNR guessing.
+- The utils.py module, accessible at the top level of ACID_code, including calc_deltav, input rescaling, and SNR guessing.
 - Improved ACID initialisation and function inputs, including verbosity, specification of cores, parallelisation, and other configurations.
 - A few other optimisation improvements.
-- Full backwards compatibility with ACIDv1 and ACIDv2 (0.2.4) with the ACID and ACID_HARPS functions.
+- Full backwards compatibility with earlier ACID releases through the ACID and ACID_HARPS functions.
 
 ### Changed
 - Python requirement upgraded from 3.7 -> 3.13, allowing macOS users with Apple Silicon to run code.
@@ -162,4 +162,4 @@ All notable future changes to this project are documented here.
 ### Fixed
 - Calculation of the alpha matrix is chunked (with sizing dependent on available memory) to avoid crashes on macOS due to extremely high memory demands.
 
-[1.0.0]: https://github.com/Benjamin-Cadell/ACID_v2/releases/tag/v1.0.0
+[1.0.0]: https://github.com/ldolan05/ACID/releases/tag/v1.0.0
