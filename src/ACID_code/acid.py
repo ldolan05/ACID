@@ -798,12 +798,10 @@ class Acid:
         """
         This method is no longer supported in ACID. Please use the ACID function with the appropriate inputs for HARPS spectra instead. 
         Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. 
-        If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5
         """
         raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
-        f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
-        f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code_v2==1.4.5")
+        f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments.")
 
     @staticmethod
     def scipy_continuum_fit(data:Data, key:str) -> None:
