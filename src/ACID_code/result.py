@@ -449,8 +449,9 @@ class Result:
         # Setup plot and plot the walkers for the default parameters
         naxes = len(self.default_params)
         fig, ax = plt.subplots(naxes, 1, **subplot_kwargs)
+        fmt = plot_kwargs.pop("fmt", "k")
         for i in range(naxes):
-            ax[i].plot(steps, samples[:, :, self.default_params[i]], **plot_kwargs)
+            ax[i].plot(steps, samples[:, :, self.default_params[i]], fmt, **plot_kwargs)
             ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
             ax[i].set_ylabel(self.default_param_labels[i])
         ax[-1].legend()
