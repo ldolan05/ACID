@@ -1188,7 +1188,7 @@ class Acid:
     @sampler.setter
     def sampler(self, value):
         self.data.sampler = value
-
+ 
 # All code below is just to ensure backward compatibility with previous ACID versions
 def ACID(*args, **kwargs):
     """Legacy ACID function
