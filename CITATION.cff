@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use ACID in your work, please cite the paper below."
+title: "ACID_code"
+type: software
+authors:
+  - family-names: Dolan
+    given-names: Lucy S.
+  - family-names: Cadell
+    given-names: Benjamin
+repository-code: "https://github.com/ldolan05/ACID"
+url: "https://acid-code.readthedocs.io/en/stable/"
+license: MIT
+preferred-citation:
+  type: article
+  title: "A.C.I.D - an improved LSD technique for accurate line profile retrieval"
+  authors:
+    - family-names: Dolan
+      given-names: Lucy S.
+    - family-names: de Mooij
+      given-names: Ernst J. W.
+    - family-names: Watson
+      given-names: Christopher A.
+    - family-names: Jackson
+      given-names: David G.
+  journal: "Monthly Notices of the Royal Astronomical Society"
+  year: 2024
+  volume: 529
+  issue: 3
+  start: 2071
+  end: 2086
+  doi: "10.1093/mnras/stae710"
+  url: "https://doi.org/10.1093/mnras/stae710"
