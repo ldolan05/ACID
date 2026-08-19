@@ -33,7 +33,7 @@ For a full outline of ACID's algorithm and implementation, see the paper_ or vie
 Please note that ACID now functions as a class, and so the usage is slightly different to the original ACID. Please see the User Guide and the Using ACID page for more information.
 
 .. _emcee: https://emcee.readthedocs.io/en/
-.. _paper: https://academic.oup.com/mnras/article/529/3/2071/7624678
+.. _paper: https://doi.org/10.1093/mnras/stae710
 .. _GitHub: https://github.com/ldolan05/ACID
 .. _ACID_v2: https://github.com/Benjamin-Cadell/ACID_v2
 
@@ -56,5 +56,4 @@ Copyright 2023, Lucy Dolan.
 
 ACID is free software made available under the MIT License.
 
-If you make use of ACID or ACID_v2 in your work please cite the original work by L.Dolan (L.Dolan et al, 2024): https://academic.oup.com/mnras/article/529/3/2071/7624678.
-
+If you make use of ACID in your work, please cite the original work by L. Dolan (Dolan et al. 2024): https://doi.org/10.1093/mnras/stae710.
