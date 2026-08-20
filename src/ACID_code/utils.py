@@ -320,11 +320,12 @@ def guess_errors(
     :py:type:`Array1D | Array2D`
         Array of estimated error values for each frame. The dimensions will match those of frame_flux, with the same number of frames and pixels.
     """
+    frame_flux = np.atleast_2d(frame_flux)
+    frame_sn = np.atleast_1d(frame_sn)
+
     if np.any(frame_flux <= 0) or np.any(frame_sn <= 0):
         raise ValueError("Flux and sn must all be positive non-zero to estimate errors.")
 
-    frame_flux = np.atleast_2d(frame_flux)
-    frame_sn = np.atleast_1d(frame_sn)
     if frame_sn.ndim > 1 or (frame_sn.ndim == 1 and frame_sn.size != frame_flux.shape[0]):
         raise ValueError("S/N must be a single value or an array of values with the same length as the number of frames in frame_flux.")
 
@@ -837,7 +838,8 @@ def autocorr_new(y, c=5.0):
     """New integrated autocorrelation time estimate from emcee documentation"""
     
     # Average ACF across walkers
-    assert y.ndim == 2, "Expects y with shape (nwalkers, nsteps)"
+    if y.ndim != 2:
+        raise ValueError("Expects y with shape (nwalkers, nsteps)")
     nwalkers, nsteps = y.shape
 
     f = np.zeros(nsteps)

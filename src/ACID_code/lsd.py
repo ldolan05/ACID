@@ -131,10 +131,17 @@ class LSD:
             skip_warnings = self.data.lsd_warnings_flag
 
         if key is not None:
+            # Pull required keys form Data and raise if any don't exist
+            key_reqs = ["wavelengths", "fitted_flux", "fitted_errors", "sn"]
+            for req in key_reqs:
+                if key not in eval(f"self.data.{req}"):
+                    raise ValueError(f"Key '{key}' not found in the required attribute data.{req}. \n" \
+                                     f"Please provide a valid key or input wavelengths, flux, errors, and SN directly.")
             wavelengths = self.data.wavelengths[key]
             flux        = self.data.fitted_flux[key]
             errors      = self.data.fitted_errors[key]
             sn          = self.data.sn[key]
+
         elif any((
             wavelengths is None,
             flux is None,
@@ -652,7 +659,7 @@ class LSD:
         return_error : bool = True,
         return_cov   : bool = False,
         **kwargs,
-        ) -> tuple:
+        ) -> Array1D|Array2D|tuple:
         """
         Solves for the LSD profile and its errors using the Cholesky factors. 
         All units should match between alpha, flux, and error (ie all in OD or all in flux).
@@ -682,7 +689,7 @@ class LSD:
         Returns
         -------
         profile, profile_errors, cov_z : tuple
-            LSD profile and its errors (if return_error is True) and covariance matrix (if return_cov is True)
+            LSD profile and its errors (if return_error or return_cov is True) and the covariance matrix (if return_cov is True)
         """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
         R = flux         # R matrix in log space
@@ -770,6 +777,7 @@ class LSD:
                 )
 
             if profile_groups is not None:
+
                 alpha, _ = cls.calc_mp_alpha(
                     wavelengths,
                     velocities,
@@ -989,6 +997,6 @@ class LSD:
         data.forward_y[key] = lsd.forward_model * data.continuum[key]
         data.profile[key]   = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
         data.residuals[key] = (data.flux[key] - data.forward_y[key]) / data.forward_y[key]
-        data.ll_mask[key] = lsd.ll_mask
+        data.ll_mask[key]   = lsd.ll_mask
         if return_cls:
             return lsd

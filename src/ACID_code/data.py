@@ -127,6 +127,10 @@ class MaskingLines:
                 line_input = line_object
 
             if isinstance(line_input, (np.ndarray, list)):
+                # Reject empty lists or arrays, as this is likely a user error
+                if len(line_input) == 0:
+                    raise ValueError(f"The masking_lines for {name} cannot be an empty list or array, use None/remove the input to use the default lines.")
+
                 # For lists of tuples, allow len 1 or 2 depending on if default_width was provided in the dictionary
                 if isinstance(line_input[0], tuple):
                     lines = []
@@ -146,7 +150,11 @@ class MaskingLines:
 
                 else:
                     # For arrays or lists, convert to numpy array and check dimensions
-                    lines = np.array(line_input)
+                    try:
+                        lines = np.array(line_input)
+                    except Exception as e:
+                        raise ValueError(f"Could not convert the masking_lines for {name} to a numpy array. \n"
+                                         f"It's possible the dimensions do not have the same shape. Please check the input format. \nError: {e}")
                     if lines.size == 0:
                         raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
                     if lines.ndim == 1:
@@ -165,7 +173,8 @@ class MaskingLines:
                 raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see :ref:`masking_lines`"
                                  f" for more details. Got type {type(line_input)}.")
 
-            assert len(lines) == len(widths), f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}"
+            if len(lines) != len(widths):
+                raise ValueError(f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}")
             final_dict[name] = {"lines": np.array(lines), "widths": np.array(widths)}
         return final_dict
 
@@ -572,7 +581,7 @@ class Data:
     #: The number of steps taken in the MCMC sampling, used for checking convergence and for resuming
     nsteps   : Optional[int]  = 0
     #: A flag for whether the profiles have been fully calculated to avoid recalculating
-    complete : bool                      = False # is set to True when the profiles and final profile has been fully calculated
+    complete : bool           = False # is set to True when the profiles and final profile has been fully calculated
 
     # Other useful data and figures
     # -----------------------------
@@ -806,10 +815,9 @@ class Data:
 
         # Clip the linelist to the specified bounds if provided, and to the min_depth
         if bounds is not None:
-            wl = wl[(wl >= bounds[0]) & (wl <= bounds[1])]
-            depths = depths[(wl >= bounds[0]) & (wl <= bounds[1])]
-        # wl = wl[depths >= min_depth]
-        # depths = depths[depths >= min_depth]
+            idx_in_bounds = (wl >= bounds[0]) & (wl <= bounds[1])
+            wl = wl[idx_in_bounds]
+            depths = depths[idx_in_bounds]
 
         # Plot linelist
         fig, ax = plt.subplots(figsize=(15, 9))
@@ -925,13 +933,22 @@ class Data:
         # Get SN or errors if one is not provided
         if input_sn is None and input_errors is None:
             raise ValueError("One of input_sn or input_errors must be provided.")
-        if input_sn is None and input_errors is not None:
+
+        elif input_errors is not None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
-            if self.config.verbose > 1:
+            if self.config.verbose >= 2:
                 print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
-        if input_errors is None and input_sn is not None:
+
+        elif input_sn is not None:
+            # Input SN can accidentally be input with the same shape as the wavelengths, so correct now if thats the case
+            if input_sn.ndim == input_wavelengths.ndim:
+                if self.config.verbose >= 2:
+                    print("Per pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
+                # Per pixel S/N provided, take the mean over the central 2/3 of the wavelengths
+                input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
+
             input_errors = utils.guess_errors(input_flux, input_sn)
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
                       f"It is highly recommended to obtain correct per-pixel errors.")
 
@@ -940,8 +957,8 @@ class Data:
             raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
         # Ensure now that the SN becomes just a single value per frame
-        if input_sn.ndim == input_flux.ndim:
-            if self.config.verbose > 1:
+        if input_sn.ndim == input_wavelengths.ndim:
+            if self.config.verbose >= 2:
                 print("Per pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
             # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
             input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
@@ -950,8 +967,9 @@ class Data:
             f"or an array of S/N values for each pixel. \n" \
             "The shape of the input input_sn does not match the number of frames in input_flux, " \
             "nor does it have one more dimension than input_flux.")
-        assert input_sn.ndim == input_flux.ndim - 1, \
-            f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}"
+        if input_sn.ndim != input_flux.ndim - 1:
+            raise ValueError(f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}")
+        
 
         # Ensure all inputs are at least 2D (with the first dimension being the frame number), 
         # to ensure consistent handling of single-frame and multi-frame inputs. 
@@ -1455,6 +1473,8 @@ class Data:
         """
         # First we handle the sampler saving, so that when saved it can be added to the sampler path saved in the dictionary later
         if sampler_path is not None:
+            # Convert to abspath
+            sampler_path = os.path.abspath(sampler_path)
             if self.sampler is not None:
                 if not isinstance(self.sampler.backend, HDFBackend):
                     if not sampler_path.endswith(".h5"):
@@ -1462,28 +1482,30 @@ class Data:
                     os.makedirs(os.path.dirname(sampler_path), exist_ok=True) # create directory if it does not exist
                     utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
                     self.config.sampler_path = sampler_path # update config with sampler path for future reference
-                    if self.config.verbose > 1:
+                    if self.config.verbose >= 2:
                         print(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
                 else:
-                    if self.config.verbose > 1:
+                    if self.config.verbose >= 2:
                         print("Sampler is already set up to save as a HDF5 file, ignoring sampler_path argument.")
             else:
-                if self.config.verbose > 0:
+                if self.config.verbose >= 1:
                     print("Cannot save sampler as sampler does not exist.")
 
+        # TODO: NEEDS UPDATING WITH NEW CONFIG DIR, maybe move them all to Config properties?
         # Now save the Data object itself, with the sampler path included to be used when reloaded
+        save_path = os.path.abspath(save_path) if save_path is not None else None
         self.config.save_path = save_path # update and overwrite config with save path for future reference
         save_path = self.config.save_path # now use the save path in the config
         if save_path is None:
             if self.config.verbose > 0:
-                print("No save_path provided. Data will not be saved.")
+                print("No save_path exists or was provided. The Data instance will not be saved.")
             return
 
         payload = self.to_dict() # generates a dictionary of the data object for easy pickling
 
-        save_dir = os.path.dirname(save_path)
+        save_dir = os.path.abspath(save_path)
         if save_dir:
-            os.makedirs(save_dir, exist_ok=True) # create directory if it does not exist
+            os.makedirs(os.path.dirname(save_dir), exist_ok=True) # create directory if it does not exist
         with open(save_path, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
         if self.config.verbose > 1:
@@ -1574,12 +1596,12 @@ class Data:
             if self.config.verbose > 0:
                 print(f"An exception was raised during the run, cannot return results object.\n"
                       f"Returning None instead.")
-                return None
-        if not self.complete:
+            return None
+        if self.complete is False:
             if self.config.verbose > 0:
                 print(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
                       f"Returning None instead.")
-                return None
+            return None
         from .result import Result
         return Result(self)
 
@@ -2516,7 +2538,7 @@ class DataList:
             return fig, ax
         plt.show()
 
-    def fit_profile(self, **kwargs) -> None|tuple[plt.Figure, plt.Axes]:
+    def fit_profile(self, **kwargs) -> None|tuple:
         """
         Fits the combined profile across all orders.
 
