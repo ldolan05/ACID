@@ -184,7 +184,7 @@ class Acid:
         # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
         if "linelist_path" in kwargs:
             linelist = kwargs.pop("linelist_path")
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
                 f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
         if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
@@ -238,7 +238,7 @@ class Acid:
                 raise ValueError("'sampler_path' must end with '.h5'.")
             # Delete existing file at sampler path if it exists
             if os.path.exists(sampler_path):
-                if self.config.verbose > 0:
+                if self.config.verbose >= 1:
                     print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
                 os.remove(sampler_path)
         self.config.sampler_path = os.path.abspath(sampler_path) if sampler_path is not None else None
@@ -494,18 +494,18 @@ class Acid:
         # --- Setup and validation ---
 
         init_t0 = time.time()
-        if self.config.verbose>1:
+        if self.config.verbose >= 2:
             print('Initialising...')
 
         if "n_sig" in kwargs:
             sigma_lower = kwargs.pop("n_sig")
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("Warning: 'n_sig' is a legacy argument for inputting sigma_lower.\n" \
                 f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.")
 
         # Check for any potential conflicts in input arguments that are meant for the class initialisation.
         overlap = self._INIT_KEYS & kwargs.keys()
-        if overlap and self.config.verbose > 0:
+        if overlap and self.config.verbose >= 1:
             for key in sorted(overlap):
                 print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
 
@@ -552,7 +552,7 @@ class Acid:
         self.data.config = self.config # update dataclass config as well, although I think this line is redundant
 
         if self.config.parallel and sys.platform == "win32":
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 # This doesn't work, needs serious modifications to make work, so just run serially for now
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
@@ -581,7 +581,7 @@ class Acid:
                 raise ValueError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
                 "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
                 "spectrum with the corresponding profile_groups.")
-            if depth_group_rules is not None and self.config.verbose > 0:
+            if depth_group_rules is not None and self.config.verbose >= 1:
                 print("Warning: depth_group_rules is set, but profile_groups is also set. The depth_group_rules will be ignored.")
             if len(profile_groups) != len(self.data.linelist["wavelengths"]):
                 raise ValueError(f"profile_groups must have the same length as the input linelist. "
@@ -596,7 +596,7 @@ class Acid:
         # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
         # calculate a default velocity grid using the input wavelengths.
         if self.data.velocities is None:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
                 "It is highly recommended to input your own velocity grid, especially if you need a different wavelength range.")
             deltav = utils.calc_deltav(self.data.wavelengths["combined"])
@@ -618,10 +618,10 @@ class Acid:
             "initial" in self.data.poly_coeffs,
             "initial" in self.data.alpha,
         )):
-            if self.config.verbose > 2:
+            if self.config.verbose >= 3:
                 print("Initial fit and LSD run already exists, skipping this step.")
         else:
-            if self.config.verbose > 2:
+            if self.config.verbose >= 3:
                 print("Performing initial fit and LSD...")
 
             # Uses all information stored in data, accessing and storing the data attributed with the key
@@ -640,10 +640,10 @@ class Acid:
             "masked" in self.data.wavelengths,
             "mcmc" in self.data.c_factor,
         )):
-            if self.config.verbose > 1:
+            if self.config.verbose >= 2:
                 print("Residual masks already exists, skipping residual masking step.")
         else:
-            if self.config.verbose>1:
+            if self.config.verbose >= 2:
                 print('Residual masking...')
 
             # Use the initial LSD run to get the scaled residuals
@@ -693,7 +693,7 @@ class Acid:
             
             # Warn if more than 50% of spectrum is masked this way
             if np.sum(self.data.full_mask) > 0.5 * len(self.data.full_mask):
-                if self.config.verbose > 0:
+                if self.config.verbose >= 1:
                     print(f"Warning: More than 50% of the spectrum is masked. \n" \
                     "Please check your initial continuum fit and masking (by using verbose=3 when initialising). \n" \
                     "If you are aware that you have bad spectra, then this can be ignored.")
@@ -747,7 +747,7 @@ class Acid:
             self.data.plotting_variables["masked"]["masked_residuals"] = masked_residuals
             self.data.plotting_variables["masked"]["lower_clip"]       = lower_clip
             self.data.plotting_variables["masked"]["upper_clip"]       = upper_clip
-            if self.config.verbose > 2: # Plot now if verbose enough
+            if self.config.verbose >= 3: # Plot now if verbose enough
                 self.data.plot_residual_masking()
 
         # ACID Initialialised
@@ -790,7 +790,7 @@ class Acid:
             return Result(self)
 
         else:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("MCMC not run, returning None. Class attributes have been updated.")
             return None
 
@@ -878,7 +878,7 @@ class Acid:
         data.plotting_variables[key]["clipped_waves"]            = clipped_waves
         data.plotting_variables[key]["clipped_flux"]             = clipped_flux
         data.plotting_variables[key]["good"]                     = good
-        if config.verbose > 2:
+        if config.verbose >= 3:
                 data.plot_continuum_fit(key=key)
 
         if np.any(data.fitted_flux[key][~data.line_mask] <= 0) or np.any(data.fitted_errors[key][~data.line_mask] <= 0):
@@ -953,7 +953,7 @@ class Acid:
         if self.config.parallel:
             utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
 
-            if self.config.verbose>1:
+            if self.config.verbose >= 2:
                 print(f"Using {self.config.cores} cores for MCMC")
             
             ctx = mp.get_context("fork")
@@ -975,7 +975,7 @@ class Acid:
                 if self.config.parallel:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
-                self.sampler.run_nested(print_progress=self.config.verbose>1)
+                self.sampler.run_nested(print_progress=mcmc_kwargs["progress"])
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """
@@ -999,7 +999,7 @@ class Acid:
         if self.config.parallel:
             utils.configure_mp_environ(os)
 
-            if self.config.verbose > 1:
+            if self.config.verbose >= 2:
                 print(f"Using {self.config.cores} cores for MCMC")
 
             ctx = mp.get_context("fork")
@@ -1039,12 +1039,12 @@ class Acid:
                 condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, total_step_number, *stopping_criterion_args)
 
                 if condition is True:
-                    if self.config.verbose > 1:
+                    if self.config.verbose >= 2:
                         print(f"Converged at step {total_step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                     break
 
         # Warn if convergence not reached after either parallel or non-parallel version
-        if self.config.verbose > 1 and condition is False:
+        if self.config.verbose >= 2 and condition is False:
             print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
                   f"Consider increasing max_steps.")
 
@@ -1056,7 +1056,7 @@ class Acid:
         # ACID instance and the inputted nsteps and state.
 
         # Set verbosity of the sampler with sampler_progress override if specified
-        sampler_verbosity = True if self.config.verbose>1 else False
+        sampler_verbosity = True if self.config.verbose >= 2 else False
         sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
         
         backend = None
@@ -1072,7 +1072,7 @@ class Acid:
             backend = emcee.backends.HDFBackend(self.config.sampler_path)
             if state is not None:
                 backend.reset(self.data.nwalkers, self.data.ndim)
-            if self.config.verbose > 1:
+            if self.config.verbose >= 2:
                 print(f"Using sampler backend at {self.config.sampler_path}")
         # else: leave none and a normal in-memory sampler backend is used
 

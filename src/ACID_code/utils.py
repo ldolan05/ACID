@@ -167,7 +167,7 @@ def mask_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     f = np.where(mask, flux, fill_value)
     e = np.where(mask, errors, fill_value) if errors is not None else None
 
-    if verbose > 1:
+    if verbose >= 2:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         perc_invalid = num_invalid / np.size(wavelengths) * 100
         if perc_invalid > 10:
@@ -208,7 +208,7 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     f = flux[mask]
     e = errors[mask] if errors is not None else None
 
-    if verbose > 1:
+    if verbose >= 2:
         num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
         perc_invalid = num_invalid / np.size(wavelengths) * 100
         if num_invalid > 0:

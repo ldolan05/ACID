@@ -697,13 +697,13 @@ class Data:
             if os.path.exists(sampler):
                 self._sampler = utils.backend_to_sampler(HDFBackend(sampler), log_prob_fn)
             else:
-                if self.config.verbose > 0:
+                if self.config.verbose >= 1:
                     print(f"Warning: The sampler was not found at the provided path '{sampler}', it may have been moved or deleted. \n"
                           f"The sampler will be set to None.", flush=True)
                 self._sampler = None
                 # TODO: Allow sampler to have completed results, but no sampler, and configured methods with _requiresampler property that need them
         elif sampler is None:
-            if self.config.verbose > 0 and self._sampler is not None:
+            if self.config.verbose >= 1 and self._sampler is not None:
                 print("Warning, you have discarded the sampler.")
             self._sampler = None
         
@@ -781,7 +781,7 @@ class Data:
 
             # If overwriting, reset variables and warn
             if overwriting:
-                if self.config.verbose > 0:
+                if self.config.verbose >= 1:
                     print("Warning: the input linelist has been modified. \n" \
                     f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
                 self.reset(preserve_input_profile_groups=False)
@@ -884,7 +884,7 @@ class Data:
         # Handle logic for already existing inputs, more or less described in the print statements
         if inputs_already_exist:
             if not all_inputs_not_none and any_inputs_not_none:
-                if self.config.verbose > 0:
+                if self.config.verbose >= 1:
                     print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
                         f"Some of the inputs you provided are None. \n" \
                         f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
@@ -892,7 +892,7 @@ class Data:
                 self.combine_spec(output=False)
                 return
             elif not any_inputs_not_none:
-                if self.config.verbose > 2:
+                if self.config.verbose >= 3:
                     print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
                 self.combine_spec(output=False)
                 return
@@ -1011,7 +1011,7 @@ class Data:
 
         # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
         if overwriting:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
                 f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.")
             self.reset(preserve_combined=False)
@@ -1292,7 +1292,7 @@ class Data:
             cbar = fig.colorbar(sm, ax=ax)
             cbar.set_label("Line depth")
         except:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
             pass
 
@@ -1353,7 +1353,7 @@ class Data:
         full_mask = self.full_mask
 
         nremoved = np.sum(full_mask)
-        if self.config.verbose > 1:
+        if self.config.verbose >= 2:
             print(f"{nremoved}/{len(residuals)} pixels were removed after residual masking.")
 
         # Create plot and add residuals with sigma clipping thresholds and masked regions
@@ -1497,7 +1497,7 @@ class Data:
         self.config.save_path = save_path # update and overwrite config with save path for future reference
         save_path = self.config.save_path # now use the save path in the config
         if save_path is None:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print("No save_path exists or was provided. The Data instance will not be saved.")
             return
 
@@ -1508,7 +1508,7 @@ class Data:
             os.makedirs(os.path.dirname(save_dir), exist_ok=True) # create directory if it does not exist
         with open(save_path, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
-        if self.config.verbose > 1:
+        if self.config.verbose >= 2:
             print(f"Data object saved to {save_path}")
 
     @classmethod
@@ -1593,12 +1593,12 @@ class Data:
     @property
     def result(self):
         if self.exception is not None:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print(f"An exception was raised during the run, cannot return results object.\n"
                       f"Returning None instead.")
             return None
         if self.complete is False:
-            if self.config.verbose > 0:
+            if self.config.verbose >= 1:
                 print(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
                       f"Returning None instead.")
             return None
@@ -1754,7 +1754,7 @@ class LineList:
         if count_dropped == len(wavelengths):
             raise ValueError(f"All lines in the linelist are non-finite, nan, negative, or greater than 1.\n" \
             "Please check your linelist for invalid values.")
-        if verbose > 0 and count_dropped > 0:
+        if verbose >= 1 and count_dropped > 0:
             print(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
                   f"These will be removed, but it is still recommended to check your linelist for why this happened.")
 
@@ -1943,10 +1943,10 @@ class DataList:
                 # Check if file already exists
                 if os.path.exists(data.config.save_path):
                     if self.overwrite:
-                        if self.verbose > 1:
+                        if self.verbose >= 2:
                             print(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
                     else:
-                        if self.verbose > 0:
+                        if self.verbose >= 1:
                             print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
                         data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
                 else:
@@ -1989,7 +1989,7 @@ class DataList:
         # generate the mapping of order to index in the list. The Load class will configure the correct order range based
         # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
         order_range = data_list[0].config.order_range
-        if len(data_list) > 1 and verbose > 0:
+        if len(data_list) > 1 and verbose >= 1:
             if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
                 print("Warning: Not all Data instances have the same order_range. Taking the longest order range.")
 
@@ -2217,7 +2217,7 @@ class DataList:
         ll = kwargs.pop("linelist", None)
         vel = kwargs.pop("velocities", None)
 
-        iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose > 1 else orders
+        iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose >= 2 else orders
         for order in iterable:
 
             data = self.data_list[self.o2i[order]]
@@ -2225,12 +2225,12 @@ class DataList:
             # Check if ACID already ran for this order
             if os.path.exists(data.config.save_path) and overwrite is False:
                 if data.complete:
-                    if self.verbose > 1:
+                    if self.verbose >= 2:
                         print(f"An ACID completed result for order {order} already exists. \n"
                                 f"Skipping this order. To overwrite existing results, set overwrite=True.")
                     continue
                 elif data.exception is not None:
-                    if self.verbose > 1:
+                    if self.verbose >= 2:
                         print(f"An ACID run for order {order} previously encountered an exception. \n"
                                 f"Skipping this order. To retry and overwrite existing results, set overwrite=True.")
                     continue
@@ -2366,7 +2366,7 @@ class DataList:
             datalist = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
             datalist.save() # repack with new save locations
 
-            if folder_moved_flag and verbose > 0:
+            if folder_moved_flag and verbose >= 1:
                 print("Warning: At least one Data instance did not match the current location and has been updated.")
 
             return datalist
@@ -2384,7 +2384,7 @@ class DataList:
                     folder_moved_flag |= cls._set_paths_for_data(data, path)
                     data_list.append(data)
 
-        if folder_moved_flag and verbose is not None and verbose > 0:
+        if folder_moved_flag and verbose is not None and verbose >= 1:
             print(f"Warning: At least one of the Data instances found in the directory does not match the current location, it has been updated.")
 
         obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
@@ -2399,7 +2399,7 @@ class DataList:
         if dir is not None:
             os.makedirs(dir, exist_ok=True)
         elif self._save_dir is None:
-            if self.verbose > 0:
+            if self.verbose >= 1:
                 print("Warning: save_dir is set to None. No results will be saved. This is not recommended.")
         self._save_dir = dir
         return
@@ -2435,7 +2435,7 @@ class DataList:
             list[Result|None]: A list of Result objects or None for each order in the DataList.
         """
         if self._results is None:
-            if self.verbose > 0:
+            if self.verbose >= 1:
                 print("Accessing results, the output below comes from initialising the Result object" \
                 " and will only be shown once for this DataList instance.")
             self._results = [data.result for data in self.data_list]

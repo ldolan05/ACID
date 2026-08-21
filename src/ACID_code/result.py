@@ -27,7 +27,7 @@ def _require_profiles(method):
         if not self.data.complete: # complete is flag for if profiles have been made
             name = method.__qualname__
             if self.sampler is not None:
-                if self.config.verbose>0:
+                if self.config.verbose >= 1:
                     print(f"Note: The Result object was created without the profiles processed. " \
                         f"Running {name} requires all results to be processed, " \
                         "so process_results() will now be called...")
@@ -123,10 +123,10 @@ class Result:
                     raise ValueError("Cannot process results without a sampler. Please provide a sampler in the initialisation or set process_results=False.")
                 else:
                     self.process_results()
-            elif self.config.verbose > 0:
+            elif self.config.verbose >= 1:
                 print("Warning: Results not processed. Profiles attribute will not be available until " \
                 "Result.process_results() is called or passed through a method.")
-        elif self.sampler is None and self.config.verbose>0:
+        elif self.sampler is None and self.config.verbose >= 1:
             print(f"Warning: No sampler provided or found in Data object. \n" \
             f"Some methods will not work unless a sampler is provided as a parameter or if Result.initiate_sampler(sampler) is called.")
 
@@ -162,7 +162,7 @@ class Result:
         # med_poly_coeffs_err = param_errors[n_profile_params:] # may be used in a future update
         all_poly_coeffs = flat_samples[:, n_profile_params:]
 
-        if self.config.verbose > 1:
+        if self.config.verbose >= 2:
             print('Getting the final profiles...')
 
         # We first run LSD on the final state of the sampler (for debugging, but this can be useful to see how masking is affecting the sampler)
@@ -244,6 +244,9 @@ class Result:
         # Now that results are complete, save the data instance if specified
         if self.config.save_path is not None:
             self.save() # the sampler is already saved if specified
+
+        if self.config.verbose >= 2:
+            print(f"Done! Results processed in {self.data.results_time:.2f} seconds. Total time: {self.data.total_time:.2f} seconds.")
         return
 
     def _continuum_correct_and_runlsd(self, key, all_poly_coeffs, **kwargs):
@@ -291,7 +294,7 @@ class Result:
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
-            if self.config.verbose > 1:
+            if self.config.verbose >= 2:
                 print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
                 "Calculating with a max of 1000 random samples instead.")
             indices_size = min(1000, n_samples)
@@ -399,7 +402,7 @@ class Result:
         if process_results:
             self.process_results() # update profiles
         else:
-            if self.config.verbose>0:
+            if self.config.verbose >= 1:
                 print("Warning: Results not processed. profiles attribute will not be available until " \
                 "Result.process_results() is called.")
 
@@ -926,7 +929,7 @@ class Result:
         self.converged = True
         if self.data.nsteps < 50 * np.max(self.tau):
             self.converged = False
-            if self.config.verbose>1:
+            if self.config.verbose >= 2:
                 print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
                 "time.\n The sampler may not have converged. Consider running more steps or checking " \
                 f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
@@ -940,7 +943,7 @@ class Result:
             else:
                 self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
         except:
-            if self.config.verbose>0:
+            if self.config.verbose >= 1:
                 print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
                 f" due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
                 f" wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.")

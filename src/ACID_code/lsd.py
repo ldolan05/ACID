@@ -364,10 +364,10 @@ class LSD:
             self.data.traceback = traceback.format_stack()
             raise error
         if not skip_warnings:
-            if self.config.verbose > 0 and not skip_warnings:
+            if self.config.verbose >= 1 and not skip_warnings:
                 if perc < 5:
                     print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-                if self.config.verbose > 2:
+                if self.config.verbose >= 3:
                     print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist, profile_groups[idx] if profile_groups is not None else None
 
@@ -502,7 +502,7 @@ class LSD:
 
             line_range = range(0, n_lines, line_block)
 
-            if verbose > 1 and len(line_range) > 1:
+            if verbose >= 2 and len(line_range) > 1:
                 line_range = tqdm(line_range, desc="Calculating sparse alpha matrix")
 
             for line_start in line_range:
@@ -580,7 +580,7 @@ class LSD:
                 alpha  = np.zeros((len(blankwaves), len(velocities)), dtype=np.float64)
 
                 # Use tqdm progress bar if verbose
-                if verbose > 1 and len(wavelengths_linelist) > 1:
+                if verbose >= 2 and len(wavelengths_linelist) > 1:
                     iterable = tqdm(range(0, len(wavelengths_linelist), block), desc='Calculating alpha matrix')
                 else:
                     iterable = range(0, len(wavelengths_linelist), block)
@@ -868,7 +868,7 @@ class LSD:
         alpha_blocks = []
 
         verbose = Config(verbose=verbose).verbose
-        if verbose > 1:
+        if verbose >= 2:
             iterator = tqdm(unique_profile_groups, desc="Calculating alpha blocks for each profile group")
         else:
             iterator = unique_profile_groups
