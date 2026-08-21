@@ -786,7 +786,7 @@ class Data:
                     f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
                 self.reset(preserve_input_profile_groups=False)
 
-    def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, return_fig:bool=False) -> None|tuple:
+    def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
         """
         Plots the linelist points with their corresponding depths as delta-function lines.
 
@@ -796,6 +796,8 @@ class Data:
             The indices of the linelist points to plot. If None, plots all points.
         bounds : tuple or list, optional
             The wavelength bounds (min, max) to clip the linelist for plotting. If None, plots all points.
+        fig_ax : tuple, optional
+            A tuple of (figure, axis) objects to plot on. If None, a new figure and axis are created.
         return_fig : bool, optional
             If True, returns the figure and axis objects instead of displaying the plot.
 
@@ -820,8 +822,12 @@ class Data:
             depths = depths[idx_in_bounds]
 
         # Plot linelist
-        fig, ax = plt.subplots(figsize=(15, 9))
-        ax.vlines(wl, 0, depths, color='C0', )
+        if fig_ax is None:
+            fig, ax = plt.subplots(figsize=(15, 9))
+        else:
+            fig, ax = fig_ax
+
+        ax.vlines(wl, 1, 1-depths, color='C0', alpha=0.7)
         ax.set_title('Line List')
         ax.set_xlabel('Wavelength (Angstroms)')
         ax.set_ylabel('Relative Line Depth')
