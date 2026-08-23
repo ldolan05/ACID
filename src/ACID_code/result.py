@@ -596,7 +596,11 @@ class Result:
                     errorbar_kwargs["label"] = f"Group {g}"
                     errorbar_kwargs["ecolor"] = None
                     ax.errorbar(x, prof, yerr=err, **errorbar_kwargs)               
-                
+
+        # Set sensible limits - implemented after multi-profile results showing some very out of range profiles
+        ymin = max(np.min(self.data.profiles[0][0]), -0.1)
+        ymax = min(np.max(self.data.profiles[0][0]), 1.2)
+        ax.set_ylim(ymin-0.05, ymax+0.05)
 
         # Add labels and titles
         ax.set_title(labels["title"])

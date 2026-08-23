@@ -331,11 +331,13 @@ class Config:
         return f"Config instance with the following settings:\n" + "\n".join([f"{k}: {v}" for k, v in full_dict.items()])
 
     # --- Update methods ---
-    def update_hipri(self, **kwargs: Any) -> None:
-        """Updates and overwrites existing keys if their values are not None.
+    def update_hipri(self, force=False, **kwargs: Any) -> None:
+        """Updates and overwrites existing keys if the overwriting value is not None or if force is True.
         
         Parameters
         ----------
+        force : bool, optional
+            If True, will overwrite existing configuration regardless of None values. Default is False.
         **kwargs : dict
             Keyword arguments corresponding to the configuration settings to be updated. 
             The keys must be valid configuration options as defined in the `defaults` class variable.
@@ -353,8 +355,10 @@ class Config:
             if k not in self.defaults and k not in self._properties:
                 raise KeyError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
-                # If input is None, continue, None always makes no change to current value/default
-                continue
+                if force: # If forced, super set the attribute
+                    stored_name = "_" + k if k in self.properties else k
+                    super().__setattr__(stored_name, None)
+                # else: just skips the None
             else:
                 setattr(self, k, v)
 
