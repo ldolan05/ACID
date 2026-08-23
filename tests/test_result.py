@@ -164,5 +164,28 @@ def test_result_load_rejects_unsupported_input_types():
         Result.load(123)
 
 
+def test_result_plot_forward_model_shows_linelist(harps_result):
+    """The forward model plot can optionally show the line list."""
+    figure, axes = harps_result.plot_forward_model(show_linelist=True, return_fig=True)
+    assert len(axes) == 2
+    assert any(line.get_color() == "green" for line in axes[0].lines)
+    plt.close(figure)
+
+def test_result_plot_forward_model_returns_fig_and_axes(harps_result):
+    """The forward model plot returns a figure and axes when requested."""
+    figure, axes = harps_result.plot_forward_model(return_fig=True)
+    assert isinstance(figure, plt.Figure)
+    assert isinstance(axes, np.ndarray)
+    plt.close(figure)
+
+def test_result_plot_forward_model_accepts_different_keys(harps_result):
+    """The forward model plot accepts different keys for the data."""
+    # The default is "final", so test something that is not already tested.
+    figure, axes = harps_result.plot_forward_model(key="combined", return_fig=True)
+    # We mainly test that no exceptions are raised and that the return types are correct.
+    assert isinstance(figure, plt.Figure)
+    assert isinstance(axes, list)
+    plt.close(figure)
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))

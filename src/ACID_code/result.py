@@ -616,15 +616,17 @@ class Result:
     @_require_profiles
     def plot_forward_model(
         self,
-        normalized      :bool       = False,
-        divide_by_median:bool       = False,
-        show_masking    :bool       = True,
-        show_continuum  :bool       = True,
-        fig_ax          :tuple|None = None,
-        grid            :bool       = True,
-        labels          :dict|None  = None,
-        return_fig      :bool       = False,
-        subplot_kwargs  :dict|None  = None,
+        key              : str        = "final",
+        normalized       : bool       = False,
+        divide_by_median : bool       = False,
+        show_masking     : bool       = True,
+        show_continuum   : bool       = True,
+        show_linelist    : bool       = False,
+        fig_ax           : tuple|None = None,
+        grid             : bool       = True,
+        labels           : dict|None  = None,
+        return_fig       : bool       = False,
+        subplot_kwargs   : dict|None  = None,
         ) -> None | tuple:
         """
         Plots the forward model calculated from the final profiles to the combined input spectrum.
@@ -680,18 +682,23 @@ class Result:
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, default_kwargs)
 
         # Get input data
-        wavelengths = np.copy(self.data.forward_x["final"])
-        flux = np.copy(self.data.flux["combined"])
+        wavelengths = np.copy(self.data.forward_x[key])
+        flux = np.copy(self.data.flux[key])
 
         # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
         # so convert profile back to OD and reconvert to flux for forward model
-        forward = np.copy(self.data.forward_y["final"])
+        forward = np.copy(self.data.forward_y[key])
+
+        # Get the linelist points
+        ll_wl = self.data.linelist["wavelengths"][self.data.ll_mask[key]]
+        ll_depths = 1 - self.data.linelist["depths"][self.data.ll_mask[key]]
+        ll_tops = np.ones_like(ll_wl) # top of the linelist lines, for plotting
 
         # Due to distortion at the edges of the profile, we drop the last 2 pixels
         wavelengths = utils.drop_edges(wavelengths)
         flux = utils.drop_edges(flux)
         forward = utils.drop_edges(forward)
-        continuum_model = utils.drop_edges(self.data.continuum["final"])
+        continuum_model = utils.drop_edges(self.data.continuum[key])
 
         # Plotting
         if fig_ax is not None:
@@ -710,12 +717,20 @@ class Result:
             flux /= continuum_model
             forward /= continuum_model
             continuum_model /= continuum_model # is just 1s
+        else:
+            # Interpolate the continuum model to the linelist points so that the 
+            # linelist can be plotted on the same scale as the flux and forward model
+            continuum_at_ll = np.interp(ll_wl, wavelengths, continuum_model)
+            ll_depths *= continuum_at_ll # scale the linelist depths to the continuum model
+            ll_tops *= continuum_at_ll # scale the linelist tops to the continuum model
 
         if divide_by_median:
             median_continuum = np.median(continuum_model)
             flux /= median_continuum
             forward /= median_continuum
             continuum_model /= median_continuum
+            ll_depths /= median_continuum
+            ll_tops /= median_continuum
 
         residuals = flux - forward
 
@@ -743,6 +758,9 @@ class Result:
         else:
             ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
             ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
+
+        if show_linelist:
+            ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color='green', linewidth=1, label='Line List', alpha=0.5)
 
         if return_fig:
             return fig, ax
