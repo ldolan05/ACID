@@ -777,7 +777,6 @@ class LSD:
                 )
 
             if profile_groups is not None:
-
                 alpha, _ = cls.calc_mp_alpha(
                     wavelengths,
                     velocities,
@@ -786,12 +785,13 @@ class LSD:
                     profile_groups,
                 )
 
-            alpha = cls.calc_alpha(
-                wavelengths=wavelengths,
-                wavelengths_linelist=linelist_wavelengths,
-                depths_linelist=linelist_depths,
-                velocities=velocities,
-            )
+            else:
+                alpha = cls.calc_alpha(
+                    wavelengths=wavelengths,
+                    wavelengths_linelist=linelist_wavelengths,
+                    depths_linelist=linelist_depths,
+                    velocities=velocities,
+                )
 
         model_spectrum = cls.dot_alpha_and_profile(alpha, profile)
 
