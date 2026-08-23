@@ -82,9 +82,9 @@ def harps_paths():
 
     # Keep the science frame, matching flat, and full s1d product together by role.
     return {
-        "e2ds": data_dir / "HARPS.2007-08-29T00:24:57.238_e2ds_A.fits",
-        "flat": data_dir / "HARPS.2007-08-28T21:11:56.678_flat_A.fits",
-        "s1d": data_dir / "HARPS.2007-08-29T00:24:57.238_s1d_A.fits",
+        "e2ds": data_dir / "HARPS.2007-08-29T00-24-57.238_e2ds_A.fits",
+        "flat": data_dir / "HARPS.2007-08-28T21-11-56.678_flat_A.fits",
+        "s1d": data_dir / "HARPS.2007-08-29T00-24-57.238_s1d_A.fits",
     }
 
 

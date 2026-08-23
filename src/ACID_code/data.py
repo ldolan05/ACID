@@ -5,7 +5,7 @@ from tqdm import tqdm
 import copy
 from scipy.interpolate import interp1d
 import traceback as tb
-from typing import Any, Dict, Optional
+from beartype.typing import Any, Dict, Optional
 from emcee import EnsembleSampler
 from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
