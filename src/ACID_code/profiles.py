@@ -19,6 +19,7 @@ class Profiles:
             flux_err   : Array1D = None,
             cov_matrix : Array2D = None,
             data       : Data    = None,
+            key        : str     = "final",
         ) -> None:
         """
         Initializes the Profiles class with velocity, flux, and optional flux error data.
@@ -41,15 +42,18 @@ class Profiles:
             A data instance to draw velocities, flux, flux errors, and covariance matrix. Will raise an
             exception if they do not exist within the class.
             Must be provided if all four of the above inputs were not passed, by default None. 
+        key : str, optional
+            The key to select a specific profile from the data instance, by default "final".
         """
 
         if data is not None:
-            if not getattr(data, 'velocities', None) or not getattr(data, 'profiles', None):
-                raise ValueError("Data instance must have attributes 'velocities' and 'profiles'. Try running ACID first.")
+            if data.velocities is None or key not in data.profile:
+                raise ValueError(f"Data instance must have attributes 'velocities' and 'profile[key]' (key={key}).\n"\
+                                 f"Try running ACID first.")
             velocities = data.velocities
-            flux = data.profiles[0,0]
-            flux_err = data.profiles[0,1]
-            cov_matrix = data.profiles[0,2]
+            flux = data.profile[key][0]
+            flux_err = data.profile[key][1]
+            cov_matrix = data.profile[key][2]
         else:
             if velocities is None or flux is None:
                 raise ValueError("If no data instance is provided, then at least velocities and flux must be provided.")
@@ -326,11 +330,11 @@ class Profiles:
         tuple
             A tuple containing the copied x, y, yerr arrays, and the covariance matrix.
         """
-        x    = np.copy(self.velocities) if x    is None else x
-        y    = np.copy(self.flux)       if y    is None else y
-        yerr = self.flux_err            if yerr is None else yerr
+        x    = np.copy(self.velocities) if x    is None else np.array(x)
+        y    = np.copy(self.flux)       if y    is None else np.array(y)
+        yerr = self.flux_err            if yerr is None else np.array(yerr)
         yerr_copy = np.copy(yerr) if yerr is not None else yerr
-        cov_matrix = self.cov_matrix if cov_matrix is None else cov_matrix
+        cov_matrix = self.cov_matrix if cov_matrix is None else np.array(cov_matrix)
         cov_matrix_copy = np.copy(cov_matrix) if cov_matrix is not None else cov_matrix
         return x, y, yerr_copy, cov_matrix_copy
 

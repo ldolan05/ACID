@@ -50,7 +50,7 @@ def test_profile_validation_errors():
         Profiles(np.array([0, 1, 2]), np.array([1, 0.9, 1])).plot_fit("invalid")
 
 
-def test_profile_accepts_documented_list_inputs():
+def test_profile_accepts_list_inputs():
     # Array-like inputs are public API inputs and should be normalised before boolean indexing.
     profiles = Profiles([0, 1, 2], [1, 0.9, 1])
 

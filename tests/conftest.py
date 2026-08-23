@@ -151,5 +151,4 @@ def harps_result(harps_order_40):
     acid = Acid(velocities=velocities, linelist=linelist, verbose=0, seed=1)
 
     # Twelve steps exercise sampler-backed behavior without repeating a convergence run.
-    return acid.ACID(wavelengths, flux, errors, sn, nsteps=12, nwalkers=12,
-                     parallel=False, n_bins=8, pix_chunk=5)
+    return acid.ACID(wavelengths, flux, errors, sn, nsteps=100, parallel=False)
