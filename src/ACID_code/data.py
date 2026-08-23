@@ -750,7 +750,9 @@ class Data:
     @property
     def linelist(self) -> LineList|None:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
-        return LineList(self._linelist) if self._linelist is not None else None
+        if self._linelist is None:
+            return None
+        return LineList(self._linelist)
 
     @linelist.setter
     def linelist(self, linelist:Array2D|str|LineList|dict[str,Array1D]|None) -> None:

@@ -188,7 +188,9 @@ class LSD:
                 raise ValueError("Input alpha must be either 2D or 3D.")
 
         # Unpack the linelist stored in data
-        self.data.linelist = linelist # Raises if no linelist available, overwrites if input
+        self.data.linelist = linelist # overwrites if input
+        if self.data.linelist is None:
+            raise ValueError("No linelist has been set. Please set a linelist before running LSD.")
         wavelengths_linelist, depths_linelist = self.data.linelist
         original_wavelengths = wavelengths_linelist
 
