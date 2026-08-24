@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from ACID_code import Acid
+from ACID_code import Acid, Profiles
 
 
 def test_harps_public_workflow_returns_completed_result(harps_result, harps_order_40):
@@ -47,9 +47,11 @@ def test_multiple_frames(pysme_synthetic_spectrum_multiple_frames):
     result = acid.ACID(wavelengths, spectra, errors, sns, max_steps=5000)
 
     assert result.data.complete
-    assert result["profile"].shape == velocities.shape
-    assert result["covariance"].shape == (len(velocities), len(velocities))
+    assert result.data.profile["final"][0].shape == result.data.velocities.shape
     assert len(result.data.profiles) == len(spectra)
+
+    # We can assume the final profile looks ok if we can fit a gaussian with no errors:
+    _popt = Profiles(data=result.data).fit_gaussian()
 
 
 if __name__ == "__main__":

@@ -212,6 +212,18 @@ def test_removed_harps_entry_points_raise_migration_message():
     with pytest.raises(NotImplementedError, match="no longer supported"):
         ACID_HARPS()
 
+def test_reinitialising_acid_with_existing_sampler_reuses_backend(harps_result):
+    # The sampler property is a transparent view onto the underlying Data instance.
+    acid = Acid(data=harps_result.data)
+    assert acid.sampler is harps_result.sampler
+    nstepsacid1 = np.copy(acid.data.nsteps)
+
+    data = harps_result.data
+    acid2 = Acid(data=data)
+    acid2.ACID(nsteps=10, parallel=False)
+    assert acid2.sampler.backend is acid.sampler.backend
+    assert acid2.data.nsteps == nstepsacid1 + 10
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))

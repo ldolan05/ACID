@@ -18,14 +18,14 @@ skips = 5
 def legacy_test():
 
     def quickstart():
-        spec_file = fits.open('example/sample_spec_1.fits')
+        spec_file = fits.open('data/sample_spec_1.fits')
 
         wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
         spectrum = spec_file[1].data[::skips]     # Spectral Flux
         error = spec_file[2].data[::skips]        # Spectral Flux Errors
         sn = spec_file[3].data           # SN of Spectrum
 
-        linelist = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'data/linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
@@ -49,7 +49,7 @@ def legacy_test():
     def multiple_frames():
 
         # finds sample files in 'example directory'. Each file is a different frame.
-        files = glob.glob('example/sample_spec_*.fits')
+        files = glob.glob('data/sample_spec_*.fits')
 
         # create lists for wavelengths, spectra, errors and sn for all frames
         wavelengths = []
@@ -65,7 +65,7 @@ def legacy_test():
             errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
             sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
-        linelist = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'data/linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         deltav = acid.calc_deltav(wavelengths[0])
@@ -93,14 +93,14 @@ def legacy_test():
 
 def class_test():
     def classes_test(skips, nsteps):
-        spec_file = fits.open('example/sample_spec_1.fits')
+        spec_file = fits.open('data/sample_spec_1.fits')
 
         wavelength = spec_file[0].data   # Wavelengths in Angstroms
         spectrum = spec_file[1].data     # Spectral Flux
         error = spec_file[2].data        # Spectral Flux Errors
         sn = spec_file[3].data           # SN of Spectrum
 
-        linelist = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'data/linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         velocities = np.arange(-25, 25, 0.82)
@@ -133,14 +133,14 @@ def class_test():
 
 def verbosity_test():
     def no_verbosity():
-        spec_file = fits.open('example/sample_spec_1.fits')
+        spec_file = fits.open('data/sample_spec_1.fits')
 
         wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
         spectrum = spec_file[1].data[::skips]     # Spectral Flux
         error = spec_file[2].data[::skips]        # Spectral Flux Errors
         sn = spec_file[3].data           # SN of Spectrum
 
-        linelist = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'data/linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
@@ -152,14 +152,14 @@ def verbosity_test():
         return result
 
     def high_verbosity():
-        spec_file = fits.open('example/sample_spec_1.fits')
+        spec_file = fits.open('data/sample_spec_1.fits')
 
         wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
         spectrum = spec_file[1].data[::skips]     # Spectral Flux
         error = spec_file[2].data[::skips]        # Spectral Flux Errors
         sn = spec_file[3].data           # SN of Spectrum
 
-        linelist = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'data/linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         deltav = acid.calc_deltav(wavelength)  # velocity pixel size must not be smaller than the spectral pixel size
@@ -180,7 +180,7 @@ def verbosity_test():
 
 def deterministic_test():
     def deterministic_profile_fit(skips=5, nsteps=2000):
-        files = glob.glob('example/sample_spec_*.fits')
+        files = glob.glob('data/sample_spec_*.fits')
 
         # create lists for wavelengths, spectra, errors and sn for all frames
         wavelengths = []
@@ -196,7 +196,7 @@ def deterministic_test():
             errors.append(spec_file[2].data)         # Spectral Flux Errors
             sns.append(float(spec_file[3].data[0]))     # SN of Spectrum
 
-        linelist = 'example/example_linelist.txt' # Insert path to line list
+        linelist = 'data/linelist.txt' # Insert path to line list
 
         # choose a velocity grid for the final profile(s)
         velocities = np.arange(-25, 25, 0.82)
@@ -216,25 +216,25 @@ def deterministic_test():
     res.plot_acf()
 
 def data_and_convergence_test():
-    spec_file = fits.open('example/sample_spec_1.fits')
+    spec_file = fits.open('data/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
 
-    linelist = 'example/example_linelist.txt' # Insert path to line list
+    linelist = 'data/linelist.txt' # Insert path to line list
 
     # choose a velocity grid for the final profile(s)
-    velocities = np.arange(-25, 25, 0.82)
+    velocities = np.arange(-25, 25, 1.6)
 
     # run ACID function
     Acid = acid.Acid(velocities=velocities, linelist=linelist)
-    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, skips=skips)
+    result = Acid.ACID(wavelength, spectrum, error, sn, nsteps=2000, skips=2)
 
     data = result.data
 
-    Acid = acid.Acid(data=data) # data does not store the sampler
+    Acid = acid.Acid(data=data)
     result2 = Acid.ACID(nsteps=1000, parallel=True)
 
     assert result2.data.nsteps == 3000, "Continue sampling did not add the correct" \
@@ -250,14 +250,14 @@ def data_and_convergence_test():
     return
 
 def test_edge_cases():
-    spec_file = fits.open('example/sample_spec_1.fits')
+    spec_file = fits.open('data/sample_spec_1.fits')
 
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     # sn = spec_file[3].data         # SN of Spectrum
 
-    linelist = 'example/example_linelist.txt' # Insert path to line list
+    linelist = 'data/linelist.txt' # Insert path to line list
     full_linelist = np.genfromtxt('%s'%linelist, skip_header=4, delimiter=',', usecols=(1,9), invalid_raise=False)
     wl = full_linelist[:,0]
     depths = full_linelist[:,1]
@@ -297,7 +297,7 @@ def test_edge_cases():
     assert result is None, "When run_mcmc is set to False, the ACID function should return None, but it did not."
 
     # Guess sn for multiple frames, plot multiple frames
-    files = glob.glob('example/sample_spec_*.fits')
+    files = glob.glob('data/sample_spec_*.fits')
     wavelengths = []
     spectra = []
     errors = []
@@ -331,7 +331,7 @@ def test_edge_cases():
 def test_data_and_datalist():
     # Test that the data class can be initialized with a datalist, 
     # and that the datalist is correctly stored in the data class
-    files = glob.glob('example/sample_spec_*.fits')
+    files = glob.glob('data/sample_spec_*.fits')
     wavelengths = []
     spectra = []
     errors = []
@@ -342,7 +342,7 @@ def test_data_and_datalist():
         spectra.append(spec_file[1].data)        # Spectral Flux
         errors.append(spec_file[2].data)         # Spectral Flux Errors
         sn.append(spec_file[3].data)
-    linelist = 'example/example_linelist.txt'
+    linelist = 'data/linelist.txt'
     velocities = np.arange(-25, 25, acid.calc_deltav(wavelengths[0]))
     datalist = acid.DataList(wavelengths, spectra, errors, sn, velocities, linelist, skips=skips)
     order_range = [20,21,22]
@@ -372,12 +372,12 @@ def test_data_and_datalist():
 
 def saves_and_loads():
 
-    spec_file = fits.open('example/sample_spec_1.fits')
+    spec_file = fits.open('data/sample_spec_1.fits')
     wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
     spectrum = spec_file[1].data[::skips]     # Spectral Flux
     error = spec_file[2].data[::skips]        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
-    linelist = 'example/example_linelist.txt' # Insert path to line list
+    linelist = 'data/linelist.txt' # Insert path to line list
     deltav = acid.calc_deltav(wavelength)
     velocities = np.arange(-25, 25, deltav)
     result = acid.ACID(wavelength, spectrum, error, linelist, sn, velocities, nsteps=2000)
@@ -403,12 +403,12 @@ def saves_and_loads():
     # Testing regular result
     # Get back a result to test it with
     data = acid.Data()
-    spec_file = fits.open('example/sample_spec_1.fits')
+    spec_file = fits.open('data/sample_spec_1.fits')
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
     sn = spec_file[3].data           # SN of Spectrum
-    linelist = 'example/example_linelist.txt' # Insert path to line list
+    linelist = 'data/linelist.txt' # Insert path to line list
     deltav = acid.calc_deltav(wavelength)
     velocities1 = np.arange(-25, 25, deltav)
     Acid = acid.Acid(velocities=velocities1, linelist=linelist, data=data)
@@ -585,7 +585,7 @@ def error_and_inputs_handlings():
     assert type(masks) == dict, "Masking lines did not return masks as a dict when with_names is True."
 
     # Check data reset
-    spec_file = fits.open('example/sample_spec_1.fits')
+    spec_file = fits.open('data/sample_spec_1.fits')
     wavelength = spec_file[0].data   # Wavelengths in Angstroms
     spectrum = spec_file[1].data     # Spectral Flux
     error = spec_file[2].data        # Spectral Flux Errors
@@ -607,12 +607,12 @@ def error_and_inputs_handlings():
     assert data.errors["input"].ndim == data.wavelengths["input"].ndim, "Data instance did not calculate errors from the SN"
 
 def LSD():
-    spec_file = fits.open('example/sample_spec_1.fits')
+    spec_file = fits.open('data/sample_spec_1.fits')
     wavelength = spec_file[0].data[::5]   # Wavelengths in Angstroms
     spectrum = spec_file[1].data[::5]     # Spectral Flux
     error = spec_file[2].data[::5]        # Spectral Flux Errors
     sn = spec_file[3].data                # SN of Spectrum
-    linelist = 'example/example_linelist.txt' # Insert path to line list
+    linelist = 'data/linelist.txt' # Insert path to line list
     deltav = acid.calc_deltav(wavelength)
     velocities1 = np.arange(-25, 25, deltav)
     Acid = acid.Acid(velocities=velocities1, linelist=linelist)

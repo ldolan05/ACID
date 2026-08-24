@@ -82,7 +82,7 @@ def pysme_synthetic_spectrum():
     linelist = PROJECT_ROOT / "data" / "linelist.txt" # Insert path to line list
 
     # Constant errors and S/N make expected clipping and recovery deterministic.
-    return wavelengths, flux, errors, sn, velocities, linelist
+    return wavelengths, flux, errors, sn, velocities, str(linelist)
 
 @pytest.fixture
 def pysme_synthetic_spectrum_multiple_frames():
@@ -110,7 +110,8 @@ def pysme_synthetic_spectrum_multiple_frames():
     linelist = PROJECT_ROOT / "data" / "linelist.txt" # Insert path to line list
 
     # Constant errors and S/N make expected clipping and recovery deterministic.
-    return wavelengths, spectra, errors, sns, velocities, linelist
+    # TODO: remove the str() (ie) accept posix path inputs
+    return wavelengths, spectra, errors, sns, velocities, str(linelist)
 
 @pytest.fixture
 def sample_spectrum_path():
