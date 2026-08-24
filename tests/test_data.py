@@ -285,7 +285,7 @@ def test_data_plot_methods_validate_missing_intermediate_state():
     data.config.verbose = 0
     with pytest.raises(ValueError, match="No linelist"):
         data.plot_linelist(return_fig=True)
-    with pytest.raises(ValueError, match="plot_type"):
+    with pytest.raises(ValueError, match="key"):
         data.plot_continuum_fit("unknown", return_fig=True)
     with pytest.raises(ValueError, match="Residual masking"):
         data.plot_residual_masking()

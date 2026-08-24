@@ -1234,14 +1234,14 @@ class Data:
             if value is not None:
                 getattr(self, name)["input"] = value
 
-    def plot_continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None:
+    def plot_continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None|tuple:
         """
         Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
 
         Parameters
         ----------
-        plot_type : str, optional
-            The type of continuum fit to plot, either "initial" for the initial continuum fit or
+        key : str, optional
+            The type of continuum fit to plot and pull the data from, either "initial" for the initial continuum fit or
             "masked" for the continuum fit after residual masking. Default is "masked".
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False.
@@ -1250,10 +1250,10 @@ class Data:
         """
         # Check we have all inputs needed for plot
         if key not in ["initial", "masked"]:
-            raise ValueError("plot_type must be either 'initial' or 'masked'")
+            raise ValueError("key must be either 'initial' or 'masked' (these are the only two steps that produce a scipy continuum fit).")
         if key not in self.plotting_variables:
-            raise ValueError(f"No plotting variables found for plot_type={key!r}. " \
-                             "Please ensure that the continuum fit has been performed for this plot_type.")
+            raise ValueError(f"No plotting variables found for key={key!r}. " \
+                             "Please ensure that the continuum fit has been performed for this key.")
         if not all(
             attr in self.plotting_variables[key] for attr in [
                 "clipped_waves", "clipped_flux", "good"]
