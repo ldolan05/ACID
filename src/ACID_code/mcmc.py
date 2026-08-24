@@ -270,8 +270,12 @@ class MCMC:
         """
         Soft prior on the profile points (z) to prevent them from going too far outside the expected range.
         """
+        if np.all(z == -2): # sentinel returned for invalid deterministic models
+            return -np.inf
+
+        # Set the expected range of acceptable values, we dont expect "good" profiles to fall outside this
         if self.od:
-            lo, hi = -0.4, 1.6
+            lo, hi = -0.5, 1.8
         else:
             lo, hi = -1.0, 0.5
 
@@ -279,6 +283,7 @@ class MCMC:
         below = np.maximum(lo - z, 0.0)
         above = np.maximum(z - hi, 0.0)
 
+        # Set a gaussian penalty for values outside the expected range, with a scale factor to control the strength of the penalty
         return -0.5 * np.sum((below / scale)**2 + (above / scale)**2)
 
     def log_probability(self, theta):

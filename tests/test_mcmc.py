@@ -6,8 +6,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ACID_code import Config, LSD, MCMC
+from ACID_code import Acid, Config, LSD, MCMC
 from ACID_code import mcmc as mcmc_module
+from emcee.ensemble import walkers_independent
 
 
 @pytest.fixture
@@ -73,6 +74,22 @@ def test_deterministic_model_rejects_non_positive_fitted_flux(mcmc):
 
     assert np.all(fitted_flux < 0)
     np.testing.assert_array_equal(profile, np.full(mcmc.k_max, -2))
+    assert mcmc([-1.0, 0.0]) == -np.inf
+
+
+@pytest.mark.long
+@pytest.mark.parametrize("seed", [1, 2, 3, 4, 5, 6, 7])
+def test_harps_sampler_stays_bounded_across_seeds(harps_order_40, seed):
+    # These seeds previously overflowed or sent the polynomial coefficients towards infinity.
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist, verbose=0, seed=seed)
+    acid.ACID(wavelengths, flux, errors, sn, poly_ord=4, n_bins=10, run_mcmc=False, parallel=False)
+    acid.run_mcmc_until_converged(1000, state=acid.data.initial_state)
+
+    chain = acid.sampler.get_chain()
+    assert np.all(np.isfinite(chain))
+    assert np.max(np.abs(chain)) < 10
+    assert walkers_independent(chain[-1])
 
 
 def test_linear_flux_model_uses_shifted_profile_parameters(synthetic_spectrum):
