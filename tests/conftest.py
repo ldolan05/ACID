@@ -1,10 +1,7 @@
 """Shared pytest fixtures for the ACID test suite."""
 from pathlib import Path
-import sys
-
-import matplotlib
+import sys, matplotlib, glob, pytest
 import numpy as np
-import pytest
 from astropy.io import fits
 
 
@@ -62,6 +59,58 @@ def synthetic_spectrum():
     # Constant errors and S/N make expected clipping and recovery deterministic.
     return wavelengths, flux, np.full_like(flux, 0.01), 100.0, velocities, linelist
 
+@pytest.fixture
+def pysme_synthetic_spectrum():
+    """The original synthetic spectrum suitable for fast LSD and MCMC tests."""
+    # Use a dense wavelength grid but only three velocity bins to keep matrix work small.
+    spec_file = fits.open(PROJECT_ROOT / 'data' / 'sample_spec_1.fits')
+    
+    wavelengths = spec_file[0].data  # Wavelengths in Angstroms
+    flux        = spec_file[1].data  # Spectral Flux
+    errors      = spec_file[2].data  # Spectral Flux Errors
+    sn          = spec_file[3].data  # SN of Spectrum
+
+    # Take only half the data, otherwise order is too big
+    mask = wavelengths < 4500
+    wavelengths = wavelengths[mask]
+    flux        = flux[mask]
+    errors      = errors[mask]
+
+    velocities = None # will also test that None inputs get accepted
+
+    # Two isolated lines are sufficient to test alpha construction and profile recovery.
+    linelist = PROJECT_ROOT / "data" / "linelist.txt" # Insert path to line list
+
+    # Constant errors and S/N make expected clipping and recovery deterministic.
+    return wavelengths, flux, errors, sn, velocities, linelist
+
+@pytest.fixture
+def pysme_synthetic_spectrum_multiple_frames():
+    files = glob.glob(str(PROJECT_ROOT / 'data' / 'sample_spec_*.fits'))
+    
+    # create lists for wavelengths, spectra, errors and sn for all frames
+    wavelengths = []
+    spectra = []
+    errors = []
+    sns = []
+
+    for file in files:
+        spec_file = fits.open('%s'%file)
+
+        mask = spec_file[0].data < 4500
+
+        wavelengths.append(spec_file[0].data[mask])
+        spectra.append(spec_file[1].data[mask])
+        errors.append(spec_file[2].data[mask])
+        sns.append(float(spec_file[3].data[0]))
+
+    velocities = None # will also test that None inputs get accepted
+
+    # Two isolated lines are sufficient to test alpha construction and profile recovery.
+    linelist = PROJECT_ROOT / "data" / "linelist.txt" # Insert path to line list
+
+    # Constant errors and S/N make expected clipping and recovery deterministic.
+    return wavelengths, spectra, errors, sns, velocities, linelist
 
 @pytest.fixture
 def sample_spectrum_path():

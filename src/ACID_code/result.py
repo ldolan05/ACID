@@ -234,7 +234,7 @@ class Result:
             continuum_error = self._get_continuum_error(norm_wl, all_poly_coeffs)
             fitted_flux = flux / continuum
             fitted_errors = np.sqrt((errors/continuum)**2 + (fitted_flux*continuum_error/continuum)**2)
-            lsd = LSD.LSD(self.data)
+            lsd = LSD(self.data)
             lsd.run_LSD(wavelengths, fitted_flux, fitted_errors, sn, alpha=alpha)
             profiles.append((lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F))
 

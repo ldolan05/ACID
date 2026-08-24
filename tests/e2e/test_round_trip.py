@@ -39,6 +39,18 @@ def test_harps_non_deterministic_sampling_until_convergence_limit(harps_order_40
         assert figure.axes
         plt.close(figure)
 
+@pytest.mark.long
+def test_multiple_frames(pysme_synthetic_spectrum_multiple_frames):
+    """The public workflow should accept multiple frames and return a single profile."""
+    wavelengths, spectra, errors, sns, velocities, linelist = pysme_synthetic_spectrum_multiple_frames
+    acid = Acid(velocities=velocities, linelist=linelist, verbose=2, seed=1)
+    result = acid.ACID(wavelengths, spectra, errors, sns, max_steps=5000)
+
+    assert result.data.complete
+    assert result["profile"].shape == velocities.shape
+    assert result["covariance"].shape == (len(velocities), len(velocities))
+    assert len(result.data.profiles) == len(spectra)
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--long"]))

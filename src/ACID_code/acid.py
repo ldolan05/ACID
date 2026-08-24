@@ -1074,6 +1074,11 @@ class Acid:
                 backend.reset(self.data.nwalkers, self.data.ndim)
             if self.config.verbose >= 2:
                 print(f"Using sampler backend at {self.config.sampler_path}")
+
+        elif self.sampler is not None:
+            # And, if it is still none, we check if self.sampler already exists in memory, 
+            # and if so, we reuse its backend. We started with the path backend as that supersedes
+            backend = self.sampler.backend
         # else: leave none and a normal in-memory sampler backend is used
 
         if self.config.cores is None:
