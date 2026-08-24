@@ -17,7 +17,7 @@ def test_acid_runs_preprocessing_without_mcmc(harps_order_40):
     acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
 
     result = acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False,
-                       n_bins=5, pix_chunk=5, parallel=False)
+                       n_bins=5, parallel=False)
 
     # Preprocessing stores its intermediate profile and alpha matrix on Data.
     assert result is None
@@ -31,7 +31,7 @@ def test_acid_accepts_multiple_frames_without_sampling(harps_order_40):
     acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
     acid.ACID(np.array([wavelengths, wavelengths]), np.array([flux, flux]),
               np.array([errors, errors]), np.array([sn, sn]), run_mcmc=False,
-              n_bins=5, pix_chunk=5, parallel=False)
+              parallel=False)
 
     # ACID keeps frames separate while producing a common velocity-grid profile.
     assert len(acid.data.wavelengths["input"]) == 2
@@ -43,7 +43,7 @@ def test_legacy_wrapper_maps_positional_arguments(harps_order_40):
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
 
     result = ACID(wavelengths, flux, errors, linelist, sn, velocities,
-                  run_mcmc=False, verbose=0, n_bins=5, pix_chunk=5, parallel=False)
+                  run_mcmc=False, verbose=0, parallel=False)
 
     assert result is None
 
@@ -55,8 +55,7 @@ def test_verbosity_inputs_are_preserved_during_harps_preprocessing(harps_order_4
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     # Each supported verbosity spelling should configure the same science calculation.
     acid = Acid(velocities=velocities, linelist=linelist, verbose=verbose)
-    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False, n_bins=5,
-              pix_chunk=5, parallel=False)
+    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False, parallel=False)
 
     assert acid.config.verbose == expected
     assert "masked" in acid.data.profile
@@ -78,8 +77,7 @@ def test_continuum_plots_are_available_after_preprocessing(harps_order_40):
     # Keep the run sampler-free: only the two continuum plotting states are needed here.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
-    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False, n_bins=5,
-              pix_chunk=5, parallel=False)
+    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False, parallel=False)
 
     # Initial and residual-masked continua are distinct diagnostic stages.
     initial, initial_ax = acid.data.plot_continuum_fit("initial", return_fig=True)
@@ -100,7 +98,7 @@ def test_debug_result_stores_extra_lsd_and_indexes_multi_profiles(harps_order_40
     acid = Acid(velocities=velocities, linelist=linelist, verbose=4)
     result = acid.ACID(wavelengths, flux, errors, sn,
                        profile_groups=np.arange(len(linelist_wavelengths)) % 2,
-                       nsteps=12, nwalkers=12, parallel=False, n_bins=5, pix_chunk=5)
+                       nsteps=12, nwalkers=12, parallel=False)
 
     # Indexing must select group, frame, profile/error components consistently.
     assert "lsd_final" in result.data.debug

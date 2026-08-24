@@ -1,3 +1,4 @@
+#%%
 import numpy as np
 import pytest
 import matplotlib.pyplot as plt
@@ -28,8 +29,7 @@ def test_harps_non_deterministic_sampling_until_convergence_limit(harps_order_40
         wavelengths, flux, errors, sn, deterministic_profile=False, max_steps=120,
         check_interval=20, min_checks=1, min_tau_factor=1, tau_tol=1.0,
         moves=[("StretchMove", 0.6, {}), ("DEMove", 0.4)], parallel=False,
-        n_bins=8, pix_chunk=5,
-    )
+        n_bins=8)
 
     assert result.data.complete
     assert 0 < result.data.nsteps <= 120

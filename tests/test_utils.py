@@ -1,3 +1,4 @@
+#%%
 """Focused tests for the numerical, persistence, plotting, and environment helpers."""
 import matplotlib.pyplot as plt
 import numpy as np

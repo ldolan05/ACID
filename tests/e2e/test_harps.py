@@ -1,3 +1,4 @@
+#%%
 """Integration tests for the real HARPS spectra included with ACID."""
 import numpy as np
 import pytest
@@ -45,9 +46,13 @@ def test_harps_e2ds_extraction_and_preprocessing(tmp_path, harps_paths, linelist
 def test_harps_s1d_full_spectrum_runs_acid(harps_paths, linelist_path):
     """Run the complete s1d spectrum through ACID; enabled only with ``pytest --long``."""
     wavelengths, flux, errors = _extract_s1d(harps_paths["s1d"])
+
+    # The full spectrum has bad edges, so we cut the first 20% and last 20% of the data:
+    mask = (wavelengths > np.percentile(wavelengths, 20)) & (wavelengths < np.percentile(wavelengths, 80))
+    wavelengths, flux, errors = wavelengths[mask], flux[mask], errors[mask]
     acid = Acid(velocities=np.arange(-25, 25, 1.0), linelist=str(linelist_path), verbose=0)
     result = acid.ACID(wavelengths, flux, errors, nsteps=12, nwalkers=12,
-                       parallel=False, n_bins=30, pix_chunk=100)
+                       parallel=False, n_bins=30)
 
     assert result.data.complete
     assert result["profile"].shape == acid.data.velocities.shape
