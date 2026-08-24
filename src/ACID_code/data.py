@@ -946,12 +946,12 @@ class Data:
         if input_sn is None and input_errors is None:
             raise ValueError("One of input_sn or input_errors must be provided.")
 
-        elif input_errors is not None:
+        elif input_sn is None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
             if self.config.verbose >= 2:
                 print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
 
-        elif input_sn is not None:
+        elif input_errors is None:
             # Input SN can accidentally be input with the same shape as the wavelengths, so correct now if thats the case
             if input_sn.ndim == input_wavelengths.ndim:
                 if self.config.verbose >= 2:

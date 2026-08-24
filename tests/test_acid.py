@@ -102,6 +102,17 @@ def test_acid_estimates_errors_from_per_pixel_sn(harps_order_40):
     assert np.all(np.isfinite(acid.data.errors["input"]))
 
 
+def test_acid_preserves_explicit_sn_when_errors_are_also_provided(harps_order_40):
+    """An explicit S/N must not be replaced by one estimated from supplied errors."""
+    wavelengths, flux, errors, _, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1)
+    result = acid.ACID(wavelengths, flux, errors, 10000, nsteps=12, nwalkers=12)
+
+    np.testing.assert_array_equal(result.data.sn["input"], [10000])
+    assert result.data.sn["combined"] == 10000
+    assert result.data.sn["final"] == 10000
+
+
 def test_continuum_plots_are_available_after_preprocessing(harps_order_40):
     # Keep the run sampler-free: only the two continuum plotting states are needed here.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
