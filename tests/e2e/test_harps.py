@@ -26,20 +26,22 @@ def _extract_s1d(s1d_path):
     return wavelengths * (1 + header["ESO DRS BERV"] / 299792.458), flux, errors
 
 
-def test_harps_e2ds_extraction_and_preprocessing(tmp_path, harps_paths, linelist_path):
-    """Run ACID preprocessing for a real HARPS e2ds order after extraction and BERV correction."""
+def test_harps_e2ds_datalist_workflow(tmp_path, harps_paths, linelist_path):
+    """Run a real HARPS e2ds order through the public DataList workflow."""
     wavelengths, flux, errors, sn = extract_harps_e2ds(harps_paths["e2ds"], harps_paths["flat"])
     linelist_wavelengths, _ = LineList.validate_linelist(str(linelist_path))
     order = 40
     assert np.count_nonzero((linelist_wavelengths >= wavelengths[order].min()) &
                             (linelist_wavelengths <= wavelengths[order].max())) >= 10
     datalist = DataList(wavelengths[[order]], flux[[order]], errors[[order]], sn[[order]],
-                        np.arange(-25, 25, 1.0), str(linelist_path), order_range=[order],
-                        save_dir=str(tmp_path), verbose=0)
-    datalist.run_ACID(run_mcmc=False, parallel=False, n_bins=8, pix_chunk=5)
+                        np.arange(-25, 25, 5.0), str(linelist_path), order_range=[order],
+                        save_dir=str(tmp_path), nsteps=20, seed=1)
+    datalist.run_ACID()
 
     assert datalist[order].exception is None
-    assert "masked" in datalist[order].profile
+    assert datalist[order].complete
+    assert datalist[order].profile["final"][0].shape == datalist.velocities.shape
+    assert datalist[order].nsteps == 20
 
 
 @pytest.mark.long
@@ -50,9 +52,8 @@ def test_harps_s1d_full_spectrum_runs_acid(harps_paths, linelist_path):
     # The full spectrum has bad edges, so we cut the first 20% and last 20% of the data:
     mask = (wavelengths > np.percentile(wavelengths, 20)) & (wavelengths < np.percentile(wavelengths, 80))
     wavelengths, flux, errors = wavelengths[mask], flux[mask], errors[mask]
-    acid = Acid(velocities=np.arange(-25, 25, 1.0), linelist=str(linelist_path), verbose=0)
-    result = acid.ACID(wavelengths, flux, errors, nsteps=12, nwalkers=12,
-                       parallel=False, n_bins=30)
+    acid = Acid(velocities=np.arange(-25, 25, 1.0), linelist=str(linelist_path))
+    result = acid.ACID(wavelengths, flux, errors, nsteps=12, nwalkers=12)
 
     assert result.data.complete
     assert result["profile"].shape == acid.data.velocities.shape

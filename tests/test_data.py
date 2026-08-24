@@ -20,11 +20,21 @@ def test_config_priorities_properties_and_environment(monkeypatch):
     assert config.verbose == 0
     assert config.order == 3
     assert config.poly_ord == 4
+    verbose_config = Config()
+    verbose_config.update_lowpri(verbose="low")
+    verbose_config.update_hipri(verbose="high")
+    verbose_config.update_lowpri(verbose="off")
+    assert verbose_config.verbose == 3
     # Invalid configuration and misplaced Data attributes should fail clearly.
     with pytest.raises(KeyError):
         config.update_hipri(not_a_setting=True)
     with pytest.raises(AttributeError):
         config.linelist = []
+    with pytest.raises(AttributeError):
+        config.not_a_setting = True
+    config.order = 4
+    config.order = None
+    assert config.order == 4
 
     # Environment overrides are intentionally evaluated on attribute access.
     monkeypatch.setenv("_ACID_CONFIG", '{"order": 99}')
@@ -44,10 +54,16 @@ def test_config_dictionary_views_repr_and_verbose_validation(capsys):
     # Defaults are printable for interactive inspection, and invalid verbose values fail early.
     Config.print_defaults()
     assert "poly_ord" in capsys.readouterr().out
-    with pytest.raises(ValueError, match="between 0 and 4"):
-        config.verbose = 5
+    for invalid_verbose in (-1, 5):
+        with pytest.raises(ValueError, match="between 0 and 4"):
+            config.verbose = invalid_verbose
     with pytest.raises(ValueError, match="not recognised"):
         config.verbose = "loud"
+    config.verbose = True
+    assert config.verbose == 2
+    config.verbose = "low"
+    config.verbose = None
+    assert config.verbose == 1
 
 
 def test_masking_lines_accepts_compact_inputs_and_masks_grid():
@@ -57,6 +73,8 @@ def test_masking_lines_accepts_compact_inputs_and_masks_grid():
 
     # Both the combined and named-mask interfaces should describe the same region.
     assert lines.get_1d_mask_on_grid(grid).tolist() == [False, True, False]
+    masks = lines.get_masks(grid)
+    assert isinstance(masks, list) and len(masks) == 1
     assert list(lines.get_masks(grid, with_names=True)) == ["telluric"]
     with pytest.raises(ValueError):
         MaskingLines({"bad": {"lines": [5000.0]}})
@@ -112,7 +130,7 @@ def test_linelist_sorts_and_rejects_invalid_shapes():
 
 @pytest.mark.parametrize("linelist", [
     [[5002.0, 5000.0], [0.2, 0.1]],
-    {"wavelengths": [5002.0, 5000.0], "depths": [0.2, 0.1]},
+    {"wavelengths": [5002.0, 5000.0], "depths": [0.2, 0.1], "ignored": True},
     LineList({"wavelengths": np.array([5002.0, 5000.0]),
               "depths": np.array([0.2, 0.1])}),
 ])
@@ -137,7 +155,7 @@ def test_linelist_file_indexing_and_invalid_line_removal(linelist_path):
     # Invalid depths and wavelengths are removed together, retaining the validity mask.
     kept_wavelengths, kept_depths, mask = LineList.drop_invalid_lines(
         np.array([5000.0, np.nan, 5002.0, 5003.0]),
-        np.array([0.1, 0.2, -0.1, 1.0]), return_mask=True, verbose=0,
+        np.array([0.1, 0.2, -0.1, 1.0]), return_mask=True,
     )
     np.testing.assert_array_equal(mask, [True, False, False, False])
     np.testing.assert_array_equal(kept_wavelengths, [5000.0])
@@ -148,7 +166,6 @@ def test_data_input_reset_and_pickle_round_trip(tmp_path, synthetic_spectrum):
     # Store a small exact spectrum so the pickle round trip can be compared exactly.
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
     data = Data()
-    data.config = Config(verbose=0)
     data.set_inputs(wavelengths, flux, errors, sn)
     data.linelist = linelist
     data.velocities = velocities
@@ -168,7 +185,6 @@ def test_data_input_reset_and_pickle_round_trip(tmp_path, synthetic_spectrum):
 def test_data_input_sorting_skips_and_selective_reset():
     # Inputs arrive in descending order and are sub-sampled only after sorting.
     data = Data()
-    data.config = Config(verbose=0)
     wavelengths = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
     flux = np.array([1.0, 0.9, 0.8, 0.9, 1.0])
     errors = np.full(5, 0.01)
@@ -185,6 +201,9 @@ def test_data_input_sorting_skips_and_selective_reset():
     np.testing.assert_array_equal(data.input_profile_groups, [0, 1])
     assert data.alpha == {}
 
+    with pytest.raises(ValueError, match="more than 1 value"):
+        Data().set_inputs([1.0], [1.0], [0.1], 10.0)
+
     data.reset(preserve_combined=False, preserve_input_profile_groups=False)
     assert "combined" not in data.wavelengths
     assert data.input_profile_groups is None
@@ -194,7 +213,6 @@ def test_data_set_inputs_reuses_complete_existing_inputs(synthetic_spectrum):
     # Once all inputs exist, a completely empty update keeps them and rebuilds combined state.
     wavelengths, flux, errors, sn, _, _ = synthetic_spectrum
     data = Data()
-    data.config = Config(verbose=0)
     data.set_inputs(wavelengths, flux, errors, sn)
     original = data.flux["input"].copy()
     data.set_inputs()
@@ -212,7 +230,6 @@ def test_data_estimates_errors_from_per_pixel_harps_sn_and_plots_lines(harps_ord
     wavelengths, flux, _, sn, velocities, linelist = harps_order_40
     # This follows the documented route where one S/N value is supplied per pixel.
     data = Data()
-    data.config = Config(verbose=0)
     data.set_inputs(wavelengths, flux, input_sn=np.full_like(flux, sn))
     data.linelist = linelist
     data.velocities = velocities
@@ -224,7 +241,6 @@ def test_data_linelist_plot_supports_indices_and_bounds(harps_order_40):
     # Give Data a real line list, then select by both explicit indices and wavelength bounds.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     data = Data()
-    data.config = Config(verbose=0)
     data.set_inputs(wavelengths, flux, errors, sn)
     data.linelist = linelist
     data.velocities = velocities
@@ -261,7 +277,6 @@ def test_data_properties_and_result_view(harps_result):
 
     # Incomplete and failed data do not expose misleading Result objects.
     incomplete = Data()
-    incomplete.config.verbose = 0
     assert incomplete.result is None
     incomplete.exception = RuntimeError("failed")
     assert incomplete.result is None
@@ -282,7 +297,6 @@ def test_data_residual_masking_plot_uses_stored_acid_intermediates(harps_result)
 def test_data_plot_methods_validate_missing_intermediate_state():
     # Plotting before its corresponding processing stage should name the missing prerequisite.
     data = Data()
-    data.config.verbose = 0
     with pytest.raises(ValueError, match="No linelist"):
         data.plot_linelist(return_fig=True)
     with pytest.raises(ValueError, match="key"):
@@ -295,7 +309,6 @@ def test_data_velocity_and_linelist_overwrites_clear_derived_state(synthetic_spe
     # Populate derived state, then change each dependency and check it is invalidated.
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
     data = Data()
-    data.config = Config(verbose=0)
     data.set_inputs(wavelengths, flux, errors, sn)
     data.velocities = velocities
     data.linelist = linelist
@@ -310,6 +323,9 @@ def test_data_velocity_and_linelist_overwrites_clear_derived_state(synthetic_spe
     data.linelist = changed_linelist
     assert data.alpha == {}
     assert data.input_profile_groups is None
+    stored_depths = data.linelist["depths"].copy()
+    data.linelist = None
+    np.testing.assert_array_equal(data.linelist["depths"], stored_depths)
 
     with pytest.raises(ValueError, match="finite"):
         data.velocities = np.array([0.0, np.nan])
@@ -318,13 +334,15 @@ def test_data_velocity_and_linelist_overwrites_clear_derived_state(synthetic_spe
 def test_datalist_indexes_orders_and_persists_inputs(tmp_path, synthetic_spectrum):
     # Use non-consecutive order labels to test the instrument-order mapping explicitly.
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
+    configs = [Config(poly_ord=2), Config(poly_ord=4)]
     datalist = DataList(np.array([wavelengths, wavelengths]), np.array([flux, flux]),
                         np.array([errors, errors]), np.array([sn, sn]), velocities, linelist,
-                        order_range=[10, 12], save_dir=str(tmp_path), verbose=0)
+                        order_range=[10, 12], config=configs, save_dir=str(tmp_path))
 
     # Initialisation saves a lightweight Data object for every requested order.
     assert len(datalist) == 2
     assert datalist[12].config.order == 12
+    assert [datalist[order].config.poly_ord for order in [10, 12]] == [2, 4]
     assert (tmp_path / "order_10" / "data.pkl").exists()
     with pytest.raises(KeyError):
         _ = datalist[11]
@@ -336,7 +354,7 @@ def test_datalist_chi_squared_plot_uses_completed_orders():
     data_list = []
     for order, scale in enumerate((1.0, 2.0), start=10):
         data = Data()
-        data.config = Config(order=order, order_range=[10, 11], verbose=0)
+        data.config = Config(order=order, order_range=[10, 11])
         data.velocities = velocities
         data.profile["final"] = (np.ones(3), np.full(3, 0.01), np.eye(3) * 1e-4)
         data.flux["final"] = np.array([1.0, 0.9, 1.1])
@@ -344,7 +362,7 @@ def test_datalist_chi_squared_plot_uses_completed_orders():
         data.errors["final"] = np.full(3, 0.01)
         data_list.append(data)
 
-    datalist = DataList.from_datalist(data_list, verbose=0)
+    datalist = DataList.from_datalist(data_list)
     fig, ax = datalist.plot_chi2(return_fig=True)
 
     np.testing.assert_array_equal(ax.lines[0].get_xdata(), [10, 11])
@@ -360,7 +378,7 @@ def completed_datalist():
     for order, depth in zip([20, 21, 22], [0.02, 0.04, 0.06]):
         # Construct the minimum final state consumed by DataList combination and plots.
         data = Data()
-        data.config = Config(order=order, order_range=[20, 21, 22], verbose=0)
+        data.config = Config(order=order, order_range=[20, 21, 22])
         data.velocities = velocities
         profile = 1 - depth * np.exp(-velocities ** 2 / 4)
         errors = np.full_like(profile, 0.01)
@@ -371,7 +389,7 @@ def completed_datalist():
         data.forward_y["final"] = np.array([1.0, 0.99, 1.00])
         data.errors["final"] = np.full(3, 0.01)
         data_list.append(data)
-    return DataList.from_datalist(data_list, verbose=0)
+    return DataList.from_datalist(data_list)
 
 
 def test_datalist_order_mapping_append_and_range_management(completed_datalist):
@@ -382,7 +400,7 @@ def test_datalist_order_mapping_append_and_range_management(completed_datalist):
 
     # Duplicates require an explicit overwrite rather than silently replacing data.
     duplicate = Data()
-    duplicate.config = Config(order=21, order_range=[20, 21, 22], verbose=0)
+    duplicate.config = Config(order=21, order_range=[20, 21, 22])
     duplicate.velocities = datalist.velocities
     with pytest.raises(ValueError, match="already exists"):
         datalist.append(duplicate)
@@ -391,7 +409,7 @@ def test_datalist_order_mapping_append_and_range_management(completed_datalist):
 
     # Extending the range allows a newly observed order to be added safely.
     new_order = Data()
-    new_order.config = Config(order=23, order_range=[20, 21, 22], verbose=0)
+    new_order.config = Config(order=23, order_range=[20, 21, 22])
     new_order.velocities = datalist.velocities
     datalist.append(new_order, extend=True)
     assert datalist.orders.tolist() == [20, 21, 22, 23]
@@ -432,11 +450,11 @@ def test_datalist_setter_and_from_datalist_validate_members_and_velocities(compl
     # Every order must have a unique label and share one velocity grid.
     duplicate = Data().from_dict(completed_datalist[20].to_dict())
     with pytest.raises(ValueError, match="unique"):
-        DataList.from_datalist([completed_datalist[20], duplicate], verbose=0)
+        DataList.from_datalist([completed_datalist[20], duplicate])
     changed_velocity = Data().from_dict(completed_datalist[21].to_dict())
     changed_velocity.velocities = changed_velocity.velocities + 0.1
     with pytest.raises(ValueError, match="same velocity grid"):
-        DataList.from_datalist([completed_datalist[20], changed_velocity], verbose=0)
+        DataList.from_datalist([completed_datalist[20], changed_velocity])
 
 
 def test_datalist_combines_profiles_and_exposes_all_diagnostics(completed_datalist):
@@ -479,8 +497,8 @@ def test_datalist_save_load_and_input_validation(tmp_path, completed_datalist):
     # Saving a packed DataList should permit loading from either its directory or pickle file.
     datalist = completed_datalist
     datalist.save(str(tmp_path))
-    from_directory = DataList.load(str(tmp_path), verbose=0)
-    from_file = DataList.load(str(tmp_path / "datalist.pkl"), verbose=0)
+    from_directory = DataList.load(str(tmp_path))
+    from_file = DataList.load(str(tmp_path / "datalist.pkl"))
 
     assert from_directory.orders.tolist() == [20, 21, 22]
     assert from_file.orders.tolist() == [20, 21, 22]
@@ -497,9 +515,9 @@ def test_datalist_save_load_and_input_validation(tmp_path, completed_datalist):
 
     # Missing paths and invalid load targets should fail without touching any order data.
     with pytest.raises(ValueError, match="No save directory"):
-        DataList.from_datalist(datalist.data_list, verbose=0).save()
+        DataList.from_datalist(datalist.data_list).save()
     with pytest.raises(ValueError, match="not a directory"):
-        DataList.load(str(tmp_path / "missing"), verbose=0)
+        DataList.load(str(tmp_path / "missing"))
 
 
 def test_datalist_path_relocation_updates_each_data_file(tmp_path, completed_datalist):
@@ -521,7 +539,6 @@ def test_data_combines_multiple_frames_on_the_highest_sn_grid(harps_order_40):
     # Two frames with slightly different wavelength coverage exercise interpolation and weighting.
     wavelengths, flux, errors, sn, _, _ = harps_order_40
     data = Data()
-    data.config = Config(verbose=0)
     shifted_wavelengths = wavelengths + 0.001
     data.set_inputs(np.array([wavelengths, shifted_wavelengths]), np.array([flux, flux]),
                     np.array([errors, errors * 2]), np.array([sn, sn / 2]))
@@ -531,15 +548,16 @@ def test_data_combines_multiple_frames_on_the_highest_sn_grid(harps_order_40):
     np.testing.assert_allclose(combined[0], wavelengths)
     assert np.median(combined[2]) < np.median(errors)
     assert combined[2][0] == pytest.approx(errors[0])
+    assert data.sn["input"].ndim + 1 == data.wavelengths["input"].ndim
 
 
 def test_array_helpers_and_optical_depth_round_trip():
     waves = np.array([1.0, np.nan, 3.0])
     flux = np.array([1.0, -1.0, 2.0])
     errors = np.array([0.1, 0.1, np.inf])
-    _, _, _, mask = utils.mask_invalid(waves, flux, errors, return_mask=True, verbose=0)
+    _, _, _, mask = utils.mask_invalid(waves, flux, errors, return_mask=True)
     assert mask.tolist() == [True, False, False]
-    assert utils.drop_invalid(waves, flux, errors, verbose=0)[0].tolist() == [1.0]
+    assert utils.drop_invalid(waves, flux, errors)[0].tolist() == [1.0]
 
     original_flux = np.array([0.8, 0.9])
     original_errors = np.array([0.02, 0.03])

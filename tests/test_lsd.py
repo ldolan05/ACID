@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ACID_code import Config, Data, LSD
+from ACID_code import Data, LSD
 from ACID_code.errors import LineListRangeError, SNCutError
 
 
@@ -23,7 +23,7 @@ def test_sparse_and_dense_alpha_agree(synthetic_spectrum):
 def test_lsd_recovers_known_profile(synthetic_spectrum):
     # A noiseless constructed spectrum gives an exact, small LSD regression case.
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
-    lsd = LSD(verbose=0)
+    lsd = LSD()
     lsd.run_LSD(wavelengths, flux, errors, sn, linelist=linelist, velocities=velocities)
 
     # LSD should recover both a finite profile and its original forward model.
@@ -37,7 +37,7 @@ def test_lsd_accepts_the_harps_order_in_both_flux_spaces(harps_order_40, od):
     """Cover the optical-depth and legacy linear-flux LSD paths on real data."""
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     # The same observed order supports both modern optical-depth and legacy flux modes.
-    lsd = LSD(verbose=0, od=od)
+    lsd = LSD(od=od)
     lsd.run_LSD(wavelengths, flux, errors, sn, linelist=linelist, velocities=velocities)
 
     assert lsd.profile.shape == velocities.shape
@@ -71,7 +71,7 @@ def test_profile_groups_follow_wavelength_and_sn_clipping_through_run_lsd():
     linelist = {"wavelengths": np.array([4990.0, 5003.0, 5007.0, 5020.0]),
                 "depths": np.array([0.5, 0.2, 0.001, 0.3])}
     profile_groups = np.array([9, 0, 1, 9])
-    lsd = LSD(verbose=0)
+    lsd = LSD()
     lsd.run_LSD(wavelengths, flux, errors, 100.0, linelist=linelist,
                 velocities=velocities, profile_groups=profile_groups)
 
@@ -95,7 +95,7 @@ def test_wavelength_and_sn_clippers_apply_identical_masks_to_groups():
     np.testing.assert_array_equal(clipped[2], [11, 12, 13])
 
     # At S/N=100 the 0.001-depth line is removed from every parallel array.
-    sn_clipped = LSD(verbose=0).sn_clip(*clipped[:2], 100.0, clipped[2])
+    sn_clipped = LSD().sn_clip(*clipped[:2], 100.0, clipped[2])
     np.testing.assert_array_equal(sn_clipped[0], [5004.0, 5006.0])
     np.testing.assert_array_equal(sn_clipped[1], [0.02, 0.005])
     np.testing.assert_array_equal(sn_clipped[2], [12, 13])
@@ -195,7 +195,6 @@ def test_runlsd_and_store_populates_each_data_product(synthetic_spectrum):
     # Prepare the Data keys normally created immediately before an ACID LSD stage.
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
     data = Data()
-    data.config = Config(verbose=0)
     data.set_inputs(wavelengths, flux, errors, sn)
     data.linelist = linelist
     data.velocities = velocities
@@ -230,14 +229,13 @@ def test_lsd_reports_invalid_inputs(synthetic_spectrum):
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
 
     with pytest.raises(ValueError, match="normalised"):
-        LSD(verbose=0).run_LSD(wavelengths, flux * 2, errors, sn,
-                               linelist=linelist, velocities=velocities)
+        LSD().run_LSD(wavelengths, flux * 2, errors, sn, linelist=linelist, velocities=velocities)
     with pytest.raises(ValueError, match="same shape"):
-        LSD(verbose=0).run_LSD(wavelengths, flux[:-1], errors, sn, linelist=linelist, velocities=velocities)
+        LSD().run_LSD(wavelengths, flux[:-1], errors, sn, linelist=linelist, velocities=velocities)
     with pytest.raises(LineListRangeError):
-        LSD(verbose=0).run_LSD(wavelengths, flux, errors, sn, linelist=[[6000], [0.2]], velocities=velocities)
+        LSD().run_LSD(wavelengths, flux, errors, sn, linelist=[[6000], [0.2]], velocities=velocities)
     with pytest.raises(SNCutError):
-        LSD(verbose=0).run_LSD(wavelengths, flux, errors, sn, linelist=[[5003], [0.001]], velocities=velocities)
+        LSD().run_LSD(wavelengths, flux, errors, sn, linelist=[[5003], [0.001]], velocities=velocities)
 
 
 def test_cholesky_solver_and_convolution_validation(synthetic_spectrum):

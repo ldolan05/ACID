@@ -64,7 +64,10 @@ def test_result_continues_and_can_process_lazily(tmp_path, harps_result):
 
     # Skip the final profile refresh first, then request it through the public method.
     loaded.continue_sampling(nsteps=3, process_results=False)
-    assert loaded.sampler.get_chain().shape[0] == before + 3
+    after_nsteps = before + 3
+    assert loaded.sampler.get_chain().shape[0] == after_nsteps
+    loaded.continue_sampling(max_steps=after_nsteps + 3, process_results=False)
+    assert loaded.sampler.get_chain().shape[0] == after_nsteps + 3
     loaded.process_results()
     assert loaded.data.complete
 
@@ -133,7 +136,6 @@ def test_result_requires_a_sampler_when_data_is_not_complete():
     """A bare Data object cannot be processed into a Result without a sampler."""
     # This is a user-input validation path, so pytest's native exception assertion is appropriate.
     data = Data()
-    data.config.verbose = 0
     with pytest.raises(ValueError, match="without a sampler"):
         Result(data)
 

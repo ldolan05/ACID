@@ -50,8 +50,8 @@ def test_invalid_pixel_masking_dropping_and_edge_removal():
     wavelengths = np.array([1.0, 2.0, np.nan, 4.0])
     flux = np.array([1.0, -1.0, 1.0, 0.8])
     errors = np.array([0.1, 0.1, 0.1, np.inf])
-    masked = utils.mask_invalid(wavelengths, flux, errors, return_mask=True, verbose=0)
-    dropped = utils.drop_invalid(wavelengths, flux, errors, return_mask=True, verbose=0)
+    masked = utils.mask_invalid(wavelengths, flux, errors, return_mask=True)
+    dropped = utils.drop_invalid(wavelengths, flux, errors, return_mask=True)
 
     np.testing.assert_array_equal(masked[-1], [True, False, False, False])
     np.testing.assert_array_equal(dropped[0], [1.0])

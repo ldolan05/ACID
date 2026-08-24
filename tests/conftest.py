@@ -198,7 +198,7 @@ def harps_result(harps_order_40):
 
     # Reuse one deterministic fit across Result, MCMC, persistence, and plotting tests.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=0, seed=1)
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1)
 
-    # Twelve steps exercise sampler-backed behavior without repeating a convergence run.
-    return acid.ACID(wavelengths, flux, errors, sn, nsteps=100, parallel=False)
+    # One hundred steps exercise sampler-backed behavior without repeating a convergence run.
+    return acid.ACID(wavelengths, flux, errors, sn, nsteps=100)

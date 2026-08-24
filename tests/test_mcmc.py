@@ -82,8 +82,8 @@ def test_deterministic_model_rejects_non_positive_fitted_flux(mcmc):
 def test_harps_sampler_stays_bounded_across_seeds(harps_order_40, seed):
     # These seeds previously overflowed or sent the polynomial coefficients towards infinity.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=0, seed=seed)
-    acid.ACID(wavelengths, flux, errors, sn, poly_ord=4, n_bins=10, run_mcmc=False, parallel=False)
+    acid = Acid(velocities=velocities, linelist=linelist, seed=seed)
+    acid.ACID(wavelengths, flux, errors, sn, poly_ord=4, run_mcmc=False, parallel=False)
     acid.run_mcmc_until_converged(1000, state=acid.data.initial_state)
 
     chain = acid.sampler.get_chain()

@@ -14,10 +14,9 @@ from ACID_code.acid import _get_init_and_run_kwargs
 def test_acid_runs_preprocessing_without_mcmc(harps_order_40):
     # Use the real order-40 extraction, but stop before the sampler for a fast pipeline check.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
+    acid = Acid(velocities=velocities, linelist=linelist)
 
-    result = acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False,
-                       n_bins=5, parallel=False)
+    result = acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False)
 
     # Preprocessing stores its intermediate profile and alpha matrix on Data.
     assert result is None
@@ -28,10 +27,9 @@ def test_acid_runs_preprocessing_without_mcmc(harps_order_40):
 def test_acid_accepts_multiple_frames_without_sampling(harps_order_40):
     # Duplicate one observation deliberately: the input shape, not astrophysical variation, is under test.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
+    acid = Acid(velocities=velocities, linelist=linelist)
     acid.ACID(np.array([wavelengths, wavelengths]), np.array([flux, flux]),
-              np.array([errors, errors]), np.array([sn, sn]), run_mcmc=False,
-              parallel=False)
+              np.array([errors, errors]), np.array([sn, sn]), run_mcmc=False)
 
     # ACID keeps frames separate while producing a common velocity-grid profile.
     assert len(acid.data.wavelengths["input"]) == 2
@@ -42,42 +40,73 @@ def test_legacy_wrapper_maps_positional_arguments(harps_order_40):
     # The legacy top-level function has a different positional argument order.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
 
-    result = ACID(wavelengths, flux, errors, linelist, sn, velocities,
-                  run_mcmc=False, verbose=0, parallel=False)
+    result = ACID(wavelengths, flux, errors, linelist, sn, velocities, run_mcmc=False)
 
     assert result is None
 
 
 @pytest.mark.parametrize("verbose, expected", [(False, 0), ("high", 3), (4, 4)])
 def test_verbosity_inputs_are_preserved_during_harps_preprocessing(harps_order_40,
-                                                                    verbose, expected):
+                                                                    verbose, expected, capsys):
     """The legacy verbosity modes should not change the preprocessing result."""
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     # Each supported verbosity spelling should configure the same science calculation.
     acid = Acid(velocities=velocities, linelist=linelist, verbose=verbose)
-    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False, parallel=False)
+    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False)
 
     assert acid.config.verbose == expected
     assert "masked" in acid.data.profile
+    if expected == 0:
+        assert capsys.readouterr().out == ""
 
 
 def test_acid_requires_complete_input_and_rejects_unknown_keyword(harps_order_40):
     # Unknown options should be rejected at ACID's public boundary.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
+    acid = Acid(velocities=velocities, linelist=linelist)
 
     with pytest.raises(ValueError, match="not recognised"):
         acid.ACID(wavelengths, flux, errors, sn, made_up_setting=True)
     # Missing required line-list data should also give a domain-specific exception.
     with pytest.raises(ValueError, match="linelist"):
-        Acid(velocities=velocities, verbose=0).ACID(wavelengths, flux, errors, sn, run_mcmc=False)
+        Acid(velocities=velocities).ACID(wavelengths, flux, errors, sn, run_mcmc=False)
+
+
+def test_acid_drops_invalid_spectrum_and_linelist_values(harps_order_40):
+    """Invalid values from the legacy edge-case test should survive the public workflow."""
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    line_wavelengths, line_depths = LineList.validate_linelist(linelist)
+    line_wavelengths, line_depths = line_wavelengths.copy(), line_depths.copy()
+    wavelengths, flux, errors = wavelengths.copy(), flux.copy(), errors.copy()
+    line_wavelengths[0] = np.nan
+    line_depths[1] = np.nan
+    wavelengths[10] = np.nan
+    flux[20] = np.nan
+    errors[30] = np.inf
+    acid = Acid(velocities=velocities, linelist={"wavelengths": line_wavelengths, "depths": line_depths})
+
+    assert acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False) is None
+    assert np.all(np.isfinite(acid.data.wavelengths["combined"]))
+    assert np.all(np.isfinite(acid.data.flux["combined"]))
+    assert np.all(np.isfinite(acid.data.errors["combined"]))
+    assert len(acid.data.linelist["wavelengths"]) == len(line_wavelengths) - 2
+
+
+def test_acid_estimates_errors_from_per_pixel_sn(harps_order_40):
+    """The legacy per-pixel S/N route should work through Acid, not only Data."""
+    wavelengths, flux, _, sn, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist)
+
+    assert acid.ACID(wavelengths, flux, sn=np.full_like(flux, sn), run_mcmc=False) is None
+    assert acid.data.errors["input"].shape == flux[None].shape
+    assert np.all(np.isfinite(acid.data.errors["input"]))
 
 
 def test_continuum_plots_are_available_after_preprocessing(harps_order_40):
     # Keep the run sampler-free: only the two continuum plotting states are needed here.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
-    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False, parallel=False)
+    acid = Acid(velocities=velocities, linelist=linelist)
+    acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False)
 
     # Initial and residual-masked continua are distinct diagnostic stages.
     initial, initial_ax = acid.data.plot_continuum_fit("initial", return_fig=True)
@@ -98,7 +127,7 @@ def test_debug_result_stores_extra_lsd_and_indexes_multi_profiles(harps_order_40
     acid = Acid(velocities=velocities, linelist=linelist, verbose=4)
     result = acid.ACID(wavelengths, flux, errors, sn,
                        profile_groups=np.arange(len(linelist_wavelengths)) % 2,
-                       nsteps=12, nwalkers=12, parallel=False)
+                       nsteps=12, nwalkers=12)
 
     # Indexing must select group, frame, profile/error components consistently.
     assert "lsd_final" in result.data.debug
@@ -115,8 +144,7 @@ def test_scipy_continuum_fit_stores_each_intermediate_product(method):
     flux = 1.2 + 0.05 * norm_wavelengths + 0.02 * norm_wavelengths ** 2
     errors = np.full_like(flux, 0.01)
     data = Data()
-    data.config = Config(verbose=0, poly_ord=2, n_bins=10,
-                         continuum_percentile=50, continuum_method=method)
+    data.config = Config(poly_ord=2, continuum_percentile=50, continuum_method=method)
     data.wavelengths["test"] = wavelengths
     data.flux["test"] = flux
     data.errors["test"] = errors
@@ -133,7 +161,7 @@ def test_scipy_continuum_fit_stores_each_intermediate_product(method):
 def test_scipy_continuum_fit_rejects_insufficient_unmasked_bins():
     # A cubic requires four good bins, but masked-sized errors deliberately leave only three.
     data = Data()
-    data.config = Config(verbose=0, poly_ord=3, n_bins=5, continuum_method="polyval")
+    data.config = Config(poly_ord=3, n_bins=5, continuum_method="polyval")
     data.wavelengths["test"] = np.linspace(5000, 5010, 20)
     data.flux["test"] = np.ones(20)
     data.errors["test"] = np.r_[np.full(12, 0.01), np.full(8, 1e12)]
@@ -183,11 +211,11 @@ def test_sampler_and_result_properties_validate_acid_state(harps_result):
     assert acid.result.data is harps_result.data
 
     # An incomplete Data object cannot create a Result or continue a missing chain.
-    incomplete = Acid(data=Data(), verbose=0)
+    incomplete = Acid(data=Data())
     with pytest.raises(ValueError, match="has not been run"):
         _ = incomplete.result
     with pytest.raises(ValueError, match="Either a state or an existing sampler"):
-        incomplete.continue_sampling(nsteps=1, parallel=False)
+        incomplete.continue_sampling(nsteps=1)
 
 
 def test_legacy_argument_splitter_routes_and_validates_arguments():
@@ -208,7 +236,7 @@ def test_legacy_argument_splitter_routes_and_validates_arguments():
 def test_removed_harps_entry_points_raise_migration_message():
     # Both the class and legacy function deliberately direct users to explicit HARPS inputs.
     with pytest.raises(NotImplementedError, match="no longer supported"):
-        Acid(verbose=0).ACID_HARPS()
+        Acid().ACID_HARPS()
     with pytest.raises(NotImplementedError, match="no longer supported"):
         ACID_HARPS()
 
@@ -220,7 +248,7 @@ def test_reinitialising_acid_with_existing_sampler_reuses_backend(harps_result):
 
     data = harps_result.data
     acid2 = Acid(data=data)
-    acid2.ACID(nsteps=10, parallel=False)
+    acid2.ACID(nsteps=10)
     assert acid2.sampler.backend is acid.sampler.backend
     assert acid2.data.nsteps == nstepsacid1 + 10
 

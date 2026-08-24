@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from ACID_code import Acid, Profiles
+from ACID_code import Acid
 
 
 def test_harps_public_workflow_returns_completed_result(harps_result, harps_order_40):
@@ -25,11 +25,10 @@ def test_harps_non_deterministic_sampling_until_convergence_limit(harps_order_40
     """Cover the legacy full-profile sampler and custom moves without slowing normal runs."""
     wavelengths, flux, errors, sn, _, linelist = harps_order_40
     velocities = np.arange(-25, 25, 5.0)
-    result = Acid(velocities=velocities, linelist=linelist, verbose=0, seed=1).ACID(
+    result = Acid(velocities=velocities, linelist=linelist, seed=1).ACID(
         wavelengths, flux, errors, sn, deterministic_profile=False, max_steps=120,
         check_interval=20, min_checks=1, min_tau_factor=1, tau_tol=1.0,
-        moves=[("StretchMove", 0.6, {}), ("DEMove", 0.4)], parallel=False,
-        n_bins=8)
+        moves=[("StretchMove", 0.6, {}), ("DEMove", 0.4)])
 
     assert result.data.complete
     assert 0 < result.data.nsteps <= 120
@@ -39,19 +38,20 @@ def test_harps_non_deterministic_sampling_until_convergence_limit(harps_order_40
         assert figure.axes
         plt.close(figure)
 
-@pytest.mark.long
-def test_multiple_frames(pysme_synthetic_spectrum_multiple_frames):
-    """The public workflow should accept multiple frames and return a single profile."""
-    wavelengths, spectra, errors, sns, velocities, linelist = pysme_synthetic_spectrum_multiple_frames
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=2, seed=1)
-    result = acid.ACID(wavelengths, spectra, errors, sns, max_steps=5000)
+
+def test_harps_non_deterministic_multiple_frames(harps_order_40):
+    """The legacy full-profile sampler should accept multiple frames."""
+    wavelengths, flux, errors, sn, _, linelist = harps_order_40
+    velocities = np.arange(-25, 25, 5.0)
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1)
+    result = acid.ACID(np.array([wavelengths, wavelengths]), np.array([flux, flux]),
+                       np.array([errors, errors]), np.array([sn, sn]),
+                       deterministic_profile=False, nsteps=20)
 
     assert result.data.complete
-    assert result.data.profile["final"][0].shape == result.data.velocities.shape
-    assert len(result.data.profiles) == len(spectra)
-
-    # We can assume the final profile looks ok if we can fit a gaussian with no errors:
-    _popt = Profiles(data=result.data).fit_gaussian()
+    assert result["profile"].shape == velocities.shape
+    assert len(result.data.profiles) == 2
+    assert np.all(np.isfinite(result.sampler.get_chain()))
 
 
 if __name__ == "__main__":

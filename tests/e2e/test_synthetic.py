@@ -14,7 +14,7 @@ def test_multiple_frames(pysme_synthetic_spectrum_multiple_frames):
     """The public workflow should accept multiple frames and return a single profile."""
     wavelengths, spectra, errors, sns, velocities, linelist = pysme_synthetic_spectrum_multiple_frames
     # velocities is none in this dataset
-    acid = Acid(velocities=velocities, linelist=linelist, verbose=2, seed=1)
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1)
     result = acid.ACID(wavelengths, spectra, errors, sns, max_steps=5000)
 
     assert result.data.complete
