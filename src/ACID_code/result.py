@@ -167,7 +167,9 @@ class Result:
 
         # We first run LSD on the final state of the sampler (for debugging, but this can be useful to see how masking is affecting the sampler)
         if self.config.verbose == 4: # debugging mode
-            self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs) # alpha is recalculated
+            self.data.alpha["mcmc"] = None # reset alpha so that it is recalculated
+            _lsd = self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs, return_cls=True) # alpha is recalculated
+            self.data.debug["lsd_mcmc"] = _lsd.__dict__
 
         # Set the inputs for a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
         self.data.wavelengths["final"] = self.data.wavelengths["initial"]
@@ -266,12 +268,12 @@ class Result:
         fitted_errors = np.sqrt((data.errors[key]/continuum)**2 + (fitted_flux*continuum_error/continuum)**2)
 
         # Store all the results, which are then used in LSD.runlsd_and_store
-        data.poly_coeffs[key] = poly_coeffs
+        data.poly_coeffs[key]      = poly_coeffs
         data.norm_wavelengths[key] = norm_wavelengths
-        data.continuum[key] = continuum
-        data.continuum_error[key] = continuum_error
-        data.fitted_flux[key] = fitted_flux
-        data.fitted_errors[key] = fitted_errors
+        data.continuum[key]        = continuum
+        data.continuum_error[key]  = continuum_error
+        data.fitted_flux[key]      = fitted_flux
+        data.fitted_errors[key]    = fitted_errors
 
         # Handles running LSD logic and storing all results in Data
         _lsd = LSD.runlsd_and_store(data, key, **kwargs)

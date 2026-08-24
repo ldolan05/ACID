@@ -174,12 +174,14 @@ def test_result_plot_forward_model_shows_linelist(harps_result):
     assert n_colls_2 == n_colls_1 + 1 # The extra collection is the linelist markers.
     plt.close(figure)
 
+
 def test_result_plot_forward_model_returns_fig_and_axes(harps_result):
     """The forward model plot returns a figure and axes when requested."""
     figure, axes = harps_result.plot_forward_model(return_fig=True)
     assert isinstance(figure, plt.Figure)
     assert isinstance(axes, np.ndarray)
     plt.close(figure)
+
 
 def test_result_plot_forward_model_accepts_different_keys(harps_result):
     """The forward model plot accepts different keys for the data."""
@@ -189,6 +191,7 @@ def test_result_plot_forward_model_accepts_different_keys(harps_result):
     assert isinstance(figure, plt.Figure)
     assert isinstance(axes, np.ndarray)
     plt.close(figure)
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
