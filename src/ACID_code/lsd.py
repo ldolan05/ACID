@@ -165,10 +165,11 @@ class LSD:
 
         # Check the flux has been at least somewhat normalised:
         unmasked_flux = flux[errors <= 1e11] # 1e12 is the default masking
-        fluxpercentile = np.nanpercentile(unmasked_flux, 95)
-        if fluxpercentile > 1.5:
-            raise ValueError(f"The top 95th percentile of fluxes inputted to LSD lie above 1.5 (95th% = {fluxpercentile}).\n" \
-                             f"The fluxes should be normalised.")
+        fluxpercentile = np.nanpercentile(unmasked_flux, 10)
+        if fluxpercentile > 2:
+            raise ValueError(f"The input fluxes do not appear to be normalised. \n"
+                             f"90% of your unmasked fluxes inputted to LSD lie above 2 (10th% = {fluxpercentile:.3f}).\n"
+                             f"The LSD algorithm assumes normalised fluxes, please normalise your fluxes before running LSD. \n")
 
         # Set velocities either from inputs or from Data class if initialised with Acid instance
         self.data.velocities = velocities if velocities is not None else self.data.velocities

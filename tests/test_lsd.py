@@ -229,7 +229,7 @@ def test_lsd_reports_invalid_inputs(synthetic_spectrum):
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
 
     with pytest.raises(ValueError, match="normalised"):
-        LSD().run_LSD(wavelengths, flux * 2, errors, sn, linelist=linelist, velocities=velocities)
+        LSD().run_LSD(wavelengths, flux * 1000, errors, sn, linelist=linelist, velocities=velocities)
     with pytest.raises(ValueError, match="same shape"):
         LSD().run_LSD(wavelengths, flux[:-1], errors, sn, linelist=linelist, velocities=velocities)
     with pytest.raises(LineListRangeError):
