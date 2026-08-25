@@ -338,7 +338,7 @@ class Acid:
         n_bins : :py:type:`IntLike`, optional
             The number of bins to use when performing the continuum fit. The spectra are evenly split into this many bins and the 
             continuum is fit to the median wavelength and the specified percentile (continuum_percentile) of flux in each bin.
-            By default 10.
+            By default 20.
         bin_size : :py:type:`IntLike`, optional
             Instead of specifying the total number of bins in your spectrum (nbins), specify the number of pixels to go in each bin.
             The spectra are split into bins with this number of pixels, and the continuum is fit to the median wavelength 

@@ -240,7 +240,7 @@ class Config:
         "deterministic_profile" : True,
         "poly_ord" : 3,
         "continuum_percentile" : 99,
-        "n_bins" : 10,
+        "n_bins" : 20,
         "bin_size" : None,
         "pix_chunk" : 50, # TODO: document+test this increase from 20
         "dev_perc" : 25,
