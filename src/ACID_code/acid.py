@@ -112,11 +112,12 @@ class Acid:
             Sets the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
             Any inputted paths for save_path, sampler_path, or figure_dir will override this input.
             If None, the save_path, sampler_path, and figure_dir are not set. By default None.
-            To ensure you understand a directory is required and avoid mistakes, the "/" at the end of the path is required, otherwise an exception is raised.
+            If the directory does not exist, only its final component is created; its parent must already exist.
         save_path : :py:type:`str`, optional
             The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
             If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
-            Should be a valid file path that ends with ".pkl". If the directory containing it does not exist, it will be created.
+            Should be a valid file path that ends with ".pkl". If its direct parent does not exist, that final directory is created.
+            The parent's parent must already exist.
             If a file already exists at this path, it will be overwritten on Acid initialization.
             Note that we separate the save and sampler paths, as the sampler can be very large and may not be desired to be saved.
         sampler_path : :py:type:`str`, optional
@@ -124,12 +125,13 @@ class Acid:
             If None, the sampler is not saved and only stored in memory. By default None.
             Note that if your path points to an existing file, it will be overwritten on Acid initialization.
             If existing, we use the emcee HDF5 backend to store and load the sampler.
-            Should be a valid file path that ends with ".h5". If the directory containing it does not exist, it will be created.
+            Should be a valid file path that ends with ".h5". If its direct parent does not exist, that final directory is created.
+            The parent's parent must already exist.
             Note that if you later try and save the sampler through the data class, it is converted to a HDF5 backend.
         figure_dir : :py:type:`str`, optional
             A directory to save the figures to.
             If None, figures are not saved to disk and figures are instead shown (if asked) with plt.show(), by default None.
-            To ensure you understand a directory is required and avoid mistakes, the "/" at the end of the path is required, otherwise an exception is raised.
+            If the directory does not exist, only its final component is created; its parent must already exist.
         data : :py:class:`Data` | :py:class:`DataList`, optional
             An optional backend :py:class:`Data` object to use for storing data. Allows previously calculated results to be used skipped.
             If None, a new :py:class:`Data` object is created. Please note that if the :py:class:`Data` class already has a saved ACID config
@@ -216,38 +218,43 @@ class Acid:
 
         # Handle dir input
         if dir is not None:
-            if not dir.endswith("/"):
-                raise ValueError("'dir' must end with a '/' to ensure it is a directory.")
-            dir = os.path.abspath(dir)
-            if save_path is None:
-                save_path = os.path.join(dir, "data.pkl")
-            if sampler_path is None:
-                sampler_path = os.path.join(dir, "sampler.h5")
-            if figure_dir is None:
-                figure_dir = os.path.join(dir, "figures/")
+            self.config.dir = dir
+            save_path = save_path if save_path is not None else os.path.join(self.config.dir, "data.pkl")
+            sampler_path = sampler_path if sampler_path is not None else os.path.join(self.config.dir, "sampler.h5")
+            figure_dir = figure_dir if figure_dir is not None else os.path.join(self.config.dir, "figures")
+        elif self.config.dir is not None:
+            # Reapply a directory restored through Config serialization so any
+            # missing derived paths are populated consistently.
+            self.config.dir = self.config.dir
 
         # Handle data saving paths checks
+        save_path = save_path if save_path is not None else self.config.save_path
         if save_path is not None:
             if not save_path.endswith(".pkl"):
                 raise ValueError("'save_path' must end with '.pkl'.")
-        self.config.save_path = os.path.abspath(save_path) if save_path is not None else None
+            save_path = os.path.abspath(save_path)
+            utils.ensure_directory(os.path.dirname(save_path), "data directory")
+            self.config.save_path = save_path
 
         # Handle sampler path checks
+        sampler_path_explicit = sampler_path is not None or dir is not None
+        sampler_path = sampler_path if sampler_path is not None else self.config.sampler_path
         if sampler_path is not None:
             if not sampler_path.endswith(".h5"):
                 raise ValueError("'sampler_path' must end with '.h5'.")
+            sampler_path = os.path.abspath(sampler_path)
+            utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
             # Delete existing file at sampler path if it exists
-            if os.path.exists(sampler_path):
+            if sampler_path_explicit and os.path.exists(sampler_path):
                 if self.config.verbose >= 1:
                     print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
                 os.remove(sampler_path)
-        self.config.sampler_path = os.path.abspath(sampler_path) if sampler_path is not None else None
+            self.config.sampler_path = sampler_path
 
         # Handle figure saving path checks
+        figure_dir = figure_dir if figure_dir is not None else self.config.figure_dir
         if figure_dir is not None:
-            if not figure_dir.endswith("/"):
-                raise ValueError("'figure_dir' must end with a '/' to ensure it is a directory.")
-        self.config.figure_dir = os.path.abspath(figure_dir) if figure_dir is not None else None
+            self.config.figure_dir = utils.ensure_directory(figure_dir, "figure directory")
 
         return
 
@@ -496,6 +503,7 @@ class Acid:
         if self.config.verbose >= 2:
             print('Initialising...')
 
+        # Check for old n_sig input
         if "n_sig" in kwargs:
             sigma_lower = kwargs.pop("n_sig")
             if self.config.verbose >= 1:
@@ -1072,7 +1080,7 @@ class Acid:
         
         # Now that the backend has been set depending on an existing state, if the backend is stil None, we choose depending on sampler_path
         if backend is None and self.config.sampler_path is not None:
-            os.makedirs(os.path.dirname(self.config.sampler_path), exist_ok=True)
+            utils.ensure_directory(os.path.dirname(self.config.sampler_path), "sampler directory")
             backend = emcee.backends.HDFBackend(self.config.sampler_path)
             if state is not None:
                 backend.reset(self.data.nwalkers, self.data.ndim)

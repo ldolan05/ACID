@@ -335,15 +335,16 @@ def test_datalist_indexes_orders_and_persists_inputs(tmp_path, synthetic_spectru
     # Use non-consecutive order labels to test the instrument-order mapping explicitly.
     wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
     configs = [Config(poly_ord=2), Config(poly_ord=4)]
+    save_dir = tmp_path / "results"
     datalist = DataList(np.array([wavelengths, wavelengths]), np.array([flux, flux]),
                         np.array([errors, errors]), np.array([sn, sn]), velocities, linelist,
-                        order_range=[10, 12], config=configs, save_dir=str(tmp_path))
+                        order_range=[10, 12], config=configs, save_dir=str(save_dir))
 
     # Initialisation saves a lightweight Data object for every requested order.
     assert len(datalist) == 2
     assert datalist[12].config.order == 12
     assert [datalist[order].config.poly_ord for order in [10, 12]] == [2, 4]
-    assert (tmp_path / "order_10" / "data.pkl").exists()
+    assert (save_dir / "order_10" / "data.pkl").exists()
     with pytest.raises(KeyError):
         _ = datalist[11]
 

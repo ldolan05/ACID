@@ -71,7 +71,7 @@ we can also input it. We can also change order-specific configurations by inputt
         linelist,
         verbose=2, # Set a global datalist-level verbosity
         # We highly recommend setting a directory to reduce memory load.
-        save_dir="datalist/", # Can also specify and create save directory for the results, if None (default), results are only stored in memory.
+        save_dir="datalist", # Can also specify and create save directory for the results, if None (default), results are only stored in memory.
         order_range=order_range,
         config=configs,
         ### Additional kwargs to pass to config for all orders ###
@@ -102,7 +102,7 @@ This is useful for loading in previously saved Data instances (see :ref:`data` f
     datalist = acid.DataList.from_datalist(
         data_list,
         verbose=2, # Set a global datalist-level verbosity
-        save_dir="datalist/", # Can also specify and create save directory for the results, if None (default), results are only stored in memory.
+        save_dir="datalist", # Can also specify and create save directory for the results, if None (default), results are only stored in memory.
         )
 
     # Again, can tweak configs directly per order:

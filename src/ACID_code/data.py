@@ -272,8 +272,8 @@ class Config:
     }
 
     #: Property list for error handling
-    properties = ["verbose", "masking_lines"]
-    _properties = ["_verbose", "_masking_lines"]
+    properties = ["verbose", "masking_lines", "dir"]
+    _properties = ["_verbose", "_masking_lines", "_dir"]
 
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
     data_attributes = ["linelist", "velocities"]
@@ -416,11 +416,45 @@ class Config:
 
     # --- Properties ---
     @property
+    def dir(self) -> str|None:
+        """Root directory for data, sampler, and figure output."""
+        return self.__dict__.get("_dir", self.defaults["dir"])
+
+    @dir.setter
+    def dir(self, value:str|None) -> None:
+        """Set the output root, creating only the final directory component."""
+        if value is None:
+            return
+
+        old_dir = self.__dict__.get("_dir", None)
+        value = utils.ensure_directory(value, "output directory")
+        self._dir = value
+
+        derived_paths = {
+            "save_path": os.path.join(value, "data.pkl"),
+            "sampler_path": os.path.join(value, "sampler.h5"),
+            "figure_dir": os.path.join(value, "figures"),
+        }
+        old_paths = {} if old_dir is None else {
+            "save_path": os.path.join(old_dir, "data.pkl"),
+            "sampler_path": os.path.join(old_dir, "sampler.h5"),
+            "figure_dir": os.path.join(old_dir, "figures"),
+        }
+
+        for name, path in derived_paths.items():
+            current = self.__dict__.get(name, None)
+            if current is None or (
+                name in old_paths
+                and os.path.abspath(current) == os.path.abspath(old_paths[name])
+            ):
+                if name == "figure_dir":
+                    path = utils.ensure_directory(path, "figure directory")
+                super().__setattr__(name, path)
+
+    @property
     def verbose(self) -> IntLike:
         """The stored global verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
-        if self.__dict__.get("_verbose", None) is None:
-            return self.defaults["verbose"]
-        return self._verbose
+        return self.__dict__.get("_verbose", self.defaults["verbose"])
 
     @verbose.setter
     def verbose(self, value:IntLike|str|bool|None) -> None:
@@ -457,9 +491,7 @@ class Config:
     @property
     def masking_lines(self) -> MaskingLines:
         """The stored masking lines for ACID. See :ref:`masking_lines` for more details on how this is used in ACID."""
-        if self.__dict__.get("_masking_lines", None) is None:
-            return MaskingLines(self.defaults["masking_lines"])
-        return MaskingLines(self._masking_lines)
+        return MaskingLines(self.__dict__.get("_masking_lines", self.defaults["masking_lines"]))
 
     @masking_lines.setter
     def masking_lines(self, masking_lines:dict|MaskingLines|None) -> None:
@@ -1480,7 +1512,8 @@ class Data:
         save_path : str | None
             The path to save the data object. If None, uses the path stored in the config.
             If That is also None, the data object will not be saved.
-            Will attempt to create the directory for the filepath if it does not exist.
+            Will create only the final parent directory for the filepath if it does not exist.
+            The parent's parent must already exist.
             The file must end with .pkl to be recognised as a pickled file.
         sampler_path : str | None
             This is used for saving the sampler as a HDF5 file if it has not already been set up as such.
@@ -1497,7 +1530,7 @@ class Data:
                 if not isinstance(self.sampler.backend, HDFBackend):
                     if not sampler_path.endswith(".h5"):
                         raise ValueError("sampler_path must end with .h5 to convert and save the sampler backend as a HDF5 file.")
-                    os.makedirs(os.path.dirname(sampler_path), exist_ok=True) # create directory if it does not exist
+                    utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
                     utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
                     self.config.sampler_path = sampler_path # update config with sampler path for future reference
                     if self.config.verbose >= 2:
@@ -1521,9 +1554,8 @@ class Data:
 
         payload = self.to_dict() # generates a dictionary of the data object for easy pickling
 
-        save_dir = os.path.abspath(save_path)
-        if save_dir:
-            os.makedirs(os.path.dirname(save_dir), exist_ok=True) # create directory if it does not exist
+        save_dir = os.path.dirname(os.path.abspath(save_path))
+        utils.ensure_directory(save_dir, "data directory")
         with open(save_path, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
         if self.config.verbose >= 2:
@@ -1852,7 +1884,8 @@ class DataList:
             Setting 'order' will not have any effect as they will be overwritten by the order numbers in the order_range.
             If not provided, default Config values will be used. Default is None.
         save_dir : str | None, optional
-            The default directory to save results and figures for each order.
+            The default directory to save results and figures for each order. A trailing separator is optional.
+            If it does not exist, only this final directory is created and its parent must already exist.
             By default the DataList will save data.pkl and sampler.h5 to the directory (named by the order number) to in this directory.
             If the Configs or kwargs passed contain their own save_path or sampler_path (see :py:class:`Acid`), those instead are used.
             If None, no saving will be done, this is however, not recommended. Default is None.
@@ -1953,10 +1986,8 @@ class DataList:
             data.velocities = velocities
 
             if self.save_dir is not None:
-                save_path = os.path.abspath(os.path.join(self.save_dir, f"order_{order}", "data.pkl"))
-                sampler_path = os.path.abspath(os.path.join(self.save_dir, f"order_{order}", "sampler.h5"))
-                data.config.update_hipri(save_path=save_path, # set default save path for this order which can be overwritten by user
-                                        sampler_path=sampler_path) # set default sampler path for this order which can be overwritten by user
+                config_dir = os.path.join(self.save_dir, f"order_{order}")
+                data.config.update_hipri(dir=config_dir) # set default save path for this order which can be overwritten by user
 
                 # Check if file already exists
                 if os.path.exists(data.config.save_path):
@@ -2415,7 +2446,7 @@ class DataList:
     @save_dir.setter
     def save_dir(self, dir):
         if dir is not None:
-            os.makedirs(dir, exist_ok=True)
+            dir = utils.ensure_directory(dir, "DataList save directory")
         elif self._save_dir is None:
             if self.verbose >= 1:
                 print("Warning: save_dir is set to None. No results will be saved. This is not recommended.")

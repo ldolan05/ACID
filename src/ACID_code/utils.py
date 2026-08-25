@@ -865,12 +865,36 @@ def sampler_nbytes(sampler) -> IntLike:
                 nbytes += arr.nbytes
         return nbytes
 
+def ensure_directory(path: str, description: str = "directory") -> str:
+    """Return an absolute directory path, creating only its final component."""
+    if not path:
+        raise ValueError(f"The {description} path cannot be empty.")
+    path = os.path.abspath(os.path.expanduser(path))
+
+    if os.path.exists(path):
+        if not os.path.isdir(path):
+            raise NotADirectoryError(f"The {description} path exists but is not a directory: {path}")
+        return path
+
+    parent = os.path.dirname(path)
+    if not os.path.isdir(parent):
+        raise FileNotFoundError(
+            f"Cannot create {description} '{path}' because its parent directory "
+            f"does not exist: {parent}. Only the final directory is created."
+        )
+
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass # This can happen due to a race condition in parallel processing
+    return path
+
 def show_or_save(plt, figure_path, name, verbose):
     """A helper function to either show a matplotlib figure or save it to a specified path."""
     if figure_path is None:
         plt.show()
     else:
-        os.makedirs(figure_path, exist_ok=True)
+        figure_path = ensure_directory(figure_path, "figure directory")
         filename = os.path.join(figure_path, name)
         plt.savefig(
             filename,
