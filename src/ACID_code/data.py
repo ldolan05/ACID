@@ -9,6 +9,10 @@ from beartype.typing import Any, Dict, Optional
 from emcee import EnsembleSampler
 from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
+try:
+    from dynesty.sampler import Sampler
+except ImportError:
+    Sampler = None
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pickle, os, traceback
@@ -615,7 +619,7 @@ class Data:
     # Initialise the properties
     # -------------------------
     #: The sampler object stored as a class, but when saved, only a string to the HDF5 path is stored.
-    _sampler    : Optional[EnsembleSampler] = None # stored ensemble sampler
+    _sampler    : Optional[EnsembleSampler|Sampler] = None # type:ignore
     #: Config data for convenience as a class, but converted to a dictionary on save to avoid pickling issues
     _config     : Config = field(default_factory=Config)
     #: The linelist is stored as a dictionary but exposed as a :py:class:`LineList` object when the property is accessed.
@@ -676,7 +680,7 @@ class Data:
         return "\n".join(output)
 
     @property
-    def sampler(self) -> EnsembleSampler|None:
+    def sampler(self) -> EnsembleSampler|Sampler|None: # type:ignore
         """
         The ensemble sampler object used for MCMC sampling.
         This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
@@ -684,7 +688,7 @@ class Data:
         return self._sampler
 
     @sampler.setter
-    def sampler(self, sampler:EnsembleSampler|Backend|HDFBackend|str|None) -> None:
+    def sampler(self, sampler:EnsembleSampler|Sampler|Backend|HDFBackend|str|None) -> None: # type:ignore
         """
         Sets the sampler object from various types.
         This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
@@ -694,6 +698,8 @@ class Data:
             log_prob_fn = MCMC(self)
 
         if isinstance(sampler, EnsembleSampler):
+            self._sampler = sampler
+        elif Sampler is not None and isinstance(sampler, Sampler):
             self._sampler = sampler
         elif isinstance(sampler, Backend) or isinstance(sampler, HDFBackend):
             self._sampler = utils.backend_to_sampler(sampler, log_prob_fn)
@@ -711,7 +717,7 @@ class Data:
                 print("Warning, you have discarded the sampler.")
             self._sampler = None
         
-        if self._sampler is not None and isinstance(self._sampler.backend, HDFBackend):
+        if isinstance(self._sampler, EnsembleSampler) and isinstance(self._sampler.backend, HDFBackend):
             self.config.sampler_path = os.path.abspath(self._sampler.backend.filename)
 
     @property

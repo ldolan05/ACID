@@ -289,7 +289,6 @@ class Acid:
         moves                 : list|None                   = None, # Config
         continuum_method      : str|None                    = None, # Config
         run_mcmc              : bool|None                   = None, # Config
-        _all_frames                                         = None, # To work with legacy code, not to be used, silently ignored
         **kwargs,
         ) -> Result | None:
         """
@@ -772,7 +771,10 @@ class Acid:
                 if self.config.verbose >= 2:
                     print("Running MCMC for %s steps..."%self.config.nsteps)
                 self.run_mcmc(self.config.nsteps, self.data.initial_state)
-                self.data.nsteps = self.sampler.backend.iteration
+                if self.config.sampler_type == "emcee":
+                    self.data.nsteps = self.sampler.backend.iteration
+                else:
+                    self.data.nsteps = self.config.nsteps
 
             # Else use max_steps path
             else:
@@ -891,7 +893,7 @@ class Acid:
 
         return
 
-    def get_initial_state(self) -> np.ndarray:
+    def get_initial_state(self) -> np.ndarray|None:
     
         # Set rng seed off of config seed if desired, otherwise default config seed is None and rng will be random
         rng = np.random.default_rng(self.config.seed)
@@ -948,6 +950,8 @@ class Acid:
         # Get default sampler kwargs from initial state
         if self.config.sampler_type == "emcee":
             sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
+        sampler_verbosity = True if self.config.verbose >= 2 else False
+        sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
         pool_context = nullcontext(None)
 
         if self.config.parallel:
@@ -975,7 +979,7 @@ class Acid:
                 if self.config.parallel:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
-                self.sampler.run_nested(print_progress=mcmc_kwargs["progress"])
+                self.sampler.run_nested(print_progress=sampler_verbosity)
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """

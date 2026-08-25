@@ -53,6 +53,18 @@ def test_harps_non_deterministic_multiple_frames(harps_order_40):
     assert len(result.data.profiles) == 2
     assert np.all(np.isfinite(result.sampler.get_chain()))
 
+def test_dynesty_run(harps_order_40):
+    """The dynesty sampler should run and return a completed result."""
+    wavelengths, flux, errors, sn, _, linelist = harps_order_40
+    velocities = np.arange(-25, 25, 5.0)
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1)
+    result = acid.ACID(wavelengths, flux, errors, sn,
+                       sampler_type="dynesty", nsteps=20)
+
+    assert result.data.complete
+    assert result["profile"].shape == velocities.shape
+    assert np.isfinite(result.sampler.results.logl[-1])
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--long"]))
