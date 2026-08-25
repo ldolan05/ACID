@@ -164,7 +164,8 @@ class LSD:
         self.n_wavelengths = len(wavelengths)
 
         # Check the flux has been at least somewhat normalised:
-        fluxpercentile = np.nanpercentile(flux, 95)
+        unmasked_flux = flux[errors <= 1e11] # 1e12 is the default masking
+        fluxpercentile = np.nanpercentile(unmasked_flux, 95)
         if fluxpercentile > 1.5:
             raise ValueError(f"The top 95th percentile of fluxes inputted to LSD lie above 1.5 (95th% = {fluxpercentile}).\n" \
                              f"The fluxes should be normalised.")
