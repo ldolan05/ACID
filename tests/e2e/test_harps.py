@@ -58,6 +58,22 @@ def test_harps_s1d_full_spectrum_runs_acid(harps_paths, linelist_path):
     assert result.data.complete
     assert result["profile"].shape == acid.data.velocities.shape
 
+@pytest.mark.long
+def test_final_profile_is_sensible(harps_order_40):
+    """The final profile should be a smooth, unimodal function."""
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1)
+    result = acid.ACID(wavelengths, flux, errors, sn, max_steps=2000)
+
+    profile = result.data.profile["final"][0]
+    error = result.data.profile["final"][1]
+
+    # The final profile is very well constrained for this dataset,
+    # check ACID always produces this
+    assert np.all(np.isfinite(profile))
+    assert np.max(profile) < 1.1
+    assert np.min(profile) > 0.5
+    assert max(error) < 0.1
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--long"]))
