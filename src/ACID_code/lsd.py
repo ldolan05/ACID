@@ -161,31 +161,34 @@ class LSD:
         # Ensure dimensions match
         if not wavelengths.shape == flux.shape == errors.shape:
             raise ValueError("Input wavelengths, flux, and errors must have the same shape.")
-        self.n_wavelengths = len(wavelengths)
+
+        # We define the unmasked points here, but only apply the mask once the wavelength range has been clipped
+        unmasked_wavelengths = np.copy(wavelengths) # we save a copy to use for the forward model
+        mask = np.isfinite(wavelengths) & np.isfinite(flux) & np.isfinite(errors)
+        mask &= (errors>=0) & (errors < 1e11) & (flux > 0) # 1e12 is the default error mask value, so this will catch it
 
         # Check the flux has been at least somewhat normalised:
-        unmasked_flux = flux[errors <= 1e11] # 1e12 is the default masking
-        fluxpercentile = np.nanpercentile(unmasked_flux, 10)
+        fluxpercentile = np.nanpercentile(flux[mask], 10)
         if fluxpercentile > 2:
             raise ValueError(f"The input fluxes do not appear to be normalised. \n"
                              f"90% of your unmasked fluxes inputted to LSD lie above 2 (10th% = {fluxpercentile:.3f}).\n"
-                             f"The LSD algorithm assumes normalised fluxes, please normalise your fluxes before running LSD. \n")
+                             f"The LSD algorithm assumes normalised fluxes, please (better) normalise your fluxes before running LSD. \n")
 
         # Set velocities either from inputs or from Data class if initialised with Acid instance
         self.data.velocities = velocities if velocities is not None else self.data.velocities
         if self.data.velocities is None:
             raise ValueError("Velocities must be provided either as an argument to run_LSD or when initialising the class with an Acid instance.")
         self.n_velocities = len(self.data.velocities)
-        
+
         # If alpha is input check its shape matches the input wavelengths and velocities
         if alpha is not None:
             alpha = np.asarray(alpha)
             if alpha.ndim == 2:
-                if alpha.shape != (self.n_wavelengths, self.n_velocities):
-                    raise ValueError(f"Input 2D alpha shape {alpha.shape} does not match expected ({self.n_wavelengths}, {self.n_velocities}).")
+                if alpha.shape != (len(wavelengths), self.n_velocities):
+                    raise ValueError(f"Input 2D alpha shape {alpha.shape} does not match expected ({len(wavelengths)}, {self.n_velocities}).")
             elif alpha.ndim == 3:
-                if alpha.shape[1:] != (self.n_wavelengths, self.n_velocities):
-                    raise ValueError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_profs, {self.n_wavelengths}, {self.n_velocities}).")
+                if alpha.shape[1:] != (len(wavelengths), self.n_velocities):
+                    raise ValueError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_profs, {len(wavelengths)}, {self.n_velocities}).")
             else:
                 raise ValueError("Input alpha must be either 2D or 3D.")
 
@@ -214,7 +217,12 @@ class LSD:
         # Save the mask that constructs the clipped linelist from the original, wavelengths are sorted already
         self.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
 
-        # Handle multi-profile groups logic
+        # Now we mask after cuts applied
+        flux        = flux[mask]
+        wavelengths = wavelengths[mask]
+        errors      = errors[mask]
+
+        # Handle multi-profile groups validation and logic
         if profile_groups is not None:
             self.profile_groups = np.asarray(profile_groups)
             if len(self.profile_groups) != len(depths_linelist):
@@ -222,15 +230,16 @@ class LSD:
                                 f"has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
                                 f"Please check len(profile_groups) matches len(depths_linelist). "
                                 f"Also see profile_groups parameter description.")
+        # Group by depth rules if given
         elif self.config.depth_group_rules is not None:
             self.profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
+        # Else its just a standard single profile
         else:
             self.profile_groups = None
-
         self.data.profile_groups = self.profile_groups
 
         mp_lsd_mode = self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
-        # Finally, we allow the mp_lsd override, this override is only a False override
+        # Finally, we allow the mp_lsd override, this override is only a False override, True/None is default
         if mp_lsd is False:
             mp_lsd_mode = False
 
@@ -238,13 +247,13 @@ class LSD:
         flux, errors, depths_linelist = utils.flux_to_od(flux, errors, depths_linelist, od=self.od)
         flux -= 1 if not self.od else 0 # If in flux space, we want to fit to flux-1 as per LSD convention
         
-        # Calculates alpha in optical depth, selects lines greater than 1/(3*sn)
+        # Calculateing alpha matrix if not provided, else we just use the provided alpha
         self.n_velocities = len(self.data.velocities)
         self.n_profs = 1 # overwritten by mp_lsd_mode with n_profs if applicable
         if alpha is None:
             if mp_lsd_mode:
                 self.alpha, self.unique_prof_groups = self.calc_mp_alpha(
-                    wavelengths,
+                    unmasked_wavelengths,
                     self.data.velocities,
                     wavelengths_linelist,
                     depths_linelist,
@@ -256,7 +265,7 @@ class LSD:
                 self.alpha_flat = self.flatten_alpha(self.alpha)
             else:
                 self.alpha = self.calc_alpha(
-                    wavelengths,
+                    unmasked_wavelengths,
                     wavelengths_linelist,
                     depths_linelist,
                     self.data.velocities,
@@ -276,11 +285,14 @@ class LSD:
             elif self.alpha.ndim == 2:
                 self.alpha_flat = self.alpha
 
+        # But now, we need to apply the mask to the alpha matrix as well, as it was (potentially) calculated on the unmasked wavelengths
+        self.alpha_flat_masked = self.alpha_flat[mask, :]
+
         # Now solve for profile using Cholesky decomposition, independent of mp_lsd mode since alpha is flattened in both cases
-        self.c_factor = self.calc_cholesky(self.alpha_flat, errors)
+        self.c_factor = self.calc_cholesky(self.alpha_flat_masked, errors)
 
         # Solve for profile and profile errors using Cholesky factors
-        self.profile_flat, self.profile_errors_flat, self.cov_z = self.solve_z(self.alpha_flat, flux, errors, self.c_factor, return_error=True, return_cov=True)
+        self.profile_flat, self.profile_errors_flat, self.cov_z = self.solve_z(self.alpha_flat_masked, flux, errors, self.c_factor, return_error=True, return_cov=True)
 
         # Profile in LSD fitting space
         if mp_lsd_mode:
@@ -290,8 +302,8 @@ class LSD:
             self.profile = self.profile_flat
             self.profile_errors = self.profile_errors_flat
 
+        # The final forward models are calculated on the unmasked alpha to get the full range
         self.forward_model = self.alpha_flat @ self.profile_flat
-        # self.forward_model_errors = np.sqrt((self.alpha**2) @ (self.profile_errors_flat**2))
         self.forward_model_errors = np.sqrt(np.sum((self.alpha_flat @ self.cov_z) * self.alpha_flat, axis=1))
 
         # Convert profile and forward model to flux space

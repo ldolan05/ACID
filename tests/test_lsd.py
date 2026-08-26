@@ -251,5 +251,28 @@ def test_cholesky_solver_and_convolution_validation(synthetic_spectrum):
         LSD.dot_alpha_and_profile(alpha, np.ones(2))
 
 
+def test_lsd_handles_masked_points(synthetic_spectrum):
+    # The LSD regression should fail if any input flux or error values are masked.
+    wavelengths, flux, errors, sn, velocities, linelist = synthetic_spectrum
+    flux[0] = -1
+    flux[1] = np.inf
+    flux[2] = np.nan
+
+    errors[3] = 1e12
+    errors[4] = np.inf
+    errors[5] = np.nan
+    errors[6] = -1
+
+    lsd = LSD()
+
+    # The main test is the below call does not raise an exception
+    lsd.run_LSD(wavelengths, flux, errors, sn, linelist=linelist, velocities=velocities)
+
+    assert np.all(np.isfinite(lsd.profile))
+    assert np.all(np.isfinite(lsd.profile_errors))
+    assert np.all(np.isfinite(lsd.cov_z))
+    assert np.all(np.isfinite(lsd.forward_model))
+    assert np.all(lsd.forward_model < 1e11)
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
