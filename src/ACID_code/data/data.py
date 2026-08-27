@@ -18,9 +18,9 @@ import matplotlib as mpl
 import pickle, os, traceback
 import pandas as pd
 import numpy as np
-from . import utils
-from .errors import *
-from .utils import IntLike, Array1D, Array2D, Array3D, Scalar, c_kms
+from .. import utils
+from ..errors import *
+from ..utils import IntLike, Array1D, Array2D, Array3D, Scalar, c_kms
 
 class MaskingLines:
     """
@@ -726,7 +726,7 @@ class Data:
         This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
         """
         if sampler is not None:
-            from .mcmc import MCMC
+            from ..mcmc import MCMC
             log_prob_fn = MCMC(self)
 
         if isinstance(sampler, EnsembleSampler):
@@ -1315,7 +1315,7 @@ class Data:
         # Only plot the 20 strongest lines to avoid overcrowding.
         ll_wl = self.linelist["wavelengths"]
         ll_depths = self.linelist["depths"]
-        from .lsd import LSD
+        from ..lsd import LSD
         ll_wl, ll_depths, _ = LSD.clip_wavelengths(self.wavelengths[key], ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
@@ -1652,7 +1652,7 @@ class Data:
                 print(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
                       f"Returning None instead.")
             return None
-        from .result import Result
+        from ..result import Result
         return Result(self)
 
 class LineList:
@@ -2218,7 +2218,7 @@ class DataList:
             overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
             The kwargs passed also allow you to add/overwrite the linelist and velocities in the Data instance with the same overwrite logic.
         """
-        from .acid import Acid # local import to avoid circular imports, since Acid imports Data
+        from ..acid import Acid # local import to avoid circular imports, since Acid imports Data
 
         # Configure overwrite from class default if not input in the method call
         if overwrite is None:
@@ -2601,7 +2601,7 @@ class DataList:
         tuple[plt.Figure, plt.Axes] | None
             The figure and axis objects from the profile fit plot if return_fig is True, otherwise None.
         """
-        from .profiles import Profiles
+        from ..profiles import Profiles
         profiles = Profiles(self.velocities, *self.combined_profile)
         return profiles.plot_fit(**kwargs)
 
