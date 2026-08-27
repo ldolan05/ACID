@@ -44,7 +44,7 @@ docs = [
 
 [project.urls]
 Homepage = "https://github.com/ldolan05/ACID"
-Documentation = "https://acid-code.readthedocs.io/en/stable/"
+Documentation = "https://acid-code.readthedocs.io/en/latest/"
 Repository = "https://github.com/ldolan05/ACID"
 Issues = "https://github.com/ldolan05/ACID/issues"
 Paper = "https://doi.org/10.1093/mnras/stae710"
