@@ -113,9 +113,7 @@ class Data:
     # Other useful data and figures
     # -----------------------------
     #: The grouping of the profiles based on their depth, used for plotting and analysis
-    profile_groups       : Optional[np.ndarray] = None
-    #: Defining if the user inputted groups, helps distinguish in the LSD class between generated vs input groups
-    input_profile_groups : Optional[np.ndarray] = None
+    profile_groups : Optional[np.ndarray] = None
     #: Internal variables used for plotting the continuum_fit and the residual masks
     plotting_variables   : Dict[str, Any]  = field(default_factory=dict)
     #: setup_time (float) - The time taken for initialization
@@ -254,7 +252,12 @@ class Data:
             velocities = np.array(value)
             if not np.all(np.isfinite(velocities)):
                 raise ValueError("The velocity grid you are trying to set must all be finite and not contain NaNs")
-            
+            if len(velocities) <= 1:
+                raise ValueError("The velocity grid you are trying to set must have more than 1 value to be valid.")
+            v_diff = np.diff(velocities)
+            if not np.all(np.allclose(v_diff, v_diff[0])):
+                raise ValueError("The velocity grid you are trying to set must be evenly spaced.")
+
             # Set overwriting flag if velocities already exists and are different from new input
             overwriting = False
             if self._velocities is not None:
@@ -272,11 +275,31 @@ class Data:
                 "The linelist, config, and original data inputs will not be reset.")
                 self.reset()
 
+        elif self._velocities is None:
+            # If velocities is being set to None and self._velocities is None, that's because it was either not input or the user wants a default velocity grid
+            if "combined" not in self.wavelengths:
+                raise ValueError("Trying to set velocities (as None) but the wavelengths have not been set.\n" \
+                                 "Please set your own velocity grid (highly recommend).\n"\
+                                 "Otherwise, set the inputs with Data.set_inputs() to guess a -25 to 25 km/s grid based on those wavelengths.")
+            if self.config.verbose >= 1:
+                print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
+                "It is highly recommended to input your own velocity grid, especially if you need a different sampling or velocity range.")
+            deltav = utils.calc_deltav(self.wavelengths["combined"])
+            self._velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
+
+        else:
+            # If the user is trying to set velocities to None, but they already exist, we don't want to reset them to None
+            if self.config.verbose >= 1:
+                print("Warning: You are trying to set the velocity grid to None, but it already exists. The existing velocity grid will be kept.")
+
     @property
     def linelist(self) -> LineList|None:
         """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
         if self._linelist is None:
             return None
+
+        self._validate_profile_groups(self._linelist)
+
         return LineList(self._linelist)
 
     @linelist.setter
@@ -310,12 +333,29 @@ class Data:
             # Set new linelist
             self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
 
+            # Validate profile groups with the new linelist
+            # If profile_groups is not None, this will check that it has the same length as the new linelist and is 1D.
+            self._validate_profile_groups(self._linelist)
+
             # If overwriting, reset variables and warn
             if overwriting:
                 if self.config.verbose >= 1:
                     print("Warning: the input linelist has been modified. \n" \
                     f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
-                self.reset(preserve_input_profile_groups=False)
+                self.reset()
+
+    def _validate_profile_groups(self, input_linelist) -> None:
+        """To be called when setting/accessing a linelist if the config.profile_groups has not been validated with the current (validated) linelist."""
+        if self.config.profile_groups is not None:
+            self.config.profile_groups = np.asarray(self.config.profile_groups).copy()
+            if self.config.profile_groups.ndim != 1:
+                raise ValueError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
+                "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
+                "spectrum with the corresponding profile_groups.")
+            linelist_wavelengths = input_linelist["wavelengths"]
+            if len(self.config.profile_groups) != len(linelist_wavelengths):
+                raise ValueError(f"The inputted profile_groups must have the same length as the input linelist. "
+                                    f"Got {len(self.config.profile_groups)} groups for {len(linelist_wavelengths)} lines.")
 
     def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
         """
@@ -696,12 +736,11 @@ class Data:
             self.sn["combined"]
         )
 
-    def reset(self, preserve_combined:bool=True, preserve_input_profile_groups:bool=True) -> None:
+    def reset(self, preserve_combined:bool=True) -> None:
         """
         Resets all derived states while preserving:
         - raw input arrays
         - combined spectrum, unless explicitly invalidated
-        - manually supplied profile groups, unless explicitly invalidated
         - linelist
         - velocity grid
         - Config
@@ -720,11 +759,6 @@ class Data:
         nanmask = (
             None if self.nanmask is None
             else self.nanmask.copy()
-        )
-
-        input_profile_groups = (
-            None if self.input_profile_groups is None
-            else self.input_profile_groups.copy()
         )
 
         # Preserve these directly rather than through their property setters,
@@ -750,9 +784,6 @@ class Data:
                 if value is not None:
                     getattr(self, name)["combined"] = value
             self.nanmask = nanmask
-
-        if preserve_input_profile_groups:
-            self.input_profile_groups = input_profile_groups
 
         # Restore raw inputs
         for name, value in inputs.items():
@@ -1141,4 +1172,3 @@ class Data:
             return None
         from ..result import Result
         return Result(self)
-

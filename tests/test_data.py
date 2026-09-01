@@ -66,6 +66,18 @@ def test_config_dictionary_views_repr_and_verbose_validation(capsys):
     assert config.verbose == 1
 
 
+def test_config_sampler_path_is_non_destructive_and_sampler_type_is_validated(tmp_path):
+    sampler_path = tmp_path / "sampler.h5"
+    sampler_path.write_bytes(b"existing sampler")
+
+    config = Config(sampler_path=str(sampler_path))
+
+    assert sampler_path.read_bytes() == b"existing sampler"
+    assert config.sampler_path == str(sampler_path)
+    with pytest.raises(ValueError, match="sampler_type"):
+        Config(sampler_type="nested")
+
+
 def test_masking_lines_accepts_compact_inputs_and_masks_grid():
     # A compact dictionary should expand its default width for each line.
     lines = MaskingLines({"telluric": {"default_width": 100, "lines": [5000.0]}})
@@ -189,24 +201,26 @@ def test_data_input_sorting_skips_and_selective_reset():
     flux = np.array([1.0, 0.9, 0.8, 0.9, 1.0])
     errors = np.full(5, 0.01)
     data.set_inputs(wavelengths, flux, errors, input_sn=100.0, skips=2)
-    data.input_profile_groups = np.array([0, 1])
+    data.config.profile_groups = np.array([0, 1])
+    data.profile_groups = np.array([0, 1])
     data.alpha["derived"] = np.ones((2, 2))
 
     np.testing.assert_array_equal(data.wavelengths["input"][0], [1.0, 3.0, 5.0])
 
-    # Reset clears calculations while optionally preserving combined data and manual groups.
+    # Reset clears calculations while preserving combined data and config inputs.
     combined_before = data.wavelengths["combined"].copy()
-    data.reset(preserve_combined=True, preserve_input_profile_groups=True)
+    data.reset(preserve_combined=True)
     np.testing.assert_array_equal(data.wavelengths["combined"], combined_before)
-    np.testing.assert_array_equal(data.input_profile_groups, [0, 1])
+    np.testing.assert_array_equal(data.config.profile_groups, [0, 1])
+    assert data.profile_groups is None
     assert data.alpha == {}
 
     with pytest.raises(ValueError, match="more than 1 value"):
         Data().set_inputs([1.0], [1.0], [0.1], 10.0)
 
-    data.reset(preserve_combined=False, preserve_input_profile_groups=False)
+    data.reset(preserve_combined=False)
     assert "combined" not in data.wavelengths
-    assert data.input_profile_groups is None
+    np.testing.assert_array_equal(data.config.profile_groups, [0, 1])
 
 
 def test_data_set_inputs_reuses_complete_existing_inputs(synthetic_spectrum):
@@ -317,18 +331,33 @@ def test_data_velocity_and_linelist_overwrites_clear_derived_state(synthetic_spe
     assert data.alpha == {}
 
     data.alpha["derived"] = np.ones((2, 2))
-    data.input_profile_groups = np.array([0, 1])
+    data.config.profile_groups = np.array([0, 1])
+    data.profile_groups = np.array([0, 1])
     changed_linelist = {"wavelengths": linelist["wavelengths"],
                         "depths": linelist["depths"] * 0.9}
     data.linelist = changed_linelist
     assert data.alpha == {}
-    assert data.input_profile_groups is None
+    np.testing.assert_array_equal(data.config.profile_groups, [0, 1])
+    assert data.profile_groups is None
     stored_depths = data.linelist["depths"].copy()
     data.linelist = None
     np.testing.assert_array_equal(data.linelist["depths"], stored_depths)
 
     with pytest.raises(ValueError, match="finite"):
         data.velocities = np.array([0.0, np.nan])
+
+
+def test_profile_groups_are_revalidated_after_config_changes(synthetic_spectrum):
+    *_, linelist = synthetic_spectrum
+    data = Data()
+    data.linelist = linelist
+    data.config.profile_groups = np.array([0, 1])
+
+    np.testing.assert_array_equal(data.linelist["wavelengths"], linelist["wavelengths"])
+
+    data.config.profile_groups = np.array([0])
+    with pytest.raises(ValueError, match="same length"):
+        _ = data.linelist
 
 
 def test_datalist_indexes_orders_and_persists_inputs(tmp_path, synthetic_spectrum):

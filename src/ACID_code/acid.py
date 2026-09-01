@@ -1,23 +1,18 @@
 from __future__ import annotations
 import traceback, warnings
-import sys, emcee, os, time, inspect, inspect, contextlib
+import sys, emcee, os, time, contextlib
 from emcee import EnsembleSampler
 import numpy as np
 import multiprocessing as mp
 from beartype import beartype
 from contextlib import nullcontext
-from numpy.polynomial import polynomial as P
 from . import utils, mcmc
 from .lsd import LSD
 from .result import Result
-from .data import Data, Config, MaskingLines, LineList, DataList
+from .data import Data, Config, MaskingLines, LineList
 from .errors import ContinuumError
 from .utils import IntLike, Scalar, Array1D, Array2D
 from astropy.stats.sigma_clipping import sigma_clip
-try:
-    import dynesty # type: ignore
-except ImportError:
-    dynesty = None
 
 @beartype
 class Acid:
@@ -30,20 +25,7 @@ class Acid:
 
     def __init__(
         self,
-        velocities       : Array1D|None                                       = None,   # Data
-        linelist         : Array2D|str|LineList|dict|None                     = None,   # Data
-        order            : IntLike|None                                       = None,   # Config
-        order_range      : Array1D|None                                       = None,   # Config
-        verbose          : IntLike|bool|str|None                              = None,   # Config
-        sampler_progress : bool|None                                          = None,   # Config
-        masking_lines    : dict|MaskingLines|None                             = None,   # Config
-        seed             : IntLike|None                                       = None,   # Config
-        dir              : str|None                                           = None,   # Config
-        save_path        : str|None                                           = None,   # Config
-        sampler_path     : str|None                                           = None,   # Config
-        figure_dir       : str|None                                           = None,   # Config
-        data             : Data|DataList|None                                 = None,   # Data
-        config           : Config|None                                        = None,   # Config
+        data : Data | None = None,
         **kwargs,
         ) -> None:
         """
@@ -67,6 +49,114 @@ class Acid:
 
         Parameters
         ----------
+        data : :py:type:`Data | None`, optional
+            A :py:class:`Data` instance to store the data and calculations in. 
+        **kwargs : :py:type:`dict`, optional
+            Any kwargs that can be passed to :py:func:`Acid.ACID` can also be passed here.
+
+        Raises
+        ------
+        BeartypeError
+            See :ref:`type_validation` to understand input validation errors.
+        """
+        # Initialise the data class to store calculations in ACID
+        if data is not None:
+            self.data = data
+        else:
+            self.data = Data() # generates also a config on initilisation
+
+        config = kwargs.pop("config", None)
+        if config is not None:
+            self.data.config = config
+
+        # data.config was either empty (on Data initialisation above) or had a previous config stored in the input
+        self.config = self.data.config
+        self.config.update_hipri(**{name: kwargs[name] for name in Config.defaults if name in kwargs})
+
+        # Store the init kwargs to be handled on ACID call
+        self.init_kwargs = kwargs
+
+    def ACID(
+        self,
+        wavelengths           : Array1D|Array2D|None           = None, # Data
+        flux                  : Array1D|Array2D|None           = None, # Data
+        errors                : Array1D|Array2D|None           = None, # Data
+        sn                    : Array1D|Array2D|Scalar|None    = None, # Data
+        velocities            : Array1D|None                   = None, # Data
+        linelist              : Array2D|str|LineList|dict|None = None, # Data
+        order                 : IntLike|None                   = None, # Config
+        order_range           : Array1D|None                   = None, # Config
+        verbose               : IntLike|bool|str|None          = None, # Config
+        sampler_progress      : bool|None                      = None, # Config
+        masking_lines         : dict|MaskingLines|None         = None, # Config
+        seed                  : IntLike|None                   = None, # Config
+        dir                   : str|None                       = None, # Config
+        save_path             : str|None                       = None, # Config
+        sampler_path          : str|None                       = None, # Config
+        figure_dir            : str|None                       = None, # Config
+        deterministic_profile : bool|None                      = None, # Config
+        poly_ord              : IntLike|None                   = None, # Config
+        continuum_percentile  : IntLike|None                   = None, # Config
+        n_bins                : IntLike|None                   = None, # Config
+        bin_size              : IntLike|None                   = None, # Config
+        pix_chunk             : IntLike|None                   = None, # Config
+        dev_perc              : IntLike|None                   = None, # Config
+        sigma_lower           : Scalar|None                    = None, # Config
+        sigma_upper           : Scalar|None                    = None, # Config
+        skips                 : IntLike|None                   = None, # Config
+        od                    : bool|None                      = None, # Config
+        sparse                : bool|None                      = None, # Config
+        profile_groups        : Array1D|Array2D|None           = None, # Config, then Data after LSD clipping/grouping
+        depth_group_rules     : dict|None                      = None, # Config
+        sampler_type          : str|None                       = None, # Config
+        parallel              : bool|None                      = None, # Config
+        cores                 : IntLike|None                   = None, # Config
+        nwalkers              : IntLike|None                   = None, # Config, then Data just before MCMC
+        nsteps                : IntLike|None                   = None, # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
+        max_steps             : IntLike|None                   = None, # Config
+        check_interval        : IntLike|None                   = None, # Config
+        min_checks            : IntLike|None                   = None, # Config
+        min_tau_factor        : IntLike|None                   = None, # Config
+        tau_tol               : float|None                     = None, # Config
+        moves                 : list|None                      = None, # Config
+        continuum_method      : str|None                       = None, # Config
+        run_mcmc              : bool|None                      = None, # Config
+        **kwargs,
+        ) -> Result | None:
+        """
+        Notes
+        -----
+        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
+        returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
+
+        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
+        any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
+        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and the ACID method).
+
+        All parameters below are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
+        The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
+
+        Parameters
+        ----------
+        wavelengths : :py:type:`Array1D | Array2D`, optional
+            An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2D array such that
+            wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
+        flux : :py:type:`Array1D | Array2D`, optional
+            An array of spectral frames (in flux). For multiple frames this should be a 2D array such that 
+            flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
+            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
+        errors : :py:type:`Array1D | Array2D`, optional
+            Errors for each frame (in flux). For multiple frames this should be a 2D array such that
+            errors[i] corresponds to the spectral errors for the ith frame. If a 2D array is provided, they are treated as multiple frames (not 
+            orders). If no errors are provided, but the SN is provided, the errors will be estimated from the flux and SN, but we highly recommend 
+            providing errors if possible, by default None, stored in the Data instance.
+        sn : :py:type:`Scalar | IntLike | Array1D`, optional
+            Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
+            Each frame should have only one S/N value, so for multiple frames this should be a 1D array such that
+            sn[i] corresponds to the S/N for the ith frame. If you prefer to use a per-pixel SN value, ACID will use the :py:function:`utils.collapse_SNR` 
+            function to calculate a single S/N value for each frame from the central 2/3rds of the input spectra. In which case, a 2D array can be 
+            If None, the S/N will be estimated from the input spectra and errors, by default None, stored in the Data instance.
         velocities : :py:type:`Array1D`, optional
             Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create one. If None, a default grid
             from -25 to 25 km/s is used with a spacing calculated by calc_deltav after the wavelengths are provided. It is highly recommended to 
@@ -132,206 +222,6 @@ class Acid:
             A directory to save the figures to.
             If None, figures are not saved to disk and figures are instead shown (if asked) with plt.show(), by default None.
             If the directory does not exist, only its final component is created; its parent must already exist.
-        data : :py:class:`Data` | :py:class:`DataList`, optional
-            An optional backend :py:class:`Data` object to use for storing data. Allows previously calculated results to be used skipped.
-            If None, a new :py:class:`Data` object is created. Please note that if the :py:class:`Data` class already has a saved ACID config
-            class, then any inputs to the :py:class:`Acid` initialisation and ACID method will overwrite these config values. If a 
-            :py:class:`DataList` instance is inputted, the :py:class:`Data` instance corresponding to the inputted order is used.
-        config : :py:class:`Config`, optional
-            An optional :py:class:`Config` object to use for storing the configuration. Allows you to override the config values stored in 
-            the :py:class:`Data` object, otherwise, inputs to the initialisation here and the ACID method will overwrite these config values again (if entered).
-            If None, an empty Config is created and stored in the Data instance.
-        **kwargs : :py:type:`dict`, optional
-            Unused except to catch if users use the "linelist_path" input rather than the now "linelist" input.
-
-        Raises
-        ------
-        BeartypeError
-            See :ref:`type_validation` to understand input validation errors.
-        """
-        # Initialise the data class to store calculations in ACID        
-        if data is not None:
-            if isinstance(data, DataList):
-                self.data = data[order]
-            else:
-                self.data = data
-        else:
-            self.data = Data() # generates also a config on initilisation
-
-        # If a config is inputted, this will overwrite any config values already in the data class, 
-        # otherwise, the config values in the data class will be used and updated by any inputs to the init or ACID method. 
-        if config is not None:
-            self.data.config = config
-
-        self.config = self.data.config # Either was None (on Data initialisation above) or had a previous config stored in the old or
-        # overwritten Data class
-
-        # Verbosity validation handled in config property setter
-        self.config.verbose = verbose
-        self.config.sampler_progress = sampler_progress
-
-        # Temp testing
-        if self.config.verbose <= 2:
-            warnings.filterwarnings("ignore")
-        else:
-            pass # will put stuff here as we test
-
-        # Validate velocities input, if None, this is handled in ACID function later when a input spectrum is provided
-        if velocities is not None:
-            if velocities.ndim != 1:
-                raise ValueError("'velocities' must be a one-dimensional array")
-        # data.velocities defaults to None in Data class, will be set in ACID function from wavelengths if not provided
-        self.data.velocities = velocities if velocities is not None else self.data.velocities
-
-        # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
-        if "linelist_path" in kwargs:
-            linelist = kwargs.pop("linelist_path")
-            if self.config.verbose >= 1:
-                print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
-                f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
-        if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
-            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
-                             "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
-        # Anything left in kwargs is invalid
-        if kwargs:
-            raise TypeError(
-                f"Unexpected keyword argument(s) for Acid.__init__: {', '.join(sorted(kwargs))}"
-            )
-
-        # Set linelist in the Data class, the property setter handles input validation
-        self.data.linelist = linelist
-
-        # Set the lines to mask, the property in the class handles input validation and None check
-        self.config.masking_lines = masking_lines
-
-        # Set seed if not already done in config, in this way, seed is only explicitly set once
-        if getattr(self.config, "seed", None) is None:
-            self.config.seed = seed
-            if self.config.seed is not None:
-                np.random.seed(self.config.seed) # In principle this is only ever called once
-            # else: user may define a seed at the top of their seed, so can use that
-        # else: seed already in config, so seed would already have been set when put in
-
-        # Set default order and order range for ACID, config handles if either of these are None
-        self.config.order_range = order_range
-        self.config.order = order
-
-        # Handle dir input
-        if dir is not None:
-            self.config.dir = dir
-            save_path = save_path if save_path is not None else os.path.join(self.config.dir, "data.pkl")
-            sampler_path = sampler_path if sampler_path is not None else os.path.join(self.config.dir, "sampler.h5")
-            figure_dir = figure_dir if figure_dir is not None else os.path.join(self.config.dir, "figures")
-        elif self.config.dir is not None:
-            # Reapply a directory restored through Config serialization so any
-            # missing derived paths are populated consistently.
-            self.config.dir = self.config.dir
-
-        # Handle data saving paths checks
-        save_path = save_path if save_path is not None else self.config.save_path
-        if save_path is not None:
-            if not save_path.endswith(".pkl"):
-                raise ValueError("'save_path' must end with '.pkl'.")
-            save_path = os.path.abspath(save_path)
-            utils.ensure_directory(os.path.dirname(save_path), "data directory")
-            self.config.save_path = save_path
-
-        # Handle sampler path checks
-        sampler_path_explicit = sampler_path is not None or dir is not None
-        sampler_path = sampler_path if sampler_path is not None else self.config.sampler_path
-        if sampler_path is not None:
-            if not sampler_path.endswith(".h5"):
-                raise ValueError("'sampler_path' must end with '.h5'.")
-            sampler_path = os.path.abspath(sampler_path)
-            utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
-            # Delete existing file at sampler path if it exists
-            if sampler_path_explicit and os.path.exists(sampler_path):
-                if self.config.verbose >= 1:
-                    print(f"Warning: A file already exists at '{sampler_path}', it will now be deleted.")
-                os.remove(sampler_path)
-            self.config.sampler_path = sampler_path
-
-        # Handle figure saving path checks
-        figure_dir = figure_dir if figure_dir is not None else self.config.figure_dir
-        if figure_dir is not None:
-            self.config.figure_dir = utils.ensure_directory(figure_dir, "figure directory")
-
-        return
-
-    # Get init keys to be checked in ACID function for any potential conflicts in input arguments.
-    # This is to avoid confusion for users who may accidentally input an argument that is meant for
-    # the class initialisation rather than the ACID function, which takes different arguments.
-    _INIT_KEYS = set(inspect.signature(__init__).parameters) - {"self", "kwargs"}
-
-    def ACID(
-        self,
-        wavelengths           : Array1D|Array2D|None        = None, # Data
-        flux                  : Array1D|Array2D|None        = None, # Data
-        errors                : Array1D|Array2D|None        = None, # Data
-        sn                    : Array1D|Array2D|Scalar|None = None, # Data
-        deterministic_profile : bool|None                   = None, # Config
-        poly_ord              : IntLike|None                = None, # Config
-        continuum_percentile  : IntLike|None                = None, # Config
-        n_bins                : IntLike|None                = None, # Config
-        bin_size              : IntLike|None                = None, # Config
-        pix_chunk             : IntLike|None                = None, # Config
-        dev_perc              : IntLike|None                = None, # Config
-        sigma_lower           : Scalar|None                 = None, # Config
-        sigma_upper           : Scalar|None                 = None, # Config
-        skips                 : IntLike|None                = None, # Config
-        od                    : bool|None                   = None, # Config
-        sparse                : bool|None                   = None, # Config
-        profile_groups        : Array1D|Array2D|None        = None, # Data
-        depth_group_rules     : dict|None                   = None, # Config
-        sampler_type          : str|None                    = None, # Config
-        parallel              : bool|None                   = None, # Config
-        cores                 : IntLike|None                = None, # Config
-        nwalkers              : IntLike|None                = None, # Config, then Data just before MCMC
-        nsteps                : IntLike|None                = None, # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
-        max_steps             : IntLike|None                = None, # Config
-        check_interval        : IntLike|None                = None, # Config
-        min_checks            : IntLike|None                = None, # Config
-        min_tau_factor        : IntLike|None                = None, # Config
-        tau_tol               : float|None                  = None, # Config
-        moves                 : list|None                   = None, # Config
-        continuum_method      : str|None                    = None, # Config
-        run_mcmc              : bool|None                   = None, # Config
-        **kwargs,
-        ) -> Result | None:
-        """
-        Notes
-        -----
-        Fits the continuum of the given spectra and performs LSD on the continuum corrected spectra,
-        returning an LSD profile for each spectrum given. Spectra must cover a similiar wavelength range.
-
-        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
-        any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and the ACID method).
-
-        All parameters below are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
-        The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
-
-        Parameters
-        ----------
-        wavelengths : :py:type:`Array1D | Array2D`, optional
-            An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2D array such that
-            wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
-            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
-        flux : :py:type:`Array1D | Array2D`, optional
-            An array of spectral frames (in flux). For multiple frames this should be a 2D array such that 
-            flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
-            provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
-        errors : :py:type:`Array1D | Array2D`, optional
-            Errors for each frame (in flux). For multiple frames this should be a 2D array such that
-            errors[i] corresponds to the spectral errors for the ith frame. If a 2D array is provided, they are treated as multiple frames (not 
-            orders). If no errors are provided, but the SN is provided, the errors will be estimated from the flux and SN, but we highly recommend 
-            providing errors if possible, by default None, stored in the Data instance.
-        sn : :py:type:`Scalar | IntLike | Array1D`, optional
-            Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
-            Each frame should have only one S/N value, so for multiple frames this should be a 1D array such that
-            sn[i] corresponds to the S/N for the ith frame. If you prefer to use a per-pixel SN value, ACID will use the :py:function:`utils.collapse_SNR` 
-            function to calculate a single S/N value for each frame from the central 2/3rds of the input spectra. In which case, a 2D array can be 
-            If None, the S/N will be estimated from the input spectra and errors, by default None, stored in the Data instance.
         deterministic_profile : bool, optional
             If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
             profile is inferred from the continuum fit. This is a new feature that has been set to the default as it significantly
@@ -497,117 +387,135 @@ class Acid:
         ValueError
             If other input arguments do not conform to the expected formats and requirements.
         """
-        # --- Setup and validation ---
 
+        # Part 1: Setup and validation
+        # ============================
+        # region setup and validation
+        # region verbose
+        # Check if verbose was put in the init
+        init_verbose = self.init_kwargs.pop("verbose", None)
+        # Set verbosity first with validation handled in config property setter
+        self.config.verbose = verbose if verbose is not None else init_verbose
+
+        # Suppress warnings generally, but high verbosity will show them
+        if self.config.verbose <= 2:
+            warnings.filterwarnings("ignore")
+
+        # Print initialisation status
         init_t0 = time.time()
         if self.config.verbose >= 2:
             print('Initialising...')
+        # endregion verbose
+
+
+        # Intercept legacy kwargs and invalid inputs
+        # ------------------------------------------
+        # region input kwargs
+        # Add init_kwargs to kwargs, with kwargs overwriting
+        kwargs = {**self.init_kwargs, **kwargs}
+
+        # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
+        if "linelist_path" in kwargs:
+            legacy_linelist = kwargs.pop("linelist_path")
+            if linelist is None and "linelist" not in kwargs:
+                linelist = legacy_linelist
+            if self.config.verbose >= 1:
+                print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
+                f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
+        if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
+            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
+                             "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
 
         # Check for old n_sig input
         if "n_sig" in kwargs:
-            sigma_lower = kwargs.pop("n_sig")
+            legacy_n_sig = kwargs.pop("n_sig")
+            if sigma_lower is None and "sigma_lower" not in kwargs:
+                sigma_lower = legacy_n_sig
             if self.config.verbose >= 1:
                 print("Warning: 'n_sig' is a legacy argument for inputting sigma_lower.\n" \
                 f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.")
 
-        # Check for any potential conflicts in input arguments that are meant for the class initialisation.
-        overlap = self._INIT_KEYS & kwargs.keys()
-        if overlap and self.config.verbose >= 1:
-            for key in sorted(overlap):
-                print(f"'{key}' is set in Acid initialisation, not the ACID method. The inputted value will be ignored.")
+        # Check for old _all_frames input
+        if "_all_frames" in kwargs:
+            _all_frames = kwargs.pop("_all_frames")
+            if self.config.verbose >= 0:
+                print("Warning: 'all_frames' is a legacy argument and is now unused. See 'DataList' in the documentation for running multiple orders.")
 
-        # Raise an error if the kwargs are not part of the ACID init
-        invalid_keys = set(kwargs.keys()) - self._INIT_KEYS
-        if invalid_keys:
-            raise ValueError(
-                f"The following keyword arguments are not recognised by ACID or Acid.__init__: "
-                f"{', '.join(sorted(invalid_keys))}."
-            )
+        # Check for telluric_lines old input
+        if "telluric_lines" in kwargs:
+            telluric_lines = kwargs.pop("telluric_lines")
+            if self.config.verbose >= 0:
+                print("Warning: 'telluric_lines' is a legacy argument and now forms part of the broader 'masking_lines' argument.\n" \
+                "See 'MaskingLines' in the documentation for more information.\n"
+                "The telluric_lines will be ignored and default masking_lines will be used instead.")
 
-        # Assign inputted configuration to config dictionary plus or minus a few variables
-        ACID_config = {
-            "poly_ord"              : poly_ord,
-            "continuum_percentile"  : continuum_percentile,
-            "n_bins"                : n_bins,
-            "bin_size"              : bin_size,
-            "pix_chunk"             : pix_chunk,
-            "dev_perc"              : dev_perc,
-            "sigma_lower"           : sigma_lower,
-            "sigma_upper"           : sigma_upper,
-            "skips"                 : skips,
-            "od"                    : od,
-            "sparse"                : sparse,
-            "depth_group_rules"     : depth_group_rules,
-            "sampler_type"          : sampler_type,
-            "parallel"              : parallel,
-            "cores"                 : cores,
-            "nwalkers"              : nwalkers,
-            "deterministic_profile" : deterministic_profile,
-            "nsteps"                : nsteps,
-            "max_steps"             : max_steps,
-            "check_interval"        : check_interval,
-            "min_checks"            : min_checks,
-            "min_tau_factor"        : min_tau_factor,
-            "tau_tol"               : tau_tol,
-            "moves"                 : moves,
-            "run_mcmc"              : run_mcmc,
-            "continuum_method"      : continuum_method,
-        }
+        # Check data or config wasnt passed
+        if "data" in kwargs:
+            raise ValueError("The 'data' kwarg should be passed in initialisation, please remove it from the ACID method call.")
+        if "config" in kwargs:
+            raise ValueError("The 'config' kwarg is stored in Data.config.\n" \
+                                "Set Data.config to your desired config instance and pass it in Acid initialisation.")
+        # The remaining kwargs are either valid and passed in init, or invalid in either init or ACID kwargs
+        # endregion input kwargs
+
+
+        # Validating config inputs
+        # ------------------------
+        # region config validation
+        local_kwargs = locals().copy()
+
+        # Assign inputted configuration to config dictionary, preferring ACID inputs over init inputs
+        config_kwargs = {}
+        for name in Config.defaults:
+            if name in local_kwargs:
+                init_input = kwargs.pop(name, None)
+                config_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
+
+        old_profile_groups = self.config.profile_groups
 
         # Update config if any of the above config settings are new
-        self.config.update_hipri(**ACID_config) # self.config overwrites ACID_config if overlapping
-        self.data.config = self.config # update dataclass config as well, although I think this line is redundant
+        self.config.update_hipri(**config_kwargs) # self.config overwrites config_kwargs if overlapping
+        if config_kwargs.get("profile_groups") is not None and (
+            old_profile_groups is None
+            or not np.array_equal(old_profile_groups, self.config.profile_groups)
+        ):
+            self.data.reset()
 
+        # Then also remove the valid data kwargs, preferring ACID inputs over init inputs
+        valid_data_kwargs = ["wavelengths", "flux", "errors", "sn", "velocities", "linelist"]
+        data_kwargs = {}
+        for name in valid_data_kwargs:
+            init_input = kwargs.pop(name, None)
+            data_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
+        # Then set to locals to be used downstream
+        wavelengths, flux, errors, sn, velocities, linelist = (data_kwargs[name] for name in valid_data_kwargs)
+
+        # Finally those that remain in kwargs are invalid and raise an error
+        if kwargs:
+            raise ValueError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
+        self.init_kwargs = {}
+
+        # TODO: Keep for now, move to config if no mp fix, otherwise try spawn mp context
         if self.config.parallel and sys.platform == "win32":
             if self.config.verbose >= 1:
                 # This doesn't work, needs serious modifications to make work, so just run serially for now
                 print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
             self.config.parallel = False
 
-        # Validate some of the inputs
-        if self.config.sampler_type == "dynesty":
-            if dynesty is None:
-                raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")
-        if self.config.sampler_type == "dynesty" and not self.config.deterministic_profile:
-            raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise you'll be waiting hours for a single result)")
-        if self.config.sampler_type == "dynesty" and self.config.max_steps is not None:
-            raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive. See the dynesty docs for more details.")
+        # TODO: Apply seed here (only if complete=False, or run_mcmc=False), maybe even save the generator state before mcmc
+        # endregion config validation
+        # endregion setup and validation
 
-        if self.config.continuum_method is None:
-            if self.config.poly_ord <= 5:
-                self.config.continuum_method = "polyval"
-            else:
-                self.config.continuum_method = "chebval"
-        elif self.config.continuum_method not in ["polyval", "chebval"]:
-            raise ValueError("Invalid 'continuum_method' input, must be one of ['polyval', 'chebval'].")
-
-        # Validate profile group inputs (needs to be done after inputs set)
-        if profile_groups is not None:
-            profile_groups = np.asarray(profile_groups)
-            if profile_groups.ndim == 2:
-                raise ValueError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
-                "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
-                "spectrum with the corresponding profile_groups.")
-            if depth_group_rules is not None and self.config.verbose >= 1:
-                print("Warning: depth_group_rules is set, but profile_groups is also set. The depth_group_rules will be ignored.")
-            if len(profile_groups) != len(self.data.linelist["wavelengths"]):
-                raise ValueError(f"profile_groups must have the same length as the input linelist. "
-                                    f"Got {len(profile_groups)} groups for {len(self.data.linelist['wavelengths'])} lines.")
-            self.data.input_profile_groups = profile_groups.copy()
-
-        # --- Start of the ACID method ---
-
-        # Setup and data validation done in data class and applies skips
+        # Part 2: Preprocessing
+        # ---------------------
+        # Setup and data validation done in data class and applies skips, also combines frames if multiple frames were input
+        # Sets the "input" and "combined" keys in the data instance for wavelengths, flux, errors, and sn
         self.data.set_inputs(wavelengths, flux, errors, sn)
 
-        # Now that the data is set, we can check if the velocities were set in the initialisation or not, and if not,
-        # calculate a default velocity grid using the input wavelengths.
-        if self.data.velocities is None:
-            if self.config.verbose >= 1:
-                print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
-                "It is highly recommended to input your own velocity grid, especially if you need a different wavelength range.")
-            deltav = utils.calc_deltav(self.data.wavelengths["combined"])
-            self.data.velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
+        # Let the respective properties in Data handle the validation and setting, this is set after set_inputs so velocities 
+        # can be guessed from them if not input
+        self.data.linelist = linelist
+        self.data.velocities = velocities
 
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
@@ -628,7 +536,7 @@ class Acid:
             if self.config.verbose >= 3:
                 print("Initial fit and LSD run already exists, skipping this step.")
         else:
-            if self.config.verbose >= 3:
+            if self.config.verbose >= 2:
                 print("Performing initial fit and LSD...")
 
             # Uses all information stored in data, accessing and storing the data attributed with the key
@@ -807,11 +715,12 @@ class Acid:
     def ACID_HARPS(self, *args, **kwargs):
         """
         This method is no longer supported in ACID. Please use the ACID function with the appropriate inputs for HARPS spectra instead. 
-        Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. 
+        Future versions of ACID may provide functions to load and configure data from a range of different standard instruments. 
         """
+        # TODO: ACID HARPS raises NotImplementedError
         raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
-        f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments.")
+        f"Future versions of ACID may provide functions to load and configure data from a range of different standard instruments.")
 
     @staticmethod
     def scipy_continuum_fit(data:Data, key:str) -> None:
@@ -984,6 +893,7 @@ class Acid:
                 self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
                 self.sampler.run_mcmc(**mcmc_kwargs)
             else:
+                import dynesty # we have already checked if the user can import dynesty in the config property setter
                 if self.config.parallel:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
@@ -1252,11 +1162,11 @@ def ACID(*args, **kwargs):
         "n_sig": "sigma_lower",
     }
 
-    # Split args and kwargs into init and run kwargs using helper function
-    init_kwargs, run_kwargs = _get_init_and_run_kwargs(LEGACY_ACID_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
+    # Translate legacy args and kwargs to the current ACID inputs
+    run_kwargs = _get_run_kwargs(LEGACY_ACID_ARGS, RENAMED_LEGACY_ARGS, *args, **kwargs)
 
-    acid = Acid(**init_kwargs)
-    return acid.ACID(**run_kwargs)
+    data = run_kwargs.pop("data", None)
+    return Acid(data=data).ACID(**run_kwargs)
 
 def ACID_HARPS(*args, **kwargs):
     """Legacy ACID_HARPS function, deprecated after 1.4.5.
@@ -1266,9 +1176,8 @@ def ACID_HARPS(*args, **kwargs):
         f"Future versions of ACID will provide functions to load and configure data from a range of different standard instruments. \n"
         f"If you still really wish to use ACID_HARPS, the last stable version of ACID with the method is 1.4.5. Try: pip install ACID_code==1.4.5")
 
-def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
-    """Helper function to split legacy args and kwargs into init and run kwargs given
-    legacy argument names and their renamed counterparts.
+def _get_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
+    """Helper function to translate legacy args and kwargs to their current names.
     """
     legacy_kwargs = {}
 
@@ -1293,10 +1202,4 @@ def _get_init_and_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     # Combine both translated dictionaries
     combined = {**translated_legacy, **translated_kwargs}
 
-    # Determine which arguments are for __init__ and which are for run_ACID_HARPS
-    init_params = inspect.signature(Acid.__init__).parameters
-    init_keys = set(init_params.keys()) - {"self"}
-    # Split kwargs accordingly
-    init_kwargs = {key: val for key, val in combined.items() if key in init_keys}
-    run_kwargs = {key: val for key, val in combined.items() if key not in init_keys}
-    return init_kwargs, run_kwargs
+    return combined

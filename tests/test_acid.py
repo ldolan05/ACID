@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList
-from ACID_code.acid import _get_init_and_run_kwargs
+from ACID_code.acid import _get_run_kwargs
 
 
 def test_acid_runs_preprocessing_without_mcmc(harps_order_40):
@@ -36,11 +36,52 @@ def test_acid_accepts_multiple_frames_without_sampling(harps_order_40):
     assert acid.data.profile["masked"][0].shape == velocities.shape
 
 
+def test_acid_call_overrides_constructor_settings_on_later_runs(harps_order_40):
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist, poly_ord=2, verbose=0)
+
+    acid.ACID(wavelengths, flux, errors, sn, poly_ord=3, run_mcmc=False)
+    acid.ACID()
+
+    assert acid.config.poly_ord == 3
+    assert acid.init_kwargs == {}
+
+
+def test_current_inputs_override_legacy_constructor_aliases(harps_order_40):
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    line_wavelengths, line_depths = LineList.validate_linelist(linelist)
+    explicit_linelist = {"wavelengths": line_wavelengths,
+                         "depths": line_depths * 0.9}
+    acid = Acid(velocities=velocities, linelist_path=linelist, n_sig=1, verbose=0)
+
+    acid.ACID(wavelengths, flux, errors, sn, linelist=explicit_linelist,
+              sigma_lower=4, run_mcmc=False)
+
+    _, expected_depths = LineList.validate_linelist(explicit_linelist)
+    np.testing.assert_array_equal(acid.data.linelist["depths"], expected_depths)
+    assert acid.config.sigma_lower == 4
+
+
+def test_changing_profile_groups_recalculates_lsd_products(harps_order_40):
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    line_wavelengths, _ = LineList.validate_linelist(linelist)
+    acid = Acid(velocities=velocities, linelist=linelist, verbose=0)
+
+    acid.ACID(wavelengths, flux, errors, sn,
+              profile_groups=np.zeros(len(line_wavelengths), dtype=int),
+              run_mcmc=False)
+    assert acid.data.alpha["initial"].shape[0] == 1
+
+    acid.ACID(profile_groups=np.arange(len(line_wavelengths)) % 2)
+    assert acid.data.alpha["initial"].shape[0] == 2
+
+
 def test_legacy_wrapper_maps_positional_arguments(harps_order_40):
     # The legacy top-level function has a different positional argument order.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
 
-    result = ACID(wavelengths, flux, errors, linelist, sn, velocities, run_mcmc=False)
+    result = ACID(wavelengths, flux, errors, linelist, sn, velocities,
+                  all_frames=None, telluric_lines=[], run_mcmc=False)
 
     assert result is None
 
@@ -87,7 +128,7 @@ def test_acid_requires_complete_input_and_rejects_unknown_keyword(harps_order_40
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     acid = Acid(velocities=velocities, linelist=linelist)
 
-    with pytest.raises(ValueError, match="not recognised"):
+    with pytest.raises(ValueError, match="Unexpected keyword argument"):
         acid.ACID(wavelengths, flux, errors, sn, made_up_setting=True)
     # Missing required line-list data should also give a domain-specific exception.
     with pytest.raises(ValueError, match="linelist"):
@@ -163,6 +204,8 @@ def test_debug_result_stores_extra_lsd_and_indexes_multi_profiles(harps_order_40
                        nsteps=12, nwalkers=12)
 
     # Indexing must select group, frame, profile/error components consistently.
+    np.testing.assert_array_equal(result.config.profile_groups,
+                                  np.arange(len(linelist_wavelengths)) % 2)
     assert "lsd_final" in result.data.debug
     assert result[0].shape == (2, len(velocities))
     np.testing.assert_array_equal(result[0, 0], result["profile"])
@@ -251,19 +294,18 @@ def test_sampler_and_result_properties_validate_acid_state(harps_result):
         incomplete.continue_sampling(nsteps=1)
 
 
-def test_legacy_argument_splitter_routes_and_validates_arguments():
-    # Translate one initialisation setting and two run settings using the legacy names.
+def test_legacy_argument_translator_routes_and_validates_arguments():
+    # Translate inputs using the legacy names.
     legacy_args = ["line", "vgrid", "input_wavelengths"]
     renamed = {"line": "linelist", "vgrid": "velocities",
                "input_wavelengths": "wavelengths"}
-    init_kwargs, run_kwargs = _get_init_and_run_kwargs(
+    run_kwargs = _get_run_kwargs(
         legacy_args, renamed, "lines.txt", np.arange(3.0), np.arange(5.0), nsteps=10,
     )
 
-    assert set(init_kwargs) == {"linelist", "velocities"}
-    assert set(run_kwargs) == {"wavelengths", "nsteps"}
+    assert set(run_kwargs) == {"wavelengths", "nsteps", "linelist", "velocities"}
     with pytest.raises(TypeError, match="Too many positional"):
-        _get_init_and_run_kwargs(["one"], {}, 1, 2)
+        _get_run_kwargs(["one"], {}, 1, 2)
 
 
 def test_removed_harps_entry_points_raise_migration_message():

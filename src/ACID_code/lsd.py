@@ -151,7 +151,7 @@ class LSD:
             raise ValueError(f"If key is not provided; wavelengths, flux, errors, and SN must be provided.")
 
         sparse         = sparse if sparse is not None else self.config.sparse
-        profile_groups = profile_groups if profile_groups is not None else self.data.input_profile_groups
+        profile_groups = profile_groups if profile_groups is not None else self.config.profile_groups
 
         # Ensure inputs are numpy arrays
         wavelengths = np.array(wavelengths)
