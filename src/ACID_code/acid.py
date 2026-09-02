@@ -109,6 +109,7 @@ class Acid:
         profile_groups        : Array1D|Array2D|None           = None, # Config, then Data after LSD clipping/grouping
         depth_group_rules     : dict|None                      = None, # Config
         sampler_type          : str|None                       = None, # Config
+        use_jax               : bool|None                      = None, # Config
         parallel              : bool|None                      = None, # Config
         cores                 : IntLike|None                   = None, # Config
         nwalkers              : IntLike|None                   = None, # Config, then Data just before MCMC
@@ -309,6 +310,9 @@ class Acid:
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
             The only reason I added this was to get the Bayesian evidence for model comparison.
             If "dynesty" is chosen, the dynesty package needs to be installed, and the nsteps parameter is treated as "nlive" to be passed to the NestedSampler.
+        use_jax : :py:type:`bool`, optional
+            If True, use a lazily imported, JIT-compiled JAX kernel for MCMC log-probability calculations.
+            If JAX is unavailable, ACID warns and falls back to NumPy/SciPy. By default False.
         parallel : :py:type:`bool`, optional
             If True uses multiprocessing to calculate the profiles for each frame in parallel, see
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True

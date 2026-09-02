@@ -184,6 +184,7 @@ class Data:
 
         output += [
             f"Sampler type: {self.config.sampler_type}",
+            f"Using JAX?: {self.config.use_jax}",
             f"Parallel processing?: {self.config.parallel}",
             f"Number of cores: {self.config.cores}",
             f"Number of walkers: {self.nwalkers}",

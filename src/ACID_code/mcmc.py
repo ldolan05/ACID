@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 import numpy as np
 from numpy.linalg import norm
 from . import utils
@@ -9,12 +10,10 @@ from .data import Data
 from numpy.polynomial.chebyshev import chebval
 from .lsd import LSD
 
-# TODO: see if we can get a jax speedup
+IN_SLURM = "SLURM_JOB_ID" in os.environ
 
-# The following two wrapper functions are required for multiprocessing
-# support, without it, the fork method would need to reserialize everything
-# which is very inefficient. See parallelization in the emcee documentation
-# for more details.
+# The following wrapper functions allow each worker to initialise the model once
+# rather than serialising it with every likelihood call.
 def _mp_init_worker(data):
     """Initializes each worker process with global data."""
     global _MCMC
@@ -50,7 +49,8 @@ class MCMC:
             deterministic_profile : bool         = False,
             sampler_type          : str          = "emcee",
             od                    : bool         = True,
-            continuum_method      : str          = "polyval"
+            continuum_method      : str          = "polyval",
+            use_jax               : bool         = False,
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
@@ -82,6 +82,9 @@ class MCMC:
         continuum_method : str, optional
             Method to use for continuum fitting, by default "polyval".
             Options are "polyval" for standard polynomial evaluation or "chebval" for Chebyshev polynomial evaluation.
+        use_jax : bool, optional
+            Use an optional JAX-jitted log-probability kernel. JAX is imported
+            lazily, and NumPy/SciPy is used if it is unavailable, by default False.
         """
 
         # No checks are performed here - assume data is valid from ACID class checks,
@@ -98,6 +101,7 @@ class MCMC:
             self.sampler_type = data.config.sampler_type
             self.od = data.config.od
             self.continuum_method = data.config.continuum_method
+            self.use_jax = data.config.use_jax
         else:
             self.x = x_or_data
             self.y = y
@@ -109,6 +113,7 @@ class MCMC:
             self.sampler_type = sampler_type
             self.od = od
             self.continuum_method = continuum_method
+            self.use_jax = use_jax
             data = None
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
@@ -124,6 +129,10 @@ class MCMC:
 
         self.AtV = self.alpha.T * V # precompute alpha matrix multiplication once
 
+        # Precompute the terms which are invariant for every likelihood call
+        self._likelihood_var = self.yerr * self.yerr
+        self._likelihood_log_norm = np.log(2 * np.pi * self._likelihood_var)
+
         # Configure whether to use full or deterministic model
         if self.deterministic_profile is False:
             #: The model function can be called to directly run the model based on the deterministic_profile flag from initialization
@@ -137,6 +146,13 @@ class MCMC:
             self.model_inputs = np.concatenate((profile0, data.poly_coeffs["masked"]))
         else:
             self.model_inputs = None
+
+        self.jax_enabled = False
+        self._jax_backend = None
+        if self.use_jax:
+            from .jax import JAXBackend
+            self._jax_backend = JAXBackend(self)
+            self.jax_enabled = self._jax_backend.enabled
 
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
@@ -300,6 +316,9 @@ class MCMC:
         float
             Log probability.
         """
+        if self.jax_enabled:
+            return self._jax_backend.log_probability(theta)
+
         forward, z = self.model_function(theta)
 
         lp = self.log_prior(theta, z)
@@ -307,8 +326,7 @@ class MCMC:
             return -np.inf
 
         diff = self.y - forward
-        var = self.yerr * self.yerr
-        ll = -0.5 * np.sum(diff*diff/var + np.log(2*np.pi*var))
+        ll = -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
         return lp + ll
 
     @staticmethod
@@ -371,6 +389,9 @@ class MCMC:
     def dynesty_logprob(self, theta):
         """Log likelihood function for dynesty nested sampling."""
 
+        if self.jax_enabled:
+            return self._jax_backend.log_likelihood(theta)
+
         forward, z = self.model_function(theta)
 
         if not np.all(np.isfinite(forward)):
@@ -381,9 +402,7 @@ class MCMC:
             return -np.inf
 
         diff = self.y - forward
-        var = self.yerr * self.yerr
-
-        return -0.5 * np.sum(diff * diff / var + np.log(2 * np.pi * var))
+        return -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
 
     def ptform(self, u):
         """

@@ -27,6 +27,27 @@ Once the environment has been activated ACID can be installed using pip_:
 
 This will install ACID into your environment with all of its dependencies.
 
+Optional JAX acceleration
+-------------------------
+
+The MCMC log-probability calculation has an optional JAX backend. JAX is not a required dependency and the normal NumPy/SciPy backend remains the default.
+For CPU use, install JAX using its standard installation command::
+
+    pip install -U jax
+
+When developing from a clone of ACID, ``pip install -e ".[jax]"`` is a convenience which installs the editable ACID checkout and the same CPU JAX dependency together.
+The ``jax`` package selects a compatible ``jaxlib`` dependency, so they should not normally be listed or versioned separately.
+
+Accelerator installations depend on the cluster hardware. For example, current NVIDIA CUDA 13 installations use::
+
+    pip install -U "jax[cuda13]"
+
+Consult the `JAX installation documentation <https://docs.jax.dev/en/latest/installation.html>`_ for CUDA 12, ROCm, TPU, driver, operating-system, and architecture requirements.
+Once installed, enable the backend for an ACID run with ``use_jax=True``. If JAX cannot be imported, ACID will issue a warning and continue with NumPy/SciPy.
+
+The measured speedup applies to each log-probability evaluation after its first JIT compilation. A complete MCMC step also includes sampler proposal and coordination overhead,
+so its overall improvement will be smaller and depends on the fraction of runtime spent evaluating log probability.
+
 .. _cloning:
 
 Cloning the repository

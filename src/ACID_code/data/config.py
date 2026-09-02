@@ -82,6 +82,7 @@ class Config:
         "depth_group_rules" : None,
         "profile_groups" : None,
         "sampler_type" : "emcee",
+        "use_jax" : False,
         "parallel" : True,
         "cores" : None,
         "nwalkers" : None,

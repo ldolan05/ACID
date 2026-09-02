@@ -37,10 +37,14 @@ dynamic = ["version"]
 dynesty = [
     "dynesty",
 ]
+jax = [
+    "jax",
+]
 test = [
     "pytest",
     "pytest-cov",
     "dynesty",
+    "jax",
 ]
 docs = [
     "sphinx_rtd_theme",
