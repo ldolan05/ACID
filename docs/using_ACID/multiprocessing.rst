@@ -6,9 +6,10 @@ Multiprocessing
 Best Practices
 --------------
 
-The default multiprocessing setting is True for ACID, which means that ACID will automatically use all available CPU cores to run the MCMC sampler in parallel.
+The default multiprocessing setting is True for ACID. ACID uses loky's affinity-aware CPU count and will not create more workers than the sampler can use for each proposal batch.
+This avoids launching a machine-wide set of idle worker interpreters on high-core-count Linux systems.
 According to emcee documentation, they recommend setting the environment variable: OMP_NUM_THREADS=1. Our testing also showed this setting absolutely necessary for
-ACID to avoid large transfer overheads. We also recommend setting the environment variable: MKL_NUM_THREADS=1 for similar reasons. 
+ACID to avoid large transfer overheads. ACID applies the equivalent one-thread limits for MKL, OpenBLAS, BLIS, Apple's vecLib, and NumExpr before starting loky workers.
 
 On most standard machines, you can set these two variables to false just before the start of multiprocessing (which ACID does), but in some
 environments, for unknown reasons, eg. some HPC environments, they must be set either in the terminal with:
@@ -43,10 +44,12 @@ Reminder: you can always turn off multiprocessing in ACID by setting parallel=Fa
       parallel=False
    )
 
-Windows Support
----------------
+Platform support
+----------------
 
-Windows is not supported for multiprocessing as the mp context cannot be set to fork. If a windows system is detected, you will be warned that multiprocessing is not
-supported and then have multiprocesing automatically turned off. This project has otherwise not received extensive testing on Windows, there may be other unforseen issues.
+ACID uses loky's cross-platform process executor. Unlike Python's standard ``spawn`` multiprocessing context, it does not import the user's main script in each worker.
+Parallel ACID calls therefore do not require an ``if __name__ == "__main__"`` guard on Windows or macOS.
+Loky workers also reuse the parent's Matplotlib configuration directory, avoiding a separate font-cache build in every process when the default directory is not writable.
 
-If you'd like to try and add support for multiprocessing on Windows, please feel free to submit a pull request!
+Inside a SLURM allocation, detected from ``SLURM_JOB_ID``, ACID instead uses Python's ``fork`` multiprocessing context. This retains the original HPC behaviour and avoids
+loky's fork/exec startup having to transfer the complete ACID ``Data`` instance into each newly executed worker. The fallback is automatic; no additional configuration is required.

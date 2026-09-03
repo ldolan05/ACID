@@ -9,7 +9,7 @@ from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import pickle, os, copy
+import pickle, os, copy, sys
 import numpy as np
 from .. import utils
 from ..errors import *
@@ -132,6 +132,8 @@ class Data:
     lsd_warnings_flag    : bool = False
     #: If in debug mode (verbose = 4), debug data is stored as a dictionary here:
     debug                : Dict = field(default_factory=dict)
+    #: Stored "in Windows" flag for setting up multiprocessing
+    in_win = sys.platform == "win32"
 
     # Initialise the properties
     # -------------------------

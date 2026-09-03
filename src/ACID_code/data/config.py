@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import numpy as np
 from beartype import beartype
+from loky import cpu_count as loky_cpu_count
 from .. import utils
 from beartype.typing import Any
 from ..utils import IntLike
@@ -102,7 +103,8 @@ class Config:
     }
 
     #: Property list for error handling
-    properties = ["verbose", "masking_lines", "dir", "save_path", "sampler_path", "figure_dir", "continuum_method", "sampler_type"]
+    properties = ["verbose", "masking_lines", "dir", "save_path", "sampler_path", "figure_dir", "continuum_method", "sampler_type",
+                  "cores", "parallel"]
     _properties = [f"_{prop}" for prop in properties]
 
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
@@ -423,7 +425,34 @@ class Config:
             raise ValueError("Invalid 'continuum_method' input, must be one of ['polyval', 'chebval'].")
 
         self._continuum_method = continuum_method
-    
+
+    @property
+    def cores(self) -> int:
+        available_cores = max(1, loky_cpu_count())
+        requested_cores = self.__dict__.get("_cores", self.defaults["cores"])
+        if requested_cores is None:
+            return available_cores
+        return max(1, min(available_cores, requested_cores))
+
+    @cores.setter
+    def cores(self, cores:int|None):
+        if cores is None:
+            return
+        if cores < 0:
+            raise ValueError("The inputted cores cannot be less than 0.")
+        elif cores == 0:
+            cores = 1
+        self._cores = cores
+
+    @property
+    def parallel(self) -> bool:
+        requested_parallel = self.__dict__.get("_parallel", self.defaults["parallel"])
+        return (requested_parallel and self.cores > 1)
+
+    @parallel.setter
+    def parallel(self, parallel:bool):
+        self._parallel = parallel
+
     # --- Plotting/info methods ---
     def plot_masking_lines(self, return_fig:bool=False) -> None|tuple:
         """

@@ -1,9 +1,10 @@
 from __future__ import annotations
 import traceback, warnings
-import sys, emcee, os, time, contextlib
+import emcee, os, time, contextlib, sys
+import multiprocessing as mp
 from emcee import EnsembleSampler
 import numpy as np
-import multiprocessing as mp
+from loky import ProcessPoolExecutor
 from beartype import beartype
 from contextlib import nullcontext
 from . import utils, mcmc
@@ -495,13 +496,6 @@ class Acid:
             raise ValueError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
         self.init_kwargs = {}
 
-        # TODO: Keep for now, move to config if no mp fix, otherwise try spawn mp context
-        if self.config.parallel and sys.platform == "win32":
-            if self.config.verbose >= 1:
-                # This doesn't work, needs serious modifications to make work, so just run serially for now
-                print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
-            self.config.parallel = False
-
         # TODO: Apply seed here (only if complete=False, or run_mcmc=False), maybe even save the generator state before mcmc
         # endregion config validation
         # endregion setup and validation
@@ -872,16 +866,17 @@ class Acid:
         pool_context = nullcontext(None)
 
         if self.config.parallel:
+            moves = sampler_kwargs["moves"] if self.config.sampler_type == "emcee" else None
+            self.cores = min(self.config.cores, self.data.nwalkers)
             utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
 
             if self.config.verbose >= 2:
-                print(f"Using {self.config.cores} cores for MCMC")
+                print(f"Using {self.cores} cores for MCMC")
             
-            ctx = mp.get_context("fork")
-            pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
+            pool_context = _get_mcmc_pool(self.data, self.cores)
             log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
             ptform = mcmc._mp_ptform
-            queue_size = os.cpu_count()
+            queue_size = self.cores
         else:
             MCMC = mcmc.MCMC(self.data)
             log_prob = MCMC if self.config.sampler_type == "emcee" else MCMC.dynesty_logprob
@@ -895,7 +890,7 @@ class Acid:
             else:
                 import dynesty # we have already checked if the user can import dynesty in the config property setter
                 if self.config.parallel:
-                    pool.size = self.config.cores
+                    pool.size = self.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
                 self.sampler.run_nested(print_progress=sampler_verbosity)
 
@@ -919,13 +914,13 @@ class Acid:
         pool_context = nullcontext(None)
 
         if self.config.parallel:
+            self.cores = min(self.config.cores, self.data.nwalkers)
             utils.configure_mp_environ(os)
 
             if self.config.verbose >= 2:
-                print(f"Using {self.config.cores} cores for MCMC")
+                print(f"Using {self.cores} cores for MCMC")
 
-            ctx = mp.get_context("fork")
-            pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
+            pool_context = _get_mcmc_pool(self.data, self.cores)
             log_prob_fn = mcmc._mp_log_probability
         else:
             log_prob_fn = mcmc.MCMC(self.data)
@@ -1002,12 +997,6 @@ class Acid:
             # and if so, we reuse its backend. We started with the path backend as that supersedes
             backend = self.sampler.backend
         # else: leave none and a normal in-memory sampler backend is used
-
-        if self.config.cores is None:
-            if "SLURM_JOB_ID" in os.environ:
-                self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
-            else:
-                self.config.cores = os.cpu_count()
 
         # Configure moves based on config, this function converts a Config moves dictionary format to a class format
         # accepted for emcee moves.
@@ -1113,7 +1102,25 @@ class Acid:
     @sampler.setter
     def sampler(self, value):
         self.data.sampler = value
- 
+
+def _get_mcmc_pool(data, cores):
+    """Return the process pool appropriate for the current environment."""
+
+    # The loky process pool executor works on Apple Silicon, but fails on linux
+    # We use this code only to extend support to Windows, for now.
+    if sys.platform == "win32":
+        # emcee evaluates the initial state in the parent before dispatching move
+        # proposals, so initialise both the parent and each executed worker.
+        mcmc._mp_init_worker(data)
+        return ProcessPoolExecutor(
+            max_workers=cores,
+            initializer=mcmc._mp_init_worker,
+            initargs=(data,),
+        )
+    else:
+        ctx = mp.get_context("fork")
+        return ctx.Pool(processes=cores, initializer=mcmc._mp_init_worker, initargs=(data,))
+
 # All code below is just to ensure backward compatibility with previous ACID versions
 def ACID(*args, **kwargs):
     """Legacy ACID function

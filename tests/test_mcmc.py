@@ -1,5 +1,7 @@
 #%%
 import numpy as np
+import multiprocessing as mp
+import subprocess
 import pytest
 from pathlib import Path
 import sys
@@ -8,7 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code import Acid, Config, LSD, MCMC
 from ACID_code import mcmc as mcmc_module
+from ACID_code import acid as acid_module
 from emcee.ensemble import walkers_independent
+from loky import ProcessPoolExecutor
+
+IN_WIN = sys.platform == "win32"
 
 
 @pytest.fixture
@@ -140,15 +146,79 @@ def test_stopping_description_formats_tolerance_and_effective_samples():
 
 
 def test_multiprocessing_wrappers_delegate_to_the_worker_model(harps_result):
-    # Initialise the module-level worker model exactly as multiprocessing does.
+    # Initialise the process-local worker model exactly as multiprocessing does.
     mcmc_module._mp_init_worker(harps_result.data)
-    model = mcmc_module._MCMC
+    if IN_WIN:
+        model = mp.current_process()._acid_mcmc
+    else:
+        model = mcmc_module._MCMC
     theta = np.asarray(model.model_inputs[model.k_max:])
     unit_cube = np.full(len(theta), 0.5)
 
     assert mcmc_module._mp_log_probability(theta) == pytest.approx(model(theta))
     assert mcmc_module._mp_log_likelihood(theta) == pytest.approx(model.dynesty_logprob(theta))
     np.testing.assert_allclose(mcmc_module._mp_ptform(unit_cube), model.ptform(unit_cube))
+
+@pytest.mark.skipif(not IN_WIN, reason="Loky is only used as pool executor if in Windows for now")
+def test_multiprocessing_wrappers_support_loky(harps_result):
+    # Loky serialises worker inputs without importing the user's main script.
+    model = MCMC(harps_result.data)
+    theta = np.asarray(model.model_inputs[model.k_max:])
+
+    with ProcessPoolExecutor(max_workers=1, initializer=mcmc_module._mp_init_worker,
+                             initargs=(harps_result.data,)) as pool:
+        probability = pool.submit(mcmc_module._mp_log_probability, theta).result()
+
+    assert probability == pytest.approx(model(theta))
+
+@pytest.mark.skipif(not IN_WIN, reason="Loky is only used as pool executor if in Windows for now")
+def test_worker_count_is_bounded_by_affinity_and_sampler_work(harps_result,
+                                                               monkeypatch):
+    data = harps_result.data
+    moves = acid_module.utils.convert_moves_to_emcee(data.config.moves)
+    monkeypatch.setattr(acid_module, "loky_cpu_count", lambda: 64)
+
+    assert acid_module._get_mcmc_worker_count(data, None, moves) == (data.nwalkers + 1) // 2
+    assert acid_module._get_mcmc_worker_count(data, 4, moves) == 4
+
+    monkeypatch.setattr(data.config, "sampler_type", "dynesty")
+    monkeypatch.setattr(data.config, "nsteps", 7)
+    assert acid_module._get_mcmc_worker_count(data, None) == 7
+
+@pytest.mark.skipif(not IN_WIN, reason="Loky is only used as pool executor if in Windows for now")
+def test_loky_pool_initialises_parent_and_workers(monkeypatch):
+    data = object()
+    pool = object()
+    calls = {}
+
+    def worker_initializer(initializer_data):
+        calls["parent_initializer_data"] = initializer_data
+
+    monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+    monkeypatch.setattr(mcmc_module, "_mp_init_worker", worker_initializer)
+    monkeypatch.setattr(acid_module, "get_matplotlib_configdir", lambda: "/tmp/mpl-cache")
+    monkeypatch.setattr(
+        acid_module,
+        "ProcessPoolExecutor",
+        lambda **kwargs: calls.update(kwargs) or pool,
+    )
+
+    assert acid_module._get_mcmc_pool(data, 3) is pool
+    assert calls["max_workers"] == 3
+    assert calls["initializer"] is worker_initializer
+    assert calls["initargs"] == (data,)
+    assert calls["env"] == {"MPLCONFIGDIR": "/tmp/mpl-cache"}
+    assert calls["parent_initializer_data"] is data
+
+@pytest.mark.skipif(not IN_WIN, reason="Loky is only used as pool executor if in Windows for now")
+def test_parallel_acid_does_not_reimport_main_script(tmp_path):
+    # This script deliberately has no __main__ guard, matching normal ACID usage.
+    script = Path(__file__).with_name("unguarded_parallel.py")
+    counter = tmp_path / "run_count.txt"
+    subprocess.run([sys.executable, str(script), str(counter)], check=True,
+                   timeout=60)
+
+    assert counter.read_text() == "1"
 
 
 if __name__ == "__main__":

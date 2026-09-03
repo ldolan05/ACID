@@ -1,33 +1,42 @@
 from __future__ import annotations
+import multiprocessing as mp
 import numpy as np
-from numpy.linalg import norm
-from . import utils
-from .utils import Array1D, Array2D
+import sys
 from beartype import beartype
-from scipy.linalg import cho_solve, cho_factor
+from scipy.linalg import cho_solve
+from .utils import Array1D, Array2D
 from .data import Data
-from numpy.polynomial.chebyshev import chebval
+from . import utils
 from .lsd import LSD
+
+IN_WIN = sys.platform == "win32"
 
 # TODO: see if we can get a jax speedup
 
-# The following two wrapper functions are required for multiprocessing
-# support, without it, the fork method would need to reserialize everything
-# which is very inefficient. See parallelization in the emcee documentation
-# for more details.
+# The following wrapper functions allow each worker to initialise the model once
+# rather than serialising it with every likelihood call.
 def _mp_init_worker(data):
     """Initializes each worker process with global data."""
-    global _MCMC
-    _MCMC = MCMC(data)
+    if IN_WIN:
+        mp.current_process()._acid_mcmc = MCMC(data)
+    else:
+        global _MCMC
+        _MCMC = MCMC(data)
 
 def _mp_log_probability(theta):
     """Wrapper for log probability function for multiprocessing."""
+    if IN_WIN:
+        return mp.current_process()._acid_mcmc(theta)
     return _MCMC(theta)
 
 def _mp_log_likelihood(theta):
+    if IN_WIN:
+        return mp.current_process()._acid_mcmc.dynesty_logprob(theta)
     return _MCMC.dynesty_logprob(theta)
-
+    
 def _mp_ptform(u):
+    if IN_WIN:
+        return mp.current_process()._acid_mcmc.ptform(u)
     return _MCMC.ptform(u)
 
 class MCMC:

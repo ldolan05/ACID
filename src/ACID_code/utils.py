@@ -777,6 +777,19 @@ def configure_mp_environ(os):
         # Emcee recommendation, after testing this is absolutely a requirement
         os.environ["OMP_NUM_THREADS"] = "1"
         os.environ["MKL_NUM_THREADS"] = "1"
+        # Loky workers import numerical libraries in fresh interpreters, so
+        # apply the equivalent one-thread limit for each common BLAS backend.
+        # Without the OpenBLAS setting in particular, a high-core-count Linux
+        # host can create cores x cores threads while starting the pool.
+        # for variable in (
+        #     "OMP_NUM_THREADS",
+        #     "MKL_NUM_THREADS",
+        #     "OPENBLAS_NUM_THREADS",
+        #     "BLIS_NUM_THREADS",
+        #     "VECLIB_MAXIMUM_THREADS",
+        #     "NUMEXPR_NUM_THREADS",
+        # ):
+        #     os.environ[variable] = "1"
 
 def next_pow_2(n):
     """
