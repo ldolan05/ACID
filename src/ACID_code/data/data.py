@@ -12,7 +12,7 @@ import matplotlib as mpl
 import pickle, os, copy, re
 import numpy as np
 from .. import utils
-from ..errors import *
+from ..diagnostics.errors import *
 from ..utils import IntLike, Array1D, Array2D, Scalar
 from .config import Config
 from .line_list import LineList
@@ -319,6 +319,7 @@ class Data:
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
+            # TODO: Put this in the LineList init
             # The method names are self explaining, see the respective methods for more details on their process
             linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
             linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
@@ -354,6 +355,7 @@ class Data:
                 "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
                 "spectrum with the corresponding profile_groups.")
             linelist_wavelengths = input_linelist["wavelengths"]
+            # TODO: This needs to check also against the clipped linelist
             if len(self.config.profile_groups) != len(linelist_wavelengths):
                 raise ValueError(f"The inputted profile_groups must have the same length as the input linelist. "
                                     f"Got {len(self.config.profile_groups)} groups for {len(linelist_wavelengths)} lines.")

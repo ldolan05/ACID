@@ -9,7 +9,7 @@ import os, pickle
 import traceback as tb
 import numpy as np
 import matplotlib.pyplot as plt
-from ..errors import *
+from ..diagnostics.errors import *
 from .. import utils
 from tqdm import tqdm
 import matplotlib as mpl

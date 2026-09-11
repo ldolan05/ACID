@@ -2,7 +2,7 @@ from __future__ import annotations
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, warnings, contextlib, functools, inspect
+import corner, sys, os, contextlib, functools, inspect
 from emcee import EnsembleSampler
 from beartype import beartype
 from scipy.interpolate import interp1d
@@ -17,8 +17,6 @@ try:
 except ImportError:
     Sampler = None
     dyplot = None
-
-warnings.filterwarnings("ignore")
 
 def _require_profiles(method):
     # Make sure all results are processed before calling method

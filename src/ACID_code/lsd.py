@@ -8,7 +8,7 @@ from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
-from .errors import LineListRangeError, SNCutError
+from .diagnostics.errors import LineListRangeError, SNCutError
 from .data import Config, Data, LineList
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D, Array3D
 

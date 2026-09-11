@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code import Data, LSD
-from ACID_code.errors import LineListRangeError, SNCutError
+from ACID_code.diagnostics.errors import LineListRangeError, SNCutError
 
 
 def test_sparse_and_dense_alpha_agree(synthetic_spectrum):

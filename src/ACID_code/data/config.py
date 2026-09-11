@@ -5,6 +5,7 @@ from beartype import beartype
 from .. import utils
 from beartype.typing import Any
 from ..utils import IntLike, Scalar
+from ..diagnostics.logging import set_log_level_from_verbosity
 from .masking_lines import MaskingLines
 import matplotlib.pyplot as plt
 try:
@@ -406,6 +407,9 @@ class Config:
             raise ValueError("verbose must be an integer between 0 and 4, a boolean, or a string indicating the verbosity level")
 
         self._verbose = value
+        # Preserve the textual-output behavior of the legacy verbosity API.
+        # Logging can also be configured directly with ACID_code.set_log_level.
+        set_log_level_from_verbosity(value)
 
     @property
     def masking_lines(self) -> MaskingLines:

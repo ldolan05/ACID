@@ -1,5 +1,5 @@
 from __future__ import annotations
-import traceback, warnings
+import traceback
 import sys, emcee, os, time, contextlib
 from emcee import EnsembleSampler
 import numpy as np
@@ -11,7 +11,8 @@ from . import utils, mcmc
 from .lsd import LSD
 from .result import Result
 from .data import Data, Config, MaskingLines, LineList
-from .errors import ContinuumError
+from .diagnostics.errors import ContinuumError
+from .diagnostics.logging import get_logger
 from .utils import IntLike, Scalar, Array1D, Array2D
 from astropy.stats.sigma_clipping import sigma_clip
 
@@ -419,10 +420,6 @@ class Acid:
         init_verbose = self.init_kwargs.pop("verbose", None)
         # Set verbosity first with validation handled in config property setter
         self.config.verbose = verbose if verbose is not None else init_verbose
-
-        # Suppress warnings generally, but high verbosity will show them
-        if self.config.verbose <= 2:
-            warnings.filterwarnings("ignore")
 
         # Print initialisation status
         init_t0 = time.time()
