@@ -1,5 +1,4 @@
 from __future__ import annotations
-import os
 import numpy as np
 from numpy.linalg import norm
 from . import utils
@@ -9,8 +8,6 @@ from scipy.linalg import cho_solve, cho_factor
 from .data import Data
 from numpy.polynomial.chebyshev import chebval
 from .lsd import LSD
-
-IN_SLURM = "SLURM_JOB_ID" in os.environ
 
 # The following wrapper functions allow each worker to initialise the model once
 # rather than serialising it with every likelihood call.

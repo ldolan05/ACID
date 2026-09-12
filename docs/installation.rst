@@ -45,6 +45,15 @@ Accelerator installations depend on the cluster hardware. For example, current N
 Consult the `JAX installation documentation <https://docs.jax.dev/en/latest/installation.html>`_ for CUDA 12, ROCm, TPU, driver, operating-system, and architecture requirements.
 Once installed, enable the backend for an ACID run with ``use_jax=True``. If JAX cannot be imported, ACID will issue a warning and continue with NumPy/SciPy.
 
+With ``parallel=True``, ACID uses a thread pool when JAX is requested.
+Forking after JAX has initialised its runtime can deadlock workers during compilation or execution.
+Threads share one model and compiled kernel per sampler, and work with interactive scripts without a ``__main__`` guard.
+``cores`` controls the number of worker threads; JAX also manages its own internal execution threads.
+This applies in SLURM too; the existing environment-variable requirements for parallel runs still apply.
+Compare with ``parallel=False`` on your workload, since coordinating workers can outweigh the benefit for fast kernels.
+
+With ``use_jax=False``, ACID uses the original ``fork`` process pool, even if JAX was used earlier in the session.
+
 The measured speedup applies to each log-probability evaluation after its first JIT compilation. A complete MCMC step also includes sampler proposal and coordination overhead,
 so its overall improvement will be smaller and depends on the fraction of runtime spent evaluating log probability.
 

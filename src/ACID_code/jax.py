@@ -1,6 +1,6 @@
 """Optional JAX backend for the MCMC log-probability calculation."""
 from __future__ import annotations
-import warnings, os
+import warnings
 import numpy as np
 
 
@@ -23,16 +23,6 @@ class JAXBackend:
 
     def __init__(self, mcmc) -> None:
         self.enabled = False
-
-        # Importing JAX can initialise threads that are unsafe to inherit through
-        # SLURM's fork-based worker pool, so detect SLURM before importing it.
-        # if "SLURM_JOB_ID" in os.environ:
-        #     warnings.warn(
-        #         "JAX is disabled in SLURM environment; falling back to NumPy/SciPy.",
-        #         RuntimeWarning,
-        #         stacklevel=3,
-        #     )
-        #     return
 
         # Import JAX only when it has been requested
         # ------------------------------------------

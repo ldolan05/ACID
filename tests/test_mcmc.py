@@ -15,9 +15,6 @@ from ACID_code import jax as jax_module
 from emcee.ensemble import walkers_independent
 
 
-IN_SLURM = "SLURM_JOB_ID" in os.environ
-
-
 @pytest.fixture
 def mcmc(synthetic_spectrum):
     # Build the compact deterministic model directly, avoiding a full ACID run for unit maths.
@@ -97,28 +94,20 @@ def test_requested_jax_falls_back_when_it_cannot_be_imported(mcmc, monkeypatch):
     assert model([1.0, 0.0]) == pytest.approx(mcmc([1.0, 0.0]))
 
 
-def test_slurm_disables_jax_before_it_is_imported(mcmc, monkeypatch):
-    # Forking after JAX has initialised threads is unsafe, so SLURM must bypass the import entirely.
+@pytest.mark.skipif(importlib.util.find_spec("jax") is None,
+                    reason="JAX is an optional dependency")
+def test_slurm_allows_jax(mcmc, monkeypatch):
+    # JAX no longer needs to be disabled: parallel runs use threads instead of fork.
     monkeypatch.setenv("SLURM_JOB_ID", "123")
-    monkeypatch.setattr(
-        jax_module,
-        "_import_jax",
-        lambda: pytest.fail("JAX was imported inside SLURM"),
-    )
+    model = MCMC(mcmc.x, mcmc.y, mcmc.yerr, mcmc.alpha, mcmc.velocities,
+                 mcmc.c_factor, deterministic_profile=True, use_jax=True)
 
-    with pytest.warns(RuntimeWarning, match="JAX is disabled in SLURM"):
-        model = MCMC(mcmc.x, mcmc.y, mcmc.yerr, mcmc.alpha, mcmc.velocities,
-                     mcmc.c_factor, deterministic_profile=True, use_jax=True)
-
-    assert model.use_jax is True
-    assert model.jax_enabled is False
+    assert model.jax_enabled is True
     assert model([1.0, 0.0]) == pytest.approx(mcmc([1.0, 0.0]))
 
 
 @pytest.mark.skipif(importlib.util.find_spec("jax") is None,
                     reason="JAX is an optional dependency")
-@pytest.mark.skipif(IN_SLURM,
-                    reason="JAX is deliberately disabled inside SLURM")
 @pytest.mark.parametrize("deterministic_profile, od, continuum_method", [
     (True, True, "polyval"),
     (True, True, "chebval"),
@@ -157,6 +146,56 @@ def test_jax_probabilities_match_numpy(mcmc, deterministic_profile, od,
 
     if deterministic_profile and od and continuum_method == "polyval":
         assert jax_model([-1.0, 0.0]) == -np.inf
+
+
+@pytest.mark.skipif(importlib.util.find_spec("jax") is None,
+                    reason="JAX is an optional dependency")
+@pytest.mark.parametrize("warm_jax, use_jax", [(False, False), (True, True), (True, False)])
+def test_parallel_sampling_uses_correct_workers(harps_order_40, tmp_path, warm_jax, use_jax):
+    # A subprocess timeout turns a worker deadlock into a bounded test failure.
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    inputs = tmp_path / "inputs.npz"
+    np.savez(inputs, wavelengths=wavelengths, flux=flux, errors=errors, sn=sn,
+             velocities=velocities, linelist=linelist)
+    script = """
+import os, sys
+import numpy as np
+from ACID_code import Acid, MCMC
+
+inputs = dict(np.load(sys.argv[1]))
+inputs['linelist'] = inputs['linelist'].item()
+acid = Acid(verbose=0, poly_ord=2, seed=0, cores=2, check_interval=10)
+acid.ACID(**inputs, use_jax=sys.argv[3] == 'True', parallel=True, run_mcmc=False)
+assert MCMC(acid.data).jax_enabled == (sys.argv[3] == 'True')
+acid.run_mcmc(2, state=acid.data.initial_state)
+acid.config.use_jax = sys.argv[2] == 'True'
+acid.run_mcmc(3)
+assert acid.sampler.get_chain().shape[0] == 5
+state = acid.data.initial_state
+for method in (acid.run_mcmc, acid.run_mcmc_until_converged):
+    acid.sampler = None
+    method(20, state=state)
+    assert acid.sampler.get_chain().shape == (20, acid.data.nwalkers, acid.data.ndim)
+    assert np.all(np.isfinite(acid.sampler.get_log_prob()))
+
+# Check both sampler callbacks through the real pool against serial NumPy.
+acid.config.use_jax = False
+reference = MCMC(acid.data)
+acid.config.use_jax = sys.argv[2] == 'True'
+for sampler in ('emcee', 'dynesty'):
+    acid.config.sampler_type = sampler
+    pool, log_prob, ptform = acid._get_sampler_pool()
+    expected = reference if sampler == 'emcee' else reference.dynesty_logprob
+    with pool:
+        assert (pool.apply(os.getpid) == os.getpid()) == acid.config.use_jax
+        np.testing.assert_allclose(pool.map(log_prob, state), [expected(t) for t in state], rtol=1e-10)
+        units = np.full((2, acid.data.ndim), 0.5)
+        np.testing.assert_allclose(pool.map(ptform, units), [reference.ptform(t) for t in units])
+"""
+    env = dict(os.environ, OMP_NUM_THREADS="1", MKL_NUM_THREADS="1")
+    result = subprocess.run([sys.executable, "-c", script, str(inputs), str(use_jax), str(warm_jax)],
+                            env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.long
