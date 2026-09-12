@@ -4,6 +4,7 @@ import sys, emcee, os, time, contextlib
 from emcee import EnsembleSampler
 import numpy as np
 import multiprocessing as mp
+from multiprocessing.pool import ThreadPool
 from beartype import beartype
 from contextlib import nullcontext
 from . import utils, mcmc
@@ -314,7 +315,8 @@ class Acid:
             If True, use a lazily imported, JIT-compiled JAX kernel for MCMC log-probability calculations.
             If JAX is unavailable, ACID warns and falls back to NumPy/SciPy. By default False.
         parallel : :py:type:`bool`, optional
-            If True uses multiprocessing to calculate the profiles for each frame in parallel, see
+            If True evaluates MCMC proposals in parallel. Uses threads when JAX is requested,
+            otherwise uses worker processes. See
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
         cores : :py:type:`IntLike`, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
@@ -857,6 +859,31 @@ class Acid:
 
         return initial_state
 
+    def _get_sampler_pool(self):
+        """Use threads for JAX and the original process pool for NumPy."""
+        use_threads = self.config.use_jax
+        if self.config.parallel:
+            utils.configure_mp_environ(os)
+            if self.config.verbose >= 2:
+                workers = "threads" if use_threads else "processes"
+                print(f"Using {self.config.cores} {workers} for MCMC")
+
+            if not use_threads:
+                pool = mp.get_context("fork").Pool(
+                    processes=self.config.cores,
+                    initializer=mcmc._mp_init_worker,
+                    initargs=(self.data,),
+                )
+                log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
+                return pool, log_prob, mcmc._mp_ptform
+
+        # Each pool owns its model. Do not use the process-global _MCMC wrapper
+        # for threads: simultaneous ACID runs would overwrite each other's data.
+        model = mcmc.MCMC(self.data)
+        log_prob = model if self.config.sampler_type == "emcee" else model.dynesty_logprob
+        pool = ThreadPool(processes=self.config.cores) if self.config.parallel else nullcontext(None)
+        return pool, log_prob, model.ptform
+
     def run_mcmc(
         self,
         nsteps:IntLike,
@@ -873,24 +900,8 @@ class Acid:
             sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
         sampler_verbosity = True if self.config.verbose >= 2 else False
         sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
-        pool_context = nullcontext(None)
-
-        if self.config.parallel:
-            utils.configure_mp_environ(os) # Raises error is not configured correctly, otherwise does nothing
-
-            if self.config.verbose >= 2:
-                print(f"Using {self.config.cores} cores for MCMC")
-            
-            ctx = mp.get_context("fork")
-            pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
-            log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
-            ptform = mcmc._mp_ptform
-            queue_size = os.cpu_count()
-        else:
-            MCMC = mcmc.MCMC(self.data)
-            log_prob = MCMC if self.config.sampler_type == "emcee" else MCMC.dynesty_logprob
-            ptform = MCMC.ptform
-            queue_size = None
+        pool_context, log_prob, ptform = self._get_sampler_pool()
+        queue_size = os.cpu_count() if self.config.parallel else None
 
         with pool_context as pool:
             if self.config.sampler_type == "emcee":
@@ -920,19 +931,7 @@ class Acid:
         last_tolerance = np.inf
         last_neff = 0
         condition = False
-        pool_context = nullcontext(None)
-
-        if self.config.parallel:
-            utils.configure_mp_environ(os)
-
-            if self.config.verbose >= 2:
-                print(f"Using {self.config.cores} cores for MCMC")
-
-            ctx = mp.get_context("fork")
-            pool_context = ctx.Pool(processes=self.config.cores, initializer=mcmc._mp_init_worker, initargs=(self.data,))
-            log_prob_fn = mcmc._mp_log_probability
-        else:
-            log_prob_fn = mcmc.MCMC(self.data)
+        pool_context, log_prob_fn, _ = self._get_sampler_pool()
 
         with pool_context as pool:
             self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn)

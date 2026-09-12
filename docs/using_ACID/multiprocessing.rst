@@ -7,6 +7,10 @@ Best Practices
 --------------
 
 The default multiprocessing setting is True for ACID, which means that ACID will automatically use all available CPU cores to run the MCMC sampler in parallel.
+When ``use_jax=True``, ACID uses worker threads sharing one model instead of forking processes, which can deadlock JAX.
+With ``use_jax=False``, ACID keeps the original ``fork`` process pool, even after a JAX run in the same session.
+``cores`` sets the number of workers. For fast JAX kernels, ``parallel=False`` can still be faster because it avoids worker coordination overhead.
+
 According to emcee documentation, they recommend setting the environment variable: OMP_NUM_THREADS=1. Our testing also showed this setting absolutely necessary for
 ACID to avoid large transfer overheads. We also recommend setting the environment variable: MKL_NUM_THREADS=1 for similar reasons. 
 

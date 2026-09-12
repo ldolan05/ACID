@@ -1,6 +1,6 @@
 """Optional JAX backend for the MCMC log-probability calculation."""
 from __future__ import annotations
-import warnings, os
+import warnings
 import numpy as np
 
 
@@ -23,16 +23,6 @@ class JAXBackend:
 
     def __init__(self, mcmc) -> None:
         self.enabled = False
-
-        # Importing JAX can initialise threads that are unsafe to inherit through
-        # SLURM's fork-based worker pool, so detect SLURM before importing it.
-        # if "SLURM_JOB_ID" in os.environ:
-        #     warnings.warn(
-        #         "JAX is disabled in SLURM environment; falling back to NumPy/SciPy.",
-        #         RuntimeWarning,
-        #         stacklevel=3,
-        #     )
-        #     return
 
         # Import JAX only when it has been requested
         # ------------------------------------------
@@ -71,7 +61,7 @@ class JAXBackend:
             lower         = bool(np.asarray(mcmc.c_factor[1]).item())
             self.c_factor = (factor, lower)
 
-        # Compile the scalar entry points used by emcee and dynesty. Batching was slower for the Cholesky-heavy model on the benchmark CPU.
+        # Compile the scalar entry points used by emcee and dynesty.
         self._log_probability = self.jax.jit(self._calculate_log_probability)
         self._log_likelihood = self.jax.jit(self._calculate_log_likelihood)
         self.enabled = True
@@ -93,22 +83,20 @@ class JAXBackend:
     def _eval_continuum(self, coefs):
         # The basis and coefficient count are static, so JAX compiles away these branches and loops
         if self.continuum_method == "polyval":
-            continuum = self.jnp.zeros_like(self.x)
-            for coef in coefs[::-1]:
-                continuum = continuum * self.x + coef
-            return continuum
+            # numpy.polynomial.polyval uses ascending coefficients; jnp.polyval uses descending.
+            return self.jnp.polyval(coefs[::-1], self.x)
 
         if self.continuum_method != "chebval":
             raise ValueError(f"Unknown method: '{self.continuum_method}', must be 'polyval' or 'chebval'.")
 
-        # Use the Clenshaw recurrence, equivalent to numpy.polynomial.chebyshev.chebval
-        b_kplus1 = self.jnp.zeros_like(self.x)
-        b_kplus2 = self.jnp.zeros_like(self.x)
-        for coef in coefs[:0:-1]:
-            b_k = coef + 2 * self.x * b_kplus1 - b_kplus2
-            b_kplus2, b_kplus1 = b_kplus1, b_k
-        log_continuum = coefs[0] + self.x * b_kplus1 - b_kplus2
-        return self.jnp.exp(log_continuum)
+        # JAX has no chebval, so follow NumPy's Clenshaw recurrence directly.
+        if len(coefs) == 1:
+            c0, c1 = coefs[0], 0
+        else:
+            c0, c1 = coefs[-2], coefs[-1]
+            for coef in coefs[-3::-1]:
+                c0, c1 = coef - c1, c0 + c1 * (2 * self.x)
+        return self.jnp.exp(c0 + c1 * self.x)
 
     def _soft_z_prior(self, z):
         if self.od:
