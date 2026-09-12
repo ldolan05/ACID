@@ -54,6 +54,12 @@ Compare with ``parallel=False`` on your workload, since coordinating workers can
 
 With ``use_jax=False``, ACID uses the original ``fork`` process pool, even if JAX was used earlier in the session.
 
+To try batching emcee walkers in a single JAX call, pass ``use_jax=True, vectorize=True``.
+This uses ``jax.jit(jax.vmap(...))`` and emcee's vectorized interface, bypassing pools regardless of ``parallel`` and ``cores``.
+It defaults to False because batching can be slower on CPU. Without JAX it falls back to evaluating the walkers with NumPy;
+dynesty ignores ``vectorize``.
+emcee usually evaluates subsets of the ensemble, so the small batches in a 15-walker run can still favour threads.
+
 The measured speedup applies to each log-probability evaluation after its first JIT compilation. A complete MCMC step also includes sampler proposal and coordination overhead,
 so its overall improvement will be smaller and depends on the fraction of runtime spent evaluating log probability.
 

@@ -61,8 +61,9 @@ class JAXBackend:
             lower         = bool(np.asarray(mcmc.c_factor[1]).item())
             self.c_factor = (factor, lower)
 
-        # Compile the scalar entry points used by emcee and dynesty. Batching was slower for the Cholesky-heavy model on the benchmark CPU.
+        # Compile scalar and batched entry points for the samplers.
         self._log_probability = self.jax.jit(self._calculate_log_probability)
+        self._log_probability_batch = self.jax.jit(self.jax.vmap(self._calculate_log_probability))
         self._log_likelihood = self.jax.jit(self._calculate_log_likelihood)
         self.enabled = True
 
@@ -73,6 +74,10 @@ class JAXBackend:
     def log_likelihood(self, theta):
         """Return the JAX log likelihood as the scalar expected by dynesty."""
         return float(self._log_likelihood(np.asarray(theta, dtype=float)))
+
+    def log_probability_batch(self, theta):
+        """Return one log posterior per walker in a single JAX call."""
+        return np.asarray(self._log_probability_batch(np.asarray(theta, dtype=float)))
 
     def _calculate_log_probability(self, theta):
         return self._calculate_probabilities(theta)[0]
@@ -150,16 +155,15 @@ class JAXBackend:
 
         if self.od:
             valid = self.jnp.all((fitted_flux > 0) & self.jnp.isfinite(fitted_flux))
-            return self.jax.lax.cond(valid, self._solve_od_model, self._invalid_model, (fitted_flux, continuum, coefs))
+            flux = -self.jnp.log(self.jnp.where(valid, fitted_flux, 1.0))
+        else:
+            valid = True
+            flux = fitted_flux - 1
 
-        return self._solve_and_evaluate(fitted_flux - 1, continuum, coefs)
-
-    def _solve_od_model(self, inputs):
-        fitted_flux, continuum, coefs = inputs
-        return self._solve_and_evaluate(-self.jnp.log(fitted_flux), continuum, coefs)
-
-    def _invalid_model(self, inputs):
-        return self.neg_inf, self.neg_inf
+        # Keep shared matrices outside lax.cond: vmap otherwise copies them per walker.
+        posterior, likelihood = self._solve_and_evaluate(flux, continuum, coefs)
+        return (self.jnp.where(valid, posterior, self.neg_inf),
+                self.jnp.where(valid, likelihood, self.neg_inf))
 
     def _solve_and_evaluate(self, flux, continuum, coefs):
         z = self.jsp_linalg.cho_solve(self.c_factor, self.AtV @ flux, check_finite=False)

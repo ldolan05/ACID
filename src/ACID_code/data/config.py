@@ -83,6 +83,7 @@ class Config:
         "profile_groups" : None,
         "sampler_type" : "emcee",
         "use_jax" : False,
+        "vectorize" : False,
         "parallel" : True,
         "cores" : None,
         "nwalkers" : None,

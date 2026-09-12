@@ -326,6 +326,12 @@ class MCMC:
         ll = -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
         return lp + ll
 
+    def log_probability_batch(self, theta):
+        """Evaluate a batch of emcee walkers, with a NumPy fallback."""
+        if self.jax_enabled:
+            return self._jax_backend.log_probability_batch(theta)
+        return np.asarray([self.log_probability(walker) for walker in theta])
+
     @staticmethod
     def _get_mcmc_stopping_criterion(tau_list, step_number, min_checks, min_tau_factor, tau_rel_tol):
         """Determines whether the MCMC sampling has converged based on the list of tau estimates and the current step number."""

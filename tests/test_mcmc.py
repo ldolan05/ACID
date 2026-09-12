@@ -92,6 +92,8 @@ def test_requested_jax_falls_back_when_it_cannot_be_imported(mcmc, monkeypatch):
     assert model.use_jax is True
     assert model.jax_enabled is False
     assert model([1.0, 0.0]) == pytest.approx(mcmc([1.0, 0.0]))
+    np.testing.assert_allclose(model.log_probability_batch([[1.0, 0.0], [-1.0, 0.0]]),
+                               [mcmc([1.0, 0.0]), -np.inf])
 
 
 @pytest.mark.skipif(importlib.util.find_spec("jax") is None,
@@ -145,7 +147,37 @@ def test_jax_probabilities_match_numpy(mcmc, deterministic_profile, od,
     )
 
     if deterministic_profile and od and continuum_method == "polyval":
-        assert jax_model([-1.0, 0.0]) == -np.inf
+        for invalid in ([-1.0, 0.0], [0.0, 0.0], [np.nan, 0.0]):
+            assert jax_model(invalid) == -np.inf
+            assert jax_model.dynesty_logprob(invalid) == -np.inf
+            np.testing.assert_allclose(jax_model.log_probability_batch([theta, invalid]),
+                                       [numpy_model(theta), -np.inf], rtol=1e-10, atol=1e-8)
+
+    # emcee sends the full ensemble and differently sized subsets of walkers.
+    walkers = np.array([theta, theta + 0.001, theta - 0.001])
+    if deterministic_profile and od and continuum_method == "polyval":
+        walkers[-1] = [-1.0, 0.0]
+    for batch in (walkers, walkers[:1], walkers[1:]):
+        np.testing.assert_allclose(jax_model.log_probability_batch(batch),
+                                   numpy_model.log_probability_batch(batch), rtol=1e-10, atol=1e-8)
+
+
+@pytest.mark.parametrize("use_jax", [False, True])
+def test_vectorized_sampler_runs_and_continues(harps_order_40, use_jax, monkeypatch):
+    if use_jax:
+        pytest.importorskip("jax")
+    from ACID_code import acid as acid_module
+    monkeypatch.setattr(acid_module, "ThreadPool", lambda **kw: pytest.fail("Unexpected pool"))
+    monkeypatch.setattr(acid_module.mp, "get_context", lambda *a: pytest.fail("Unexpected pool"))
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist, verbose=0, seed=0, check_interval=5)
+    acid.ACID(wavelengths, flux, errors, sn, nsteps=20, use_jax=use_jax, vectorize=True, parallel=True)
+    acid.continue_sampling(nsteps=5)
+    acid.run_mcmc_until_converged(10)
+    assert acid.sampler.vectorize is True
+    assert acid.sampler.pool is None
+    assert acid.sampler.get_chain().shape[0] == 35
+    assert np.all(np.isfinite(acid.sampler.get_log_prob()))
 
 
 @pytest.mark.skipif(importlib.util.find_spec("jax") is None,

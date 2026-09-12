@@ -111,6 +111,7 @@ class Acid:
         depth_group_rules     : dict|None                      = None, # Config
         sampler_type          : str|None                       = None, # Config
         use_jax               : bool|None                      = None, # Config
+        vectorize             : bool|None                      = None, # Config
         parallel              : bool|None                      = None, # Config
         cores                 : IntLike|None                   = None, # Config
         nwalkers              : IntLike|None                   = None, # Config, then Data just before MCMC
@@ -318,6 +319,9 @@ class Acid:
             If True evaluates MCMC proposals in parallel. Uses threads when JAX is requested,
             otherwise uses worker processes. See
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
+        vectorize : :py:type:`bool`, optional
+            Evaluate emcee walkers in batches, using JAX vmap when use_jax=True. Overrides parallel and cores
+            for emcee; ignored by dynesty. By default False.
         cores : :py:type:`IntLike`, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
         nwalkers : :py:type:`IntLike`, optional
@@ -861,6 +865,10 @@ class Acid:
 
     def _get_sampler_pool(self):
         """Use threads for JAX and the original process pool for NumPy."""
+        if self.config.vectorize and self.config.sampler_type == "emcee":
+            model = mcmc.MCMC(self.data)
+            return nullcontext(None), model.log_probability_batch, model.ptform
+
         use_threads = self.config.use_jax
         if self.config.parallel:
             utils.configure_mp_environ(os)
@@ -1017,6 +1025,7 @@ class Acid:
         moves = utils.convert_moves_to_emcee(self.config.moves)
 
         sampler_kwargs = {
+            "vectorize"  : self.config.vectorize,
             "nwalkers"   : self.data.nwalkers,
             "ndim"       : self.data.ndim,
             "moves"      : moves,
