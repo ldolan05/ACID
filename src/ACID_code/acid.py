@@ -523,7 +523,9 @@ class Acid:
         # Let the respective properties in Data handle the validation and setting, this is set after set_inputs so velocities 
         # can be guessed from them if not input
         self.data.linelist = linelist
-        self.data.velocities = velocities
+        # Here we guard against velocities being None to not set data.velocities, otherwise this setter warns if velocities are being changed.
+        if velocities is not None or self.data.velocities is None:
+            self.data.velocities = velocities
 
         # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
         self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
