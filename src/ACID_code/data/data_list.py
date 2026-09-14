@@ -242,9 +242,12 @@ class DataList:
             if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
                 print("Warning: Not all Data instances have the same order_range. Taking the longest order range.")
 
-        # Take the order range with the greatest length, 
+        # Take the order range with the greatest length
         max_order_range_idx = np.argmax([len(data.config.order_range) for data in data_list])
         order_range = data_list[max_order_range_idx].config.order_range
+        # Individually loaded Data may have inferred labels outside the default [0].
+        if all(data.config.order is not None for data in data_list):
+            order_range = np.union1d(order_range, [data.config.order for data in data_list])
 
         # Check all velocity grids match, store velocities
         v0 = data_list[0].velocities
@@ -320,6 +323,9 @@ class DataList:
         if force_order is not None:
             data.config.order = force_order
         order = data.config.order
+        if order is None:
+            raise ValueError("DataList requires an explicit order for each Data instance. "
+                             "Set data.config.order or pass force_order when appending.")
         if order in self.orders and overwrite is False:
             raise ValueError(f"A Data instance with order {order} already exists in the list. " \
             "If you want to overwrite it, set overwrite=True in the append method.")
@@ -355,6 +361,9 @@ class DataList:
         """
         Sorts the data list by order number, and updates the o2i mapping accordingly. Internally called whenever self.data_list is updated.
         """
+        if any(data.config.order is None for data in self.data_list):
+            raise ValueError("DataList requires an explicit order for each Data instance. "
+                             "Set data.config.order or load it from an order_<integer> directory.")
         self.data_list.sort(key=lambda data: data.config.order)
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
         self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
@@ -566,6 +575,9 @@ class DataList:
         Loads a DataList from a pickle file. The pickle file should contain a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         Will attempt to load from datalist.pkl in the provided path if it is a directory, otherwise will attempt to load from the provided path directly. 
         If neither of those work, it will attempt to load from result pickles in a results directory within the provided path.
+        Unset orders are inferred from each data.pkl file's order_<integer> parent
+        directory, or its stored save path for a packed DataList. Explicit orders
+        are preserved and continue to determine relocation paths.
 
         Parameters
         ----------
@@ -613,7 +625,8 @@ class DataList:
                 folder_moved_flag |= cls._set_paths_for_data(data, path)
 
             datalist = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
-            datalist.save() # repack with new save locations
+            if folder_moved_flag:
+                datalist.save() # repack with new save locations
 
             if folder_moved_flag and verbose >= 1:
                 print("Warning: At least one Data instance did not match the current location and has been updated.")
@@ -627,7 +640,6 @@ class DataList:
         for folder in dir_list:
             if isdir(join(path, folder)) and folder.startswith("order_"):
                 save_path = abspath(join(path, folder, "data.pkl"))
-                sampler_path = abspath(join(path, folder, "sampler.h5"))
                 if exists(save_path):
                     data = Data.load(save_path)
                     folder_moved_flag |= cls._set_paths_for_data(data, path)
@@ -940,8 +952,12 @@ class DataList:
 
     @staticmethod
     def _set_paths_for_data(data: Data, save_dir: str) -> bool:
-        """Update and save a Data instance only if its directory paths changed."""
+        """Infer an unset order and persist changes to its order or directory paths."""
+        order_inferred = data._infer_order_from_path(data.config.save_path)
         order = data.config.order
+        if order is None:
+            raise ValueError("Cannot determine the Data order from its saved path. "
+                             "Set data.config.order before saving or loading a DataList.")
 
         save_path = os.path.abspath(
             os.path.join(save_dir, f"order_{order}", "data.pkl")
@@ -952,20 +968,25 @@ class DataList:
 
         stored_save_path = data.config.save_path
         stored_sampler_path = data.config.sampler_path
-        # TODO: on kelvin this was printing and moving unexpectedly, print the locations and find out why
+        # An absent sampler must not trigger a rewrite or acquire a new save path.
+        has_sampler = data.sampler is not None
         changed = (
-            stored_save_path is None
+            order_inferred
+            or stored_save_path is None
             or os.path.abspath(stored_save_path) != save_path
-            or stored_sampler_path is None
-            or os.path.abspath(stored_sampler_path) != sampler_path
+            or (has_sampler and (
+                stored_sampler_path is None
+                or os.path.abspath(stored_sampler_path) != sampler_path
+            ))
         )
 
         if changed:
             data.config.save_path = save_path
-            data.config.sampler_path = sampler_path
+            if has_sampler:
+                data.config.sampler_path = sampler_path
 
-            if os.path.exists(sampler_path):
-                data.sampler = sampler_path
+                if os.path.exists(sampler_path):
+                    data.sampler = sampler_path
 
             data.save()
 

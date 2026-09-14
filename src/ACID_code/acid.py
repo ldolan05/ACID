@@ -170,10 +170,12 @@ class Acid:
             - :py:type:`Array2D`: A 2D array-like object indexed such that 0 is wavelengths and 1 is depths.
             - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
             - :py:class:`LineList`: The :py:class:`LineList` class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
-        order : :py:type:`IntLike`, optional
+        order : :py:type:`IntLike` | None, optional
             If this ACID instance is intended as a run on a specific order, then you can designate this instance for that order. This will allow
             the resulting Data instance to track of which order the profiles correspond to. Note that orders can be indexed by the correct indexing
-            of the spectrograph (ie. some spectrographs start at order ~20). By default 0.
+            of the spectrograph (ie. some spectrographs start at order ~20). By default None (unset).
+            When loading a saved Data instance, an unset order is inferred from its order_<integer> parent directory.
+            DataList assigns order labels from order_range when initialized from arrays.
         order_range : :py:type:`Array1D`, optional
             Optionally also give ACID the full order range of the spectograph for the observation. ACID only ever runs on one order at a time,
             but this will allows ACID and eventually the DataList to keep track of which orders have been run and which haven't, and will be 

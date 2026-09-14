@@ -11,6 +11,67 @@ from ACID_code import Config, Data, DataList, LineList, MaskingLines
 from ACID_code import utils
 
 
+@pytest.mark.parametrize("saved_order, folder, expected", [
+    (None, "order_20", 20), (None, "order_0", 0),
+    (None, "order_-2", -2), (0, "order_20", 0),
+    (12, "order_20", 12), (None, "results", None),
+    (None, "order_invalid", None),
+])
+def test_data_load_infers_only_unset_orders(tmp_path, saved_order, folder, expected):
+    data = Data()
+    data.config = Config(order=saved_order, verbose=0)
+    filename = tmp_path / folder / "data.pkl"
+    data.save(str(filename))
+    assert data.config.order == saved_order
+    loaded = Data.load(str(filename))
+    assert loaded.config.order == expected
+    assert Data().from_dict(loaded.to_dict()).config.order == expected
+
+
+def test_datalist_load_infers_current_directory_after_move(tmp_path):
+    data = Data()
+    data.config = Config(verbose=0)
+    old_folder = tmp_path / "order_1"
+    data.save(str(old_folder / "data.pkl"))
+    old_folder.rename(tmp_path / "order_20")
+
+    loaded = DataList.load(str(tmp_path), verbose=0)
+    assert loaded.orders.tolist() == [20]
+    assert 20 in loaded.order_range
+    assert loaded[20].config.save_path == str(tmp_path / "order_20" / "data.pkl")
+    assert loaded[20].config.sampler_path is None
+    assert not (tmp_path / "order_None").exists()
+    assert Data.load(loaded[20].config.save_path).config.order == 20
+
+
+def test_packed_datalist_infers_unset_order_from_stored_path(tmp_path):
+    import pickle
+
+    data = Data()
+    data.config = Config(verbose=0)
+    data.save(str(tmp_path / "order_12" / "data.pkl"))
+    with open(tmp_path / "datalist.pkl", "wb") as stream:
+        pickle.dump({"data_list": [data.to_dict()], "verbose": 0}, stream)
+    loaded = DataList.load(str(tmp_path), verbose=0)
+    assert loaded.orders.tolist() == [12]
+    assert 12 in loaded.order_range
+    assert DataList.load(str(tmp_path), verbose=0).orders.tolist() == [12]
+
+
+def test_datalist_rejects_unset_orders_before_building_paths(tmp_path, completed_datalist):
+    data = Data()
+    assert data.config.order is None
+    with pytest.raises(ValueError, match="explicit order"):
+        DataList.from_datalist([data], verbose=0)
+    with pytest.raises(ValueError, match="explicit order"):
+        completed_datalist.append(data, extend=True)
+    with pytest.raises(ValueError, match="Cannot determine"):
+        DataList._set_paths_for_data(data, str(tmp_path))
+    assert not (tmp_path / "order_None").exists()
+    completed_datalist.append(data, force_order=23, extend=True)
+    assert completed_datalist[23] is data
+
+
 def test_config_priorities_properties_and_environment(monkeypatch):
     # Low-priority values should fill gaps, while high-priority values win conflicts.
     config = Config(verbose="off", order=1)
@@ -551,18 +612,43 @@ def test_datalist_save_load_and_input_validation(tmp_path, completed_datalist):
 
 
 def test_datalist_path_relocation_updates_each_data_file(tmp_path, completed_datalist):
-    # Relocation rewrites order-specific save and sampler paths, then persists the Data object.
+    # Relocation still updates the data path when there is no sampler.
     data = completed_datalist[20]
     changed = DataList._set_paths_for_data(data, str(tmp_path))
     expected_directory = tmp_path / "order_20"
 
     assert changed is True
     assert data.config.save_path == str(expected_directory / "data.pkl")
-    assert data.config.sampler_path == str(expected_directory / "sampler.h5")
+    assert data.config.sampler_path is None
     assert (expected_directory / "data.pkl").exists()
 
     # Reapplying the same root is a no-op and should not rewrite the file.
     assert DataList._set_paths_for_data(data, str(tmp_path)) is False
+
+
+@pytest.mark.parametrize("packed", [False, True])
+@pytest.mark.parametrize("stored_sampler", [False, True])
+def test_datalist_load_without_sampler_does_not_rewrite(tmp_path, capsys, packed, stored_sampler):
+    data = Data()
+    data.config = Config(order=50, verbose=2)
+    if stored_sampler:
+        data.config.sampler_path = str(tmp_path / "missing.h5")
+    filename = tmp_path / "order_50" / "data.pkl"
+    data.save(str(filename))
+    if packed:
+        DataList.from_datalist([data], save_dir=str(tmp_path)).save()
+    paths = [filename] + ([tmp_path / "datalist.pkl"] if packed else [])
+    before = [(path.read_bytes(), path.stat().st_mtime_ns) for path in paths]
+    capsys.readouterr()
+
+    loaded = DataList.load(str(tmp_path))
+
+    assert loaded[50].sampler is None
+    assert loaded[50].config.sampler_path == data.config.sampler_path
+    assert [(path.read_bytes(), path.stat().st_mtime_ns) for path in paths] == before
+    output = capsys.readouterr().out
+    assert "Data object saved" not in output
+    assert "current location" not in output
 
 
 def test_data_combines_multiple_frames_on_the_highest_sn_grid(harps_order_40):

@@ -67,6 +67,12 @@ see "Saving the Result" in :ref:`result` for an explanation why).
     data.save("data.pkl")
     new_data = acid.Data.load("data.pkl")
 
+The default ``config.order`` is ``None`` (unset). Loading a file such as
+``order_20/data.pkl`` assigns order ``20`` if no order was saved. An explicitly
+saved order, including ``0``, is preserved even if the containing folder has a
+different order number. Files outside an ``order_<integer>`` directory keep an
+unset order. Saving alone does not assign an order.
+
 The loaded data can now be directly input into Acid to load the previous configuration and results.
 
 .. code-block:: python

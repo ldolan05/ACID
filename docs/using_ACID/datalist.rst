@@ -6,6 +6,17 @@ The DataList and loading FITS files
 The :py:class:`ACID_code.DataList` class is a wrapper around a list of :py:class:`ACID_code.Data` instances, 
 with some methods to easily run ACID on multiple frames of data (eg. for echelle spectra).
 
+Initialization from arrays assigns order labels from ``order_range`` (or a
+zero-based range when omitted). Existing Data instances must have unique,
+non-``None`` orders; set ``data.config.order`` before using ``from_datalist``,
+or use ``force_order`` when appending an unlabelled instance.
+
+When loading individual ``order_<integer>/data.pkl`` files, unset orders are
+inferred from their current parent directories. Packed DataLists use each
+entry's stored save path to infer an unset order. Explicit orders are preserved
+and determine the order directories used when updating relocated save and
+sampler paths. The loaded order range includes all loaded labels.
+
 For now, loading FITS files should be done by you to get the wavelength, spectrum, error, and sn arrays into the correct format.
 Over time, I may add another class to handle the loading of common FITS file formats for certain instruments (feel free to help with this).
 

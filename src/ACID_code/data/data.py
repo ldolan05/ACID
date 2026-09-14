@@ -9,7 +9,7 @@ from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import pickle, os, copy
+import pickle, os, copy, re
 import numpy as np
 from .. import utils
 from ..errors import *
@@ -1085,6 +1085,8 @@ class Data:
         """
         Loads a data object from a file using pickling. This will read the dictionary from the file and 
         then use it to initialise a new Data class.
+        If the saved order is unset, infer it from the file's immediate parent directory
+        when named order_<integer>. Explicit orders, including zero, are preserved.
 
         Parameters
         ----------
@@ -1099,7 +1101,20 @@ class Data:
             payload = pickle.load(f)
 
         # Initialise a new Data object and update it with the payload dictionary
-        return cls().from_dict(payload)
+        data = cls().from_dict(payload)
+        data._infer_order_from_path(filename)
+        return data
+
+    def _infer_order_from_path(self, filename:str|None) -> bool:
+        """Fill an unset order from an order directory; report whether it changed."""
+        if self.config.order is not None or filename is None:
+            return False
+        folder = os.path.basename(os.path.dirname(os.path.abspath(filename)))
+        match = re.fullmatch(r"order_(-?\d+)", folder)
+        if match is None:
+            return False
+        self.config.order = int(match.group(1))
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         """
