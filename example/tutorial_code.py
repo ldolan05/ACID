@@ -8,18 +8,19 @@ os.chdir("..")  # ensures we are in the main directory
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.append(PROJECT_ROOT)
-from src import ACID_code as acid
+import ACID_code as acid
 skips = 1 # Skip some values to save time in this tutorial
+os.chdir(PROJECT_ROOT)
 
 # Quickstart Example
-spec_file = fits.open('example/sample_spec_1.fits')
+spec_file = fits.open('data/sample_spec_1.fits')
 
 wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
 spectrum = spec_file[1].data[::skips]     # Spectral Flux
 error = spec_file[2].data[::skips]        # Spectral Flux Errors
 sn = spec_file[3].data                    # SN of Spectrum
 
-linelist_path = 'example/example_linelist.txt' # Insert path to line list
+linelist_path = 'data/linelist.txt' # Insert path to line list
 
 # Choose a velocity grid for the final profile(s), you can use the calc_deltav
 # function to get a velocity pixel size if desired, otherwise, set your own deltav value
@@ -42,7 +43,7 @@ result.plot_profiles() # See documentation for more plot kwarg options
 #%% Multiple Frames Example
 
 # finds sample files in 'example directory'. Each file is a different frame.
-files = glob.glob('example/sample_spec_*.fits')
+files = glob.glob('data/sample_spec_*.fits')
 
 # create lists for wavelengths, spectra, errors and sn for all frames
 wavelengths = []
@@ -58,7 +59,7 @@ for file in files:
     errors.append(spec_file[2].data[::skips])         # Spectral Flux Errors
     sns.append(float(spec_file[3].data))     # SN of Spectrum
 
-linelist_path = 'example/example_linelist.txt' # Insert path to line list
+linelist_path = 'data/linelist.txt' # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
 velocities = np.arange(-25, 25, 0.82)
@@ -77,14 +78,14 @@ all_frames = result.all_frames
 
 #%% Multiple Orders Example
 
-spec_file = fits.open('example/sample_spec_1.fits')
+spec_file = fits.open('data/sample_spec_1.fits')
 
 wavelength = spec_file[0].data[::skips]   # Wavelengths in Angstroms
 spectrum = spec_file[1].data[::skips]     # Spectral Flux
 error = spec_file[2].data[::skips]        # Spectral Flux Errors
 sn = spec_file[3].data                    # SN of Spectrum
 
-linelist_path = 'example/example_linelist.txt' # Insert path to line list
+linelist_path = 'data/linelist.txt' # Insert path to line list
 
 # choose a velocity grid for the final profile(s)
 velocities = np.arange(-25, 25, 0.82)
@@ -124,7 +125,7 @@ result.plot_profiles()
 #%% HARPS data example
 
 e2ds_files = glob.glob('tests/data/*e2ds_A*.fits') # Returns list of HARPS files
-linelist_path = 'example/example_linelist.txt'
+linelist_path = 'data/linelist.txt'
 save_path = 'no save'
 order_range = np.arange(41, 43) # Specify which orders to run ACID on (here we do 41 and 42 as an example)
 
