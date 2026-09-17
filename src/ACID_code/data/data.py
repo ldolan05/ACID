@@ -1050,7 +1050,7 @@ class Data:
                     if not sampler_path.endswith(".h5"):
                         raise ValueError("sampler_path must end with .h5 to convert and save the sampler backend as a HDF5 file.")
                     utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
-                    utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
+                    self.sampler.backend = utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
                     self.config.sampler_path = sampler_path # update config with sampler path for future reference
                     if self.config.verbose >= 2:
                         print(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
@@ -1075,8 +1075,7 @@ class Data:
 
         save_dir = os.path.dirname(os.path.abspath(save_path))
         utils.ensure_directory(save_dir, "data directory")
-        with open(save_path, "wb") as f:
-            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+        utils.save_pickle_atomic(payload, save_path)
         if self.config.verbose >= 2:
             print(f"Data object saved to {save_path}")
 
@@ -1106,7 +1105,10 @@ class Data:
         return data
 
     def _infer_order_from_path(self, filename:str|None) -> bool:
-        """Fill an unset order from an order directory; report whether it changed."""
+        """
+        Updates the order of the data object only if it is not currently set.
+        Returns True if the order was inferred from the path, else returns False.
+        """
         if self.config.order is not None or filename is None:
             return False
         folder = os.path.basename(os.path.dirname(os.path.abspath(filename)))

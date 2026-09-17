@@ -5,7 +5,7 @@ from __future__ import annotations
 from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
-import glob, emcee, psutil, os
+import glob, emcee, psutil, os, pickle, tempfile
 from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 import scipy.constants as const
@@ -407,6 +407,17 @@ def get_available_memory():
     else:
         available_memory = psutil.virtual_memory().available
     return available_memory
+
+def save_pickle_atomic(payload, filename):
+    """Replace a pickle only after writing it successfully on the same filesystem."""
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(os.path.abspath(filename))) as directory:
+        temporary = os.path.join(directory, "data.pkl")
+        with open(temporary, "wb") as stream:
+            pickle.dump(payload, stream, protocol=pickle.HIGHEST_PROTOCOL)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, filename)
+
 
 def save_backend_to_hdf5(backend, filename):
     nwalkers, ndim = backend.shape

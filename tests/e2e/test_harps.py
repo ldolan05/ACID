@@ -26,7 +26,8 @@ def _extract_s1d(s1d_path):
     return wavelengths * (1 + header["ESO DRS BERV"] / 299792.458), flux, errors
 
 
-def test_harps_e2ds_datalist_workflow(tmp_path, harps_paths, linelist_path):
+@pytest.mark.parametrize("save_results", [False, True])
+def test_harps_e2ds_datalist_workflow(tmp_path, harps_paths, linelist_path, save_results):
     """Run a real HARPS e2ds order through the public DataList workflow."""
     wavelengths, flux, errors, sn = extract_harps_e2ds(harps_paths["e2ds"], harps_paths["flat"])
     linelist_wavelengths, _ = LineList.validate_linelist(str(linelist_path))
@@ -35,13 +36,17 @@ def test_harps_e2ds_datalist_workflow(tmp_path, harps_paths, linelist_path):
                             (linelist_wavelengths <= wavelengths[order].max())) >= 10
     datalist = DataList(wavelengths[[order]], flux[[order]], errors[[order]], sn[[order]],
                         np.arange(-25, 25, 5.0), str(linelist_path), order_range=[order],
-                        save_dir=str(tmp_path), nsteps=20, seed=1)
+                        save_dir=str(tmp_path) if save_results else None, nsteps=20, seed=1)
     datalist.run_ACID()
 
     assert datalist[order].exception is None
     assert datalist[order].complete
     assert datalist[order].profile["final"][0].shape == datalist.velocities.shape
     assert datalist[order].nsteps == 20
+    if not save_results:
+        assert datalist[order].config.save_path is None
+        assert datalist[order].sampler is not None
+        assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.long

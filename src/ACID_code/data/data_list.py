@@ -4,6 +4,7 @@ from ..utils import Array1D, Array2D, Array3D, IntLike
 from .config import Config
 from .data import Data
 from .line_list import LineList
+from emcee.backends import HDFBackend
 import os, pickle
 import traceback as tb
 import numpy as np
@@ -37,6 +38,7 @@ class DataList:
         order_range      : Array1D|None                   = None,
         config           : Config|list[Config]|None       = None,
         save_dir         : str|None                       = None,
+        store_sampler    : bool                           = True,
         overwrite        : bool                           = False,
         verbose          : IntLike|bool|str|None          = None,
         _load                                             = None,
@@ -82,13 +84,21 @@ class DataList:
             If inputting a list, the index and length of the list must match the first dimension of the input data arrays and the order_range.
             These take higher priority than any config_kwargs passed in the initialization.
             Setting 'order' will not have any effect as they will be overwritten by the order numbers in the order_range.
-            If not provided, default Config values will be used. Default is None.
+            Setting 'dir', 'save_path', 'sampler_path', or 'figure_dir' in the Config will be overwritten by the save_dir if it is provided.
+            If not provided, default Config values will be used, which are again overwritten by any **config_kwargs passed here. Default is None.
         save_dir : str | None, optional
-            The default directory to save results and figures for each order. A trailing separator is optional.
+            The default directory to save results and figures for each order.
             If it does not exist, only this final directory is created and its parent must already exist.
-            By default the DataList will save data.pkl and sampler.h5 to the directory (named by the order number) to in this directory.
-            If the Configs or kwargs passed contain their own save_path or sampler_path (see :py:class:`Acid`), those instead are used.
-            If None, no saving will be done, this is however, not recommended. Default is None.
+            By default the DataList will save data.pkl, sampler.h5, and figures/ to the directory (named by the order number) to in this directory.
+            If the Configs or kwargs passed contain their own dir, save_path, sampler_path, or figure_dir, they are overwritten with the save_dir if input.
+            If None, no saving will be done globally, but some data instances may save if their config requests. If that is the case, the datalist will
+            not be loadable from those saved locations and instead must be loaded individually as separate Data instances. This is not recommended. Default is None.
+        store_sampler : bool, optional
+            If True, the sampler will be stored along with the data.
+            If False, sets sampler_path="False" in the Config to disable sampler saving for new Data instances.
+            If the class is being initialised from the from_datalist classmethod, then this is not applied.
+            This also only applies/does anything if save_dir is not None.
+            This will take up more disk space, but allow for use of the :py:class:`Result` methods requiring the sampler attribute. Default is True.
         overwrite : bool, optional
             Whether to overwrite existing with new Data instances when using run_ACID, or to load and use existing Data instance if they exist.
             If True, if a Data instance already exists for an order, it will be overwritten with the new Data instance generated from the ACID run for that order.
@@ -114,7 +124,7 @@ class DataList:
 
         # Raise if load was used
         if _load is not None:
-            raise NotImplementedError(f"The 'load' argument is not yet implemented. \n"
+            raise NotImplementedError(f"The 'load' argument is not (yet?) implemented. \n"
                                       f"The idea is that you can input a Load object which has its own tools to pull s2d data from common "\
                                       f"instruments such as ESPRESSO, HARPS, etc. \nIf you want to use this feature, please open an issue or "\
                                       f"contribute a pull request with the implementation.")
@@ -187,7 +197,13 @@ class DataList:
 
             if self.save_dir is not None:
                 config_dir = os.path.join(self.save_dir, f"order_{order}")
-                data.config.update_hipri(dir=config_dir) # set default save path for this order which can be overwritten by user
+                # Explicit paths take precedence over Config.dir, so clear them first.
+                data.config.update_hipri(force=True, save_path=None, sampler_path=None,
+                                         figure_dir=None, dir=config_dir)
+
+                # Also allow the store_sampler = False override
+                if store_sampler is False:
+                    data.config.update_hipri(sampler_path="False")
 
                 # Check if file already exists
                 if os.path.exists(data.config.save_path):
@@ -198,6 +214,7 @@ class DataList:
                         if self.verbose >= 1:
                             print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
                         data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
+                        self._update_paths_for_data(data, self.save_dir)
                 else:
                     data.save() # save the newly initialized, but mostly empty data instance to the file for future reference and use
 
@@ -481,7 +498,8 @@ class DataList:
             data = self.data_list[self.o2i[order]]
 
             # Check if ACID already ran for this order
-            if os.path.exists(data.config.save_path) and overwrite is False:
+            if (overwrite is False and data.config.save_path is not None
+                    and os.path.exists(data.config.save_path)):
                 if data.complete:
                     if self.verbose >= 2:
                         print(f"An ACID completed result for order {order} already exists. \n"
@@ -558,6 +576,7 @@ class DataList:
             The directory to save the DataList pickle file. If None, self.save_dir is used. Default is None.
         """
         if save_dir is not None:
+            save_dir = utils.ensure_directory(save_dir)
             self.save_dir = save_dir
         if self.save_dir is None:
             raise ValueError("No save directory provided and save_dir was not set.")
@@ -566,8 +585,7 @@ class DataList:
             "verbose": self.verbose,
             "data_list": [data.to_dict() for data in self.data_list],
         }
-        with open(save_loc, "wb") as f:
-            pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
+        utils.save_pickle_atomic(d, save_loc)
 
     @classmethod
     def load(cls, path:str, verbose:int|str|bool|None=None) -> DataList:
@@ -575,6 +593,11 @@ class DataList:
         Loads a DataList from a pickle file. The pickle file should contain a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         Will attempt to load from datalist.pkl in the provided path if it is a directory, otherwise will attempt to load from the provided path directly. 
         If neither of those work, it will attempt to load from result pickles in a results directory within the provided path.
+        For each packed order, a local order_<integer>/data.pkl with a newer file
+        modification time takes precedence over the packed snapshot. Otherwise,
+        the packed version is used, including when modification times are equal.
+        Directory copies should preserve modification times to retain this ordering.
+        Order directories absent from the packed snapshot are also loaded.
         Unset orders are inferred from each data.pkl file's order_<integer> parent
         directory, or its stored save path for a packed DataList. Explicit orders
         are preserved and continue to determine relocation paths.
@@ -610,45 +633,58 @@ class DataList:
         d = {}
         if exists(join(path, "datalist.pkl")):
             with open(join(path, "datalist.pkl"), "rb") as f:
+                packed_mtime = os.fstat(f.fileno()).st_mtime_ns
                 d = pickle.load(f)
 
         if verbose is None:
             verbose = d.get("verbose", None)
         verbose = Config(verbose=verbose).verbose
 
-        # If the datalist was repacked, load directly from there
-        if "data_list" in d:
-            data_list = [Data().from_dict(payload) for payload in d["data_list"]]
-
-            folder_moved_flag = False
-            for data in data_list:
-                folder_moved_flag |= cls._set_paths_for_data(data, path)
-
-            datalist = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
-            if folder_moved_flag:
-                datalist.save() # repack with new save locations
-
-            if folder_moved_flag and verbose >= 1:
-                print("Warning: At least one Data instance did not match the current location and has been updated.")
-
-            return datalist
-
-        dir_list = os.listdir(path)        
+        # Prefer the packed snapshot unless an order has been saved more recently.
         data_list = []
         folder_moved_flag = False
+        if "data_list" in d:
+            for payload in d["data_list"]:
+                # Resolve the order before opening any sampler from the snapshot.
+                data = Data()
+                data.config = Config(**payload.get("config", {}))
+                data._infer_order_from_path(data.config.save_path)
+                source_path = None
+                if data.config.order is not None:
+                    order_path = join(path, f"order_{data.config.order}", "data.pkl")
+                    if exists(order_path) and os.stat(order_path).st_mtime_ns > packed_mtime:
+                        with open(order_path, "rb") as stream:
+                            payload = pickle.load(stream)
+                        source_path = order_path
+
+                # Restore the selected payload, including its original unset order,
+                # so the updater still persists any order inferred during loading.
+                data.from_dict(payload)
+                folder_moved_flag |= cls._update_paths_for_data(data, path, source_path=source_path)
+                data_list.append(data)
+
+        dir_list = os.listdir(path)
+        loaded_folders = {f"order_{data.config.order}" for data in data_list}
         dir_list = dir_list if verbose < 2 else tqdm(dir_list, "Loading Data instances from directory", unit="folder")
         for folder in dir_list:
+            if folder in loaded_folders:
+                continue
             if isdir(join(path, folder)) and folder.startswith("order_"):
                 save_path = abspath(join(path, folder, "data.pkl"))
                 if exists(save_path):
-                    data = Data.load(save_path)
-                    folder_moved_flag |= cls._set_paths_for_data(data, path)
+                    # Infer inside the path updater so an inferred order is persisted,
+                    # even when all the stored paths already match this location.
+                    with open(save_path, "rb") as stream:
+                        data = Data().from_dict(pickle.load(stream))
+                    folder_moved_flag |= cls._update_paths_for_data(data, path, source_path=save_path)
                     data_list.append(data)
 
         if folder_moved_flag and verbose is not None and verbose >= 1:
             print(f"Warning: At least one of the Data instances found in the directory does not match the current location, it has been updated.")
 
         obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+        if folder_moved_flag and "data_list" in d:
+            obj.save() # repack with new save locations, including newly discovered orders
         return obj
 
     @property
@@ -951,43 +987,67 @@ class DataList:
         plt.show()
 
     @staticmethod
-    def _set_paths_for_data(data: Data, save_dir: str) -> bool:
+    def _update_paths_for_data(data: Data, save_dir: str, source_path: str|None = None) -> bool:
         """Infer an unset order and persist changes to its order or directory paths."""
-        order_inferred = data._infer_order_from_path(data.config.save_path)
+        abspath  = os.path.abspath
+        join     = os.path.join
+        exists   = os.path.exists
+
+        def same_path(stored, expected):
+            if stored is None:
+                return False
+            try:
+                return os.path.samefile(stored, expected)
+            except FileNotFoundError:
+                # A moved/deleted path cannot be stat'ed; compare its location instead.
+                return os.path.realpath(stored) == os.path.realpath(expected)
+
+        # Order inferred is a flag of whether the data was changed due to the path
+        order_inferred = data._infer_order_from_path(source_path or data.config.save_path)
+
+        # data.config.order now includes either a previously set order, or an inferred order from path
         order = data.config.order
         if order is None:
-            raise ValueError("Cannot determine the Data order from its saved path. "
+            raise ValueError(f"Cannot determine the Data order from its saved path or from the saved config.order.\n"
+                             f"Current save path: {data.config.save_path}\n"
+                             f"Current config order: {data.config.order}\n"
                              "Set data.config.order before saving or loading a DataList.")
 
-        save_path = os.path.abspath(
-            os.path.join(save_dir, f"order_{order}", "data.pkl")
-        )
-        sampler_path = os.path.abspath(
-            os.path.join(save_dir, f"order_{order}", "sampler.h5")
-        )
+        default_dir          = abspath(join(save_dir, f"order_{order}"))
+        default_save_path    = join(default_dir, "data.pkl")
+        default_sampler_path = join(default_dir, "sampler.h5")
+        default_figure_dir   = join(default_dir, "figures")
 
-        stored_save_path = data.config.save_path
+        stored_dir          = data.config.dir
         stored_sampler_path = data.config.sampler_path
-        # An absent sampler must not trigger a rewrite or acquire a new save path.
-        has_sampler = data.sampler is not None
-        changed = (
-            order_inferred
-            or stored_save_path is None
-            or os.path.abspath(stored_save_path) != save_path
-            or (has_sampler and (
-                stored_sampler_path is None
-                or os.path.abspath(stored_sampler_path) != sampler_path
-            ))
+        stored_figure_dir   = data.config.figure_dir
+
+        data_changed = (
+            order_inferred # if the order was inferred from the path and not stored before, it needs to be updated in the save
+            or stored_dir is None # if the stored_dir is not set, the data has changed (somehow?) and should be saved to the detected location
+            or not same_path(stored_dir, default_dir)
+            or not same_path(data.config.save_path, default_save_path)
+            # If the sampler_path or figure_dir dont exist but were stored, the data may have been deleted to save space, so that's not considered a change
+            # But, if the sampler_path or figure_dir exist but were not stored, or stored elsewhere, we need to update the data instance to reflect
+            or (exists(default_sampler_path) and not same_path(stored_sampler_path, default_sampler_path))
+            or (exists(default_figure_dir) and not same_path(stored_figure_dir, default_figure_dir))
         )
 
-        if changed:
-            data.config.save_path = save_path
-            if has_sampler:
-                data.config.sampler_path = sampler_path
-
-                if os.path.exists(sampler_path):
-                    data.sampler = sampler_path
-
+        if data_changed:
+            # Clear explicit overrides so the paths can follow dir. Keep disabled
+            # optional outputs disabled unless their files exist at this location.
+            data.config.update_hipri(force=True, save_path=None)
+            if stored_sampler_path is not None or exists(default_sampler_path):
+                data.config.update_hipri(force=True, sampler_path=None)
+            if stored_figure_dir is not None or exists(default_figure_dir):
+                data.config.update_hipri(force=True, figure_dir=None)
+            data.config.dir = default_dir
+            if exists(default_sampler_path):
+                data.sampler = default_sampler_path
+            elif isinstance(getattr(data.sampler, "backend", None), HDFBackend):
+                # A copied dataset may have loaded the original file before its
+                # paths were relocated. Never continue writing to that backend.
+                data.sampler = None
             data.save()
 
-        return changed
+        return data_changed
