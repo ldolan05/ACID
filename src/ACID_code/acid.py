@@ -203,10 +203,12 @@ class Acid:
         seed : :py:type:`IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
         dir : :py:type:`str`, optional
-            Sets the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
+            Derives the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
             Any inputted paths for save_path, sampler_path, or figure_dir will override this input.
             If None, the save_path, sampler_path, and figure_dir are not set. By default None.
             If the directory does not exist, only its final component is created; its parent must already exist.
+            All of the three paths (save_path, sampler_path, and figure_dir) can be overriden explicitly, or turned off with a string such as
+            "none", "off", "0", "false", etc.
         save_path : :py:type:`str`, optional
             The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
             If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
