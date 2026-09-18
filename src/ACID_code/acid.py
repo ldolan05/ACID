@@ -123,6 +123,8 @@ class Acid:
         moves                 : list|None                      = None, # Config
         continuum_method      : str|None                       = None, # Config
         run_mcmc              : bool|None                      = None, # Config
+        regularization        : Scalar|None                    = None, # Config
+        scale_regularization  : bool|None                      = None, # Config
         **kwargs,
         ) -> Result | None:
         """
@@ -281,6 +283,17 @@ class Acid:
             It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
             we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
             For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
+        regularization : :py:type:`Scalar`, optional
+            Non-negative smoothing strength, by default 0 (off). Positive values
+            penalize adjacent-bin differences in fitting space (optical depth when od=True).
+            With scale_regularization=True, this is a relative strength. This is not a
+            fraction or percentage; values above 1 are allowed and give stronger smoothing.
+            Reported covariance includes this Gaussian smoothness prior.
+        scale_regularization : bool, optional
+            Scale the smoothing penalty by the mean diagonal of the weighted normal matrix,
+            by default True. This gives comparable smoothing across S/N and line counts on
+            the same velocity grid. If False, use regularization directly as the unscaled
+            coefficient in Kochukhov et al. (2010), Eq. (24). If None, uses the config value.
         profile_groups : :py:type:`Array1D | None`, optional
             A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
             If provided, the resulting profiles will be a 2D array in with the same order as the index of the group.
@@ -665,7 +678,9 @@ class Acid:
 
             # For the Cholesky factor, we need to recalculate them on the new wavelength grid, and convert to OD if needed
             _, errors = utils.flux_to_od(self.data.flux["mcmc"], self.data.errors["mcmc"], od=self.config.od) # only need errors for c_factor
-            self.data.c_factor["mcmc"] = LSD.calc_cholesky(alpha=self.data.alpha["mcmc"], error=errors)
+            self.data.c_factor["mcmc"] = LSD.calc_cholesky(
+                self.data.alpha["mcmc"], errors, regularization=self.config.regularization,
+                scale_regularization=self.config.scale_regularization)
 
             # Save extra variables for plotting in the Data class
             if "masked" not in self.data.plotting_variables:

@@ -53,6 +53,10 @@ class JAXBackend:
         self.k_max                 = mcmc.k_max
         self.od                    = mcmc.od
         self.deterministic_profile = mcmc.deterministic_profile
+        self.regularization = mcmc.regularization
+        if self.regularization:
+            self.n_velocities = len(mcmc.velocities)
+            self.regularization_weights = self.jnp.asarray(mcmc._regularization_weights)
         self.continuum_method      = mcmc.continuum_method
         self.neg_inf               = self.jnp.asarray(-np.inf, dtype=self.y.dtype)
 
@@ -109,6 +113,12 @@ class JAXBackend:
         prior = -0.5 * self.jnp.sum((below / 0.05) ** 2 + (above / 0.05) ** 2)
         return self.jnp.where(self.jnp.all(z == -2), self.neg_inf, prior)
 
+    def _regularization_prior(self, z):
+        if not self.regularization:
+            return 0.0
+        differences = self.jnp.diff(z.reshape(-1, self.n_velocities), axis=1)
+        return -0.5 * self.jnp.sum(self.regularization_weights[:, None] * differences**2)
+
     def _continuum_prior(self, coefs):
         if self.continuum_method != "chebval":
             return self.jnp.asarray(0.0, dtype=self.y.dtype)
@@ -120,13 +130,14 @@ class JAXBackend:
         return -0.5 * self.jnp.sum((coefs / sigma) ** 2)
 
     def _probabilities_from_model(self, forward, z, coefs):
-        lp = self._soft_z_prior(z) + self._continuum_prior(coefs)
+        regularization = self._regularization_prior(z)
+        lp = self._soft_z_prior(z) + self._continuum_prior(coefs) + regularization
         diff = self.y - forward
         ll = -0.5 * self.jnp.sum(diff * diff / self.variance + self.log_norm)
 
         posterior           = self.jnp.where(self.jnp.isfinite(lp), lp + ll, self.neg_inf)
         likelihood_is_valid = self.jnp.all(self.jnp.isfinite(forward)) & self.jnp.isfinite(lp)
-        likelihood          = self.jnp.where(likelihood_is_valid, ll, self.neg_inf)
+        likelihood          = self.jnp.where(likelihood_is_valid, ll + regularization, self.neg_inf)
         return posterior, likelihood
 
     def _calculate_probabilities(self, theta):
