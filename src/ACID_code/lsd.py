@@ -69,6 +69,8 @@ class LSD:
         mp_lsd         : bool|None                      = None,
         sparse         : bool|None                      = None,
         skip_warnings  : bool|None                      = None,
+        regularization : Scalar|None                    = None,
+        scale_regularization : bool|None                = None,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
@@ -113,6 +115,14 @@ class LSD:
             It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
             we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
             For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
+        regularization : :py:type:`Scalar`, optional
+            Non-negative strength of first-difference smoothing, by default 0 (off).
+            If None, uses config.regularization. Applied in fitting space (OD or flux).
+        scale_regularization : bool, optional
+            Scale the penalty by the mean diagonal of the weighted normal matrix, by default
+            True, giving comparable smoothing across S/N and line counts on the same velocity
+            grid. If False, use regularization directly as the unscaled coefficient in
+            Kochukhov et al. (2010), Eq. (24). If None, uses config.scale_regularization.
         skip_warnings : bool, optional
             Override with True/False, otherwise (if None) takes from the Data instance and checks the lsd_warnings_flag.
             If True, skips warnings about the inputs.
@@ -152,6 +162,8 @@ class LSD:
 
         sparse         = sparse if sparse is not None else self.config.sparse
         profile_groups = profile_groups if profile_groups is not None else self.config.profile_groups
+        regularization = self.config.regularization if regularization is None else regularization
+        scale_regularization = self.config.scale_regularization if scale_regularization is None else scale_regularization
 
         # Ensure inputs are numpy arrays
         wavelengths = np.array(wavelengths)
@@ -289,7 +301,9 @@ class LSD:
         self.alpha_flat_masked = self.alpha_flat[mask, :]
 
         # Now solve for profile using Cholesky decomposition, independent of mp_lsd mode since alpha is flattened in both cases
-        self.c_factor = self.calc_cholesky(self.alpha_flat_masked, errors)
+        self.c_factor = self.calc_cholesky(
+            self.alpha_flat_masked, errors, regularization=regularization,
+            scale_regularization=scale_regularization)
 
         # Solve for profile and profile errors using Cholesky factors
         self.profile_flat, self.profile_errors_flat, self.cov_z = self.solve_z(self.alpha_flat_masked, flux, errors, self.c_factor, return_error=True, return_cov=True)
@@ -616,9 +630,18 @@ class LSD:
         return alpha
 
     @staticmethod
+    def _regularization_scales(information_diagonal: Array1D, n_velocities: IntLike) -> Array1D:
+        """Mean weighted information per bin, independently for each profile."""
+        if n_velocities < 1 or len(information_diagonal) % n_velocities:
+            raise ValueError("n_velocities must divide the number of alpha columns.")
+        return information_diagonal.reshape(-1, n_velocities).mean(axis=1)
+
+    @staticmethod
     def calc_cholesky(
         alpha : Array2D,
         error : Array1D,
+        regularization : Scalar = 0.0,
+        scale_regularization : bool = True,
         **kwargs,
         ) -> tuple:
         """
@@ -631,6 +654,12 @@ class LSD:
             The precomputed alpha matrix
         error : :py:type:`Array1D`
             Flux errors
+        regularization : :py:type:`Scalar`, optional
+            Non-negative first-difference smoothing strength, by default 0 (disabled).
+        scale_regularization : bool, optional
+            Multiply regularization by the mean diagonal of alpha.T @ diag(1/error**2) @ alpha,
+            by default True. If False, add regularization * D.T @ D directly, where D is the
+            first-difference operator (Kochukhov et al. 2010, Eqs. 24–25).
         **kwargs : dict, optional
             Additional keyword arguments to pass to scipy.linalg.cho_factor. 
             Overwrite_a=False must be set by us, do not pass this as a kwarg.
@@ -645,24 +674,15 @@ class LSD:
         # M = αT V α,  b = αT V R
         AVA = alpha.T @ (V[:, None] * alpha)
 
-        # Diangostics for common 1-th leading order linalg error
-        # M = alpha.T @ (V[:, None] * alpha)
-        # print("finite M:", np.all(np.isfinite(M)))
-        # print("min diag:", np.min(np.diag(M)))
-        # print("rank:", np.linalg.matrix_rank(M), " / ", M.shape[0])
-        # col_norm = np.linalg.norm(np.sqrt(V)[:, None] * alpha, axis=0)
-        # print("zero columns:", np.sum(col_norm == 0))
+        if not np.isfinite(regularization) or regularization < 0:
+            raise ValueError("regularization must be finite and non-negative.")
+        if regularization:
+            n_velocities = alpha.shape[1]
+            scales = LSD._regularization_scales(np.diag(AVA), n_velocities) if scale_regularization else np.ones(1)
+            # First-difference penalty: endpoint diagonals 1, interior 2, neighbours -1.
+            D = np.diff(np.eye(n_velocities), axis=0)
+            AVA += regularization * np.kron(np.diag(scales), D.T @ D)
 
-        # Cholesky factorisation of M
-        # print(AVA.shape)
-        # plt.imshow(AVA)
-        # plt.colorbar()
-        # plt.show()
-        # plt.imshow(alpha)
-        # plt.colorbar()
-        # plt.show()
-        # import sys
-        # sys.exit()
         c_factor = cho_factor(AVA, overwrite_a=False, **kwargs)
         return c_factor
 
@@ -680,6 +700,8 @@ class LSD:
         Solves for the LSD profile and its errors using the Cholesky factors. 
         All units should match between alpha, flux, and error (ie all in OD or all in flux).
         Returns the profile in the same units.
+        With regularization, covariance is the inverse penalized curvature (Gaussian-prior
+        covariance), not the sampling covariance of the regularized estimator.
 
         Parameters
         ----------

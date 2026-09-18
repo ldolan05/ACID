@@ -114,6 +114,7 @@ class MCMC:
             data = None
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
+        self.regularization = data.config.regularization if data is not None else 0.0
 
         if self.od:
             # For deterministic model, the below variables are used, and are precomputed for speed
@@ -125,6 +126,13 @@ class MCMC:
             V = 1.0 / (self.yerr ** 2) # variance vector in flux space
 
         self.AtV = self.alpha.T * V # precompute alpha matrix multiplication once
+        if self.regularization:
+            scales = np.ones(self.k_max // len(self.velocities))
+            if data.config.scale_regularization:
+                # Match LSD's scaling, using the same fitting-space errors.
+                information = np.sum(self.alpha * self.AtV.T, axis=0)
+                scales = LSD._regularization_scales(information, len(self.velocities))
+            self._regularization_weights = self.regularization * scales
 
         # Precompute the terms which are invariant for every likelihood call
         self._likelihood_var = self.yerr * self.yerr
@@ -297,7 +305,14 @@ class MCMC:
         above = np.maximum(z - hi, 0.0)
 
         # Set a gaussian penalty for values outside the expected range, with a scale factor to control the strength of the penalty
-        return -0.5 * np.sum((below / scale)**2 + (above / scale)**2)
+        return -0.5 * np.sum((below / scale)**2 + (above / scale)**2) + self.regularization_prior(z)
+
+    def regularization_prior(self, z):
+        """First-difference prior, optionally information-scaled, independently per profile."""
+        if not self.regularization:
+            return 0.0
+        differences = np.diff(z.reshape(-1, len(self.velocities)), axis=1)
+        return -0.5 * np.sum(self._regularization_weights[:, None] * differences**2)
 
     def log_probability(self, theta):
         """
@@ -399,7 +414,7 @@ class MCMC:
             return -np.inf
 
         diff = self.y - forward
-        return -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
+        return -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm) + self.regularization_prior(z)
 
     def ptform(self, u):
         """

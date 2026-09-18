@@ -4,7 +4,7 @@ import numpy as np
 from beartype import beartype
 from .. import utils
 from beartype.typing import Any
-from ..utils import IntLike
+from ..utils import IntLike, Scalar
 from .masking_lines import MaskingLines
 import matplotlib.pyplot as plt
 try:
@@ -79,6 +79,8 @@ class Config:
         "skips" : 1,
         "od"    : True,
         "sparse" : True,
+        "regularization" : 0.0,
+        "scale_regularization" : True,
         "depth_group_rules" : None,
         "profile_groups" : None,
         "sampler_type" : "emcee",
@@ -103,7 +105,8 @@ class Config:
     }
 
     #: Property list for error handling
-    properties = ["verbose", "masking_lines", "dir", "save_path", "sampler_path", "figure_dir", "continuum_method", "sampler_type"]
+    properties = ["verbose", "masking_lines", "dir", "save_path", "sampler_path", "figure_dir", "continuum_method", "sampler_type",
+                  "regularization"]
     _properties = [f"_{prop}" for prop in properties]
 
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
@@ -247,6 +250,17 @@ class Config:
 
     # --- Properties ---
     # Mainly for anything that needs input validation or derived paths
+    @property
+    def regularization(self) -> float:
+        """First-difference smoothing strength; zero disables regularization."""
+        return self.__dict__.get("_regularization", self.defaults["regularization"])
+
+    @regularization.setter
+    def regularization(self, value:Scalar) -> None:
+        if not np.isfinite(value) or value < 0:
+            raise ValueError("regularization must be finite and non-negative.")
+        self._regularization = float(value)
+
     @property
     def dir(self) -> str|None:
         """Root directory for data, sampler, and figure output."""
