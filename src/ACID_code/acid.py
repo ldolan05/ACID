@@ -916,8 +916,8 @@ class Acid:
         # Get default sampler kwargs from initial state
         if self.config.sampler_type == "emcee":
             sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
-        sampler_verbosity = True if self.config.verbose >= 2 else False
-        sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
+
+        # Get pool context from our helper
         pool_context, log_prob, ptform = self._get_sampler_pool()
         queue_size = os.cpu_count() if self.config.parallel else None
 
@@ -930,7 +930,7 @@ class Acid:
                 if self.config.parallel:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
-                self.sampler.run_nested(print_progress=sampler_verbosity)
+                self.sampler.run_nested(print_progress=mcmc_kwargs.get("progress", True))
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """
@@ -940,6 +940,8 @@ class Acid:
         """
         # Get sampler and stopping criterion kwargs for the first run based on initial state, then update nsteps in mcmc_kwargs for subsequent runs
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
+        show_progress = mcmc_kwargs.get("progress", True)
+        mcmc_kwargs["progress"] = False
         stopping_criterion_args = (self.config.min_checks, self.config.min_tau_factor, self.config.tau_tol)
 
         # Set variables to be updated within the convergence loop
@@ -951,15 +953,17 @@ class Acid:
         condition = False
         pool_context, log_prob_fn, _ = self._get_sampler_pool()
 
-        with pool_context as pool:
+        with pool_context as pool, tqdm(
+                 total=max_samples, desc="MCMC convergence", unit="check", disable=not show_progress,
+             ) as progress:
+
             self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn)
 
-            for i in range(max_samples):
+            # Count completed checks explicitly so early convergence is counted too.
+            for _ in range(max_samples):
                 steps_this_run = min(self.config.check_interval, max_steps-step_number)
                 mcmc_kwargs["nsteps"] = steps_this_run
 
-                tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
-                mcmc_kwargs["progress_kwargs"] = {"desc": f"Iteration {i+1}/{max_samples}, last tolerance: {tol_str}, neff: {neff_str}"}
                 self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
                 mcmc_kwargs["initial_state"] = None
 
@@ -974,12 +978,19 @@ class Acid:
                         contextlib.redirect_stderr(devnull):
                         tau = self.sampler.get_autocorr_time(tol=0, thin=max(1, self.sampler.backend.iteration//self.config.check_interval))
                 except emcee.autocorr.AutocorrError:
+                    progress.set_postfix_str("autocorrelation unavailable", refresh=False)
+                    progress.update(1)
                     continue
                 tau_list.append(tau)
 
                 # The stopping criterion function below handles the logic for determining stopping condition
                 total_step_number = self.sampler.backend.iteration
                 condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, total_step_number, *stopping_criterion_args)
+                tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
+                progress.set_postfix_str(f"tolerance: {tol_str}, neff: {neff_str}", refresh=False)
+                if condition is True:
+                    progress.set_description_str("MCMC converged", refresh=False)
+                progress.update(1)
 
                 if condition is True:
                     if self.config.verbose >= 2:
@@ -1035,17 +1046,18 @@ class Acid:
         moves = utils.convert_moves_to_emcee(self.config.moves)
 
         sampler_kwargs = {
-            "nwalkers"   : self.data.nwalkers,
-            "ndim"       : self.data.ndim,
-            "moves"      : moves,
-            "backend"    : backend,
+            "nwalkers": self.data.nwalkers,
+            "ndim"    : self.data.ndim,
+            "moves"   : moves,
+            "backend" : backend,
         }
         mcmc_kwargs = {
-            "initial_state": state,
-            "nsteps"       : nsteps,
-            "progress"     : sampler_verbosity,
-            "store"        : True,
-            "tune"         : True
+            "initial_state"  : state,
+            "nsteps"         : nsteps,
+            "progress"       : sampler_verbosity,
+            "store"          : True,
+            "tune"           : True,
+            "progress_kwargs": {"mininterval":1}
         }
         return sampler_kwargs, mcmc_kwargs
 
