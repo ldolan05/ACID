@@ -437,7 +437,7 @@ class Acid:
         # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
         if "linelist_path" in kwargs:
             legacy_linelist = kwargs.pop("linelist_path")
-            if linelist is None and "linelist" not in kwargs:
+            if linelist is None and kwargs.get("linelist") is None:
                 linelist = legacy_linelist
             if self.config.verbose >= 1:
                 print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
@@ -449,7 +449,7 @@ class Acid:
         # Check for old n_sig input
         if "n_sig" in kwargs:
             legacy_n_sig = kwargs.pop("n_sig")
-            if sigma_lower is None and "sigma_lower" not in kwargs:
+            if sigma_lower is None and kwargs.get("sigma_lower") is None:
                 sigma_lower = legacy_n_sig
             if self.config.verbose >= 1:
                 print("Warning: 'n_sig' is a legacy argument for inputting sigma_lower.\n" \
@@ -1218,7 +1218,8 @@ def _get_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
     translated_kwargs = {}
     for key, val in kwargs.items():
         new_key = renamed_args_map.get(key, key)
-        translated_kwargs[new_key] = val
+        if val is not None or translated_kwargs.get(new_key) is None:
+            translated_kwargs[new_key] = kwargs[new_key] if kwargs.get(new_key) is not None else val
 
     # Combine both translated dictionaries
     combined = {**translated_legacy, **translated_kwargs}
