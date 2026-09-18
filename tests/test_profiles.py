@@ -30,6 +30,27 @@ def test_profile_fit_recovers_absorption_centre(gaussian_profile, model):
     assert covariance.shape[0] == len(parameters)
 
 
+def test_voigt_uncertainties_exclude_unphysical_draws(gaussian_profile, monkeypatch):
+    velocities, flux, errors = gaussian_profile
+    valid = [-0.25, 1.5, 2.2, 0.2, 0.0]
+    invalid = [-0.25, 1.5, 0.01, -10.0, 0.0]
+    monkeypatch.setattr(np.random, "multivariate_normal", lambda **kwargs: np.array([invalid, valid, valid]))
+    profiles = Profiles(velocities, flux, errors)
+
+    with np.errstate(over="raise", divide="raise", invalid="raise"):
+        profiles.fit_voigt()
+
+    np.testing.assert_array_equal(profiles.fitted_yerr["voigt"], 0)
+    assert np.isfinite(profiles.fitted_y["voigt"]).all()
+
+
+def test_profile_uncertainties_fail_when_no_draws_respect_bounds(gaussian_profile, monkeypatch):
+    velocities, flux, errors = gaussian_profile
+    monkeypatch.setattr(np.random, "multivariate_normal", lambda **kwargs: np.array([[-0.25, 1.5, -2.2, 0.0]]))
+    with pytest.raises(ValueError, match="No uncertainty samples fall within the fit bounds"):
+        Profiles(velocities, flux, errors).fit_gaussian()
+
+
 def test_profile_fit_drops_nan_values_and_plots(gaussian_profile):
     # Invalid points are excluded before fitting, then the fit and residual axes are plotted.
     velocities, flux, errors = gaussian_profile

@@ -115,7 +115,7 @@ class Profiles:
 
         # Plotting
         fig, ax = plt.subplots(2, 1, figsize=(8, 10), gridspec_kw={'height_ratios': [3, 1]})
-        ax[0].errorbar(self.velocities, self.flux, yerr=self.flux_err, fmt='b.', label='ACID Profile', color='C0')
+        ax[0].errorbar(self.velocities, self.flux, yerr=self.flux_err, fmt='.', label='ACID Profile', color='C0')
         ax[1].axhline(0, color='black', linestyle='--')
 
         for i, model in enumerate(self.fitted_y.keys()):
@@ -123,7 +123,7 @@ class Profiles:
             y_fit_on_x = self.fit_on_x[model]
             y_err_lo, y_err_hi = self.fitted_yerr[model]
             ax[0].plot(self.fitted_x, y_fit, label=f'{model.capitalize()} Fit', color=f'C{i+1}')
-            ax[1].errorbar(self.velocities, y_fit_on_x - self.flux, yerr=self.flux_err, fmt='b.', label=f'{model.capitalize()} Residuals', color=f'C{i+1}')
+            ax[1].errorbar(self.velocities, y_fit_on_x - self.flux, yerr=self.flux_err, fmt='.', label=f'{model.capitalize()} Residuals', color=f'C{i+1}')
         ax[1].set_xlabel('Velocity')
         ax[0].set_title('Profile Fit(s)')
         ax[1].set_ylabel('Flux')
@@ -376,6 +376,9 @@ class Profiles:
 
         # Get errors
         samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=1000)
+        samples = samples[np.all((samples >= bounds[0]) & (samples <= bounds[1]), axis=1)] if bounds is not None else samples
+        if len(samples) == 0:
+            raise ValueError("No uncertainty samples fall within the fit bounds; profile uncertainties cannot be estimated.")
         y_samples = np.array([model_func(self.fitted_x, *sample) for sample in samples])
         y_lo, y_med, y_hi = np.quantile(y_samples, [0.16, 0.50, 0.84], axis=0)
         self.fitted_yerr[model_name] = (y_med - y_lo, y_hi - y_med)

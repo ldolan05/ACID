@@ -609,7 +609,8 @@ class Result:
         ax.set_xlabel(labels["xlabel"])
         ax.set_ylabel(labels["ylabel"])
         ax.axhline(1, color='black', linestyle='--', linewidth=1)
-        ax.legend()
+        if ax.get_legend_handles_labels()[1]:
+            ax.legend()
         ax.grid(grid)
         if return_fig:
             return fig, ax

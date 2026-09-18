@@ -399,7 +399,7 @@ class Data:
         else:
             fig, ax = fig_ax
 
-        ax.vlines(wl, 1, 1-depths, color='C0', alpha=0.7)
+        ax.vlines(wl, 1, 1-depths, color='C0', alpha=0.7, label='Line List')
         ax.set_title('Line List')
         ax.set_xlabel('Wavelength (Angstroms)')
         ax.set_ylabel('Relative Line Depth')

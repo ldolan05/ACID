@@ -834,7 +834,7 @@ def autocorr_func_1d(x, norm=True):
 
     # Optionally normalize
     if norm:
-        acf /= acf[0]
+        acf /= acf[0] if acf[0] != 0 else np.nan  # A constant chain has undefined normalized ACF.
 
     return acf
 
@@ -903,7 +903,8 @@ def ensure_directory(path: str, description: str = "directory") -> str:
 def show_or_save(plt, figure_path, name, verbose):
     """A helper function to either show a matplotlib figure or save it to a specified path."""
     if figure_path is None:
-        plt.show()
+        if plt.get_backend().lower() != "agg":
+            plt.show()
     else:
         figure_path = ensure_directory(figure_path, "figure directory")
         filename = os.path.join(figure_path, name)

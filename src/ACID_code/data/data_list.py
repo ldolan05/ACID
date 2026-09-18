@@ -933,11 +933,11 @@ class DataList:
                 continue
             errors.append(np.mean(data.profile["final"][1]))
 
+        ax.set_yscale("log")
         ax.plot(self.orders, errors, marker='o', linestyle='-', color='blue')
         ax.set_xlabel("Order")
         ax.set_ylabel("Mean Profile Error")
         ax.set_title("Mean Profile Errors for each order")
-        ax.set_yscale("log")
         ax.grid(True)
 
         if return_fig:

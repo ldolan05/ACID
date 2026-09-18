@@ -195,6 +195,13 @@ def test_autocorrelation_helpers_and_power_of_two_validation():
         utils.next_pow_2(-1)
 
 
+@pytest.mark.parametrize("length", [1, 8])
+def test_constant_autocorrelation_is_undefined_without_division_warnings(length):
+    with np.errstate(divide="raise", invalid="raise"):
+        assert np.isnan(utils.autocorr_func_1d(np.ones(length))).all()
+        np.testing.assert_array_equal(utils.autocorr_func_1d(np.ones(length), norm=False), 0)
+
+
 def test_sampler_backend_copy_size_and_reconstruction(tmp_path, harps_result):
     # Copy the shared sampler backend to HDF5 without running another chain.
     backend_path = tmp_path / "sampler.h5"
