@@ -24,4 +24,4 @@ class ResultError(ACIDError):
     """Custom error for when there is an issue with the results processing in the Result class."""
 
 class ACIDStateError(ACIDError):
-    """Similar to ``ACIDStateWarning``, but the the issue cannot be continued from."""
+    """Custom error for when the state or attributes of the instances are invalid. Similar to ``ACIDStateWarning``, but the the issue cannot be continued from."""

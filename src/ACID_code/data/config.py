@@ -496,7 +496,7 @@ class Config:
         ax.legend()
         if return_fig:
              return fig, ax
-        utils.show_or_save(plt, self.figure_dir, "masking_lines.png", self.verbose)
+        utils.show_or_save(plt, self.figure_dir, "masking_lines.png")
 
     @classmethod
     def print_defaults(cls) -> None:

@@ -2,21 +2,26 @@ from __future__ import annotations
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, contextlib, functools, inspect
+import corner, os, contextlib, functools, inspect, warnings
 from emcee import EnsembleSampler
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy.polynomial import polynomial as P
 from .lsd import LSD
 from . import utils
+from .diagnostics.errors import *
 from .data import Data
 from .utils import IntLike, Scalar
+from .diagnostics.warnings import *
+from .diagnostics.logging import get_logger
 try:
     from dynesty.sampler import Sampler
     from dynesty import plotting as dyplot
 except ImportError:
     Sampler = None
     dyplot = None
+
+logger = get_logger(__name__)
 
 def _require_profiles(method):
     # Make sure all results are processed before calling method
@@ -25,16 +30,16 @@ def _require_profiles(method):
         if not self.data.complete: # complete is flag for if profiles have been made
             name = method.__qualname__
             if self.sampler is not None:
-                if self.config.verbose >= 1:
-                    print(f"Note: The Result object was created without the profiles processed. " \
-                        f"Running {name} requires all results to be processed, " \
-                        "so process_results() will now be called...")
+                # This should very rarely be triggered.
+                warnings.warn(f"Note: The Result object was created without the profiles processed. " \
+                    f"Running {name} requires all results to be processed, " \
+                    "so process_results() will now be called...", ACIDStateWarning, stacklevel=3)
                 self.process_results()
             else:
                 error = f"Cannot call {name}. The profiles attribute is not available, and no " \
                 "sampler object is available to process results. Please pass an Acid/Data " \
                 "instance after running ACID to the results init."
-                raise ValueError(error)
+                raise ResultError(error)
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -167,7 +172,7 @@ class Result:
         if self.config.verbose == 4: # debugging mode
             self.data.alpha["mcmc"] = None # reset alpha so that it is recalculated
             _lsd = self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs, return_cls=True) # alpha is recalculated
-            self.data.debug["lsd_mcmc"] = _lsd.__dict__
+            self.data.debug["lsd_mcmc"] = _lsd.__dict__.copy()
 
         # Set the inputs for a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
         self.data.wavelengths["final"] = self.data.wavelengths["initial"]
@@ -180,7 +185,7 @@ class Result:
         _lsd = self._continuum_correct_and_runlsd("final", all_poly_coeffs, return_cls=True)
 
         if self.config.verbose == 4: # save if debugging is on
-            self.data.debug["lsd_final"] = _lsd.__dict__
+            self.data.debug["lsd_final"] = _lsd.__dict__.copy()
         _lsd = None
 
         # We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
@@ -194,7 +199,7 @@ class Result:
             _lsd = self._continuum_correct_and_runlsd("single_profile", all_poly_coeffs, mp_lsd=False, return_cls=True)
 
             if self.config.verbose == 4: # save if debugging is on
-                self.data.debug["lsd_single_profile"] = _lsd.__dict__
+                self.data.debug["lsd_single_profile"] = _lsd.__dict__.copy()
             _lsd = None
 
         profiles = []
@@ -245,8 +250,7 @@ class Result:
         if self.config.save_path is not None:
             self.save() # the sampler is already saved if specified
 
-        if self.config.verbose >= 2:
-            print(f"Done! Results processed in {self.data.results_time:.2f} seconds. Total time: {self.data.total_time:.2f} seconds.")
+        logger.info(f"Done! Results processed in {self.data.results_time:.2f} seconds. Total time: {self.data.total_time:.2f} seconds.")
         return
 
     def _continuum_correct_and_runlsd(self, key, all_poly_coeffs, **kwargs):
@@ -294,9 +298,8 @@ class Result:
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
-            if self.config.verbose >= 2:
-                print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
-                "Calculating with a max of 1000 random samples instead.")
+            warnings.warn(f"Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
+                          "Calculating with a max of 1000 random samples instead.", ACIDPerformanceWarning, stacklevel=3)
             indices_size = min(1000, n_samples)
             random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
             coeffs = all_poly_coeffs[random_indices, :]
@@ -402,9 +405,9 @@ class Result:
         if process_results:
             self.process_results() # update profiles
         else:
-            if self.config.verbose >= 1:
-                print("Warning: Results not processed. profiles attribute will not be available until " \
-                "Result.process_results() is called.")
+            warnings.warn(
+                "Warning: Results not processed. profiles attribute will not be available until " \
+                "Result.process_results() is called.", ACIDStateWarning, stacklevel=3)
 
     @_require_sampler
     def plot_walkers(
@@ -464,7 +467,7 @@ class Result:
         plt.subplots_adjust(hspace=0.05)
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "walkers.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "walkers.png")
 
     @_require_sampler
     def plot_traceplot(self, return_fig:bool=False, **kwargs) -> None | tuple:
@@ -474,7 +477,7 @@ class Result:
         plt.suptitle('Dynesty Traceplot')
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png")
 
     @_require_sampler
     def plot_corner(
@@ -504,7 +507,7 @@ class Result:
             plt.suptitle('Dynesty Corner Plot')
             if return_fig:
                 return fig, axes
-            utils.show_or_save(plt, self.config.figure_dir, "corner.png", self.config.verbose)
+            utils.show_or_save(plt, self.config.figure_dir, "corner.png")
             return
 
         # Get samples and thin and burnin from the class variables
@@ -520,7 +523,7 @@ class Result:
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
-        utils.show_or_save(plt, self.config.figure_dir, "corner.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "corner.png")
 
     @_require_profiles
     def plot_profiles(
@@ -612,7 +615,7 @@ class Result:
         ax.grid(grid)
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png")
 
     @_require_profiles
     def plot_forward_model(
@@ -765,7 +768,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png")
 
     @_require_sampler
     def plot_autocorrelation(
@@ -842,7 +845,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png")
 
         return
 
@@ -908,7 +911,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png")
 
     def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
         """
