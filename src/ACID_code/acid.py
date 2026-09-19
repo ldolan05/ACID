@@ -1,20 +1,25 @@
 from __future__ import annotations
 import traceback
-import sys, emcee, os, time, contextlib
+import sys, emcee, os, time, contextlib, warnings
 from emcee import EnsembleSampler
 import numpy as np
 import multiprocessing as mp
 from multiprocessing.pool import ThreadPool
 from beartype import beartype
 from contextlib import nullcontext
+
+from tqdm import tqdm
 from . import utils, mcmc
 from .lsd import LSD
 from .result import Result
 from .data import Data, Config, MaskingLines, LineList
-from .diagnostics.errors import ContinuumError
+from .diagnostics.errors import *
 from .diagnostics.logging import get_logger
+from ACID_code.diagnostics.warnings import *
 from .utils import IntLike, Scalar, Array1D, Array2D
 from astropy.stats.sigma_clipping import sigma_clip
+
+logger = get_logger(__name__)
 
 @beartype
 class Acid:
@@ -423,8 +428,7 @@ class Acid:
 
         # Print initialisation status
         init_t0 = time.time()
-        if self.config.verbose >= 2:
-            print('Initialising...')
+        logger.info("Initialising ACID")
         # endregion verbose
 
 
@@ -439,11 +443,9 @@ class Acid:
             legacy_linelist = kwargs.pop("linelist_path")
             if linelist is None and kwargs.get("linelist") is None:
                 linelist = legacy_linelist
-            if self.config.verbose >= 1:
-                print("Warning: 'linelist_path' is a legacy argument for inputting a linelist, " \
-                f"please use 'linelist' instead.\n The 'linelist_path' argument does not support full input validation.")
+            warnings.warn("'linelist_path' is a legacy argument for inputting a linelist, please use 'linelist' instead.", ACIDDeprecationWarning, stacklevel=3)
         if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
-            raise ValueError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
+            raise ACIDInputError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
                              "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
 
         # Check for old n_sig input
@@ -451,29 +453,28 @@ class Acid:
             legacy_n_sig = kwargs.pop("n_sig")
             if sigma_lower is None and kwargs.get("sigma_lower") is None:
                 sigma_lower = legacy_n_sig
-            if self.config.verbose >= 1:
-                print("Warning: 'n_sig' is a legacy argument for inputting sigma_lower.\n" \
-                f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.")
+            warnings.warn(f"'n_sig' is a legacy argument for inputting sigma_lower.\n" \
+            f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.",
+            ACIDDeprecationWarning, stacklevel=3)
 
         # Check for old _all_frames input
         if "_all_frames" in kwargs:
             _all_frames = kwargs.pop("_all_frames")
-            if self.config.verbose >= 0:
-                print("Warning: 'all_frames' is a legacy argument and is now unused. See 'DataList' in the documentation for running multiple orders.")
+            warnings.warn("The '_all_frames' argument is a legacy argument and is now unused." \
+            "See 'DataList' in the documentation for running multiple orders.", ACIDDeprecationWarning, stacklevel=3)
 
         # Check for telluric_lines old input
         if "telluric_lines" in kwargs:
             telluric_lines = kwargs.pop("telluric_lines")
-            if self.config.verbose >= 0:
-                print("Warning: 'telluric_lines' is a legacy argument and now forms part of the broader 'masking_lines' argument.\n" \
-                "See 'MaskingLines' in the documentation for more information.\n"
-                "The telluric_lines will be ignored and default masking_lines will be used instead.")
+            warnings.warn("The 'telluric_lines' is a legacy argument and now forms part of the broader 'masking_lines' argument.\n" \
+            "See 'MaskingLines' in the documentation for more information.\n" \
+            "The telluric_lines will be ignored and default masking_lines will be used instead.", ACIDDeprecationWarning, stacklevel=3)
 
         # Check data or config wasnt passed
         if "data" in kwargs:
-            raise ValueError("The 'data' kwarg should be passed in initialisation, please remove it from the ACID method call.")
+            raise ACIDInputError("The 'data' kwarg should be passed in initialisation, please remove it from the ACID method call.")
         if "config" in kwargs:
-            raise ValueError("The 'config' kwarg is stored in Data.config.\n" \
+            raise ACIDInputError("The 'config' kwarg is stored in Data.config.\n" \
                                 "Set Data.config to your desired config instance and pass it in Acid initialisation.")
         # The remaining kwargs are either valid and passed in init, or invalid in either init or ACID kwargs
         # endregion input kwargs
@@ -512,14 +513,11 @@ class Acid:
 
         # Finally those that remain in kwargs are invalid and raise an error
         if kwargs:
-            raise ValueError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
+            raise ACIDInputError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
         self.init_kwargs = {}
 
-        # TODO: Keep for now, move to config if no mp fix, otherwise try spawn mp context
         if self.config.parallel and sys.platform == "win32":
-            if self.config.verbose >= 1:
-                # This doesn't work, needs serious modifications to make work, so just run serially for now
-                print("Parallel MCMC on Windows is not currently supported. Running MCMC serially.")
+            warnings.warn("Parallel MCMC on Windows is not currently supported. Running MCMC serially.", ACIDInputWarning, stacklevel=3)
             self.config.parallel = False
 
         # TODO: Apply seed here (only if complete=False, or run_mcmc=False), maybe even save the generator state before mcmc
@@ -555,11 +553,9 @@ class Acid:
             "initial" in self.data.poly_coeffs,
             "initial" in self.data.alpha,
         )):
-            if self.config.verbose >= 3:
-                print("Initial fit and LSD run already exists, skipping this step.")
+            logger.debug("Initial fit and LSD run already exists, skipping this step.")
         else:
-            if self.config.verbose >= 2:
-                print("Performing initial fit and LSD...")
+            logger.info("Performing initial fit and LSD")
 
             # Uses all information stored in data, accessing and storing the data attributed with the key
             self.scipy_continuum_fit(self.data, key="initial")
@@ -567,7 +563,7 @@ class Acid:
 
             # Save lsd dict if debugging mode
             if self.config.verbose == 4:
-                self.data.debug["lsd_initial"] = _lsd.__dict__
+                self.data.debug["lsd_initial"] = _lsd.__dict__.copy()
 
             _lsd = None # discard to save memory
 
@@ -577,11 +573,9 @@ class Acid:
             "masked" in self.data.wavelengths,
             "mcmc" in self.data.c_factor,
         )):
-            if self.config.verbose >= 2:
-                print("Residual masks already exists, skipping residual masking step.")
+            logger.debug("Residual masks already exists, skipping residual masking step.")
         else:
-            if self.config.verbose >= 2:
-                print('Residual masking...')
+            logger.info("Performing residual masking")
 
             # Use the initial LSD run to get the scaled residuals
             residuals = self.data.residuals["initial"]
@@ -628,12 +622,14 @@ class Acid:
             # Combine all masks
             self.data.full_mask = pix_mask | sigma_mask | self.data.line_mask
             
-            # Warn if more than 50% of spectrum is masked this way
+            # Warn if more than 50% of spectrum is masked these ways
             if np.sum(self.data.full_mask) > 0.5 * len(self.data.full_mask):
-                if self.config.verbose >= 1:
-                    print(f"Warning: More than 50% of the spectrum is masked. \n" \
-                    "Please check your initial continuum fit and masking (by using verbose=3 when initialising). \n" \
-                    "If you are aware that you have bad spectra, then this can be ignored.")
+                warnings.warn(
+                    "More than 50% of the spectrum is masked. \n" \
+                    "Please check your initial continuum fit and masking (e.g., by using verbose=3 when initialising). \n" \
+                    "If you are aware that you have bad/noisy spectra, then this can be ignored.",
+                    ACIDRuntimeWarning, stacklevel=3
+                )
 
             # Apply a error mask onto just y for the continuum fit and LSD call, later we fully remove them with the full mask for fitting
             self.data.errors["masked"]      = np.where(self.data.full_mask, 1e12, self.data.errors["combined"])
@@ -653,7 +649,7 @@ class Acid:
 
             # Save lsd dict if debugging mode
             if self.config.verbose == 4:
-                self.data.debug["lsd_masked"] = lsd.__dict__
+                self.data.debug["lsd_masked"] = lsd.__dict__.copy()
 
 
             # Applying Residual Masks to the Data for Fitting
@@ -693,14 +689,11 @@ class Acid:
         # -------------------
         self.data.setup_time += time.time() - init_t0
         mcmc_t0 = time.time()
-        if self.config.verbose >= 2:
-            print('Initialised in %ss'%round((self.data.setup_time), 3))
-        if self.config.verbose >= 3:
-            print('State of Data before MCMC run:')
-            print(self.data) # use the __repr__ method of the Data class to print a nice summary
+        logger.info("Initialised in %.3f s", self.data.setup_time)
+        logger.debug(self.data.__repr__())
 
         # Prepare and Run MCMC
-        #----------------------
+        # ----------------------
         # Get the initial state from all of the above calculated data
         self.data.initial_state = self.get_initial_state()
 
@@ -708,8 +701,7 @@ class Acid:
         if self.config.run_mcmc is True:
             # Default run for just nsteps steps
             if self.config.max_steps is None:
-                if self.config.verbose >= 2:
-                    print("Running MCMC for %s steps..."%self.config.nsteps)
+                logger.info("Running MCMC for %d steps", self.config.nsteps)
                 self.run_mcmc(self.config.nsteps, self.data.initial_state)
                 if self.config.sampler_type == "emcee":
                     self.data.nsteps = self.sampler.backend.iteration
@@ -718,22 +710,22 @@ class Acid:
 
             # Else use max_steps path
             else:
-                if self.config.verbose >= 2:
-                    print(f"Running MCMC with a maximum of {self.config.max_steps} steps or until convergence is reached...")
+                logger.info(
+                    "Running MCMC for at most %d steps or until convergence",
+                    self.config.max_steps,
+                )
 
                 self.run_mcmc_until_converged(self.config.max_steps, state=self.data.initial_state)
                 self.data.nsteps = self.sampler.backend.iteration
 
             self.data.mcmc_time += time.time() - mcmc_t0
 
-            if self.config.verbose >= 2:
-                print('MCMC finished after %ss'%(round(self.data.mcmc_time, 3)))
+            logger.info("MCMC finished after %.3f s", self.data.mcmc_time)
 
             return Result(self)
 
         else:
-            if self.config.verbose >= 1:
-                print("MCMC not run, returning None. Class attributes have been updated.")
+            logger.info("MCMC was not run; returning None after updating the Acid instance")
             return None
 
     def ACID_HARPS(self, *args, **kwargs):
@@ -803,8 +795,11 @@ class Acid:
 
         # Check if there are enough good points for the polynomial fit
         if np.sum(good) < config.poly_ord + 1:
-            raise ValueError("Insufficient good points for polynomial fit. "
-                             "Consider reducing the polynomial order or adjusting the masking.")
+            error = ContinuumFitError(f"Insufficient good points for an initial polynomial fit. This could be from over-masked data, or not enough bins.\n"
+                                      f"Consider reducing the polynomial order or adjusting the masking.")
+            data.exception = error
+            data.traceback = traceback.format_stack()
+            raise error
 
         # Fit with MCMC to get the polynomial coefficients and evaluate the continuum fit
         # The fitting and had different methods added, so they've been moved to their own function
@@ -825,7 +820,7 @@ class Acid:
                 data.plot_continuum_fit(key=key)
 
         if np.any(data.fitted_flux[key][~data.line_mask] <= 0) or np.any(data.fitted_errors[key][~data.line_mask] <= 0):
-            error = ContinuumError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
+            error = ContinuumFitError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
             "Consider adjusting the polynomial order. Use verbose=3 to see the plot of the continuum fit.\n " \
             "Note that this will only work for interactive terminals or displays which work with plt.show()")
             data.exception = error
@@ -869,7 +864,7 @@ class Acid:
 
                 n_attempt += 1
                 if n_attempt == max_attempts:
-                    raise RuntimeError("Reached the max number of attempts for finding an initial state for MCMC walkers.")
+                    raise InitialStateError("Reached the max number of attempts for finding an initial state for MCMC walkers.")
 
             initial_state = np.array(walkers)
         else:
@@ -882,9 +877,8 @@ class Acid:
         use_threads = self.config.use_jax
         if self.config.parallel:
             utils.configure_mp_environ(os)
-            if self.config.verbose >= 2:
-                workers = "threads" if use_threads else "processes"
-                print(f"Using {self.config.cores} {workers} for MCMC")
+            workers = "threads" if use_threads else "processes"
+            logger.info(f"Using {self.config.cores} {workers} for MCMC")
 
             if not use_threads:
                 pool = mp.get_context("fork").Pool(
@@ -993,14 +987,21 @@ class Acid:
                 progress.update(1)
 
                 if condition is True:
-                    if self.config.verbose >= 2:
-                        print(f"Converged at step {total_step_number}. Final tolerance: {last_tolerance:.4f}, final effective sample size: {last_neff:.2f}.")
                     break
 
+        if condition is True:
+            logger.info(
+                "Converged at step %d (tolerance %.4f, effective sample size %.2f)",
+                total_step_number,
+                last_tolerance,
+                last_neff,
+            )
+
         # Warn if convergence not reached after either parallel or non-parallel version
-        if self.config.verbose >= 2 and condition is False:
-            print(f"Not converged after reaching max steps of {step_number}. Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
-                  f"Consider increasing max_steps.")
+        else:
+            warnings.warn(f"Not converged after reaching max steps of {step_number}. \n"
+                          f"Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
+                          f"Consider increasing max_steps.", ACIDConvergenceWarning, stacklevel=2)
 
         self.step_number = step_number # Update step number once mcmc has finished
         return
@@ -1016,8 +1017,8 @@ class Acid:
         backend = None
         if state is None:
             if self.sampler is None:
-                raise ValueError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
-                                 "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
+                raise ACIDStateError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
+                                      "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
             backend = self.sampler.backend # This includes previous seed
         
         # Now that the backend has been set depending on an existing state, if the backend is stil None, we choose depending on sampler_path
@@ -1026,8 +1027,7 @@ class Acid:
             backend = emcee.backends.HDFBackend(self.config.sampler_path)
             if state is not None:
                 backend.reset(self.data.nwalkers, self.data.ndim)
-            if self.config.verbose >= 2:
-                print(f"Using sampler backend at {self.config.sampler_path}")
+            logger.info("Using sampler backend at %s", self.config.sampler_path)
 
         elif self.sampler is not None:
             # And, if it is still none, we check if self.sampler already exists in memory, 
@@ -1115,7 +1115,7 @@ class Acid:
 
         else:
             if nsteps is None:
-                raise ValueError("Either nsteps or max_steps must be provided.")
+                raise ACIDInputError("Either nsteps or max_steps must be provided.")
 
             self.run_mcmc(nsteps, state=None)
             self.data.complete = False
@@ -1135,7 +1135,7 @@ class Acid:
             The Result object for the given Acid instance.
         """
         if not self.data.complete:
-            raise ValueError("ACID has not been run yet. Cannot create a Result instance.")
+            raise ACIDStateError("ACID has not been run yet. Cannot create a Result instance.")
         return Result(self)
 
     @property
@@ -1216,7 +1216,7 @@ def _get_run_kwargs(legacy_args, renamed_args_map, *args, **kwargs):
 
     # Check for too many positional arguments
     if len(args) > len(legacy_args):
-        raise TypeError(f"Too many positional arguments: {len(args)}")
+        raise ACIDInputError(f"Too many positional arguments: {len(args)}")
 
     # Map positional arguments to their legacy names
     for i, val in enumerate(args):

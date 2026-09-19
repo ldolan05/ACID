@@ -10,6 +10,8 @@ class ACIDWarning(UserWarning):
 class ACIDInputWarning(ACIDWarning):
     """Input data are usable but contain potentially problematic values."""
 
+class ACIDRuntimeWarning(ACIDWarning):
+    """A runtime issue occurred during ACID execution."""
 
 class ACIDConvergenceWarning(ACIDWarning):
     """A calculation completed without meeting a convergence criterion."""
@@ -20,21 +22,22 @@ class ACIDPerformanceWarning(ACIDWarning):
 
 
 class ACIDStateWarning(ACIDWarning):
-    """Stored ACID state was discarded, changed, or could not be restored."""
+    """Stored ACID state was discarded, changed, could not be restored, or requires additional processing."""
 
 
-class ACIDDeprecationWarning(ACIDWarning):
+class ACIDDeprecationWarning(ACIDWarning, DeprecationWarning):
     """A deprecated ACID function/method was used."""
 
 
-def configure_warnings(action="once"):
+def configure_warnings(action="default", *, append=False):
     """Set the default action for ACID warnings only.
 
-    User-installed filters retain priority because the ACID filter is appended.
+    Explicit calls take priority over existing filters by default. Set
+    ``append=True`` to let existing filters retain priority instead.
     Valid actions are the standard values accepted by ``warnings.filterwarnings``.
     """
-    warnings.filterwarnings(action, category=ACIDWarning, append=True)
+    warnings.filterwarnings(action, category=ACIDWarning, append=append)
 
 
 # This is deliberately narrow: it affects only ACID warning categories.
-configure_warnings()
+configure_warnings(append=True)
