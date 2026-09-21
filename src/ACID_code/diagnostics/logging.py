@@ -6,6 +6,7 @@ the ``ACID_code`` logger and never changes the application's root logger.
 """
 
 from __future__ import annotations
+from .errors import ACIDInputError
 
 import logging
 from typing import Optional, Union
@@ -42,11 +43,11 @@ def _normalise_level(level: Union[int, str]) -> int:
     if isinstance(level, str):
         numeric_level = getattr(logging, level.upper(), None)
         if not isinstance(numeric_level, int):
-            raise ValueError(f"Unknown logging level: {level!r}")
+            raise ACIDInputError(f"Unknown logging level: {level!r}")
         return numeric_level
     if isinstance(level, int):
         return level
-    raise TypeError("Logging level must be an integer, string, or None.")
+    raise ACIDInputError("Logging level must be an integer, string, or None.")
 
 
 def _default_handler(logger: logging.Logger) -> Optional[logging.Handler]:
@@ -107,7 +108,7 @@ def log_level_from_verbosity(verbose: int) -> int:
     try:
         return VERBOSITY_LOG_LEVELS[verbose]
     except (KeyError, TypeError) as exc:
-        raise ValueError("verbose must be an integer between 0 and 4") from exc
+        raise ACIDInputError("verbose must be an integer between 0 and 4") from exc
 
 
 def set_log_level_from_verbosity(verbose: int) -> None:

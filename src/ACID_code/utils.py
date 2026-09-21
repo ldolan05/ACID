@@ -5,8 +5,10 @@ from __future__ import annotations
 from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
-import glob, emcee, psutil, os, pickle, tempfile
+import glob, emcee, psutil, os, pickle, tempfile, warnings
 from .diagnostics.logging import get_logger
+from .diagnostics.errors import *
+from .diagnostics.warnings import *
 from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 import scipy.constants as const
@@ -49,7 +51,7 @@ def eval_continuum(x, coefs, method="polyval", **kwargs):
     elif method == "chebval":
         return np.exp(chebval(x, coefs, **kwargs)) # forces positive continuum
     else:
-        raise ValueError(f"Unknown method: '{method}', must be 'polyval' or 'chebval'.")
+        raise ACIDInputError(f"Unknown method: '{method}', must be 'polyval' or 'chebval'.")
 
 def fit_continuum(x, y, degree, method="polyval", **kwargs):
     """
@@ -79,7 +81,7 @@ def fit_continuum(x, y, degree, method="polyval", **kwargs):
     if method == "chebval":
         return chebfit(x, np.log(y), degree, **kwargs)
 
-    raise ValueError(f"Unknown method: '{method}'")
+    raise ACIDInputError(f"Unknown method: '{method}'")
 
 def convert_moves_to_emcee(moves:list[tuple]):
     """Converts a list of move specifications to emcee moves.
@@ -122,23 +124,23 @@ def convert_moves_to_emcee(moves:list[tuple]):
         elif len(move) == 3:
             move_name, fraction, move_kwargs = move
             if not isinstance(move_kwargs, dict):
-                raise ValueError(
+                raise ACIDInputError(
                     "Move kwargs must be a dictionary of keyword arguments to pass to " \
                     "the move class initialisation (if passed)."
                 )
         else:
-            raise ValueError(
+            raise ACIDInputError(
                 "Each move tuple must have length 2 or 3: " \
                 "(move_name, fraction) or (move_name, fraction, kwargs).")
 
         if not hasattr(emcee.moves, move_name):
-            raise ValueError(f"Move '{move_name}' is not a valid emcee move.")
+            raise ACIDInputError(f"Move '{move_name}' is not a valid emcee move.")
         move_class = getattr(emcee.moves, move_name)
         emcee_moves.append((move_class(**move_kwargs), fraction))
         
     return emcee_moves
 
-def mask_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
+def mask_invalid(wavelengths, flux, errors=None, return_mask=False):
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
 
@@ -169,20 +171,21 @@ def mask_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     f = np.where(mask, flux, fill_value)
     e = np.where(mask, errors, fill_value) if errors is not None else None
 
-    if verbose >= 2:
-        num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
-        perc_invalid = num_invalid / np.size(wavelengths) * 100
-        if perc_invalid > 10:
-            print(f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values ({perc_invalid:.2f}%), \n"
-                  f"which will be dropped when necessary, but it is still recommended to check your wavelength, \n"
-                  f"spectrum and error arrays for bad pixels and make sure this is intentional. \n"
-                  f"This warning is only printed if more than 10% of pixels are invalid.")
+    num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
+    perc_invalid = num_invalid / np.size(wavelengths) * 100
+    if perc_invalid > 10:
+        warnings.warn(
+            f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values ({perc_invalid:.2f}%), \n"
+            f"which will be dropped when necessary, but it is still recommended to check your wavelength, \n"
+            f"flux, and error arrays for potential issues.",
+            ACIDDroppedDataWarning, stacklevel=2
+        )
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
     return output
 
-def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
+def drop_invalid(wavelengths, flux, errors=None, return_mask=False):
     """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
     Parameters
@@ -210,13 +213,14 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False, verbose=2):
     f = flux[mask]
     e = errors[mask] if errors is not None else None
 
-    if verbose >= 2:
-        num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
-        perc_invalid = num_invalid / np.size(wavelengths) * 100
-        if num_invalid > 0:
-            print(f"Some invalid (negative, non-finite, or NaN) pixels were found and dropped from the spectrum. \n"
-                  f"Please note that the stored arrays will have a different shape to the one you passed.")
-            print(f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} ({perc_invalid:.2f}%).")
+    num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
+    perc_invalid = num_invalid / np.size(wavelengths) * 100
+    if num_invalid > 0:
+        warnings.warn(
+            f"Some invalid (negative, non-finite, or NaN) pixels were found and dropped from the spectrum. \n"
+            f"Please note that the stored arrays will have a different shape to the one you passed. \n"
+            f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} ({perc_invalid:.2f}%).",
+            ACIDDroppedDataWarning, stacklevel=2)
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
@@ -257,9 +261,9 @@ def calc_deltav(wavelengths:Array1D)->Scalar:
         Velocity pixel size in km/s
     """
     if wavelengths.ndim != 1:
-        raise ValueError("Input wavelengths must be a 1D array.")
+        raise ACIDInputError("Input wavelengths must be a 1D array.")
     if np.any(wavelengths <= 0):
-        raise ValueError("Wavelengths must be positive.")
+        raise ACIDInputError("Wavelengths must be positive.")
     wavelengths = np.sort(wavelengths)
     return c_kms * np.nanmean(np.diff(np.log(wavelengths)))
 
@@ -287,7 +291,7 @@ def guess_SNR(
         Array of estimated signal-to-noise ratios for each frame.
     """
     if np.any(frame_flux <= 0) or np.any(frame_errors <= 0) or np.any(frame_wavelengths <= 0):
-        raise ValueError("Flux, errors, and wavelengths must all be positive non-zero to estimate S/N.")
+        raise ACIDInputError("Flux, errors, and wavelengths must all be positive non-zero to estimate S/N.")
 
     frame_wavelengths = np.atleast_2d(frame_wavelengths)
     frame_flux = np.atleast_2d(frame_flux)
@@ -326,10 +330,10 @@ def guess_errors(
     frame_sn = np.atleast_1d(frame_sn)
 
     if np.any(frame_flux <= 0) or np.any(frame_sn <= 0):
-        raise ValueError("Flux and sn must all be positive non-zero to estimate errors.")
+        raise ACIDInputError("Flux and sn must all be positive non-zero to estimate errors.")
 
     if frame_sn.ndim > 1 or (frame_sn.ndim == 1 and frame_sn.size != frame_flux.shape[0]):
-        raise ValueError("S/N must be a single value or an array of values with the same length as the number of frames in frame_flux.")
+        raise ACIDInputError("S/N must be a single value or an array of values with the same length as the number of frames in frame_flux.")
 
     errors = frame_flux / frame_sn[:, None]
     return errors.squeeze()
@@ -672,7 +676,7 @@ def flux_to_od(
     if errors is not None:
         if od:
             if flux_od is None:
-                raise ValueError("'flux' must be provided if 'errors' is provided.")
+                raise ACIDInputError("'flux' must be provided if 'errors' is provided.")
             out.append(errors / flux)
         else:
             out.append(errors)
@@ -686,7 +690,7 @@ def flux_to_od(
     if cov_matrix is not None:
         if od:
             if flux_od is None:
-                raise ValueError("'flux' must be provided if 'cov_matrix' is provided.")
+                raise ACIDInputError("'flux' must be provided if 'cov_matrix' is provided.")
             out.append(cov_matrix / (flux[:, np.newaxis] * flux[np.newaxis, :]))
         else:
             out.append(cov_matrix)
@@ -749,7 +753,7 @@ def od_to_flux(
     if errors is not None:
         if od:
             if flux is None:
-                raise ValueError("'data' must be provided if 'errors' is provided.")
+                raise ACIDInputError("'data' must be provided if 'errors' is provided.")
             out.append(errors * flux)
         else:
             out.append(errors)
@@ -763,7 +767,7 @@ def od_to_flux(
     if cov_matrix is not None:
         if od:
             if flux is None:
-                raise ValueError("'data' must be provided if 'cov_matrix' is provided.")
+                raise ACIDInputError("'data' must be provided if 'cov_matrix' is provided.")
             out.append(cov_matrix * (flux[:, np.newaxis] * flux[np.newaxis, :]))
         else:
             out.append(cov_matrix)
@@ -783,7 +787,7 @@ def configure_mp_environ(os):
     slurm = "SLURM_JOB_ID" in os.environ
     if slurm:
         if os.getenv("OMP_NUM_THREADS") != "1" or os.getenv("MKL_NUM_THREADS") != "1":
-            raise ValueError(f"In a SLURM environment, OMP_NUM_THREADS and MKL_NUM_THREADS must be set to 1 before any imports for parallel MCMC. \n" \
+            raise ACIDInputError(f"In a SLURM environment, OMP_NUM_THREADS and MKL_NUM_THREADS must be set to 1 before any imports for parallel MCMC. \n" \
             "Please set this in your SLURM job script or at the top of your python script before any other imports.\n" \
             "See https://acid-code.readthedocs.io/en/latest/using_ACID.html#multiprocessing for more information.")
     else:
@@ -807,7 +811,7 @@ def next_pow_2(n):
     """
     n = int(n)
     if n < 0:
-        raise ValueError("Input must be a non-negative integer.")
+        raise ACIDInputError("Input must be a non-negative integer.")
     return 1 if n == 0 else 2**(n - 1).bit_length()
 
 def auto_window(taus: np.ndarray, c: float = 5.0):
@@ -826,7 +830,7 @@ def autocorr_func_1d(x, norm=True):
     """
     x = np.atleast_1d(x)
     if len(x.shape) != 1:
-        raise ValueError("invalid dimensions for 1D autocorrelation function")
+        raise ACIDInputError("invalid dimensions for 1D autocorrelation function")
     n = next_pow_2(len(x))
 
     # Compute the FFT and then (from that) the auto-correlation function
@@ -852,7 +856,7 @@ def autocorr_new(y, c=5.0):
     
     # Average ACF across walkers
     if y.ndim != 2:
-        raise ValueError("Expects y with shape (nwalkers, nsteps)")
+        raise ACIDInputError("Expects y with shape (nwalkers, nsteps)")
     nwalkers, nsteps = y.shape
 
     f = np.zeros(nsteps)
@@ -878,15 +882,16 @@ def sampler_nbytes(sampler) -> IntLike:
                 nbytes += arr.nbytes
         return nbytes
 
-def ensure_directory(path: str, description: str = "directory") -> str:
+@beartype
+def ensure_directory(path:str, description:str="directory") -> str:
     """Return an absolute directory path, creating only its final component."""
     if not path:
-        raise ValueError(f"The {description} path cannot be empty.")
+        raise ACIDInputError(f"The {description} path cannot be empty.")
     path = os.path.abspath(os.path.expanduser(path))
 
     if os.path.exists(path):
         if not os.path.isdir(path):
-            raise NotADirectoryError(f"The {description} path exists but is not a directory: {path}")
+            raise ACIDInputError(f"The {description} path exists but is not a directory: {path}")
         return path
 
     parent = os.path.dirname(path)
@@ -902,7 +907,8 @@ def ensure_directory(path: str, description: str = "directory") -> str:
         pass # This can happen due to a race condition in parallel processing
     return path
 
-def show_or_save(plt, figure_path, name):
+@beartype
+def show_or_save(plt, figure_path:str|None, name:str):
     """A helper function to either show a matplotlib figure or save it to a specified path."""
     if figure_path is None:
         if plt.get_backend().lower() != "agg":

@@ -11,6 +11,10 @@ class ACIDInputWarning(ACIDWarning):
     """Input data are usable but contain potentially problematic values."""
 
 
+class ACIDDroppedDataWarning(ACIDInputWarning):
+    """Input data contain invalid values that may cause errors during processing."""
+
+
 class ACIDRuntimeWarning(ACIDWarning):
     """A runtime issue occurred during ACID execution."""
 
