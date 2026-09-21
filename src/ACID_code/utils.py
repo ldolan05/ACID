@@ -6,6 +6,7 @@ from beartype import beartype
 from beartype.vale import IsAttr, IsEqual
 import numpy as np
 import glob, emcee, psutil, os, pickle, tempfile
+from .diagnostics.logging import get_logger
 from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 import scipy.constants as const
@@ -21,6 +22,7 @@ Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Sc
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
 
+logger = get_logger(__name__)
 
 def eval_continuum(x, coefs, method="polyval", **kwargs):
     """
@@ -900,7 +902,7 @@ def ensure_directory(path: str, description: str = "directory") -> str:
         pass # This can happen due to a race condition in parallel processing
     return path
 
-def show_or_save(plt, figure_path, name, verbose):
+def show_or_save(plt, figure_path, name):
     """A helper function to either show a matplotlib figure or save it to a specified path."""
     if figure_path is None:
         if plt.get_backend().lower() != "agg":
@@ -908,10 +910,6 @@ def show_or_save(plt, figure_path, name, verbose):
     else:
         figure_path = ensure_directory(figure_path, "figure directory")
         filename = os.path.join(figure_path, name)
-        plt.savefig(
-            filename,
-            bbox_inches="tight",
-        )
-        if verbose >= 1:
-            print(f"Saved figure to {filename}")
+        plt.savefig(filename, bbox_inches="tight")
+        logger.info(f"Saved figure to {filename}")
         plt.close()
