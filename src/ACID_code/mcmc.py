@@ -1,4 +1,6 @@
 from __future__ import annotations
+import warnings
+from .diagnostics.warnings import ACIDInputWarning
 import numpy as np
 from numpy.linalg import norm
 from . import utils
@@ -100,6 +102,7 @@ class MCMC:
             self.continuum_method = data.config.continuum_method
             self.use_jax = data.config.use_jax
         else:
+            # TODO: input validation through config, use config for all of below checks
             self.x = x_or_data
             self.y = y
             self.yerr = yerr
@@ -229,10 +232,14 @@ class MCMC:
             AtV = self.AtV
         else:
             # AtV = self.AtV * (mdl * mdl) # This is for when we get around to fixing non-OD deterministic
-            # The errors, and hence AtV, must update with the continuum 
-            # (not necessary in the OD case, since the errors are already in log space), for now we use precomputed
-            # AtV on the assumption that the continuum does not move much from the initial guess.
-            # TODO: Warn on initialisation about this
+            warnings.warn("Using precomputed AtV matrix for non-OD deterministic model; errors may not be accurate.\n" \
+            "Explanation:\nFor deterministic (default) sampling (ie. inferring the profile from the continuum), the errors do not change in OD.\n" \
+            "However, in flux space, the errors do depend on the continuum model, and AtV would need to be recomputed at each MCMC step.\n" \
+            "On testing, this took a significant amount of time, and hence we use the precomputed AtV matrix on the assumption that the" \
+            "continuum does not move much from the initial guess.\n" \
+            "If you wish to get accurate errors, use deterministic=False, which will fit each profile point (we then recommend increasing " \
+            "the number of steps).",
+            ACIDInputWarning, stacklevel=2)
             AtV = self.AtV
             flux = fitted_flux - 1
 

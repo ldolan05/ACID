@@ -10,8 +10,10 @@ class ACIDWarning(UserWarning):
 class ACIDInputWarning(ACIDWarning):
     """Input data are usable but contain potentially problematic values."""
 
+
 class ACIDRuntimeWarning(ACIDWarning):
     """A runtime issue occurred during ACID execution."""
+
 
 class ACIDConvergenceWarning(ACIDWarning):
     """A calculation completed without meeting a convergence criterion."""

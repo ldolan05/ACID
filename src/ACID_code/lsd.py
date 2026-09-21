@@ -8,10 +8,13 @@ from tqdm import tqdm
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
-from .diagnostics.errors import LineListRangeError, SNCutError
+from .diagnostics.errors import *
+from .diagnostics.warnings import *
+from .diagnostics.logging import get_logger
 from .data import Config, Data, LineList
 from .utils import c_kms, IntLike, Scalar, Array1D, Array2D, Array3D
 
+logger = get_logger(__name__)
 
 @beartype
 class LSD:
@@ -145,7 +148,7 @@ class LSD:
             key_reqs = ["wavelengths", "fitted_flux", "fitted_errors", "sn"]
             for req in key_reqs:
                 if key not in eval(f"self.data.{req}"):
-                    raise ValueError(f"Key '{key}' not found in the required attribute data.{req}. \n" \
+                    raise ACIDInputError(f"Key '{key}' not found in the required attribute data.{req}. \n" \
                                      f"Please provide a valid key or input wavelengths, flux, errors, and SN directly.")
             wavelengths = self.data.wavelengths[key]
             flux        = self.data.fitted_flux[key]
@@ -158,7 +161,7 @@ class LSD:
             errors is None,
             sn is None,
         )):
-            raise ValueError(f"If key is not provided; wavelengths, flux, errors, and SN must be provided.")
+            raise ACIDInputError(f"If key is not provided; wavelengths, flux, errors, and SN must be provided.")
 
         sparse         = sparse if sparse is not None else self.config.sparse
         profile_groups = profile_groups if profile_groups is not None else self.config.profile_groups
@@ -172,7 +175,7 @@ class LSD:
         
         # Ensure dimensions match
         if not wavelengths.shape == flux.shape == errors.shape:
-            raise ValueError("Input wavelengths, flux, and errors must have the same shape.")
+            raise ACIDInputError("Input wavelengths, flux, and errors must have the same shape.")
 
         # We define the unmasked points here, but only apply the mask once the wavelength range has been clipped
         unmasked_wavelengths = np.copy(wavelengths) # we save a copy to use for the forward model
@@ -182,14 +185,14 @@ class LSD:
         # Check the flux has been at least somewhat normalised:
         fluxpercentile = np.nanpercentile(flux[mask], 10)
         if fluxpercentile > 2:
-            raise ValueError(f"The input fluxes do not appear to be normalised. \n"
+            raise ACIDInputError(f"The input fluxes do not appear to be normalised. \n"
                              f"90% of your unmasked fluxes inputted to LSD lie above 2 (10th% = {fluxpercentile:.3f}).\n"
                              f"The LSD algorithm assumes normalised fluxes, please (better) normalise your fluxes before running LSD. \n")
 
         # Set velocities either from inputs or from Data class if initialised with Acid instance
         self.data.velocities = velocities if velocities is not None else self.data.velocities
         if self.data.velocities is None:
-            raise ValueError("Velocities must be provided either as an argument to run_LSD or when initialising the class with an Acid instance.")
+            raise ACIDInputError("Velocities must be provided either as an argument to run_LSD or when initialising the class with an Acid instance.")
         self.n_velocities = len(self.data.velocities)
 
         # If alpha is input check its shape matches the input wavelengths and velocities
@@ -197,24 +200,24 @@ class LSD:
             alpha = np.asarray(alpha)
             if alpha.ndim == 2:
                 if alpha.shape != (len(wavelengths), self.n_velocities):
-                    raise ValueError(f"Input 2D alpha shape {alpha.shape} does not match expected ({len(wavelengths)}, {self.n_velocities}).")
+                    raise ACIDInputError(f"Input 2D alpha shape {alpha.shape} does not match expected ({len(wavelengths)}, {self.n_velocities}).")
             elif alpha.ndim == 3:
                 if alpha.shape[1:] != (len(wavelengths), self.n_velocities):
-                    raise ValueError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_profs, {len(wavelengths)}, {self.n_velocities}).")
+                    raise ACIDInputError(f"Input 3D alpha shape {alpha.shape} does not match expected (n_profs, {len(wavelengths)}, {self.n_velocities}).")
             else:
-                raise ValueError("Input alpha must be either 2D or 3D.")
+                raise ACIDInputError("Input alpha must be either 2D or 3D.")
 
         # Unpack the linelist stored in data
         self.data.linelist = linelist # overwrites if input
         if self.data.linelist is None:
-            raise ValueError("No linelist has been set. Please set a linelist before running LSD.")
+            raise ACIDStateError("No linelist has been set. Please set/input a linelist before running LSD.")
         wavelengths_linelist, depths_linelist = self.data.linelist
         original_wavelengths = wavelengths_linelist
 
         # Clip linelist to wavelength range of spectrum
         wavelengths_linelist, depths_linelist, profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups)
         if len(wavelengths_linelist) == 0:
-            error = LineListRangeError(
+            error = ACIDLineListRangeError(
                 "No lines in linelist are within the wavelength range of the observed spectrum.\n"
                 "You may have mismatched wavelength units between linelist and spectrum or an empty linelist.\n"
                 "Please check your linelist and input spectrum."
@@ -224,7 +227,7 @@ class LSD:
             raise error
         
         # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups, skip_warnings)
+        wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups)
 
         # Save the mask that constructs the clipped linelist from the original, wavelengths are sorted already
         self.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
@@ -238,7 +241,7 @@ class LSD:
         if profile_groups is not None:
             self.profile_groups = np.asarray(profile_groups)
             if len(self.profile_groups) != len(depths_linelist):
-                raise ValueError(f"profile_groups has {len(self.profile_groups)} entries but the linelist "
+                raise ACIDInputError(f"profile_groups has {len(self.profile_groups)} entries but the linelist "
                                 f"has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
                                 f"Please check len(profile_groups) matches len(depths_linelist). "
                                 f"Also see profile_groups parameter description.")
@@ -355,7 +358,6 @@ class LSD:
             depths_linelist      : Array1D,
             sn                   : Scalar,
             profile_groups       : Array1D | None = None,
-            skip_warnings        : bool = False,
         ) -> tuple[Array1D, Array1D, Array1D | None]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
@@ -370,9 +372,6 @@ class LSD:
             Signal-to-noise ratio threshold
         profile_groups : :py:type:`Array1D` | None, optional
             The profile group mask, if provided. If None, no profile grouping is applied.
-        skip_warnings : bool, optional
-            Whether to skip warnings about the number of lines remaining after the S/N cut,
-            by default False
 
         Returns
         -------
@@ -389,16 +388,13 @@ class LSD:
         nrest = np.sum(idx)
         perc = 100 * nrest / (nrest + ncut)
         if nrest == 0:
-            error = SNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
+            error = ACIDSNCutError(f"No lines remain in the linelist after S/N cut. Please check your linelist and S/N value.")
             self.data.exception = error
             self.data.traceback = traceback.format_stack()
             raise error
-        if not skip_warnings:
-            if self.config.verbose >= 1 and not skip_warnings:
-                if perc < 5:
-                    print("Warning: Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.")
-                if self.config.verbose >= 3:
-                    print(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
+        if perc < 5:
+            warnings.warn("Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.", ACIDRuntimeWarning, stacklevel=2)
+        logger.debug(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
         return wavelengths_linelist, depths_linelist, profile_groups[idx] if profile_groups is not None else None
 
     @staticmethod
@@ -474,7 +470,7 @@ class LSD:
 
         # Check velocity spacing is constant
         if not np.allclose(np.diff(velocities), velocities[1] - velocities[0]):
-            raise ValueError("Velocity spacing must be constant for the alpha matrix calculation.")
+            raise ACIDInputError("Velocity spacing must be constant for the alpha matrix calculation.")
 
         # Calculate velocity pixel size
         deltav = velocities[1] - velocities[0]
@@ -490,7 +486,7 @@ class LSD:
         n_vel = len(velocities)
 
         if n_vel < 2:
-            raise ValueError("At least two velocity bins are required.")
+            raise ACIDInputError("At least two velocity bins in your velocity grid are required.")
 
         v0 = velocities[0]
 
@@ -504,7 +500,7 @@ class LSD:
 
             if alpha_bytes > 0.8 * available_memory:
                 raise MemoryError(
-                    f"Output alpha matrix alone requires {alpha_bytes/1024**3:.2f} GB, "
+                    f"Output alpha matrix alone requires {alpha_bytes/1024**3/0.8:.2f} GB, "
                     f"but only {available_memory/1024**3:.2f} GB appears to be available.\n"
                     f"This exception should only be tripped if you have extremely low memory "
                     f"or if you are calculating an enormous alpha matrix."
@@ -632,8 +628,6 @@ class LSD:
     @staticmethod
     def _regularization_scales(information_diagonal: Array1D, n_velocities: IntLike) -> Array1D:
         """Mean weighted information per bin, independently for each profile."""
-        if n_velocities < 1 or len(information_diagonal) % n_velocities:
-            raise ValueError("n_velocities must divide the number of alpha columns.")
         return information_diagonal.reshape(-1, n_velocities).mean(axis=1)
 
     @staticmethod
@@ -675,7 +669,7 @@ class LSD:
         AVA = alpha.T @ (V[:, None] * alpha)
 
         if not np.isfinite(regularization) or regularization < 0:
-            raise ValueError("regularization must be finite and non-negative.")
+            raise ACIDInputError("regularization must be finite and non-negative.")
         if regularization:
             n_velocities = alpha.shape[1]
             scales = LSD._regularization_scales(np.diag(AVA), n_velocities) if scale_regularization else np.ones(1)
@@ -803,33 +797,16 @@ class LSD:
         """
 
         if alpha is None:
-            if (
-                velocities is None
-                or wavelengths is None
-                or linelist_wavelengths is None
-                or linelist_depths is None
-            ):
-                raise ValueError(
-                    "If alpha is not input, velocities, wavelengths, "
-                    "linelist_wavelengths, and linelist_depths are required."
-                )
+            if velocities is None or wavelengths is None or linelist_wavelengths is None or linelist_depths is None:
+                raise ACIDInputError("If alpha is not input, velocities, wavelengths, "
+                                     "linelist_wavelengths, and linelist_depths are required.")
 
             if profile_groups is not None:
-                alpha, _ = cls.calc_mp_alpha(
-                    wavelengths,
-                    velocities,
-                    linelist_wavelengths,
-                    linelist_depths,
-                    profile_groups,
-                )
+                alpha, _ = cls.calc_mp_alpha(wavelengths, velocities, linelist_wavelengths, linelist_depths, profile_groups)
 
             else:
-                alpha = cls.calc_alpha(
-                    wavelengths=wavelengths,
-                    wavelengths_linelist=linelist_wavelengths,
-                    depths_linelist=linelist_depths,
-                    velocities=velocities,
-                )
+                alpha = cls.calc_alpha(wavelengths=wavelengths, wavelengths_linelist=linelist_wavelengths,
+                    depths_linelist=linelist_depths, velocities=velocities,)
 
         model_spectrum = cls.dot_alpha_and_profile(alpha, profile)
 
@@ -847,7 +824,7 @@ class LSD:
             profile_flat = profile.reshape(-1)
 
             if alpha.shape[1] != profile_flat.size:
-                raise ValueError(
+                raise ACIDInputError(
                     f"2D alpha shape {alpha.shape} is incompatible with "
                     f"profile shape {profile.shape}."
                 )
@@ -859,21 +836,21 @@ class LSD:
 
             if profile.ndim == 1:
                 if profile.size != n_profs * n_velocities:
-                    raise ValueError(
+                    raise ACIDInputError(
                         f"Flat profile length {profile.size} does not match "
                         f"n_profs*n_velocities={n_profs * n_velocities}."
                     )
                 profile = profile.reshape(n_profs, n_velocities)
 
             if profile.shape != (n_profs, n_velocities):
-                raise ValueError(
+                raise ACIDInputError(
                     f"3D alpha shape {alpha.shape} requires profile shape "
                     f"{(n_profs, n_velocities)}, got {profile.shape}."
                 )
 
             return np.einsum("inw,iw->n", alpha, profile)
 
-        raise ValueError("Alpha matrix must be either 2D or 3D.")
+        raise ACIDInputError("Alpha matrix must be either 2D or 3D.")
 
     @classmethod
     def calc_mp_alpha(
@@ -900,7 +877,7 @@ class LSD:
         profile_groups = np.asarray(profile_groups)
 
         if len(profile_groups) != len(linelist_depths):
-            raise ValueError("profile_groups must have the same length as the linelist.")
+            raise ACIDInputError("profile_groups must have the same length as the linelist.")
 
         unique_profile_groups = np.unique(profile_groups)
         alpha_blocks = []
@@ -922,7 +899,7 @@ class LSD:
     @staticmethod
     def flatten_alpha(alpha:Array3D) -> Array2D:
         if alpha.ndim != 3:
-            raise ValueError(f"Expected 3D alpha matrix, got shape {alpha.shape}")
+            raise ACIDInputError(f"Expected 3D alpha matrix, got shape {alpha.shape}")
         return np.concatenate(alpha, axis=1)
 
     @staticmethod
@@ -943,11 +920,11 @@ class LSD:
         min_lines = int(rules["min_lines"])
 
         if len(depths_linelist) < n_groups*min_lines:
-            raise ValueError(f"Cannot make {n_groups} profile groups with at least {min_lines} lines each from {len(depths_linelist)} lines.")
+            raise ACIDInputError(f"Cannot make {n_groups} profile groups with at least {min_lines} lines each from {len(depths_linelist)} lines.")
         if n_groups < 1:
-            raise ValueError("n_groups must be at least 1.")
+            raise ACIDInputError("n_groups must be at least 1.")
         if min_lines < 1:
-            raise ValueError("min_lines must be at least 1.")
+            raise ACIDInputError("min_lines must be at least 1.")
 
         depth_rules = {}
         for key, value in rules.items():
@@ -957,18 +934,18 @@ class LSD:
             group = int(key)
 
             if group < 0 or group >= n_groups:
-                raise ValueError(f"Profile group rule {group} is outside n_groups={n_groups}.")
+                raise ACIDInputError(f"Profile group rule {group} is outside n_groups={n_groups}.")
 
             depth_rules[group] = float(value)
 
         depth_groups = sorted(depth_rules)
 
         if depth_groups != list(range(len(depth_groups))):
-            raise ValueError("Explicit depth rules must be consecutive starting from group 0.")
+            raise ACIDInputError("Explicit depth rules must be consecutive starting from group 0.")
 
         depth_values = [depth_rules[group] for group in depth_groups]
         if not all(depth_values[i] > depth_values[i+1] for i in range(len(depth_values)-1)):
-            raise ValueError("Profile group minimum depths must decrease from deepest to shallowest group.")
+            raise ACIDInputError("Profile group minimum depths must decrease from deepest to shallowest group.")
 
         # Sort lines deepest to shallowest
         sorted_idx = np.argsort(depths_linelist)[::-1]
@@ -989,7 +966,7 @@ class LSD:
             n_take = max(n_take, min_lines)
 
             if start + n_take > len(sorted_idx):
-                raise ValueError(f"Not enough lines remaining to give profile group {group} at least {min_lines} lines.")
+                raise ACIDGroupingError(f"Not enough lines remaining to give profile group {group} at least {min_lines} lines.")
 
             end = start + n_take
             prof_groups[sorted_idx[start:end]] = group
@@ -1002,7 +979,7 @@ class LSD:
         if len(remaining_groups) > 0:
 
             if len(remaining_idx) < len(remaining_groups)*min_lines:
-                raise ValueError(
+                raise ACIDGroupingError(
                     f"Only {len(remaining_idx)} lines remain for {len(remaining_groups)} profile groups with min_lines={min_lines}.\n"
                     f"Try reducing n_groups or reducing min_lines (we don't recommend reducing min_lines below 10)."
                 )

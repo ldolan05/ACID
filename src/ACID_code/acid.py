@@ -795,7 +795,7 @@ class Acid:
 
         # Check if there are enough good points for the polynomial fit
         if np.sum(good) < config.poly_ord + 1:
-            error = ContinuumFitError(f"Insufficient good points for an initial polynomial fit. This could be from over-masked data, or not enough bins.\n"
+            error = ACIDContinuumFitError(f"Insufficient good points for an initial polynomial fit. This could be from over-masked data, or not enough bins.\n"
                                       f"Consider reducing the polynomial order or adjusting the masking.")
             data.exception = error
             data.traceback = traceback.format_stack()
@@ -820,7 +820,7 @@ class Acid:
                 data.plot_continuum_fit(key=key)
 
         if np.any(data.fitted_flux[key][~data.line_mask] <= 0) or np.any(data.fitted_errors[key][~data.line_mask] <= 0):
-            error = ContinuumFitError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
+            error = ACIDContinuumFitError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
             "Consider adjusting the polynomial order. Use verbose=3 to see the plot of the continuum fit.\n " \
             "Note that this will only work for interactive terminals or displays which work with plt.show()")
             data.exception = error
@@ -864,7 +864,7 @@ class Acid:
 
                 n_attempt += 1
                 if n_attempt == max_attempts:
-                    raise InitialStateError("Reached the max number of attempts for finding an initial state for MCMC walkers.")
+                    raise ACIDInitialStateError("Reached the max number of attempts for finding an initial state for MCMC walkers.")
 
             initial_state = np.array(walkers)
         else:
