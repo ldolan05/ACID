@@ -20,8 +20,8 @@ class SNCutError(ACIDError):
 class InitialStateError(ACIDError):
     """Custom error for when the initial state for MCMC walkers is invalid, or the process of generating it fails."""
 
-class ResultError(ACIDError):
+class ACIDResultError(ACIDError):
     """Custom error for when there is an issue with the results processing in the Result class."""
 
 class ACIDStateError(ACIDError):
-    """Similar to ``ACIDStateWarning``, but the the issue cannot be continued from."""
+    """Custom error for when the state or attributes of the instances are invalid. Similar to ``ACIDStateWarning``, but the the issue cannot be continued from."""

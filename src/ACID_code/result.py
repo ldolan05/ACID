@@ -2,21 +2,26 @@ from __future__ import annotations
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
-import corner, sys, os, contextlib, functools, inspect
+import corner, os, contextlib, functools, inspect, warnings
 from emcee import EnsembleSampler
 from beartype import beartype
 from scipy.interpolate import interp1d
 from numpy.polynomial import polynomial as P
 from .lsd import LSD
 from . import utils
+from .diagnostics.errors import *
 from .data import Data
 from .utils import IntLike, Scalar
+from .diagnostics.warnings import *
+from .diagnostics.logging import get_logger
 try:
     from dynesty.sampler import Sampler
     from dynesty import plotting as dyplot
 except ImportError:
     Sampler = None
     dyplot = None
+
+logger = get_logger(__name__)
 
 def _require_profiles(method):
     # Make sure all results are processed before calling method
@@ -25,16 +30,16 @@ def _require_profiles(method):
         if not self.data.complete: # complete is flag for if profiles have been made
             name = method.__qualname__
             if self.sampler is not None:
-                if self.config.verbose >= 1:
-                    print(f"Note: The Result object was created without the profiles processed. " \
-                        f"Running {name} requires all results to be processed, " \
-                        "so process_results() will now be called...")
+                # This should very rarely be triggered.
+                warnings.warn(f"Note: The Result object was created without the profiles processed. " \
+                    f"Running {name} requires all results to be processed, " \
+                    "so process_results() will now be called...", ACIDStateWarning, stacklevel=3)
                 self.process_results()
             else:
                 error = f"Cannot call {name}. The profiles attribute is not available, and no " \
                 "sampler object is available to process results. Please pass an Acid/Data " \
                 "instance after running ACID to the results init."
-                raise ValueError(error)
+                raise ACIDResultError(error)
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -97,7 +102,7 @@ class Result:
         elif isinstance(data, Data):
             self.data = data
         else:
-            raise ValueError(f"First argument must be either an Acid or Data object. Got {type(data)} instead.")
+            raise ACIDInputError(f"First argument must be either an Acid or Data object. Got {type(data)} instead.")
 
         # Handle config and verbose options
         self.config = self.data.config # point Result.config to Data.config to keep them in sync
@@ -118,15 +123,16 @@ class Result:
         if not self.data.complete:
             if process_results:
                 if self.sampler is None:
-                    raise ValueError("Cannot process results without a sampler. Please provide a sampler in the initialisation or set process_results=False.")
+                    raise ACIDStateError("Cannot process results without a sampler. Please provide a sampler in the initialisation or set process_results=False.")
                 else:
                     self.process_results()
-            elif self.config.verbose >= 1:
-                print("Warning: Results not processed. Profiles attribute will not be available until " \
-                "Result.process_results() is called or passed through a method.")
-        elif self.sampler is None and self.config.verbose >= 1:
-            print(f"Warning: No sampler provided or found in Data object. \n" \
-            f"Some methods will not work unless a sampler is provided as a parameter or if Result.initiate_sampler(sampler) is called.")
+            else:
+                warnings.warn("Warning: Results not processed. Profiles attribute will not be available until " \
+                "Result.process_results() is called or passed through a method.", ACIDStateWarning, stacklevel=2)
+        elif self.sampler is None:
+            warnings.warn(f"Warning: No sampler provided or found in Data object. \n" \
+            f"Some methods will not work unless a sampler is provided as a parameter or if Result.initiate_sampler(sampler) is called.",
+            ACIDStateWarning, stacklevel=2)
 
     @_require_sampler
     def process_results(self) -> None:
@@ -160,14 +166,13 @@ class Result:
         # med_poly_coeffs_err = param_errors[n_profile_params:] # may be used in a future update
         all_poly_coeffs = flat_samples[:, n_profile_params:]
 
-        if self.config.verbose >= 2:
-            print('Getting the final profiles...')
+        logger.info('Getting the final profiles...')
 
         # We first run LSD on the final state of the sampler (for debugging, but this can be useful to see how masking is affecting the sampler)
         if self.config.verbose == 4: # debugging mode
             self.data.alpha["mcmc"] = None # reset alpha so that it is recalculated
             _lsd = self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs, return_cls=True) # alpha is recalculated
-            self.data.debug["lsd_mcmc"] = _lsd.__dict__
+            self.data.debug["lsd_mcmc"] = _lsd.__dict__.copy()
 
         # Set the inputs for a final LSD call on continuum corrected, and unmasked (except line mask) spectrum
         self.data.wavelengths["final"] = self.data.wavelengths["initial"]
@@ -180,7 +185,7 @@ class Result:
         _lsd = self._continuum_correct_and_runlsd("final", all_poly_coeffs, return_cls=True)
 
         if self.config.verbose == 4: # save if debugging is on
-            self.data.debug["lsd_final"] = _lsd.__dict__
+            self.data.debug["lsd_final"] = _lsd.__dict__.copy()
         _lsd = None
 
         # We also want to have a final single profile where we force LSD to run on non-mp mode to get a "combined_profile"
@@ -194,7 +199,7 @@ class Result:
             _lsd = self._continuum_correct_and_runlsd("single_profile", all_poly_coeffs, mp_lsd=False, return_cls=True)
 
             if self.config.verbose == 4: # save if debugging is on
-                self.data.debug["lsd_single_profile"] = _lsd.__dict__
+                self.data.debug["lsd_single_profile"] = _lsd.__dict__.copy()
             _lsd = None
 
         profiles = []
@@ -245,8 +250,7 @@ class Result:
         if self.config.save_path is not None:
             self.save() # the sampler is already saved if specified
 
-        if self.config.verbose >= 2:
-            print(f"Done! Results processed in {self.data.results_time:.2f} seconds. Total time: {self.data.total_time:.2f} seconds.")
+        logger.info(f"Done! Results processed in {self.data.results_time:.2f} seconds. Total time: {self.data.total_time:.2f} seconds.")
         return
 
     def _continuum_correct_and_runlsd(self, key, all_poly_coeffs, **kwargs):
@@ -294,9 +298,8 @@ class Result:
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
-            if self.config.verbose >= 2:
-                print(f"Warning: Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
-                "Calculating with a max of 1000 random samples instead.")
+            warnings.warn(f"Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
+                          "Calculating with a max of 1000 random samples instead.", ACIDPerformanceWarning, stacklevel=3)
             indices_size = min(1000, n_samples)
             random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
             coeffs = all_poly_coeffs[random_indices, :]
@@ -327,11 +330,11 @@ class Result:
             elif len(item) == 1:
                 return self.data.profile["final"][item[0]]
             else:
-                raise ValueError(f"Tuple indexing must be of length 1, 2, or 3. Got {len(item)} instead.")
+                raise ACIDInputError(f"Tuple indexing must be of length 1, 2, or 3. Got {len(item)} instead.")
         elif isinstance(item, int):
             # Return just the profile or error (or cov_mat) for single int input
             if item < 0 or item > 2:
-                raise ValueError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
+                raise ACIDInputError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
             return self.data.profile["final"][item]
         elif isinstance(item, str):
             # Various different options for string inputs, why not
@@ -342,9 +345,9 @@ class Result:
             elif "profile" in item.lower():
                 return self.data.profile["final"][0]
             else:
-                raise ValueError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
+                raise ACIDInputError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
         else:
-            raise ValueError(f"Invalid index type. Must be either a tuple, int, or str. Got {type(item)} instead.")
+            raise ACIDInputError(f"Invalid index type. Must be either a tuple, int, or str. Got {type(item)} instead.")
 
     @_require_profiles
     def __iter__(self):
@@ -402,9 +405,9 @@ class Result:
         if process_results:
             self.process_results() # update profiles
         else:
-            if self.config.verbose >= 1:
-                print("Warning: Results not processed. profiles attribute will not be available until " \
-                "Result.process_results() is called.")
+            warnings.warn(
+                "Warning: Results not processed. profiles attribute will not be available until " \
+                "Result.process_results() is called.", ACIDStateWarning, stacklevel=3)
 
     @_require_sampler
     def plot_walkers(
@@ -464,17 +467,17 @@ class Result:
         plt.subplots_adjust(hspace=0.05)
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "walkers.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "walkers.png")
 
     @_require_sampler
     def plot_traceplot(self, return_fig:bool=False, **kwargs) -> None | tuple:
         if not self.dynesty:
-            raise ValueError("Traceplot is only available for dynesty samplers, as emcee traceplots are already plotted in plot_walkers.")
+            raise ACIDInputError("Traceplot is only available for dynesty samplers, as emcee traceplots are already plotted in plot_walkers.")
         fig, ax = dyplot.traceplot(self.sampler.results, labels=self.default_param_labels, **kwargs)
         plt.suptitle('Dynesty Traceplot')
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png")
 
     @_require_sampler
     def plot_corner(
@@ -504,7 +507,7 @@ class Result:
             plt.suptitle('Dynesty Corner Plot')
             if return_fig:
                 return fig, axes
-            utils.show_or_save(plt, self.config.figure_dir, "corner.png", self.config.verbose)
+            utils.show_or_save(plt, self.config.figure_dir, "corner.png")
             return
 
         # Get samples and thin and burnin from the class variables
@@ -520,7 +523,7 @@ class Result:
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
-        utils.show_or_save(plt, self.config.figure_dir, "corner.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "corner.png")
 
     @_require_profiles
     def plot_profiles(
@@ -612,7 +615,7 @@ class Result:
         ax.grid(grid)
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png")
 
     @_require_profiles
     def plot_forward_model(
@@ -765,7 +768,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png")
 
     @_require_sampler
     def plot_autocorrelation(
@@ -811,7 +814,8 @@ class Result:
         nsteps, nwalkers, ndim = chain.shape
 
         if nsteps < min_steps:
-            raise ValueError("Not enough post-burnin samples to estimate autocorrelation reliably.")
+            raise ACIDInputError("Not enough post-burnin samples to estimate autocorrelation from the min_steps. " \
+            "Increase the number of steps or decrease min_steps.")
         
         Ns = np.unique(np.exp(np.linspace(np.log(min_steps), np.log(nsteps), n_grid)).astype(int))
         Ns = Ns[Ns >= min_steps]  # Ensure we only consider N >= min_steps
@@ -842,7 +846,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png")
 
         return
 
@@ -908,7 +912,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png", self.config.verbose)
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png")
 
     def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
         """
@@ -932,7 +936,7 @@ class Result:
                 error_msg = f"Cannot run {_method_name} without a sampler, please pass in a sampler to the method or during initialisation."
             else:
                 error_msg = "Cannot initiate sampler without a sampler stored in the instance or passed as a parameter, please pass in a sampler "
-            raise AttributeError(error_msg)
+            raise ACIDStateError(error_msg)
 
         if self.dynesty:
             a=ord('a')
@@ -952,12 +956,14 @@ class Result:
         self.converged = True
         if self.data.nsteps < 50 * np.max(self.tau):
             self.converged = False
-            if self.config.verbose >= 2:
-                print("The number of MCMC steps is less than 50 times the maximum autocorrelation " \
+            warnings.warn(
+                "The number of MCMC steps is less than 50 times the maximum autocorrelation " \
                 "time.\n The sampler may not have converged. Consider running more steps or checking " \
                 f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
                 f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.\n Disabling burnin " \
-                f"from autocorrelation time, instead using burnin=steps-1000")
+                f"from autocorrelation time, instead using burnin=steps-1000",
+                ACIDConvergenceWarning, stacklevel=2
+            )
 
         try:
             self.thin = int(np.min(self.tau)/5)
@@ -966,10 +972,12 @@ class Result:
             else:
                 self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
         except:
-            if self.config.verbose >= 1:
-                print(f"Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
-                f" due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
-                f" wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.")
+            warnings.warn(
+                "Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                " due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
+                " wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.",
+                ACIDConvergenceWarning, stacklevel=2
+            )
             self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
             self.thin = 1
         
