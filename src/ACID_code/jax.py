@@ -1,5 +1,7 @@
 """Optional JAX backend for the MCMC log-probability calculation."""
 from __future__ import annotations
+from .diagnostics.errors import *
+from .diagnostics.warnings import *
 import warnings
 import numpy as np
 
@@ -28,8 +30,7 @@ class JAXBackend:
         # ------------------------------------------
         jax_modules = _import_jax()
         if jax_modules is None:
-            # TODO: All warnings put out with print should be logged like this
-            warnings.warn("use_jax=True was requested, but JAX is not importable; falling back to NumPy/SciPy.", RuntimeWarning, stacklevel=3)
+            warnings.warn("use_jax=True was requested, but JAX is not importable; falling back to NumPy/SciPy.", ACIDRuntimeWarning, stacklevel=3)
             return
 
         self.jax, self.jnp, self.jsp_linalg = jax_modules
@@ -38,7 +39,7 @@ class JAXBackend:
         try:
             self.jax.config.update("jax_enable_x64", True)
         except Exception as exc:
-            warnings.warn(f"JAX could not enable 64-bit calculations ({exc}); falling back to NumPy/SciPy.", RuntimeWarning, stacklevel=3)
+            warnings.warn(f"JAX could not enable 64-bit calculations ({exc}); falling back to NumPy/SciPy.", ACIDRuntimeWarning, stacklevel=3)
             return
 
         # Prepare the static JAX inputs
@@ -89,9 +90,6 @@ class JAXBackend:
         if self.continuum_method == "polyval":
             # numpy.polynomial.polyval uses ascending coefficients; jnp.polyval uses descending.
             return self.jnp.polyval(coefs[::-1], self.x)
-
-        if self.continuum_method != "chebval":
-            raise ValueError(f"Unknown method: '{self.continuum_method}', must be 'polyval' or 'chebval'.")
 
         # JAX has no chebval, so follow NumPy's Clenshaw recurrence directly.
         if len(coefs) == 1:

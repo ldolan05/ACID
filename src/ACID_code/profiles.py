@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .diagnostics.errors import *
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
@@ -48,7 +49,7 @@ class Profiles:
 
         if data is not None:
             if data.velocities is None or key not in data.profile:
-                raise ValueError(f"Data instance must have attributes 'velocities' and 'profile[key]' (key={key}).\n"\
+                raise ACIDStateError(f"Data instance must have attributes 'velocities' and 'profile[key]' (key={key}).\n"\
                                  f"Try running ACID first.")
             velocities = data.velocities
             flux = data.profile[key][0]
@@ -56,7 +57,7 @@ class Profiles:
             cov_matrix = data.profile[key][2]
         else:
             if velocities is None or flux is None:
-                raise ValueError("If no data instance is provided, then at least velocities and flux must be provided.")
+                raise ACIDInputError("If no data instance is provided, then at least velocities and flux must be provided.")
 
         self.velocities = None
         self.flux = None
@@ -99,7 +100,7 @@ class Profiles:
         if model is not None:
             model = model.lower()
             if model not in models + ['all']:
-                raise ValueError("Model must be 'voigt', 'gaussian', 'lorentzian' or 'all'.")
+                raise ACIDInputError("Model must be 'voigt', 'gaussian', 'lorentzian' or 'all'.")
 
         if model == 'all':
             model_list = models[:-1] # Exclude 'none'
@@ -173,7 +174,7 @@ class Profiles:
             if above.size >= 2:
                 fwhm = abs(x[above[-1]] - x[above[0]])
             else:
-                raise ValueError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
+                raise ACIDResultError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
             sigma0 = fwhm / 2.355
 
             gamma0 = sigma0 * 0.1
@@ -183,7 +184,7 @@ class Profiles:
             # Raise an error if the initial guess is outside the bounds
             for i in range(len(p0)):
                 if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
-                    raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                    raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
                                      f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
         popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
@@ -227,14 +228,14 @@ class Profiles:
             if above.size >= 2:
                 fwhm = abs(x[above[-1]] - x[above[0]])
             else:
-                raise ValueError("Could not estimate FWHM for Gaussian profile. Not enough points above half maximum.")
+                raise ACIDResultError("Could not estimate FWHM for Gaussian profile. Not enough points above half maximum.")
             sigma0 = fwhm / 2.355
             offset = 0
             p0 = [amplitude_guess, mean_guess, sigma0, offset]
             
             for i in range(len(p0)):
                 if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
-                    raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                    raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
                                      f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
         popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
@@ -278,7 +279,7 @@ class Profiles:
             if above.size >= 2:
                 fwhm = abs(x[above[-1]] - x[above[0]])
             else:
-                raise ValueError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
+                raise ACIDResultError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
             sigma0 = fwhm / 2.355
             gamma0 = sigma0 * 0.1
             offset = 0
@@ -286,7 +287,7 @@ class Profiles:
 
             for i in range(len(p0)):
                 if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
-                    raise ValueError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                    raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
                                         f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
         popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
@@ -378,7 +379,7 @@ class Profiles:
         samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=1000)
         samples = samples[np.all((samples >= bounds[0]) & (samples <= bounds[1]), axis=1)] if bounds is not None else samples
         if len(samples) == 0:
-            raise ValueError("No uncertainty samples fall within the fit bounds; profile uncertainties cannot be estimated.")
+            raise ACIDResultError("No uncertainty samples fall within the fit bounds; profile uncertainties cannot be estimated.")
         y_samples = np.array([model_func(self.fitted_x, *sample) for sample in samples])
         y_lo, y_med, y_hi = np.quantile(y_samples, [0.16, 0.50, 0.84], axis=0)
         self.fitted_yerr[model_name] = (y_med - y_lo, y_hi - y_med)
