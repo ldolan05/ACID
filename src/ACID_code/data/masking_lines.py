@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..diagnostics.errors import *
 import numpy as np
 from ..utils import c_kms
 
@@ -102,7 +103,7 @@ class MaskingLines:
                 if "default_width" in line_object:
                     default_width = line_object["default_width"]
                 if "lines" not in line_object:
-                    raise ValueError(f"If the value for {name} is a dictionary, it must contain a 'lines' key with the list/array of lines to mask")
+                    raise ACIDInputError(f"If the value for {name} is a dictionary, it must contain a 'lines' key with the list/array of lines to mask")
                 if "widths" in line_object:
                     line_input = [(l, w) for l, w in zip(line_object["lines"], line_object["widths"])]
                 else:
@@ -113,7 +114,7 @@ class MaskingLines:
             if isinstance(line_input, (np.ndarray, list)):
                 # Reject empty lists or arrays, as this is likely a user error
                 if len(line_input) == 0:
-                    raise ValueError(f"The masking_lines for {name} cannot be an empty list or array, use None/remove the input to use the default lines.")
+                    raise ACIDInputError(f"The masking_lines for {name} cannot be an empty list or array, use None/remove the input to use the default lines.")
 
                 # For lists of tuples, allow len 1 or 2 depending on if default_width was provided in the dictionary
                 if isinstance(line_input[0], tuple):
@@ -123,13 +124,13 @@ class MaskingLines:
                         if len(line) == 1:
                             lines.append(line[0])
                             if default_width is None:
-                                raise ValueError(default_width_error.format(name))
+                                raise ACIDInputError(default_width_error.format(name))
                             widths.append(default_width)
                         elif len(line) == 2:
                             lines.append(line[0])
                             widths.append(line[1])
                         else:
-                            raise ValueError(f"If the masking_lines for {name} is a list or array of tuples, each tuple must have length 1 " \
+                            raise ACIDInputError(f"If the masking_lines for {name} is a list or array of tuples, each tuple must have length 1 " \
                             f"(line only) or 2 (line and width). \nGot tuple with length {len(line)}")          
 
                 else:
@@ -137,27 +138,27 @@ class MaskingLines:
                     try:
                         lines = np.array(line_input)
                     except Exception as e:
-                        raise ValueError(f"Could not convert the masking_lines for {name} to a numpy array. \n"
+                        raise ACIDInputError(f"Could not convert the masking_lines for {name} to a numpy array. \n"
                                          f"It's possible the dimensions do not have the same shape. Please check the input format. \nError: {e}")
                     if lines.size == 0:
-                        raise ValueError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")                
+                        raise ACIDInputError("lines cannot be an empty array or list, use None/remove the input to use the default lines.")
                     if lines.ndim == 1:
                         if default_width is None:
-                            raise ValueError(default_width_error.format(name))
+                            raise ACIDInputError(default_width_error.format(name))
                         widths = [default_width for _ in lines]
                     elif lines.ndim == 2:
                         widths = lines[1]
                         lines = lines[0]
                         if len(lines) != len(widths):
-                            raise ValueError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
+                            raise ACIDInputError(length_mismatch_error + f"\nGot {len(lines)} lines and {len(widths)} widths.")
                     else:
-                        raise ValueError("lines must be a one- or two-dimensional array or list")
+                        raise ACIDInputError("lines must be a one- or two-dimensional array or list")
 
             else:
-                raise ValueError(f"The masking line for {name} does not conform to the accepted formats, see :ref:`masking_lines`"
+                raise ACIDInputError(f"The masking line for {name} does not conform to the accepted formats, see :ref:`masking_lines`"
                                  f" for more details. Got type {type(line_input)}.")
 
             if len(lines) != len(widths):
-                raise ValueError(f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}")
+                raise ACIDInputError(f"lines and widths should be of same length, got: {len(lines)}, {len(widths)}")
             final_dict[name] = {"lines": np.array(lines), "widths": np.array(widths)}
         return final_dict

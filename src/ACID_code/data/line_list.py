@@ -1,8 +1,10 @@
 from __future__ import annotations
+from ..diagnostics.errors import *
 import numpy as np
-from ..utils import Array1D, IntLike
+from ..utils import Array1D
+from ..diagnostics.warnings import *
+import warnings
 import pandas as pd
-from .config import Config
 
 class LineList:
     """
@@ -18,7 +20,7 @@ class LineList:
         if k == 1:
             return self.ll["depths"]
         if isinstance(k, int):
-            raise IndexError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
+            raise ACIDInputError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
         return self.ll[k]  # allow "wavelengths"/"depths"
 
     def __iter__(self):
@@ -44,7 +46,7 @@ class LineList:
         # Run through every possible input type and issue, I'm not going to comment everything but the logic is fairly
         # self-explanatory, and the error messages should be helpful for debugging if the input is not in the correct format.
         if linelist is None:
-            raise ValueError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
+            raise ACIDInputError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
 
         # All loops below set linelist_wl and linelist_depths from their own type sof input
         elif isinstance(linelist, str):
@@ -86,16 +88,16 @@ class LineList:
             linelist_depths = linelist[1]
         elif isinstance(linelist, dict):
             if "wavelengths" not in linelist or "depths" not in linelist:
-                raise ValueError("If 'linelist' is a dict, it must contain keys 'wavelengths' and 'depths'")
+                raise ACIDInputError("If 'linelist' is a dict, it must contain keys 'wavelengths' and 'depths'")
             linelist_wl = linelist["wavelengths"]
             linelist_depths = linelist["depths"]
         elif isinstance(linelist, (list, np.ndarray)):
             if len(linelist) != 2 and len(linelist) != 3:
-                raise ValueError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths, and index 1 being depths")
+                raise ACIDInputError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths, and index 1 being depths")
             linelist_wl = linelist[0]
             linelist_depths = linelist[1]
         else:
-            raise ValueError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
+            raise ACIDInputError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
 
         # Convert to numpy arrays to ensure their dimensions are correct
@@ -103,11 +105,11 @@ class LineList:
             linelist_wl = np.array(linelist_wl)
             linelist_depths = np.array(linelist_depths)
         except Exception as e:
-            raise ValueError(f"Failed to convert linelist inputs into numpy arrays with exception:\n{e}")
+            raise ACIDInputError(f"Failed to convert linelist inputs into numpy arrays with exception:\n{e}")
         if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
-            raise ValueError("'wavelengths' and 'depths' must be one-dimensional arrays or lists")
+            raise ACIDInputError("'wavelengths' and 'depths' must be one-dimensional arrays or lists")
         if linelist_wl.shape != linelist_depths.shape:
-            raise ValueError("'wavelengths' and 'depths' must have the same length and shape, \n"
+            raise ACIDInputError("'wavelengths' and 'depths' must have the same length and shape, \n"
                              f" but have shapes: {linelist_wl.shape}, {linelist_depths.shape}")
 
         # Finally, sort the arrays by wavelength
@@ -118,7 +120,7 @@ class LineList:
         return linelist_wl, linelist_depths
 
     @staticmethod
-    def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False, verbose:IntLike|bool|str=None) -> tuple:
+    def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False) -> tuple:
         """Removes NaN, non-finite, negative, and greater than 1 values from the wavelengths and depths arrays.
         This is used internally in the set_linelist method.
 
@@ -130,9 +132,6 @@ class LineList:
             The array of linelist depths.
         return_mask : bool, optional
             If True, also returns the boolean mask of valid lines. Default is False.
-        verbose : int, bool, or str, optional
-            The verbosity level for printing warnings about dropped lines. Same format as :py:class:`Acid`.
-            Default is 2 as per config defaults.
 
         Returns
         -------
@@ -140,22 +139,19 @@ class LineList:
             If return_mask is True, returns a tuple of (wavelengths, depths, mask).
             Otherwise, returns a tuple of (wavelengths, depths) with invalid lines removed.
         """
-        # Set verbose level using config verbose validation, handles a verbose=None input
-        verbose = Config(verbose=verbose).verbose
-
         # Get mask
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
         mask &= (depths >= 0) & (depths < 1)
         mask &= (wavelengths > 0)
 
-        # Count the number of dropped lines for verbose output
+        # Count the number of dropped lines
         count_dropped = np.count_nonzero(~mask)
         if count_dropped == len(wavelengths):
-            raise ValueError(f"All lines in the linelist are non-finite, nan, negative, or greater than 1.\n" \
+            raise ACIDInputError(f"All lines in the linelist are non-finite, nan, negative, or greater than 1.\n" \
             "Please check your linelist for invalid values.")
-        if verbose >= 1 and count_dropped > 0:
-            print(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
-                  f"These will be removed, but it is still recommended to check your linelist for why this happened.")
+        if count_dropped > 0:
+            warnings.warn(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
+                  f"These will be removed, but it is still recommended to check your linelist for why this happened.", ACIDDroppedDataWarning, stacklevel=2)
 
         # Apply mask and return results
         if return_mask:
