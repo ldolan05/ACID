@@ -46,4 +46,5 @@ def configure_warnings(action="default", *, append=False):
 
 
 # This is deliberately narrow: it affects only ACID warning categories.
+warnings.filterwarnings("once", category=ACIDPerformanceWarning, append=True)
 configure_warnings(append=True)
