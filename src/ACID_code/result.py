@@ -1,4 +1,5 @@
 from __future__ import annotations
+import sys
 from time import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -292,7 +293,11 @@ class Result:
 
         # First check memory to see if all samples can be used
         available_memory = utils.get_available_memory() # in bytes
-        m_available = available_memory * 0.8 / (1024**3) # in GB, with 0.8 factor safety gap
+
+        # MacOS (darwin based) uses 'memory pressure' and is much better at handling memory, so we can allow a less strict safety gap
+        safety_gap = 1 if sys.platform == "darwin" else 0.8
+        m_available = available_memory * safety_gap / (1024**3) # in GB, with 0.8 factor safety gap
+
         n_samples, ncoeffs = all_poly_coeffs.shape
         npix = powers.shape[0]
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
