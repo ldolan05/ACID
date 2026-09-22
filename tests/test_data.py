@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError
 from ACID_code import Config, Data, DataList, LineList, MaskingLines
 from ACID_code import utils
 
@@ -89,11 +90,11 @@ def test_config_priorities_properties_and_environment(monkeypatch):
     verbose_config.update_lowpri(verbose="off")
     assert verbose_config.verbose == 3
     # Invalid configuration and misplaced Data attributes should fail clearly.
-    with pytest.raises(KeyError):
+    with pytest.raises(ACIDInputError):
         config.update_hipri(not_a_setting=True)
-    with pytest.raises(AttributeError):
+    with pytest.raises(ACIDInputError):
         config.linelist = []
-    with pytest.raises(AttributeError):
+    with pytest.raises(ACIDInputError):
         config.not_a_setting = True
     config.order = 4
     config.order = None
@@ -115,7 +116,7 @@ def test_config_dictionary_views_repr_and_verbose_validation(capsys):
     assert "order: 7" in repr(config)
 
     # Defaults are printable for interactive inspection, and invalid verbose values fail early.
-    Config.print_defaults()
+    Config.print_defaults(use_logger=False)
     assert "poly_ord" in capsys.readouterr().out
     for invalid_verbose in (-1, 5):
         with pytest.raises(ValueError, match="between 0 and 4"):
@@ -267,7 +268,7 @@ def test_linelist_file_indexing_and_invalid_line_removal(linelist_path):
 
     assert line_list[0].shape == line_list[1].shape
     assert line_list["wavelengths"].ndim == 1
-    with pytest.raises(IndexError):
+    with pytest.raises(ACIDInputError):
         _ = line_list[2]
 
     # Invalid depths and wavelengths are removed together, retaining the validity mask.
@@ -417,11 +418,11 @@ def test_data_residual_masking_plot_uses_stored_acid_intermediates(harps_result)
 def test_data_plot_methods_validate_missing_intermediate_state():
     # Plotting before its corresponding processing stage should name the missing prerequisite.
     data = Data()
-    with pytest.raises(ValueError, match="No linelist"):
+    with pytest.raises(ACIDStateError, match="No linelist"):
         data.plot_linelist(return_fig=True)
     with pytest.raises(ValueError, match="key"):
         data.plot_continuum_fit("unknown", return_fig=True)
-    with pytest.raises(ValueError, match="Residual masking"):
+    with pytest.raises(ACIDStateError, match="Residual masking"):
         data.plot_residual_masking()
 
 

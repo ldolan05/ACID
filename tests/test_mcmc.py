@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
 from ACID_code import Acid, Config, LSD, MCMC
 from ACID_code import mcmc as mcmc_module
 from ACID_code import jax as jax_module
@@ -85,7 +86,7 @@ def test_requested_jax_falls_back_when_it_cannot_be_imported(mcmc, monkeypatch):
     # A missing optional accelerator must never make the ordinary MCMC path unusable.
     monkeypatch.delenv("SLURM_JOB_ID", raising=False)
     monkeypatch.setattr(jax_module, "_import_jax", lambda: None)
-    with pytest.warns(RuntimeWarning, match="falling back"):
+    with pytest.warns(ACIDRuntimeWarning, match="falling back"):
         model = MCMC(mcmc.x, mcmc.y, mcmc.yerr, mcmc.alpha, mcmc.velocities,
                      mcmc.c_factor, deterministic_profile=True, use_jax=True)
 

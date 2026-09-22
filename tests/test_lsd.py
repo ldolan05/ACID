@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code import Data, LSD
-from ACID_code.diagnostics.errors import LineListRangeError, SNCutError
+from ACID_code.diagnostics.errors import ACIDLineListRangeError, ACIDSNCutError
 
 
 def test_sparse_and_dense_alpha_agree(synthetic_spectrum):
@@ -232,9 +232,9 @@ def test_lsd_reports_invalid_inputs(synthetic_spectrum):
         LSD().run_LSD(wavelengths, flux * 1000, errors, sn, linelist=linelist, velocities=velocities)
     with pytest.raises(ValueError, match="same shape"):
         LSD().run_LSD(wavelengths, flux[:-1], errors, sn, linelist=linelist, velocities=velocities)
-    with pytest.raises(LineListRangeError):
+    with pytest.raises(ACIDLineListRangeError):
         LSD().run_LSD(wavelengths, flux, errors, sn, linelist=[[6000], [0.2]], velocities=velocities)
-    with pytest.raises(SNCutError):
+    with pytest.raises(ACIDSNCutError):
         LSD().run_LSD(wavelengths, flux, errors, sn, linelist=[[5003], [0.001]], velocities=velocities)
 
 

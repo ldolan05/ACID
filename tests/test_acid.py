@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError, ACIDContinuumFitError
 from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList
 from ACID_code.acid import _get_run_kwargs
 
@@ -131,7 +132,7 @@ def test_acid_requires_complete_input_and_rejects_unknown_keyword(harps_order_40
     with pytest.raises(ValueError, match="Unexpected keyword argument"):
         acid.ACID(wavelengths, flux, errors, sn, made_up_setting=True)
     # Missing required line-list data should also give a domain-specific exception.
-    with pytest.raises(ValueError, match="linelist"):
+    with pytest.raises(ACIDStateError, match="linelist"):
         Acid(velocities=velocities).ACID(wavelengths, flux, errors, sn, run_mcmc=False)
 
 
@@ -243,7 +244,7 @@ def test_scipy_continuum_fit_rejects_insufficient_unmasked_bins():
     data.errors["test"] = np.r_[np.full(12, 0.01), np.full(8, 1e12)]
     data.line_mask = np.zeros(20, dtype=bool)
 
-    with pytest.raises(ValueError, match="Insufficient good points"):
+    with pytest.raises(ACIDContinuumFitError, match="Insufficient good points"):
         Acid.scipy_continuum_fit(data, "test")
 
 
@@ -288,9 +289,9 @@ def test_sampler_and_result_properties_validate_acid_state(harps_result):
 
     # An incomplete Data object cannot create a Result or continue a missing chain.
     incomplete = Acid(data=Data())
-    with pytest.raises(ValueError, match="has not been run"):
+    with pytest.raises(ACIDStateError, match="has not been run"):
         _ = incomplete.result
-    with pytest.raises(ValueError, match="Either a state or an existing sampler"):
+    with pytest.raises(ACIDStateError, match="Either a state or an existing sampler"):
         incomplete.continue_sampling(nsteps=1)
 
 
@@ -304,7 +305,7 @@ def test_legacy_argument_translator_routes_and_validates_arguments():
     )
 
     assert set(run_kwargs) == {"wavelengths", "nsteps", "linelist", "velocities"}
-    with pytest.raises(TypeError, match="Too many positional"):
+    with pytest.raises(ACIDInputError, match="Too many positional"):
         _get_run_kwargs(["one"], {}, 1, 2)
 
 

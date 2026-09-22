@@ -217,7 +217,7 @@ def test_show_or_save_writes_the_requested_figure(tmp_path):
     # Supplying a directory should save and close the current figure under the given name.
     plt.figure()
     plt.plot([0, 1], [0, 1])
-    utils.show_or_save(plt, str(tmp_path), "diagnostic.png", verbose=0)
+    utils.show_or_save(plt, str(tmp_path), "diagnostic.png")
 
     assert (tmp_path / "diagnostic.png").exists()
 

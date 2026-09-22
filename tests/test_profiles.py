@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ACID_code.diagnostics.errors import ACIDResultError, ACIDStateError
 from ACID_code import Data, Profiles
 
 
@@ -47,7 +48,7 @@ def test_voigt_uncertainties_exclude_unphysical_draws(gaussian_profile, monkeypa
 def test_profile_uncertainties_fail_when_no_draws_respect_bounds(gaussian_profile, monkeypatch):
     velocities, flux, errors = gaussian_profile
     monkeypatch.setattr(np.random, "multivariate_normal", lambda **kwargs: np.array([[-0.25, 1.5, -2.2, 0.0]]))
-    with pytest.raises(ValueError, match="No uncertainty samples fall within the fit bounds"):
+    with pytest.raises(ACIDResultError, match="No uncertainty samples fall within the fit bounds"):
         Profiles(velocities, flux, errors).fit_gaussian()
 
 
@@ -158,7 +159,7 @@ def test_profiles_can_initialise_from_completed_data(harps_result):
     np.testing.assert_array_equal(profiles.flux, harps_result.data.profiles[0][0])
 
     # Incomplete Data lacks the required final profile products.
-    with pytest.raises(ValueError, match="running ACID"):
+    with pytest.raises(ACIDStateError, match="running ACID"):
         Profiles(data=Data())
 
 

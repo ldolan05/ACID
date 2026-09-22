@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ACID_code.diagnostics.errors import ACIDStateError
 from ACID_code import Acid, Data, Result
 
 
@@ -136,7 +137,7 @@ def test_result_requires_a_sampler_when_data_is_not_complete():
     """A bare Data object cannot be processed into a Result without a sampler."""
     # This is a user-input validation path, so pytest's native exception assertion is appropriate.
     data = Data()
-    with pytest.raises(ValueError, match="without a sampler"):
+    with pytest.raises(ACIDStateError, match="without a sampler"):
         Result(data)
 
     # Acid remains the supported route for attaching a sampler to incomplete Data.
@@ -157,7 +158,7 @@ def test_result_sampler_guards_and_emcee_only_plot_validation(harps_result):
     data = Data().from_dict(harps_result.data.to_dict())
     data.sampler = None
     result = Result(data)
-    with pytest.raises(AttributeError, match="without a sampler"):
+    with pytest.raises(ACIDStateError, match="without a sampler"):
         result.initiate_sampler(None, _method_name="test")
 
 
