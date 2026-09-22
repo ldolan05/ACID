@@ -76,7 +76,7 @@ class Config:
         "continuum_percentile" : 99,
         "n_bins" : 20,
         "bin_size" : None,
-        "pix_chunk" : 50, # TODO: document+test this increase from 20
+        "pix_chunk" : 50,
         "dev_perc" : 25,
         "sigma_lower" : 3,
         "sigma_upper" : 5,

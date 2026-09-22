@@ -257,7 +257,7 @@ class Acid:
         pix_chunk : :py:type:`IntLike`, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
             and the data. If the residuals deviate by a specified percentage (see dev_perc below) for this number (pix_chunk) of pixels,
-            then this chunk of pixels are masked in the spectra. By default 20.
+            then this chunk of pixels are masked in the spectra. By default 50.
         dev_perc : :py:type:`IntLike`, optional
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
             and the data. If a residual deviates by this percentage for a specified number of pixels,
@@ -417,316 +417,323 @@ class Acid:
             If other input arguments do not conform to the expected formats and requirements.
         """
 
-        # Part 1: Setup and validation
-        # ============================
-        # region setup and validation
-        # region verbose
-        # Check if verbose was put in the init
-        init_verbose = self.init_kwargs.pop("verbose", None)
-        # Set verbosity first with validation handled in config property setter
-        self.config.verbose = verbose if verbose is not None else init_verbose
+        try:
+            # Part 1: Setup and validation
+            # ============================
+            # region setup and validation
+            # region verbose
+            # Check if verbose was put in the init
+            init_verbose = self.init_kwargs.pop("verbose", None)
+            # Set verbosity first with validation handled in config property setter
+            self.config.verbose = verbose if verbose is not None else init_verbose
 
-        # Print initialisation status
-        init_t0 = time.time()
-        logger.info("Initialising ACID")
-        # endregion verbose
-
-
-        # Intercept legacy kwargs and invalid inputs
-        # ------------------------------------------
-        # region input kwargs
-        # Add init_kwargs to kwargs, with kwargs overwriting
-        kwargs = {**self.init_kwargs, **kwargs}
-
-        # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
-        if "linelist_path" in kwargs:
-            legacy_linelist = kwargs.pop("linelist_path")
-            if linelist is None and kwargs.get("linelist") is None:
-                linelist = legacy_linelist
-            warnings.warn("'linelist_path' is a legacy argument for inputting a linelist, please use 'linelist' instead.", ACIDDeprecationWarning, stacklevel=3)
-        if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
-            raise ACIDInputError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
-                             "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
-
-        # Check for old n_sig input
-        if "n_sig" in kwargs:
-            legacy_n_sig = kwargs.pop("n_sig")
-            if sigma_lower is None and kwargs.get("sigma_lower") is None:
-                sigma_lower = legacy_n_sig
-            warnings.warn(f"'n_sig' is a legacy argument for inputting sigma_lower.\n" \
-            f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.",
-            ACIDDeprecationWarning, stacklevel=3)
-
-        # Check for old _all_frames input
-        if "_all_frames" in kwargs:
-            _all_frames = kwargs.pop("_all_frames")
-            warnings.warn("The '_all_frames' argument is a legacy argument and is now unused." \
-            "See 'DataList' in the documentation for running multiple orders.", ACIDDeprecationWarning, stacklevel=3)
-
-        # Check for telluric_lines old input
-        if "telluric_lines" in kwargs:
-            telluric_lines = kwargs.pop("telluric_lines")
-            warnings.warn("The 'telluric_lines' is a legacy argument and now forms part of the broader 'masking_lines' argument.\n" \
-            "See 'MaskingLines' in the documentation for more information.\n" \
-            "The telluric_lines will be ignored and default masking_lines will be used instead.", ACIDDeprecationWarning, stacklevel=3)
-
-        # Check data or config wasnt passed
-        if "data" in kwargs:
-            raise ACIDInputError("The 'data' kwarg should be passed in initialisation, please remove it from the ACID method call.")
-        if "config" in kwargs:
-            raise ACIDInputError("The 'config' kwarg is stored in Data.config.\n" \
-                                "Set Data.config to your desired config instance and pass it in Acid initialisation.")
-        # The remaining kwargs are either valid and passed in init, or invalid in either init or ACID kwargs
-        # endregion input kwargs
+            # Print initialisation status
+            init_t0 = time.time()
+            logger.info("Initialising ACID")
+            # endregion verbose
 
 
-        # Validating config inputs
-        # ------------------------
-        # region config validation
-        local_kwargs = locals().copy()
+            # Intercept legacy kwargs and invalid inputs
+            # ------------------------------------------
+            # region input kwargs
+            # Add init_kwargs to kwargs, with kwargs overwriting
+            kwargs = {**self.init_kwargs, **kwargs}
 
-        # Assign inputted configuration to config dictionary, preferring ACID inputs over init inputs
-        config_kwargs = {}
-        for name in Config.defaults:
-            if name in local_kwargs:
+            # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
+            if "linelist_path" in kwargs:
+                legacy_linelist = kwargs.pop("linelist_path")
+                if linelist is None and kwargs.get("linelist") is None:
+                    linelist = legacy_linelist
+                warnings.warn("'linelist_path' is a legacy argument for inputting a linelist, please use 'linelist' instead.", ACIDDeprecationWarning, stacklevel=3)
+            if "linelist_wl" in kwargs or "linelist_depths" in kwargs:
+                raise ACIDInputError("The 'linelist_wl' and 'linelist_depths' arguments are legacy linelist arguments, use 'linelist' instead.\n" \
+                                 "If your linelist wl and depths are two 1D arrays, you can use linelist=np.array([wl, depths]) for the correct format.")
+
+            # Check for old n_sig input
+            if "n_sig" in kwargs:
+                legacy_n_sig = kwargs.pop("n_sig")
+                if sigma_lower is None and kwargs.get("sigma_lower") is None:
+                    sigma_lower = legacy_n_sig
+                warnings.warn(f"'n_sig' is a legacy argument for inputting sigma_lower.\n" \
+                f"Please use 'sigma_lower' and 'sigma_upper' to configure the sigma range instead.",
+                ACIDDeprecationWarning, stacklevel=3)
+
+            # Check for old _all_frames input
+            if "_all_frames" in kwargs:
+                _all_frames = kwargs.pop("_all_frames")
+                warnings.warn("The '_all_frames' argument is a legacy argument and is now unused." \
+                "See 'DataList' in the documentation for running multiple orders.", ACIDDeprecationWarning, stacklevel=3)
+
+            # Check for telluric_lines old input
+            if "telluric_lines" in kwargs:
+                telluric_lines = kwargs.pop("telluric_lines")
+                warnings.warn("The 'telluric_lines' is a legacy argument and now forms part of the broader 'masking_lines' argument.\n" \
+                "See 'MaskingLines' in the documentation for more information.\n" \
+                "The telluric_lines will be ignored and default masking_lines will be used instead.", ACIDDeprecationWarning, stacklevel=3)
+
+            # Check data or config wasnt passed
+            if "data" in kwargs:
+                raise ACIDInputError("The 'data' kwarg should be passed in initialisation, please remove it from the ACID method call.")
+            if "config" in kwargs:
+                raise ACIDInputError("The 'config' kwarg is stored in Data.config.\n" \
+                                    "Set Data.config to your desired config instance and pass it in Acid initialisation.")
+            # The remaining kwargs are either valid and passed in init, or invalid in either init or ACID kwargs
+            # endregion input kwargs
+
+
+            # Validating config inputs
+            # ------------------------
+            # region config validation
+            local_kwargs = locals().copy()
+
+            # Assign inputted configuration to config dictionary, preferring ACID inputs over init inputs
+            config_kwargs = {}
+            for name in Config.defaults:
+                if name in local_kwargs:
+                    init_input = kwargs.pop(name, None)
+                    config_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
+
+            old_profile_groups = self.config.profile_groups
+
+            # Update config if any of the above config settings are new
+            self.config.update_hipri(**config_kwargs) # self.config overwrites config_kwargs if overlapping
+            if config_kwargs.get("profile_groups") is not None and (
+                old_profile_groups is None
+                or not np.array_equal(old_profile_groups, self.config.profile_groups)
+            ):
+                self.data.reset()
+
+            # Then also remove the valid data kwargs, preferring ACID inputs over init inputs
+            valid_data_kwargs = ["wavelengths", "flux", "errors", "sn", "velocities", "linelist"]
+            data_kwargs = {}
+            for name in valid_data_kwargs:
                 init_input = kwargs.pop(name, None)
-                config_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
+                data_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
+            # Then set to locals to be used downstream
+            wavelengths, flux, errors, sn, velocities, linelist = (data_kwargs[name] for name in valid_data_kwargs)
 
-        old_profile_groups = self.config.profile_groups
+            # Finally those that remain in kwargs are invalid and raise an error
+            if kwargs:
+                raise ACIDInputError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
+            self.init_kwargs = {}
 
-        # Update config if any of the above config settings are new
-        self.config.update_hipri(**config_kwargs) # self.config overwrites config_kwargs if overlapping
-        if config_kwargs.get("profile_groups") is not None and (
-            old_profile_groups is None
-            or not np.array_equal(old_profile_groups, self.config.profile_groups)
-        ):
-            self.data.reset()
+            if self.config.parallel and sys.platform == "win32":
+                warnings.warn("Parallel MCMC on Windows is not currently supported. Running MCMC serially.", ACIDInputWarning, stacklevel=3)
+                self.config.parallel = False
 
-        # Then also remove the valid data kwargs, preferring ACID inputs over init inputs
-        valid_data_kwargs = ["wavelengths", "flux", "errors", "sn", "velocities", "linelist"]
-        data_kwargs = {}
-        for name in valid_data_kwargs:
-            init_input = kwargs.pop(name, None)
-            data_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
-        # Then set to locals to be used downstream
-        wavelengths, flux, errors, sn, velocities, linelist = (data_kwargs[name] for name in valid_data_kwargs)
+            # TODO: Apply seed here (only if complete=False, or run_mcmc=False), maybe even save the generator state before mcmc
+            # endregion config validation
+            # endregion setup and validation
 
-        # Finally those that remain in kwargs are invalid and raise an error
-        if kwargs:
-            raise ACIDInputError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
-        self.init_kwargs = {}
+            # Part 2: Preprocessing
+            # ---------------------
+            # Setup and data validation done in data class and applies skips, also combines frames if multiple frames were input
+            # Sets the "input" and "combined" keys in the data instance for wavelengths, flux, errors, and sn
+            self.data.set_inputs(wavelengths, flux, errors, sn)
 
-        if self.config.parallel and sys.platform == "win32":
-            warnings.warn("Parallel MCMC on Windows is not currently supported. Running MCMC serially.", ACIDInputWarning, stacklevel=3)
-            self.config.parallel = False
+            # Let the respective properties in Data handle the validation and setting, this is set after set_inputs so velocities
+            # can be guessed from them if not input
+            self.data.linelist = linelist
+            # Here we guard against velocities being None to not set data.velocities, otherwise this setter warns if velocities are being changed.
+            if velocities is not None or self.data.velocities is None:
+                self.data.velocities = velocities
 
-        # TODO: Apply seed here (only if complete=False, or run_mcmc=False), maybe even save the generator state before mcmc
-        # endregion config validation
-        # endregion setup and validation
+            # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
+            self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
 
-        # Part 2: Preprocessing
-        # ---------------------
-        # Setup and data validation done in data class and applies skips, also combines frames if multiple frames were input
-        # Sets the "input" and "combined" keys in the data instance for wavelengths, flux, errors, and sn
-        self.data.set_inputs(wavelengths, flux, errors, sn)
+            # Prepare the "initial" keys, this is just the combined key, except the errors have masked out the masking lines.
+            # They are also used in the final step as these are the only regions masked in the final step
+            self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.errors["combined"])
+            self.data.wavelengths["initial"] = self.data.wavelengths["combined"]
+            self.data.flux["initial"] = self.data.flux["combined"]
+            self.data.sn["initial"] = self.data.sn["combined"]
 
-        # Let the respective properties in Data handle the validation and setting, this is set after set_inputs so velocities 
-        # can be guessed from them if not input
-        self.data.linelist = linelist
-        # Here we guard against velocities being None to not set data.velocities, otherwise this setter warns if velocities are being changed.
-        if velocities is not None or self.data.velocities is None:
-            self.data.velocities = velocities
-
-        # Get the line masking before initial fit to avoid ill-fitting lines biasing the continuum fit
-        self.data.line_mask = self.config.masking_lines.get_1d_mask_on_grid(self.data.wavelengths["combined"])
-
-        # Prepare the "initial" keys, this is just the combined key, except the errors have masked out the masking lines.
-        # They are also used in the final step as these are the only regions masked in the final step
-        self.data.errors["initial"] = np.where(self.data.line_mask, 1e12, self.data.errors["combined"])
-        self.data.wavelengths["initial"] = self.data.wavelengths["combined"]
-        self.data.flux["initial"] = self.data.flux["combined"]
-        self.data.sn["initial"] = self.data.sn["combined"]
-
-        # Check if the initial continuum fit and LSD run has been performed
-        if all((
-            # We only bother to check for one of these keys generated in the scipy_continuum_fit and LSD runs
-            "initial" in self.data.poly_coeffs,
-            "initial" in self.data.alpha,
-        )):
-            logger.debug("Initial fit and LSD run already exists, skipping this step.")
-        else:
-            logger.info("Performing initial fit and LSD")
-
-            # Uses all information stored in data, accessing and storing the data attributed with the key
-            self.scipy_continuum_fit(self.data, key="initial")
-            _lsd = LSD.runlsd_and_store(self.data, key="initial", return_cls=True)
-
-            # Save lsd dict if debugging mode
-            if self.config.verbose == 4:
-                self.data.debug["lsd_initial"] = _lsd.__dict__.copy()
-
-            _lsd = None # discard to save memory
-
-        # Masking based off residuals
-        if all((
-            # Again we only need to check if some of the keys have been made, not all of them
-            "masked" in self.data.wavelengths,
-            "mcmc" in self.data.c_factor,
-        )):
-            logger.debug("Residual masks already exists, skipping residual masking step.")
-        else:
-            logger.info("Performing residual masking")
-
-            # Use the initial LSD run to get the scaled residuals
-            residuals = self.data.residuals["initial"]
-            
-            # Masking pixel chunks based on deviation from residuals
-            # -----------------------------------------------
-            # Get bad pixels that deviate by a percentage greater than dev_perc on the full residuals
-            bad_idx = np.zeros_like(residuals, dtype=bool)
-            unmasked = ~self.data.line_mask
-            bad_idx[unmasked] = (np.abs(residuals[unmasked]) > (self.config.dev_perc / 100))
-
-            # A trick to get the mask for continuous regions of bad pixels, by padding the bad_idx 
-            # with False on both sides and finding the start and end indices of the True regions
-            padded = np.concatenate(([False], bad_idx, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends = np.flatnonzero(padded[:-1] & ~padded[1:])
-            pix_mask = np.zeros_like(residuals, dtype=bool)
-
-            # Then make pix_mask for regions that are greater than pix_chunk in length
-            for start, end in zip(starts, ends):
-                if (end - start) >= self.config.pix_chunk:
-                    pix_mask[start:end] = True
-            self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
-
-            # Sigma Clipping
-            # --------------
-            # Use astropy's iterative sigma clipping, only sigma clip residuals that are not already line masked
-            masked_residuals = residuals[~self.data.line_mask] # so that we can get the std on the masked residuals
-
-            # Use the iterative sigma clipping in astropy, returning a masked array of clipped residuals
-            result, lower_clip, upper_clip = sigma_clip(
-                masked_residuals,
-                sigma_lower=self.config.sigma_lower,
-                sigma_upper=self.config.sigma_upper,
-                return_bounds=True
-            )
-
-            # Put the sigma mask back onto the full pixel grid
-            sigma_mask = np.zeros_like(residuals, dtype=bool)
-            sigma_mask[unmasked] = np.ma.getmaskarray(result)
-
-            self.data.sigma_mask = sigma_mask
-
-            # Combine all masks
-            self.data.full_mask = pix_mask | sigma_mask | self.data.line_mask
-            
-            # Warn if more than 50% of spectrum is masked these ways
-            if np.sum(self.data.full_mask) > 0.5 * len(self.data.full_mask):
-                warnings.warn(
-                    "More than 50% of the spectrum is masked. \n" \
-                    "Please check your initial continuum fit and masking (e.g., by using verbose=3 when initialising). \n" \
-                    "If you are aware that you have bad/noisy spectra, then this can be ignored.",
-                    ACIDRuntimeWarning, stacklevel=3
-                )
-
-            # Apply a error mask onto just y for the continuum fit and LSD call, later we fully remove them with the full mask for fitting
-            self.data.errors["masked"]      = np.where(self.data.full_mask, 1e12, self.data.errors["combined"])
-            self.data.wavelengths["masked"] = self.data.wavelengths["combined"]
-            self.data.flux["masked"]        = self.data.flux["combined"]
-            self.data.sn["masked"]          = self.data.sn["combined"]
-
-            # We can also skip alpha recalculation as it is unchanged
-            self.data.alpha["masked"] = self.data.alpha["initial"]
-
-
-            # Second Continuum Fit and LSD run with new masked errors
-            # -------------------------------------------------------
-            # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
-            self.scipy_continuum_fit(self.data, key="masked")
-            lsd = LSD.runlsd_and_store(self.data, key="masked", return_cls=True)
-
-            # Save lsd dict if debugging mode
-            if self.config.verbose == 4:
-                self.data.debug["lsd_masked"] = lsd.__dict__.copy()
-
-
-            # Applying Residual Masks to the Data for Fitting
-            #------------------------------------------------
-            # First apply to the flattened alpha, and then bin the lsd class to save memory.
-            # The flatted alpha mechanic is important for multi-profile LSD, otherwise alpha_flat is the same as alpha
-            # Slicing alpha like this avoids a recalculation because we know which wavelengths are masked
-            self.data.alpha["mcmc"] = lsd.alpha_flat[~self.data.full_mask, :]
-
-            lsd = None # Discard to save memory once the alpha is sliced
-
-            # Apply to the rest of the data
-            self.data.wavelengths["mcmc"] = self.data.wavelengths["combined"][~self.data.full_mask]
-            self.data.flux["mcmc"]        = self.data.flux["combined"][~self.data.full_mask]
-            self.data.errors["mcmc"]      = self.data.errors["combined"][~self.data.full_mask]
-            self.data.sn["mcmc"]          = self.data.sn["combined"] # no change as its single valued per frame
-            # Normalisation occurs on the full grid, then select masked wavelengths
-            self.data.norm_wavelengths["mcmc"] = utils.normalize_wavelengths(self.data.wavelengths["combined"])[~self.data.full_mask]
-
-            # For the Cholesky factor, we need to recalculate them on the new wavelength grid, and convert to OD if needed
-            _, errors = utils.flux_to_od(self.data.flux["mcmc"], self.data.errors["mcmc"], od=self.config.od) # only need errors for c_factor
-            self.data.c_factor["mcmc"] = LSD.calc_cholesky(
-                self.data.alpha["mcmc"], errors, regularization=self.config.regularization,
-                scale_regularization=self.config.scale_regularization)
-
-            # Save extra variables for plotting in the Data class
-            if "masked" not in self.data.plotting_variables:
-                self.data.plotting_variables["masked"] = {}
-            self.data.plotting_variables["masked"]["residuals"]        = residuals
-            self.data.plotting_variables["masked"]["masked_residuals"] = masked_residuals
-            self.data.plotting_variables["masked"]["lower_clip"]       = lower_clip
-            self.data.plotting_variables["masked"]["upper_clip"]       = upper_clip
-            if self.config.verbose >= 3: # Plot now if verbose enough
-                self.data.plot_residual_masking()
-
-        # ACID Initialialised
-        # -------------------
-        self.data.setup_time += time.time() - init_t0
-        mcmc_t0 = time.time()
-        logger.info("Initialised in %.3f s", self.data.setup_time)
-        logger.debug(self.data.__repr__())
-
-        # Prepare and Run MCMC
-        # ----------------------
-        # Get the initial state from all of the above calculated data
-        self.data.initial_state = self.get_initial_state()
-
-        # Run MCMC if requested
-        if self.config.run_mcmc is True:
-            # Default run for just nsteps steps
-            if self.config.max_steps is None:
-                logger.info("Running MCMC for %d steps", self.config.nsteps)
-                self.run_mcmc(self.config.nsteps, self.data.initial_state)
-                if self.config.sampler_type == "emcee":
-                    self.data.nsteps = self.sampler.backend.iteration
-                else:
-                    self.data.nsteps = self.config.nsteps
-
-            # Else use max_steps path
+            # Check if the initial continuum fit and LSD run has been performed
+            if all((
+                # We only bother to check for one of these keys generated in the scipy_continuum_fit and LSD runs
+                "initial" in self.data.poly_coeffs,
+                "initial" in self.data.alpha,
+            )):
+                logger.debug("Initial fit and LSD run already exists, skipping this step.")
             else:
-                logger.info(
-                    "Running MCMC for at most %d steps or until convergence",
-                    self.config.max_steps,
+                logger.info("Performing initial fit and LSD")
+
+                # Uses all information stored in data, accessing and storing the data attributed with the key
+                self.scipy_continuum_fit(self.data, key="initial")
+                _lsd = LSD.runlsd_and_store(self.data, key="initial", return_cls=True)
+
+                # Save lsd dict if debugging mode
+                if self.config.verbose == 4:
+                    self.data.debug["lsd_initial"] = _lsd.__dict__.copy()
+
+                _lsd = None # discard to save memory
+
+            # Masking based off residuals
+            if all((
+                # Again we only need to check if some of the keys have been made, not all of them
+                "masked" in self.data.wavelengths,
+                "mcmc" in self.data.c_factor,
+            )):
+                logger.debug("Residual masks already exists, skipping residual masking step.")
+            else:
+                logger.info("Performing residual masking")
+
+                # Use the initial LSD run to get the scaled residuals
+                residuals = self.data.residuals["initial"]
+            
+                # Masking pixel chunks based on deviation from residuals
+                # -----------------------------------------------
+                # Get bad pixels that deviate by a percentage greater than dev_perc on the full residuals
+                bad_idx = np.zeros_like(residuals, dtype=bool)
+                unmasked = ~self.data.line_mask
+                bad_idx[unmasked] = (np.abs(residuals[unmasked]) > (self.config.dev_perc / 100))
+
+                # A trick to get the mask for continuous regions of bad pixels, by padding the bad_idx
+                # with False on both sides and finding the start and end indices of the True regions
+                padded = np.concatenate(([False], bad_idx, [False]))
+                starts = np.flatnonzero(~padded[:-1] & padded[1:])
+                ends = np.flatnonzero(padded[:-1] & ~padded[1:])
+                pix_mask = np.zeros_like(residuals, dtype=bool)
+
+                # Then make pix_mask for regions that are greater than pix_chunk in length
+                for start, end in zip(starts, ends):
+                    if (end - start) >= self.config.pix_chunk:
+                        pix_mask[start:end] = True
+                self.data.pix_mask = pix_mask # Save the pix_mask for later use in plotting and analysis
+
+                # Sigma Clipping
+                # --------------
+                # Use astropy's iterative sigma clipping, only sigma clip residuals that are not already line masked
+                masked_residuals = residuals[~self.data.line_mask] # so that we can get the std on the masked residuals
+
+                # Use the iterative sigma clipping in astropy, returning a masked array of clipped residuals
+                result, lower_clip, upper_clip = sigma_clip(
+                    masked_residuals,
+                    sigma_lower=self.config.sigma_lower,
+                    sigma_upper=self.config.sigma_upper,
+                    return_bounds=True
                 )
 
-                self.run_mcmc_until_converged(self.config.max_steps, state=self.data.initial_state)
-                self.data.nsteps = self.sampler.backend.iteration
+                # Put the sigma mask back onto the full pixel grid
+                sigma_mask = np.zeros_like(residuals, dtype=bool)
+                sigma_mask[unmasked] = np.ma.getmaskarray(result)
 
-            self.data.mcmc_time += time.time() - mcmc_t0
+                self.data.sigma_mask = sigma_mask
 
-            logger.info("MCMC finished after %.3f s", self.data.mcmc_time)
+                # Combine all masks
+                self.data.full_mask = pix_mask | sigma_mask | self.data.line_mask
+            
+                # Warn if more than 50% of spectrum is masked these ways
+                if np.sum(self.data.full_mask) > 0.5 * len(self.data.full_mask):
+                    warnings.warn(
+                        "More than 50% of the spectrum is masked. \n" \
+                        "Please check your initial continuum fit and masking (e.g., by using verbose=3 when initialising). \n" \
+                        "If you are aware that you have bad/noisy spectra, then this can be ignored.",
+                        ACIDRuntimeWarning, stacklevel=3
+                    )
 
-            return Result(self)
+                # Apply a error mask onto just y for the continuum fit and LSD call, later we fully remove them with the full mask for fitting
+                self.data.errors["masked"]      = np.where(self.data.full_mask, 1e12, self.data.errors["combined"])
+                self.data.wavelengths["masked"] = self.data.wavelengths["combined"]
+                self.data.flux["masked"]        = self.data.flux["combined"]
+                self.data.sn["masked"]          = self.data.sn["combined"]
 
-        else:
-            logger.info("MCMC was not run; returning None after updating the Acid instance")
-            return None
+                # We can also skip alpha recalculation as it is unchanged
+                self.data.alpha["masked"] = self.data.alpha["initial"]
+
+
+                # Second Continuum Fit and LSD run with new masked errors
+                # -------------------------------------------------------
+                # Now do another continuum fit with masked yerr, continuumfit removes high error points from the fit
+                self.scipy_continuum_fit(self.data, key="masked")
+                lsd = LSD.runlsd_and_store(self.data, key="masked", return_cls=True)
+
+                # Save lsd dict if debugging mode
+                if self.config.verbose == 4:
+                    self.data.debug["lsd_masked"] = lsd.__dict__.copy()
+
+
+                # Applying Residual Masks to the Data for Fitting
+                #------------------------------------------------
+                # First apply to the flattened alpha, and then bin the lsd class to save memory.
+                # The flatted alpha mechanic is important for multi-profile LSD, otherwise alpha_flat is the same as alpha
+                # Slicing alpha like this avoids a recalculation because we know which wavelengths are masked
+                self.data.alpha["mcmc"] = lsd.alpha_flat[~self.data.full_mask, :]
+
+                lsd = None # Discard to save memory once the alpha is sliced
+
+                # Apply to the rest of the data
+                self.data.wavelengths["mcmc"] = self.data.wavelengths["combined"][~self.data.full_mask]
+                self.data.flux["mcmc"]        = self.data.flux["combined"][~self.data.full_mask]
+                self.data.errors["mcmc"]      = self.data.errors["combined"][~self.data.full_mask]
+                self.data.sn["mcmc"]          = self.data.sn["combined"] # no change as its single valued per frame
+                # Normalisation occurs on the full grid, then select masked wavelengths
+                self.data.norm_wavelengths["mcmc"] = utils.normalize_wavelengths(self.data.wavelengths["combined"])[~self.data.full_mask]
+
+                # For the Cholesky factor, we need to recalculate them on the new wavelength grid, and convert to OD if needed
+                _, errors = utils.flux_to_od(self.data.flux["mcmc"], self.data.errors["mcmc"], od=self.config.od) # only need errors for c_factor
+                self.data.c_factor["mcmc"] = LSD.calc_cholesky(
+                    self.data.alpha["mcmc"], errors, regularization=self.config.regularization,
+                    scale_regularization=self.config.scale_regularization)
+
+                # Save extra variables for plotting in the Data class
+                if "masked" not in self.data.plotting_variables:
+                    self.data.plotting_variables["masked"] = {}
+                self.data.plotting_variables["masked"]["residuals"]        = residuals
+                self.data.plotting_variables["masked"]["masked_residuals"] = masked_residuals
+                self.data.plotting_variables["masked"]["lower_clip"]       = lower_clip
+                self.data.plotting_variables["masked"]["upper_clip"]       = upper_clip
+                if self.config.verbose >= 3: # Plot now if verbose enough
+                    self.data.plot_residual_masking()
+
+            # ACID Initialialised
+            # -------------------
+            self.data.setup_time += time.time() - init_t0
+            mcmc_t0 = time.time()
+            logger.info("Initialised in %.3f s", self.data.setup_time)
+            logger.debug(self.data.__repr__())
+
+            # Prepare and Run MCMC
+            # ----------------------
+            # Get the initial state from all of the above calculated data
+            self.data.initial_state = self.get_initial_state()
+
+            # Run MCMC if requested
+            if self.config.run_mcmc is True:
+                # Default run for just nsteps steps
+                if self.config.max_steps is None:
+                    logger.info("Running MCMC for %d steps", self.config.nsteps)
+                    self.run_mcmc(self.config.nsteps, self.data.initial_state)
+                    if self.config.sampler_type == "emcee":
+                        self.data.nsteps = self.sampler.backend.iteration
+                    else:
+                        self.data.nsteps = self.config.nsteps
+
+                # Else use max_steps path
+                else:
+                    logger.info(
+                        "Running MCMC for at most %d steps or until convergence",
+                        self.config.max_steps,
+                    )
+
+                    self.run_mcmc_until_converged(self.config.max_steps, state=self.data.initial_state)
+                    self.data.nsteps = self.sampler.backend.iteration
+
+                self.data.mcmc_time += time.time() - mcmc_t0
+
+                logger.info("MCMC finished after %.3f s", self.data.mcmc_time)
+
+                return Result(self)
+
+            else:
+                logger.info("MCMC was not run; returning None after updating the Acid instance")
+                return None
+
+        except ACIDError as error:
+            # Save the error to the data instance for later inspection
+            self.data.exception = error
+            self.data.traceback = traceback.format_exc()
+            raise
 
     def ACID_HARPS(self, *args, **kwargs):
         """

@@ -542,17 +542,18 @@ class DataList:
                 exception_raised = True
             # If no known exception arose, include the last 3 calls in the warning for debugging and skip the order.
             except Exception as e:
-                warnings.warn(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n{tb.format_exc(limit=-3)}", ACIDRuntimeWarning, stacklevel=2)
+                warnings.warn(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n{tb.format_exc(limit=-3)}",
+                              ACIDRuntimeWarning, stacklevel=2)
                 exception_raised = True
                 data.exception = str(e)
+                data.traceback = tb.format_exc(limit=-3)
             
             if exception_raised:
                 try:
-                    data.traceback = tb.format_stack() # include the new exception in the data instance for future reference
                     data.save() # save the data instance with the exception for future reference
                 except:
                     warnings.warn(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
-                          f"This is likely due to a corrupted Data instance.", ACIDRuntimeWarning, stacklevel=2)
+                          f"This is possibly due to a corrupted Data instance.", ACIDRuntimeWarning, stacklevel=2)
 
         # Once all the orders have been done, we can repack the all the data instances (if asked) into one to speedup loading time
         # The data instances are very light as they do not store the sampler, so we can usually afford to pack and store duplicates
