@@ -5,14 +5,18 @@ from .config import Config
 from .data import Data
 from .line_list import LineList
 from emcee.backends import HDFBackend
-import os, pickle
+import os, pickle, warnings
 import traceback as tb
 import numpy as np
 import matplotlib.pyplot as plt
 from ..diagnostics.errors import *
+from ..diagnostics.warnings import *
+from ..diagnostics.logging import get_logger
 from .. import utils
 from tqdm import tqdm
 import matplotlib as mpl
+
+logger = get_logger(__name__)
 
 @beartype
 class DataList:
@@ -157,16 +161,16 @@ class DataList:
         else:
             order_range = np.asarray(order_range, dtype=np.int32)
             if not np.all(np.isfinite(order_range)):
-                raise ValueError("order_range must only contain finite values.")
+                raise ACIDInputError("order_range must only contain finite values.")
             if len(order_range) != len(wavelengths):
-                raise ValueError("The length of the order_range must match the number of frames in the input data.")
+                raise ACIDInputError("The length of the order_range must match the number of frames in the input data.")
             order_range = np.round(order_range).astype(np.int32)
         self.order_range = order_range
         
         # Convert config to dict(s) to be reinitialized in each Data instance
         if isinstance(config, list):
             if len(config) != len(order_range):
-                raise ValueError("If inputting a list of Config objects, the length of the list must match the length of the order_range and input arrays.\n" \
+                raise ACIDInputError("If inputting a list of Config objects, the length of the list must match the length of the order_range and input arrays.\n" \
                 f"len(order_range): {len(order_range)}, len(wavelengths): {len(wavelengths)}, len(config): {len(config)}.")
             config_dict = [cfg.to_dict() for cfg in config]
         else:
@@ -208,11 +212,9 @@ class DataList:
                 # Check if file already exists
                 if os.path.exists(data.config.save_path):
                     if self.overwrite:
-                        if self.verbose >= 2:
-                            print(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
+                        logger.info(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
                     else:
-                        if self.verbose >= 1:
-                            print(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
+                        logger.info(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
                         data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
                         self._update_paths_for_data(data, self.save_dir)
                 else:
@@ -255,9 +257,10 @@ class DataList:
         # generate the mapping of order to index in the list. The Load class will configure the correct order range based
         # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
         order_range = data_list[0].config.order_range
-        if len(data_list) > 1 and verbose >= 1:
+        # TODO: Depracate order_range in config/data, only order stored in config and order_range only used here in datalist
+        if len(data_list) > 1:
             if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
-                print("Warning: Not all Data instances have the same order_range. Taking the longest order range.")
+                warnings.warn("Not all Data instances have the same order_range. Taking the longest order range.", ACIDInputWarning, stacklevel=2)
 
         # Take the order range with the greatest length
         max_order_range_idx = np.argmax([len(data.config.order_range) for data in data_list])
@@ -270,7 +273,7 @@ class DataList:
         v0 = data_list[0].velocities
         for data in data_list:
             if not np.array_equal(data.velocities, v0):
-                raise ValueError("All Data instances must have the same velocity grid.")
+                raise ACIDInputError("All Data instances must have the same velocity grid.")
         velocities = v0
 
         return cls(
@@ -341,14 +344,14 @@ class DataList:
             data.config.order = force_order
         order = data.config.order
         if order is None:
-            raise ValueError("DataList requires an explicit order for each Data instance. "
+            raise ACIDInputError("DataList requires an explicit order for each Data instance. "
                              "Set data.config.order or pass force_order when appending.")
         if order in self.orders and overwrite is False:
-            raise ValueError(f"A Data instance with order {order} already exists in the list. " \
+            raise ACIDInputError(f"A Data instance with order {order} already exists in the list. " \
             "If you want to overwrite it, set overwrite=True in the append method.")
         if order not in self.order_range:
             if not extend:
-                raise ValueError(f"The order of the appended data class does not match the rest of the list. \n" \
+                raise ACIDInputError(f"The order of the appended data class does not match the rest of the list. \n" \
                                  f"If you want to extend the order_range to append the new order, set extend=True.")
             else:
                 self.order_range = np.append(self.order_range, order).astype(np.int32)
@@ -362,7 +365,7 @@ class DataList:
 
     def set_order_range(self, order_range:Array1D) -> None:
         """Sets the order range for the DataList. The new range must be a superset of the already saved orders in the list, 
-        otherwise a ValueError is raised.
+        otherwise an ACIDInputError is raised.
         
         Parameters
         ----------
@@ -370,7 +373,7 @@ class DataList:
             The new order range to set for the DataList. This should be a 1D array of order numbers. 
         """
         if np.any([o not in order_range for o in self.orders]):
-            raise ValueError("The already saved orders must be a subset of the inputted order_range.")
+            raise ACIDInputError("The already saved orders must be a subset of the inputted order_range.")
         self.order_range = np.array(order_range, dtype=np.int32)
         self.sort_by_order() # re-sorts the list and updates the o2i mapping, and injects the new order_range into each config
 
@@ -379,7 +382,7 @@ class DataList:
         Sorts the data list by order number, and updates the o2i mapping accordingly. Internally called whenever self.data_list is updated.
         """
         if any(data.config.order is None for data in self.data_list):
-            raise ValueError("DataList requires an explicit order for each Data instance. "
+            raise ACIDInputError("DataList requires an explicit order for each Data instance. "
                              "Set data.config.order or load it from an order_<integer> directory.")
         self.data_list.sort(key=lambda data: data.config.order)
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
@@ -389,7 +392,7 @@ class DataList:
             data.config.order_range = self.order_range # inject the order range into each config for internal awareness
 
         if len(np.unique(self.orders)) != len(self.orders):
-            raise ValueError("All Data instances within the inputted list must have unique order numbers.")
+            raise ACIDInputError("All Data instances within the inputted list must have unique order numbers.")
 
     def run_ACID(
         self,
@@ -453,9 +456,9 @@ class DataList:
         # Validate worker and nworkers inputs for splitting orders across workers, and set defaults if not provided for easier logic below.
         if worker is not None or nworkers is not None:
             if worker is None or nworkers is None:
-                raise ValueError("Both worker and nworkers must be provided together to use the worker splitting functionality.")
+                raise ACIDInputError("Both worker and nworkers must be provided together to use the worker splitting functionality.")
             if worker < 0 or worker >= nworkers:
-                raise ValueError(f"worker must be between 0 and nworkers-1. Got: worker={worker}, nworkers={nworkers}")
+                raise ACIDInputError(f"worker must be between 0 and nworkers-1. Got: worker={worker}, nworkers={nworkers}")
         else:
             nworkers = 1 # if no worker splitting, just set nworkers to 1 for the logic below to work
 
@@ -467,22 +470,22 @@ class DataList:
             if orders.lower() == "all":
                 orders = self.orders
             else:
-                raise ValueError(f"If orders is a string, it must be 'all' to run ACID on all orders. Got: {orders!r}")
+                raise ACIDInputError(f"If orders is a string, it must be 'all' to run ACID on all orders. Got: {orders!r}")
         elif orders is None:
             orders = self.orders
         elif isinstance(orders, (list, np.ndarray)):
             if not all(isinstance(o, (int, np.integer)) for o in orders):
-                raise ValueError(f"If orders is a list, all elements must be integers. Got: {orders!r}")
+                raise ACIDInputError(f"If orders is a list, all elements must be integers. Got: {orders!r}")
             if use_index_mapping:
                 if not all(o in self.orders for o in orders):
-                    raise ValueError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+                    raise ACIDInputError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
             else:
                 if not all(o in self.i2o for o in orders):
-                    raise ValueError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
+                    raise ACIDInputError(f"All orders in the input list must be in the DataList. Got: {orders!r}, but available orders are: {self.orders!r}")
                 orders = [self.i2o[o] for o in orders] # converts from order to index if use_index_mapping is False, otherwise assumes orders are indexed directly
             orders = np.array(orders, dtype=np.int32)
         else:
-            raise ValueError(f"orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
+            raise ACIDInputError(f"orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
 
         # Now we split the orders across workers and select the orders for this worker
         if nworkers > 1:
@@ -501,14 +504,12 @@ class DataList:
             if (overwrite is False and data.config.save_path is not None
                     and os.path.exists(data.config.save_path)):
                 if data.complete:
-                    if self.verbose >= 2:
-                        print(f"An ACID completed result for order {order} already exists. \n"
-                                f"Skipping this order. To overwrite existing results, set overwrite=True.")
+                    logger.info(f"An ACID completed result for order {order} already exists. \n"
+                            f"Skipping this order. To overwrite existing results, set overwrite=True.")
                     continue
                 elif data.exception is not None:
-                    if self.verbose >= 2:
-                        print(f"An ACID run for order {order} previously encountered an exception. \n"
-                                f"Skipping this order. To retry and overwrite existing results, set overwrite=True.")
+                    logger.info(f"An ACID run for order {order} previously encountered an exception. \n"
+                            f"Skipping this order. To retry and overwrite existing results, set overwrite=True.")
                     continue
 
             # Handling if any kwargs were input
@@ -527,22 +528,21 @@ class DataList:
             exception_raised = False
             try:
                 _result = Acid(data=data).ACID() # All params are stored in Data and Config (in Data)
-            except LineListRangeError:
-                print(f"{failed_msg} line list range error. Your linelist is likely out of "\
-                      f"range of the wavelengths. Skipping this order.", flush=True)
+            except ACIDLineListRangeError:
+                warnings.warn(f"{failed_msg} line list range error. Your linelist is likely out of "\
+                      f"range of the wavelengths. Skipping this order.", ACIDRuntimeWarning, stacklevel=2)
                 exception_raised = True
-            except ContinuumError:
-                print(f"{failed_msg} continuum fitting error. The fitted continuum likely "\
-                      f"had negative values. Skipping this order.", flush=True)
+            except ACIDContinuumFitError:
+                warnings.warn(f"{failed_msg} continuum fitting error. The fitted continuum likely "\
+                      f"had negative values. Skipping this order.", ACIDRuntimeWarning, stacklevel=2)
                 exception_raised = True
-            except SNCutError:
-                print(f"{failed_msg} S/N cut error. The S/N of the spectrum is likely too "\
-                      f"low, and no lines survived the cut. Skipping this order.", flush=True)
+            except ACIDSNCutError:
+                warnings.warn(f"{failed_msg} S/N cut error. The S/N of the spectrum is likely too "\
+                      f"low, and no lines survived the cut. Skipping this order.", ACIDRuntimeWarning, stacklevel=2)
                 exception_raised = True
-            # If no known exception arose, just print the last 3 calls in traceback for debugging and skip the order.
+            # If no known exception arose, include the last 3 calls in the warning for debugging and skip the order.
             except Exception as e:
-                print(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n", flush=True)
-                tb.print_exc(limit=-3)
+                warnings.warn(f"{failed_msg} unknown error, see traceback. Skipping this order. Traceback:\n{tb.format_exc(limit=-3)}", ACIDRuntimeWarning, stacklevel=2)
                 exception_raised = True
                 data.exception = str(e)
             
@@ -551,8 +551,8 @@ class DataList:
                     data.traceback = tb.format_stack() # include the new exception in the data instance for future reference
                     data.save() # save the data instance with the exception for future reference
                 except:
-                    print(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
-                          f"This is likely due to a corrupted Data instance.", flush=True)
+                    warnings.warn(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
+                          f"This is likely due to a corrupted Data instance.", ACIDRuntimeWarning, stacklevel=2)
 
         # Once all the orders have been done, we can repack the all the data instances (if asked) into one to speedup loading time
         # The data instances are very light as they do not store the sampler, so we can usually afford to pack and store duplicates
@@ -566,7 +566,7 @@ class DataList:
         Or just wherever the Config has them stored.
         The pickle file contains a dictionary with the list of Data objects (converted to dictionaries) and the save_dir.
         The filename is always "datalist.pkl", as save_dir must be a directory.
-        If save_dir is not provided, self.save_dir is used. If that is also None, a ValueError is raised.
+        If save_dir is not provided, self.save_dir is used. If that is also None, an ACIDInputError is raised.
         All the orders should be in the memory to run this function, you can ensure they are all loaded with the load() method 
         and pointing to the directory with all the data pickles.
 
@@ -579,7 +579,7 @@ class DataList:
             save_dir = utils.ensure_directory(save_dir)
             self.save_dir = save_dir
         if self.save_dir is None:
-            raise ValueError("No save directory provided and save_dir was not set.")
+            raise ACIDInputError("No save directory provided and save_dir was not set.")
         save_loc = os.path.join(self.save_dir, "datalist.pkl")
         d = {
             "verbose": self.verbose,
@@ -623,11 +623,11 @@ class DataList:
         path = abspath(path)
         if path.endswith("datalist.pkl"):
             if not exists(path):
-                raise ValueError(f"No pickle file found at {path} to load the DataList from.")
+                raise ACIDInputError(f"No pickle file found at {path} to load the DataList from.")
             else:
                 path = os.path.dirname(path)
         elif not isdir(path):
-            raise ValueError(f"The provided path {path} is not a directory, or a datalist pickle file.\n"
+            raise ACIDInputError(f"The provided path {path} is not a directory, or a datalist pickle file.\n"
                              f"You should provide a path to a directory containing the folders with the data pickles and sampler files.")
 
         d = {}
@@ -679,8 +679,9 @@ class DataList:
                     folder_moved_flag |= cls._update_paths_for_data(data, path, source_path=save_path)
                     data_list.append(data)
 
-        if folder_moved_flag and verbose is not None and verbose >= 1:
-            print(f"Warning: At least one of the Data instances found in the directory does not match the current location, it has been updated.")
+        if folder_moved_flag:
+            warnings.warn(f"At least one of the Data instances found in the directory does not match the current location, it has been updated.",
+                          ACIDStateWarning, stacklevel=2)
 
         obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
         if folder_moved_flag and "data_list" in d:
@@ -696,8 +697,7 @@ class DataList:
         if dir is not None:
             dir = utils.ensure_directory(dir, "DataList save directory")
         elif self._save_dir is None:
-            if self.verbose >= 1:
-                print("Warning: save_dir is set to None. No results will be saved. This is not recommended.")
+            warnings.warn("save_dir is set to None. No results will be saved. This is not recommended.", ACIDStateWarning, stacklevel=2)
         self._save_dir = dir
         return
 
@@ -714,7 +714,7 @@ class DataList:
             try:
                 self.combine_profiles()
             except Exception as e:
-                raise ValueError(f"An attempt was made to combine profiles, as they did not already exist, but there was an exception:\n{e}")
+                raise ACIDResultError(f"An attempt was made to combine profiles, as they did not already exist, but there was an exception:\n{e}")
         return self._combined_profile
 
     @property
@@ -732,9 +732,8 @@ class DataList:
             list[Result|None]: A list of Result objects or None for each order in the DataList.
         """
         if self._results is None:
-            if self.verbose >= 1:
-                print("Accessing results, the output below comes from initialising the Result object" \
-                " and will only be shown once for this DataList instance.")
+            logger.info("Accessing results, the output below comes from initialising the Result object" \
+            " and will only be shown once for this DataList instance.")
             self._results = [data.result for data in self.data_list]
 
         return self._results
@@ -746,9 +745,9 @@ class DataList:
         Also sorts the list by order and updates the order to index mapping.
         """
         if not isinstance(data_list, list):
-            raise ValueError("data_list must be a list of Data instances.")
+            raise ACIDInputError("data_list must be a list of Data instances.")
         if not all(isinstance(data, Data) for data in data_list):
-            raise ValueError("All elements in data_list must be instances of the Data class.")
+            raise ACIDInputError("All elements in data_list must be instances of the Data class.")
         self._data_list = data_list
         self.sort_by_order() # ensures that the list is sorted and the order to index mapping is updated when setting a new list
 
@@ -772,7 +771,7 @@ class DataList:
             exclude = []
 
         if not all(o in self.orders for o in exclude):
-            raise ValueError(f"All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
+            raise ACIDInputError(f"All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
 
         profiles = []
         errors = []
@@ -972,7 +971,7 @@ class DataList:
                     chi2 = np.sum(((flux-model)/err) ** 2)
                     chi2_values.append(chi2)
                 except Exception as e:
-                    print(f"Warning: Could not calculate chi-squared for order {data.config.order}. :\n{e}")
+                    warnings.warn(f"Could not calculate chi-squared for order {data.config.order}. :\n{e}", ACIDRuntimeWarning, stacklevel=2)
                     chi2_values.append(np.nan)
         
         ax.plot(orders, chi2_values, marker='o', linestyle='-', color='blue')
@@ -1008,7 +1007,7 @@ class DataList:
         # data.config.order now includes either a previously set order, or an inferred order from path
         order = data.config.order
         if order is None:
-            raise ValueError(f"Cannot determine the Data order from its saved path or from the saved config.order.\n"
+            raise ACIDInputError(f"Cannot determine the Data order from its saved path or from the saved config.order.\n"
                              f"Current save path: {data.config.save_path}\n"
                              f"Current config order: {data.config.order}\n"
                              "Set data.config.order before saving or loading a DataList.")
