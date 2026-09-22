@@ -5,13 +5,16 @@ from beartype import beartype
 from .. import utils
 from beartype.typing import Any
 from ..utils import IntLike, Scalar
-from ..diagnostics.logging import set_log_level_from_verbosity
+from ..diagnostics.logging import set_log_level_from_verbosity, get_logger
+from ..diagnostics.errors import ACIDInputError
 from .masking_lines import MaskingLines
 import matplotlib.pyplot as plt
 try:
     import dynesty # type: ignore
 except ImportError:
     dynesty = None
+
+logger = get_logger(__name__)
 
 @beartype
 class Config:
@@ -140,7 +143,7 @@ class Config:
             env_config = json.loads(raw)
 
             if not isinstance(env_config, dict):
-                raise ValueError("_ACID_CONFIG must decode to a dictionary")
+                raise ACIDInputError("_ACID_CONFIG must decode to a dictionary")
 
             if name in env_config:
                 return env_config[name]
@@ -149,7 +152,7 @@ class Config:
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in self.data_attributes:
-            raise AttributeError(self.data_attributes_input_str.format(name, name, value))
+            raise ACIDInputError(self.data_attributes_input_str.format(name, name, value))
 
         if value is None:
             # If value is None, do not set the attribute
@@ -159,7 +162,7 @@ class Config:
             super().__setattr__(name, value)
             return
 
-        raise AttributeError(
+        raise ACIDInputError(
             f"'Config' object has no attribute '{name}', "
             f"valid attributes are: {list(self.defaults.keys())}"
         )
@@ -183,16 +186,16 @@ class Config:
         
         Raises
         ------
-        KeyError
+        ACIDInputError
             If any key in `kwargs` is not a valid configuration option as defined in the `defaults` class variable.
         """
         for k, v in kwargs.items():
             # First raise error if Data attribute was input
             if k in self.data_attributes:
-                raise AttributeError(self.data_attributes_input_str.format(k, k, v))
+                raise ACIDInputError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
             if k not in self.defaults and k not in self._properties:
-                raise KeyError(f"Key '{k}' is not a valid configuration option.")
+                raise ACIDInputError(f"Key '{k}' is not a valid configuration option.")
             if v is None:
                 if force: # If forced, super set the attribute
                     stored_name = "_" + k if k in self.properties else k
@@ -212,16 +215,16 @@ class Config:
 
         Raises
         ------
-        KeyError
+        ACIDInputError
             If any key in `kwargs` is not a valid configuration option as defined in the `defaults` class variable.
         """
         for k, v in kwargs.items():
             # First raise error if Data attribute was input
             if k in self.data_attributes:
-                raise AttributeError(self.data_attributes_input_str.format(k, k, v))
+                raise ACIDInputError(self.data_attributes_input_str.format(k, k, v))
             # Then raise error if trying to set an attribute that is not in defaults
             if k not in self.defaults:
-                raise KeyError(f"Key '{k}' is not a valid configuration option.")
+                raise ACIDInputError(f"Key '{k}' is not a valid configuration option.")
 
             if v is None:
                 continue
@@ -259,7 +262,7 @@ class Config:
     @regularization.setter
     def regularization(self, value:Scalar) -> None:
         if not np.isfinite(value) or value < 0:
-            raise ValueError("regularization must be finite and non-negative.")
+            raise ACIDInputError("regularization must be finite and non-negative.")
         self._regularization = float(value)
 
     @property
@@ -302,7 +305,7 @@ class Config:
             return
 
         if not save_path.endswith(".pkl"):
-            raise ValueError("'save_path' must end with '.pkl'.")
+            raise ACIDInputError("'save_path' must end with '.pkl'.")
         save_path = os.path.abspath(save_path)
         utils.ensure_directory(os.path.dirname(save_path), "data directory")
         self._save_path = save_path
@@ -331,7 +334,7 @@ class Config:
             return
 
         if not sampler_path.endswith(".h5"):
-            raise ValueError("'sampler_path' must end with '.h5'.")
+            raise ACIDInputError("'sampler_path' must end with '.h5'.")
         sampler_path = os.path.abspath(sampler_path)
         utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
 
@@ -388,7 +391,7 @@ class Config:
             value = 0
         elif isinstance(value, (int, np.integer)):
             if value < 0 or value > 4:
-                raise ValueError("verbose must be an integer between 0 and 4")
+                raise ACIDInputError("verbose must be an integer between 0 and 4")
         elif isinstance(value, str):
             value = value.lower()
             if value in ["none", "no", "false", "off", "n", "0"]:
@@ -402,9 +405,9 @@ class Config:
             elif value in ["debug", "dbg", "d", "4"]:
                 value = 4
             else:
-                raise ValueError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high', 'debug' or their common variants")
+                raise ACIDInputError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high', 'debug' or their common variants")
         else:
-            raise ValueError("verbose must be an integer between 0 and 4, a boolean, or a string indicating the verbosity level")
+            raise ACIDInputError("verbose must be an integer between 0 and 4, a boolean, or a string indicating the verbosity level")
 
         self._verbose = value
         # Preserve the textual-output behavior of the legacy verbosity API.
@@ -430,16 +433,16 @@ class Config:
         # We validate on access (after deterministic_profile and max_steps are set)
         if stored_sampler_type == "dynesty":
             if not self.deterministic_profile:
-                raise ValueError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise you'll be waiting days for a single result)")
+                raise ACIDInputError("The 'dynesty' sampler can only be run with deterministic_profile=True (otherwise you'll be waiting days for a single result)")
             if self.max_steps is not None:
-                raise ValueError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive. See the dynesty docs for more details.")
+                raise ACIDInputError("Cannot use max_steps as dynesty already natively supports this with live points, set nsteps=nlive. See the dynesty docs for more details.")
 
         return stored_sampler_type
 
     @sampler_type.setter
     def sampler_type(self, sampler_type:str) -> None:
         if sampler_type not in ["emcee", "dynesty"]:
-            raise ValueError("Invalid 'sampler_type' input, must be one of ['emcee', 'dynesty'].")
+            raise ACIDInputError("Invalid 'sampler_type' input, must be one of ['emcee', 'dynesty'].")
         if sampler_type == "dynesty":
             if dynesty is None:
                 raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")
@@ -462,7 +465,7 @@ class Config:
     @continuum_method.setter
     def continuum_method(self, continuum_method:str) -> None:
         if continuum_method not in ["polyval", "chebval"]:
-            raise ValueError("Invalid 'continuum_method' input, must be one of ['polyval', 'chebval'].")
+            raise ACIDInputError("Invalid 'continuum_method' input, must be one of ['polyval', 'chebval'].")
 
         self._continuum_method = continuum_method
     
@@ -499,8 +502,21 @@ class Config:
         utils.show_or_save(plt, self.figure_dir, "masking_lines.png")
 
     @classmethod
-    def print_defaults(cls) -> None:
-        """Print the default configuration settings for ACID."""
-        print("Default configuration:")
+    def print_defaults(cls, use_logger:bool=True) -> None:
+        """Print the default configuration settings for ACID.
+
+        Parameters
+        ----------
+        use_logger : bool, optional
+            Whether to use the logger for output, else uses print(), by default True.
+        """
+        # Determine output function
+        if use_logger:
+            out = logger.info
+        else:
+            out = print
+
+        # Print defaults
+        out("Default configuration:")
         for k, v in cls.defaults.items():
-            print(f"{k}: {v}")
+            out(f"{k}: {v}")

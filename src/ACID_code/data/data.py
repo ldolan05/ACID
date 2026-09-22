@@ -9,10 +9,12 @@ from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import pickle, os, copy, re
+import pickle, os, copy, re, warnings
 import numpy as np
 from .. import utils
 from ..diagnostics.errors import *
+from ..diagnostics.warnings import *
+from ..diagnostics.logging import get_logger
 from ..utils import IntLike, Array1D, Array2D, Scalar
 from .config import Config
 from .line_list import LineList
@@ -23,6 +25,8 @@ try:
 except ImportError:
     Sampler = None
 
+
+logger = get_logger(__name__)
 
 @beartype
 @dataclass(slots=True)
@@ -225,14 +229,13 @@ class Data:
             if os.path.exists(sampler):
                 self._sampler = utils.backend_to_sampler(HDFBackend(sampler), log_prob_fn)
             else:
-                if self.config.verbose >= 1:
-                    print(f"Warning: The sampler was not found at the provided path '{sampler}', it may have been moved or deleted. \n"
-                          f"The sampler will be set to None.", flush=True)
+                warnings.warn(f"The sampler was not found at the provided path '{sampler}', it may have been moved or deleted. \n"
+                      f"The sampler will be set to None.", ACIDStateWarning, stacklevel=2)
                 self._sampler = None
                 # TODO: Allow sampler to have completed results, but no sampler, and configured methods with _requiresampler property that need them
         elif sampler is None:
-            if self.config.verbose >= 1 and self._sampler is not None:
-                print("Warning, you have discarded the sampler.")
+            if self._sampler is not None:
+                warnings.warn("You have discarded the sampler.", ACIDStateWarning, stacklevel=2)
             self._sampler = None
         
         if isinstance(self._sampler, EnsembleSampler) and isinstance(self._sampler.backend, HDFBackend):
@@ -252,12 +255,12 @@ class Data:
             # First validate the input array
             velocities = np.array(value)
             if not np.all(np.isfinite(velocities)):
-                raise ValueError("The velocity grid you are trying to set must all be finite and not contain NaNs")
+                raise ACIDInputError("The velocity grid you are trying to set must all be finite and not contain NaNs")
             if len(velocities) <= 1:
-                raise ValueError("The velocity grid you are trying to set must have more than 1 value to be valid.")
+                raise ACIDInputError("The velocity grid you are trying to set must have more than 1 value to be valid.")
             v_diff = np.diff(velocities)
             if not np.all(np.allclose(v_diff, v_diff[0])):
-                raise ValueError("The velocity grid you are trying to set must be evenly spaced.")
+                raise ACIDInputError("The velocity grid you are trying to set must be evenly spaced.")
 
             # Set overwriting flag if velocities already exists and are different from new input
             overwriting = False
@@ -272,26 +275,28 @@ class Data:
 
             # Reset and warn if overwriting
             if overwriting:
-                print("Warning: Overwriting existing velocities in Data. The Data instance will be reset to clear calculations that depend on the velocities.\n" \
-                "The linelist, config, and original data inputs will not be reset.")
+                warnings.warn("Overwriting existing velocities in Data. The Data instance will be reset to clear calculations that depend on the velocities.\n" \
+                "The linelist, config, and original data inputs will not be reset.", ACIDStateWarning, stacklevel=2)
                 self.reset()
 
         elif self._velocities is None:
             # If velocities is being set to None and self._velocities is None, that's because it was either not input or the user wants a default velocity grid
             if "combined" not in self.wavelengths:
-                raise ValueError("Trying to set velocities (as None) but the wavelengths have not been set.\n" \
-                                 "Please set your own velocity grid (highly recommend).\n"\
-                                 "Otherwise, set the inputs with Data.set_inputs() to guess a -25 to 25 km/s grid based on those wavelengths.")
-            if self.config.verbose >= 1:
-                print("Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
-                "It is highly recommended to input your own velocity grid, especially if you need a different sampling or velocity range.")
+                raise ACIDStateError(
+                    "Trying to set velocities (as None) but the wavelengths have not been set.\n" \
+                    "Please set your own velocity grid (highly recommend).\n"\
+                    "Otherwise, set the inputs with Data.set_inputs() to guess a -25 to 25 km/s grid based on those wavelengths.")
+            warnings.warn(
+                "Velocity grid not input, using a grid calculated from input wavelengths with default range of -25 to 25 km/s.\n " \
+                "It is highly recommended to input your own velocity grid, especially if you need a different sampling or velocity range.",
+                ACIDInputWarning, stacklevel=2)
             deltav = utils.calc_deltav(self.wavelengths["combined"])
             self._velocities = np.arange(-25, 25 + deltav, deltav) # default velocity grid from -25 to 25 km/s with spacing calculated from input wavelengths
 
         else:
             # If the user is trying to set velocities to None, but they already exist, we don't want to reset them to None
-            if self.config.verbose >= 1:
-                print("Warning: You are trying to set the velocity grid to None, but it already exists. The existing velocity grid will be kept.")
+            warnings.warn("You are trying to set the velocity grid to None, but it already exists. The existing velocity grid will be kept.",
+                          ACIDStateWarning, stacklevel=2)
 
     @property
     def linelist(self) -> LineList|None:
@@ -322,7 +327,7 @@ class Data:
             # TODO: Put this in the LineList init
             # The method names are self explaining, see the respective methods for more details on their process
             linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
-            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths, verbose=self.config.verbose)
+            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
 
             # Check if the new linelist is different from the existing one
             overwriting = False
@@ -341,9 +346,9 @@ class Data:
 
             # If overwriting, reset variables and warn
             if overwriting:
-                if self.config.verbose >= 1:
-                    print("Warning: the input linelist has been modified. \n" \
-                    f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.")
+                warnings.warn("The input linelist has been modified. \n" \
+                f"Resetting variables that need to be recalculated.\nThe velocity grid and input arrays will not be reset.",
+                ACIDStateWarning, stacklevel=2)
                 self.reset()
 
     def _validate_profile_groups(self, input_linelist) -> None:
@@ -351,13 +356,13 @@ class Data:
         if self.config.profile_groups is not None:
             self.config.profile_groups = np.asarray(self.config.profile_groups).copy()
             if self.config.profile_groups.ndim != 1:
-                raise ValueError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
+                raise ACIDInputError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
                 "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
                 "spectrum with the corresponding profile_groups.")
             linelist_wavelengths = input_linelist["wavelengths"]
             # TODO: This needs to check also against the clipped linelist
             if len(self.config.profile_groups) != len(linelist_wavelengths):
-                raise ValueError(f"The inputted profile_groups must have the same length as the input linelist. "
+                raise ACIDInputError(f"The inputted profile_groups must have the same length as the input linelist. "
                                     f"Got {len(self.config.profile_groups)} groups for {len(linelist_wavelengths)} lines.")
 
     def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
@@ -381,7 +386,7 @@ class Data:
             If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
         """
         if self.linelist is None:
-            raise ValueError("No linelist found. Please set a linelist before trying to plot it.")
+            raise ACIDStateError("No linelist found. Please set a linelist before trying to plot it.")
         wl = self.linelist["wavelengths"]
         depths = self.linelist["depths"]
 
@@ -461,35 +466,33 @@ class Data:
         any_inputs_not_none = any(inputs[attr] is not None for attr in input_keys)
         del inputs # it was just a trick to do the input checks in a loop
 
-        # Handle logic for already existing inputs, more or less described in the print statements
+        # Handle logic for already existing inputs, more or less described in the messages
         if inputs_already_exist:
             if not all_inputs_not_none and any_inputs_not_none:
-                if self.config.verbose >= 1:
-                    print(f"Warning: input wavelengths, flux, and errors are already set in the class. \n" \
-                        f"Some of the inputs you provided are None. \n" \
-                        f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
-                        f"The current input wavelengths, flux, and errors will be kept.")
+                warnings.warn(f"Input wavelengths, flux, and errors are already set in the class. \n" \
+                    f"Some of the inputs you provided are None. \n" \
+                    f"If you are trying to update the input wavelengths, flux, or errors, you must provide all 3. \n"
+                    f"The current input wavelengths, flux, and errors will be kept.", ACIDStateWarning, stacklevel=2)
                 self.combine_spec(output=False)
                 return
             elif not any_inputs_not_none:
-                if self.config.verbose >= 3:
-                    print("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
+                logger.debug("Input wavelengths, flux, and errors are already set in the class. Keeping existing values.")
                 self.combine_spec(output=False)
                 return
             # Else continue with the rest of the function to update inputs, later on, the code will check if new inputs are 
             # different from the existing ones, if so, deletes variables that need to be recalculated.
         else:
             if not all_inputs_not_none:
-                raise ValueError("input_wavelengths, input_flux, and (input_errors or input_sn) must be provided either as arguments " \
+                raise ACIDInputError("input_wavelengths, input_flux, and (input_errors or input_sn) must be provided either as arguments " \
                                  "or in the form of a Data object.")
         
         # First check we have not received len=0 or len=1 for wavelengths and flux so that they do not collapse to 0 dimensions on squeezing
         if input_wavelengths is not None and len(input_wavelengths) <= 1:
-            raise ValueError("input_wavelengths must have more than 1 value to be valid.")
+            raise ACIDInputError("input_wavelengths must have more than 1 value to be valid.")
         if input_flux is not None and len(input_flux) <= 1:
-            raise ValueError("input_flux must have more than 1 value to be valid.")
+            raise ACIDInputError("input_flux must have more than 1 value to be valid.")
         if input_errors is not None and len(input_errors) <= 1:
-            raise ValueError("input_errors must have more than 1 value to be valid.")
+            raise ACIDInputError("input_errors must have more than 1 value to be valid.")
 
         # Convert to arrays, squeeze to remove extra dimensions (as default in legacy inputs)
         try:
@@ -498,57 +501,54 @@ class Data:
             input_errors = np.array(input_errors).squeeze() if input_errors is not None else None
             input_sn = np.array(input_sn).squeeze() if input_sn is not None else None
         except:
-            raise ValueError("There was an error converting the input wavelengths, flux, errors, or SN to numpy arrays. Exception message: \n" + tb.format_exc() + "\n")
+            raise ACIDInputError("There was an error converting the input wavelengths, flux, errors, " \
+                                 "or SN to numpy arrays. Exception message: \n" + tb.format_exc() + "\n")
 
         # Make any values < 0 or infinite equal to nan, which are gracefully later handled.
         if input_errors is not None:
-            input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors, verbose=self.config.verbose)
+            input_wavelengths, input_flux, input_errors = utils.mask_invalid(input_wavelengths, input_flux, input_errors)
         else:
-            input_wavelengths, input_flux = utils.mask_invalid(input_wavelengths, input_flux, verbose=self.config.verbose)
+            input_wavelengths, input_flux = utils.mask_invalid(input_wavelengths, input_flux)
 
         # Check that none of the inputs are all nan
         if np.all(np.isnan(input_wavelengths)) or np.all(np.isnan(input_flux)) or (input_errors is not None and np.all(np.isnan(input_errors))):
-            raise ValueError("None of the input wavelengths, spectra, and errors can be all NaN. Check your inputs for invalid or negative values")
+            raise ACIDInputError("None of the input wavelengths, spectra, and errors can be all NaN. Check your inputs for invalid or negative values")
 
         # Get SN or errors if one is not provided
         if input_sn is None and input_errors is None:
-            raise ValueError("One of input_sn or input_errors must be provided.")
+            raise ACIDInputError("One of input_sn or input_errors must be provided.")
 
         elif input_sn is None:
             input_sn = utils.guess_SNR(input_wavelengths, input_flux, input_errors)
-            if self.config.verbose >= 2:
-                print(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
+            logger.info(f"No input_sn provided and was instead approximated. Guessed value(s):\n {input_sn}")
 
         elif input_errors is None:
             # Input SN can accidentally be input with the same shape as the wavelengths, so correct now if thats the case
             if input_sn.ndim == input_wavelengths.ndim:
-                if self.config.verbose >= 2:
-                    print("Per pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
+                logger.info("Per-pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
                 # Per pixel S/N provided, take the mean over the central 2/3 of the wavelengths
                 input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
 
             input_errors = utils.guess_errors(input_flux, input_sn)
-            if self.config.verbose >= 1:
-                print(f"No input_errors provided and was instead approximated from the input S/N.\n"\
-                      f"It is highly recommended to obtain correct per-pixel errors.")
+            warnings.warn(f"No input_errors provided and was instead approximated from the input S/N.\n"\
+                  f"It is highly recommended to obtain correct per-pixel errors.", ACIDInputWarning, stacklevel=2)
 
         # Check they have matching shape
         if not input_wavelengths.shape == input_flux.shape == input_errors.shape:
-            raise ValueError("Input wavelengths, spectra and spectral errors must all have the same shape.")
+            raise ACIDInputError("Input wavelengths, spectra and spectral errors must all have the same shape.")
 
         # Ensure now that the SN becomes just a single value per frame
         if input_sn.ndim == input_wavelengths.ndim:
-            if self.config.verbose >= 2:
-                print("Per pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
-            # Per pixel S-N provided, take the mean over the central 2/3 of the wavelengths
+            logger.info("Per-pixel S/N provided, taking the mean over the central 2/3 of the wavelengths to get a single S/N value for each frame.")
+            # Per-pixel S/N provided, take the mean over the central 2/3 of the wavelengths
             input_sn = utils.collapse_SNR(input_sn, input_wavelengths)
         elif input_sn.ndim != input_flux.ndim-1:
-            raise ValueError("input_sn must be either a single-valued list/array with the average S/N for each frame, " \
+            raise ACIDInputError("input_sn must be either a single-valued list/array with the average S/N for each frame, " \
             f"or an array of S/N values for each pixel. \n" \
             "The shape of the input input_sn does not match the number of frames in input_flux, " \
             "nor does it have one more dimension than input_flux.")
         if input_sn.ndim != input_flux.ndim - 1:
-            raise ValueError(f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}")
+            raise ACIDInputError(f"input_sn.ndim and input_flux.ndim-1 do not match, sn ndim = {input_sn.ndim}, flux ndim = {input_flux.ndim}")
         
 
         # Ensure all inputs are at least 2D (with the first dimension being the frame number), 
@@ -559,7 +559,7 @@ class Data:
         input_sn = np.atleast_1d(input_sn)
 
         if input_sn.shape[0] != input_flux.shape[0]:
-            raise ValueError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
+            raise ACIDInputError("The number of frames for the SN must match the number of frames in wavelengths, flux, and errors.")
 
         # Ensure data is sorted by wavelength
         sort_idx = np.argsort(input_wavelengths, axis=-1)
@@ -591,9 +591,9 @@ class Data:
 
         # If reset is needed, reset calculated values to force recalculation with new inputs and warn the user
         if overwriting:
-            if self.config.verbose >= 1:
-                print("Warning: input wavelengths, flux, or errors have been changed from their previous values. \n" \
-                f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.")
+            warnings.warn("Input wavelengths, flux, or errors have been changed from their previous values. \n" \
+            f"Resetting variables that need to be recalculated.\nThe velocity grid and linelist will not be reset.",
+            ACIDStateWarning, stacklevel=2)
             self.reset(preserve_combined=False)
 
         # Now generate the combined dataset (previously done in Acid class)
@@ -809,15 +809,15 @@ class Data:
         """
         # Check we have all inputs needed for plot
         if key not in ["initial", "masked"]:
-            raise ValueError("key must be either 'initial' or 'masked' (these are the only two steps that produce a scipy continuum fit).")
+            raise ACIDInputError("key must be either 'initial' or 'masked' (these are the only two steps that produce a scipy continuum fit).")
         if key not in self.plotting_variables:
-            raise ValueError(f"No plotting variables found for key={key!r}. " \
+            raise ACIDStateError(f"No plotting variables found for key={key!r}. " \
                              "Please ensure that the continuum fit has been performed for this key.")
         if not all(
             attr in self.plotting_variables[key] for attr in [
                 "clipped_waves", "clipped_flux", "good"]
             ):
-            raise ValueError("To plot the continuum fit, please first run the continuum fitting in ACID step for the specified plot_type.")
+            raise ACIDStateError("To plot the continuum fit, please first run the continuum fitting in ACID step for the specified plot_type.")
 
         # Unpack variables
         good                     = self.plotting_variables[key]["good"]
@@ -863,8 +863,8 @@ class Data:
             cbar = fig.colorbar(sm, ax=ax)
             cbar.set_label("Line depth")
         except:
-            if self.config.verbose >= 1:
-                print("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.")
+            warnings.warn("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.",
+                          ACIDRuntimeWarning, stacklevel=2)
             pass
 
         # Plot the line masks with their names
@@ -907,9 +907,9 @@ class Data:
         """
         # Check we have all inputs needed for plot
         if "masked" not in self.plotting_variables:
-            raise ValueError("No plotting variables found for masking. Residual masking likely has not been performed in Acid.")
+            raise ACIDStateError("No plotting variables found for masking. Residual masking likely has not been performed in Acid.")
         if "masked" not in self.wavelengths and "masked" not in self.flux:
-            raise ValueError("No masked wavelengths or fluxes found. Please ensure that the residual masking step has been performed")
+            raise ACIDStateError("No masked wavelengths or fluxes found. Please ensure that the residual masking step has been performed")
 
         # Unpack variables
         x = self.wavelengths["combined"]
@@ -924,8 +924,7 @@ class Data:
         full_mask = self.full_mask
 
         nremoved = np.sum(full_mask)
-        if self.config.verbose >= 2:
-            print(f"{nremoved}/{len(residuals)} pixels were removed after residual masking.")
+        logger.info(f"{nremoved}/{len(residuals)} pixels were removed after residual masking.")
 
         # Create plot and add residuals with sigma clipping thresholds and masked regions
         fig, ax = plt.subplots(figsize=(15, 9))
@@ -1050,27 +1049,22 @@ class Data:
             if self.sampler is not None:
                 if not isinstance(self.sampler.backend, HDFBackend):
                     if not sampler_path.endswith(".h5"):
-                        raise ValueError("sampler_path must end with .h5 to convert and save the sampler backend as a HDF5 file.")
+                        raise ACIDInputError("sampler_path must end with .h5 to convert and save the sampler backend as a HDF5 file.")
                     utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
                     self.sampler.backend = utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
                     self.config.sampler_path = sampler_path # update config with sampler path for future reference
-                    if self.config.verbose >= 2:
-                        print(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
+                    logger.info(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
                 else:
-                    if self.config.verbose >= 2:
-                        print("Sampler is already set up to save as a HDF5 file, ignoring sampler_path argument.")
+                    logger.info("Sampler is already set up to save as a HDF5 file, ignoring sampler_path argument.")
             else:
-                if self.config.verbose >= 1:
-                    print("Cannot save sampler as sampler does not exist.")
+                warnings.warn("Cannot save sampler as sampler does not exist.", ACIDStateWarning, stacklevel=2)
 
-        # TODO: NEEDS UPDATING WITH NEW CONFIG DIR, maybe move them all to Config properties?
         # Now save the Data object itself, with the sampler path included to be used when reloaded
         save_path = os.path.abspath(save_path) if save_path is not None else None
         self.config.save_path = save_path # update and overwrite config with save path for future reference
         save_path = self.config.save_path # now use the save path in the config
         if save_path is None:
-            if self.config.verbose >= 1:
-                print("No save_path exists or was provided. The Data instance will not be saved.")
+            warnings.warn("No save_path exists or was provided. The Data instance will not be saved.", ACIDStateWarning, stacklevel=2)
             return
 
         payload = self.to_dict() # generates a dictionary of the data object for easy pickling
@@ -1078,8 +1072,7 @@ class Data:
         save_dir = os.path.dirname(os.path.abspath(save_path))
         utils.ensure_directory(save_dir, "data directory")
         utils.save_pickle_atomic(payload, save_path)
-        if self.config.verbose >= 2:
-            print(f"Data object saved to {save_path}")
+        logger.info(f"Data object saved to {save_path}")
 
     @classmethod
     def load(cls, filename:str) -> Data:
@@ -1126,7 +1119,7 @@ class Data:
         but can also be used for debugging or other purposes.
         """
         if self.sampler is not None and self.config.sampler_type == "dynesty":
-            raise ValueError("Storing the sampler is not currently supported for dynesty samplers.\n" \
+            raise ACIDInputError("Storing the sampler is not currently supported for dynesty samplers.\n" \
             "If you really want to, separate the sampler with data.sampler.save('sampler') and add it back later.\n")
 
         payload: dict[str, Any] = {}
@@ -1181,14 +1174,12 @@ class Data:
     @property
     def result(self):
         if self.exception is not None:
-            if self.config.verbose >= 1:
-                print(f"An exception was raised during the run, cannot return results object.\n"
-                      f"Returning None instead.")
+            warnings.warn(f"An exception was raised during the run, cannot return results object.\n"
+                  f"Returning None instead.", ACIDStateWarning, stacklevel=2)
             return None
         if self.complete is False:
-            if self.config.verbose >= 1:
-                print(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
-                      f"Returning None instead.")
+            warnings.warn(f"Results for order {self.config.order} have not yet been calculated, cannot return results object.\n"
+                  f"Returning None instead.", ACIDStateWarning, stacklevel=2)
             return None
         from ..result import Result
         return Result(self)
