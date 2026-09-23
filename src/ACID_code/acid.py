@@ -210,6 +210,8 @@ class Acid:
             optical and near infrared. For a guide on using your own/modifying the defaults, see :ref:`masking_lines`. By default None, stored in the Config instance.
         seed : :py:type:`IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
+            Seeds a private RNG when walkers/sampling are first prepared. Continuation restores
+            the sampler state; result processing uses a copy of the initial RNG. Reset Data to reseed.
         dir : :py:type:`str`, optional
             Derives the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
             Any inputted paths for save_path, sampler_path, or figure_dir will override this input.
@@ -521,7 +523,6 @@ class Acid:
                 warnings.warn("Parallel MCMC on Windows is not currently supported. Running MCMC serially.", ACIDInputWarning, stacklevel=3)
                 self.config.parallel = False
 
-            # TODO: Apply seed here (only if complete=False, or run_mcmc=False), maybe even save the generator state before mcmc
             # endregion config validation
             # endregion setup and validation
 
@@ -696,7 +697,7 @@ class Acid:
             # Prepare and Run MCMC
             # ----------------------
             # Get the initial state from all of the above calculated data
-            self.data.initial_state = self.get_initial_state()
+            self.data.initial_state = self.get_initial_state(reuse=True)
 
             # Run MCMC if requested
             if self.config.run_mcmc is True:
@@ -740,7 +741,6 @@ class Acid:
         This method is no longer supported in ACID. Please use the ACID function with the appropriate inputs for HARPS spectra instead. 
         Future versions of ACID may provide functions to load and configure data from a range of different standard instruments. 
         """
-        # TODO: ACID HARPS raises NotImplementedError
         raise NotImplementedError(f"ACID_HARPS is no longer supported in ACID. \n"
         f"Please use the ACID function with the appropriate inputs for HARPS spectra instead. \n"
         f"Future versions of ACID may provide functions to load and configure data from a range of different standard instruments.")
@@ -836,10 +836,10 @@ class Acid:
 
         return
 
-    def get_initial_state(self) -> np.ndarray|None:
-    
-        # Set rng seed off of config seed if desired, otherwise default config seed is None and rng will be random
-        rng = np.random.default_rng(self.config.seed)
+    def get_initial_state(self, reuse:bool=False) -> np.ndarray|None:
+
+        # Preserve the initial RNG for results; only walkers and sampling advance this one.
+        rng = self.data.get_rng()
 
         n_profile_params = self.data.alpha["mcmc"].shape[1]
 
@@ -852,6 +852,10 @@ class Acid:
         self.data.nwalkers = 3 + self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
 
         if self.config.sampler_type == "emcee":
+            # Preparation with run_mcmc=False already drew these walkers.
+            if (reuse and self.data.initial_state is not None
+                    and self.data.initial_state.shape == (self.data.nwalkers, self.data.ndim)):
+                return self.data.initial_state
             theta0 = self.data.poly_coeffs["masked"]
 
             if not self.config.deterministic_profile:
@@ -925,12 +929,17 @@ class Acid:
         with pool_context as pool:
             if self.config.sampler_type == "emcee":
                 self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
-                self.sampler.run_mcmc(**mcmc_kwargs)
+                try:
+                    self.sampler.run_mcmc(**mcmc_kwargs)
+                finally:
+                    # Regardless of failed run, set the RNG state to match the sampler's state
+                    self.data.get_rng().set_state(self.sampler.random_state)
             else:
                 import dynesty # we have already checked if the user can import dynesty in the config property setter
                 if self.config.parallel:
                     pool.size = self.config.cores
-                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps, pool=pool, queue_size=queue_size)
+                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps,
+                                                    pool=pool, queue_size=queue_size, rstate=self.data.get_rng())
                 self.sampler.run_nested(print_progress=self.config.sampler_progress if self.config.sampler_progress is not None else self.config.verbose >= 2)
 
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
@@ -965,7 +974,10 @@ class Acid:
                 steps_this_run = min(self.config.check_interval, max_steps-step_number)
                 mcmc_kwargs["nsteps"] = steps_this_run
 
-                self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
+                try:
+                    self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
+                finally:
+                    self.data.get_rng().set_state(self.sampler.random_state)
                 mcmc_kwargs["initial_state"] = None
 
                 step_number += steps_this_run
@@ -1051,6 +1063,13 @@ class Acid:
         # Configure moves based on config, this function converts a Config moves dictionary format to a class format
         # accepted for emcee moves.
         moves = utils.convert_moves_to_emcee(self.config.moves)
+
+        # A fresh chain starts immediately after walker generation. For continuation,
+        # leave state=None so emcee restores both walkers and RNG from its backend.
+        if state is not None:
+            state = emcee.State(state, copy=True)
+            if state.random_state is None:
+                state.random_state = self.data.get_rng().get_state()
 
         sampler_kwargs = {
             "nwalkers": self.data.nwalkers,

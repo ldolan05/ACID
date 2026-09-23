@@ -113,6 +113,7 @@ def test_config_dictionary_views_repr_and_verbose_validation(capsys):
 
     assert compact["order"] == complete["order"] == 7
     assert complete["poly_ord"] == Config.defaults["poly_ord"]
+    assert config.pix_chunk == complete["pix_chunk"] == 50
     assert "order: 7" in repr(config)
 
     # Defaults are printable for interactive inspection, and invalid verbose values fail early.

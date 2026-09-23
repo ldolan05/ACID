@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -35,8 +36,9 @@ def test_voigt_uncertainties_exclude_unphysical_draws(gaussian_profile, monkeypa
     velocities, flux, errors = gaussian_profile
     valid = [-0.25, 1.5, 2.2, 0.2, 0.0]
     invalid = [-0.25, 1.5, 0.01, -10.0, 0.0]
-    monkeypatch.setattr(np.random, "multivariate_normal", lambda **kwargs: np.array([invalid, valid, valid]))
     profiles = Profiles(velocities, flux, errors)
+    monkeypatch.setattr(profiles, "_rng", SimpleNamespace(
+        multivariate_normal=lambda **kwargs: np.array([invalid, valid, valid])))
 
     with np.errstate(over="raise", divide="raise", invalid="raise"):
         profiles.fit_voigt()
@@ -47,9 +49,11 @@ def test_voigt_uncertainties_exclude_unphysical_draws(gaussian_profile, monkeypa
 
 def test_profile_uncertainties_fail_when_no_draws_respect_bounds(gaussian_profile, monkeypatch):
     velocities, flux, errors = gaussian_profile
-    monkeypatch.setattr(np.random, "multivariate_normal", lambda **kwargs: np.array([[-0.25, 1.5, -2.2, 0.0]]))
+    profiles = Profiles(velocities, flux, errors)
+    monkeypatch.setattr(profiles, "_rng", SimpleNamespace(
+        multivariate_normal=lambda **kwargs: np.array([[-0.25, 1.5, -2.2, 0.0]])))
     with pytest.raises(ACIDResultError, match="No uncertainty samples fall within the fit bounds"):
-        Profiles(velocities, flux, errors).fit_gaussian()
+        profiles.fit_gaussian()
 
 
 def test_profile_fit_drops_nan_values_and_plots(gaussian_profile):

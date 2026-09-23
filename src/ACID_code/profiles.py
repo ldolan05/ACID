@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .diagnostics.errors import *
 import numpy as np
+import copy
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
@@ -59,6 +60,7 @@ class Profiles:
             if velocities is None or flux is None:
                 raise ACIDInputError("If no data instance is provided, then at least velocities and flux must be provided.")
 
+        self._rng = data.get_result_rng() if data is not None else np.random.default_rng()
         self.velocities = None
         self.flux = None
         self.flux_err = None
@@ -376,7 +378,7 @@ class Profiles:
         self.fit_on_x[model_name] = model_func(x, *popt)
 
         # Get errors
-        samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=1000)
+        samples = copy.deepcopy(self._rng).multivariate_normal(mean=popt, cov=pcov, size=1000)
         samples = samples[np.all((samples >= bounds[0]) & (samples <= bounds[1]), axis=1)] if bounds is not None else samples
         if len(samples) == 0:
             raise ACIDResultError("No uncertainty samples fall within the fit bounds; profile uncertainties cannot be estimated.")

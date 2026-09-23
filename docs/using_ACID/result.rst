@@ -61,6 +61,31 @@ We recommended leaving this on True when running the deterministic profile model
 If you try to open the dictionary yourself with pickle.load() and without using the class method, you will run into errors.
 If the sampler is not stored, some of the methods when loading the result will not work (eg. plotting walkers).
 
+Reproducible sampling
+---------------------
+
+Set ``seed`` on ``Acid`` to reproduce walker initialization and sampling independently
+of calls to ``numpy.random`` elsewhere in your program. ACID stores a private sampling
+RNG on ``Data``: emcee uses ``RandomState`` and dynesty uses ``Generator``. The RNG is
+initialized when sampling is first prepared, including with ``run_mcmc=False``.
+Changing ``seed`` after that does not reseed an existing run; use a new ``Acid`` instance
+or reset its ``Data`` before preparing a new run.
+
+For emcee, ``result.continue_sampling(nsteps=M)`` after an N-step run gives the same
+chain as a single N+M-step run, provided the inputs, sampler settings, moves, and
+numerical environment are unchanged. The backend stores both walker and RNG state,
+so continuation also works after saving and loading the sampler. Data saves preserve
+the RNG before sampling starts as well, including when ``seed=None``.
+
+Continuum uncertainty subsampling and ``Profiles(data=...)`` uncertainty estimates
+use fresh copies of the initial RNG state. Repeating these calculations does not
+advance sampling or change their random draws for the same inputs. Seeded chains
+will differ from older ACID versions, where ``seed`` controlled only the initial walkers.
+
+ACID's ``continue_sampling`` interface is for emcee. Dynesty receives its private RNG
+through ``rstate``; use dynesty's native checkpoint/restore workflow for interrupted
+nested sampling. Its live-point count is not equivalent to emcee's number of steps.
+
 Plotting
 ---------
 

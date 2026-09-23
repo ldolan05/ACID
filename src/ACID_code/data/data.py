@@ -100,6 +100,9 @@ class Data:
     # -----------------------------------------------------
     #: The initial state of the MCMC walkers, used for resuming and debugging
     initial_state : Optional[np.ndarray] = None
+    #: Private sampling RNG and its untouched pre-walker snapshot for result processing.
+    _rng : np.random.RandomState | np.random.Generator | None = None
+    _initial_rng : np.random.RandomState | np.random.Generator | None = None
     #: The number of walkers and dimensions for the MCMC sampler, used for reshaping the samples if resuming
     nwalkers      : Optional[int]        = None
     #: The number of dimensions for the MCMC sampler, used for reshaping the samples if resuming
@@ -147,6 +150,28 @@ class Data:
     _linelist   : Optional[Dict[str, np.ndarray]] = None
     #: The velocities are stored as a 1D numpy array
     _velocities : Optional[np.ndarray] = None
+
+    def get_rng(self) -> np.random.RandomState | np.random.Generator:
+        """Return the private sampling RNG, seeded once after configuration is set.
+
+        emcee requires RandomState; dynesty requires Generator. Data.reset()
+        clears both RNGs, while saving/loading Data preserves their states.
+        """
+        rng_type = np.random.RandomState if self.config.sampler_type == "emcee" else np.random.Generator
+
+        # Set rng, and initial_rng if not already set
+        if not isinstance(self._rng, rng_type):
+            self._rng = (np.random.RandomState(np.random.MT19937(self.config.seed))
+                         if rng_type is np.random.RandomState else np.random.default_rng(self.config.seed))
+            self._initial_rng = copy.deepcopy(self._rng)
+
+        # Return its state
+        return self._rng
+
+    def get_result_rng(self) -> np.random.RandomState | np.random.Generator:
+        """Return a fresh copy of the initial RNG without advancing sampling state."""
+        self.get_rng()
+        return copy.deepcopy(self._initial_rng)
 
     def __repr__(self) -> str:
         """String representation of the Data object, showing all stored attributes in a user-friendly format."""
@@ -1133,6 +1158,8 @@ class Data:
                 if val is not None:
                     if self.config.sampler_path is not None:
                         payload["sampler"] = self.config.sampler_path # stores just the path to the sampler
+            elif name in ("_rng", "_initial_rng"):
+                payload[name] = copy.deepcopy(val)
             else:
                 payload[name] = val
 
@@ -1159,7 +1186,8 @@ class Data:
                 continue # handled after loop
             else:
                 if name in payload:
-                    setattr(self, name, payload[name])
+                    value = copy.deepcopy(payload[name]) if name in ("_rng", "_initial_rng") else payload[name]
+                    setattr(self, name, value)
 
         # Handle sampler separately
         self.sampler = payload.get("sampler", None) # property handles the loading of the sampler

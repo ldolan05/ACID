@@ -306,7 +306,7 @@ class Result:
             warnings.warn(f"Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
                           "Calculating with a max of 1000 random samples instead.", ACIDPerformanceWarning, stacklevel=3)
             indices_size = min(1000, n_samples)
-            random_indices = np.random.choice(n_samples, size=indices_size, replace=False)
+            random_indices = self.data.get_result_rng().choice(n_samples, size=indices_size, replace=False)
             coeffs = all_poly_coeffs[random_indices, :]
         else:
             coeffs = all_poly_coeffs

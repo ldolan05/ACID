@@ -7,8 +7,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError, ACIDContinuumFitError
-from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList
+from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError, ACIDContinuumFitError, ACIDResultError
+from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList, Result
 from ACID_code.acid import _get_run_kwargs
 
 
@@ -129,11 +129,31 @@ def test_acid_requires_complete_input_and_rejects_unknown_keyword(harps_order_40
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
     acid = Acid(velocities=velocities, linelist=linelist)
 
-    with pytest.raises(ValueError, match="Unexpected keyword argument"):
+    with pytest.raises(ACIDInputError, match="Unexpected keyword argument") as caught:
         acid.ACID(wavelengths, flux, errors, sn, made_up_setting=True)
+    assert acid.data.exception is caught.value
+    assert "ACIDInputError" in acid.data.traceback
+    assert "made_up_setting" in acid.data.traceback
     # Missing required line-list data should also give a domain-specific exception.
     with pytest.raises(ACIDStateError, match="linelist"):
         Acid(velocities=velocities).ACID(wavelengths, flux, errors, sn, run_mcmc=False)
+
+
+def test_acid_records_errors_raised_while_constructing_result(harps_order_40, monkeypatch):
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    acid = Acid(velocities=velocities, linelist=linelist, seed=1, verbose=0)
+    error = ACIDResultError("Result construction failed")
+
+    def fail_result_init(self, *args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(Result, "__init__", fail_result_init)
+    with pytest.raises(ACIDResultError) as caught:
+        acid.ACID(wavelengths, flux, errors, sn, nsteps=2, parallel=False)
+
+    assert caught.value is acid.data.exception is error
+    assert "fail_result_init" in acid.data.traceback
+    assert "ACIDResultError: Result construction failed" in acid.data.traceback
 
 
 def test_acid_drops_invalid_spectrum_and_linelist_values(harps_order_40):
@@ -264,7 +284,8 @@ def test_initial_state_and_sampler_kwargs_use_preprocessed_result(harps_result):
     sampler_kwargs, run_kwargs = acid._get_sampler_kwargs(7, state)
     assert sampler_kwargs["nwalkers"] == 12
     assert sampler_kwargs["ndim"] == acid.config.poly_ord + 1
-    assert run_kwargs["initial_state"] is state
+    np.testing.assert_array_equal(run_kwargs["initial_state"].coords, state)
+    np.testing.assert_equal(run_kwargs["initial_state"].random_state, acid.data.get_rng().get_state())
     assert run_kwargs["nsteps"] == 7
 
 
