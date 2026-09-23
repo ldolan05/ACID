@@ -769,7 +769,13 @@ class Result:
             ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
 
         if show_linelist:
-            ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color='green', linewidth=1, label='Line List', alpha=0.5)
+            if self.data.profile_groups is not None:
+                colors = [f"C{group}" for group in self.data.profile_groups]
+            else:
+                colors = "green"
+            ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color=colors, linewidth=1, label='Line List', alpha=0.5)
+            
+        ax[0].legend()
 
         if return_fig:
             return fig, ax
