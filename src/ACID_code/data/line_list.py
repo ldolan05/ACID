@@ -8,11 +8,19 @@ import pandas as pd
 
 class LineList:
     """
-    A class to expose the linelist when called in Data. Has validation methods and easy indexing for plotting and other uses.
+    Read, validate, and store a linelist in wavelength order.
+
+    Accepts the same linelist inputs as :py:class:`Acid`: a string path to a
+    VALD file, a dictionary with "wavelengths" and "depths", a list or NumPy
+    array indexed by wavelength/depth, or another :py:class:`LineList`.
+    Invalid lines are removed with a warning. Arrays can be accessed by name,
+    by indices 0 and 1, or by unpacking the object.
     """
     __slots__ = ("ll",) # the only thing stored in this class is the linelist
-    def __init__(self, ll: dict) -> None:
-        self.ll = ll
+    def __init__(self, ll: str | dict | LineList | list | np.ndarray) -> None:
+        wavelengths, depths = self.validate_linelist(ll)
+        wavelengths, depths = self.drop_invalid_lines(wavelengths, depths)
+        self.ll = {"wavelengths": wavelengths, "depths": depths}
 
     def __getitem__(self, k):
         if k == 0:
@@ -31,7 +39,9 @@ class LineList:
     def validate_linelist(linelist) -> tuple[np.ndarray, np.ndarray]:
         """
         Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist wavelengths 
-        and depths as numpy arrays. This is used internally in the set_linelist method.
+        and depths as numpy arrays. Used internally by the constructor before
+        invalid lines are removed; use ``LineList(linelist)`` for a fully
+        validated and stored linelist.
 
         Parameters
         ----------
@@ -122,7 +132,7 @@ class LineList:
     @staticmethod
     def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False) -> tuple:
         """Removes NaN, non-finite, negative, and greater than 1 values from the wavelengths and depths arrays.
-        This is used internally in the set_linelist method.
+        This is used internally by the constructor.
 
         Parameters
         ----------

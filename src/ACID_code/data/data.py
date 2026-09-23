@@ -146,8 +146,8 @@ class Data:
     _sampler    : Optional[EnsembleSampler|Sampler] = None # type:ignore
     #: Config data for convenience as a class, but converted to a dictionary on save to avoid pickling issues
     _config     : Config = field(default_factory=Config)
-    #: The linelist is stored as a dictionary but exposed as a :py:class:`LineList` object when the property is accessed.
-    _linelist   : Optional[Dict[str, np.ndarray]] = None
+    #: The validated linelist; serialized as a dictionary of arrays when saving.
+    _linelist   : Optional[LineList | Dict[str, np.ndarray]] = None
     #: The velocities are stored as a 1D numpy array
     _velocities : Optional[np.ndarray] = None
 
@@ -329,17 +329,20 @@ class Data:
         if self._linelist is None:
             return None
 
+        # Reconstruct the saved dictionary once, rather than on every access.
+        if not isinstance(self._linelist, LineList):
+            self._linelist = LineList(self._linelist)
         self._validate_profile_groups(self._linelist)
 
-        return LineList(self._linelist)
+        return self._linelist
 
     @linelist.setter
     def linelist(self, linelist:Array2D|str|LineList|dict[str,Array1D]|None) -> None:
         """
-        Sets the linelist for the data object. The linelist formats follows that of the doccumentation in the :py:class:`Acid` class,
-        which then internally uses this function to set the linelist in the data object. The linelist is stored as a dictionary with 
-        keys "wavelengths" and "depths", but is exposed as a :py:class:`LineList` object when accessed through the property. The LineList
-        class allows for easy access to plotting, indexing, and validation.
+        Sets the linelist for the data object using the formats documented in
+        :py:class:`Acid`. Reading, validation, and storage are handled by
+        :py:class:`LineList`. Data checks profile groups and resets dependent
+        calculations when the linelist changes.
 
         Parameters
         ----------
@@ -349,10 +352,8 @@ class Data:
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
-            # TODO: Put this in the LineList init
-            # The method names are self explaining, see the respective methods for more details on their process
-            linelist_wl, linelist_depths = LineList.validate_linelist(linelist)
-            linelist_wl, linelist_depths = LineList.drop_invalid_lines(linelist_wl, linelist_depths)
+            linelist = LineList(linelist)
+            linelist_wl, linelist_depths = linelist
 
             # Check if the new linelist is different from the existing one
             overwriting = False
@@ -363,7 +364,7 @@ class Data:
                     overwriting = True
 
             # Set new linelist
-            self._linelist = {"wavelengths": linelist_wl, "depths": linelist_depths}
+            self._linelist = linelist
 
             # Validate profile groups with the new linelist
             # If profile_groups is not None, this will check that it has the same length as the new linelist and is 1D.
@@ -1142,6 +1143,8 @@ class Data:
         """
         Converts the data object to a dictionary payload for saving. This is used internally in the save method, 
         but can also be used for debugging or other purposes.
+        The linelist is saved as a dictionary of arrays, so loading its pickle
+        does not depend on the LineList class's module path or implementation.
         """
         if self.sampler is not None and self.config.sampler_type == "dynesty":
             raise ACIDInputError("Storing the sampler is not currently supported for dynesty samplers.\n" \
@@ -1154,6 +1157,8 @@ class Data:
 
             if name == "_config":
                 payload["config"] = val.to_dict() # store as dict in payload, but store as class in Data
+            elif name == "_linelist":
+                payload[name] = val.ll.copy() if isinstance(val, LineList) else val
             elif name == "_sampler":
                 if val is not None:
                     if self.config.sampler_path is not None:
