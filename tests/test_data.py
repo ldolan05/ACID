@@ -274,9 +274,9 @@ def test_linelist_file_indexing_and_invalid_line_removal(linelist_path):
         _ = line_list[2]
 
     # Invalid depths and wavelengths are removed together, retaining the validity mask.
-    kept_wavelengths, kept_depths, mask = LineList.drop_invalid_lines(
-        np.array([5000.0, np.nan, 5002.0, 5003.0]),
-        np.array([0.1, 0.2, -0.1, 1.0]), return_mask=True,
+    kept_wavelengths, kept_depths, mask = LineList.validate_linelist(
+        [np.array([5000.0, np.nan, 5002.0, 5003.0]),
+         np.array([0.1, 0.2, -0.1, 1.0])], return_mask=True,
     )
     np.testing.assert_array_equal(mask, [True, False, False, False])
     np.testing.assert_array_equal(kept_wavelengths, [5000.0])

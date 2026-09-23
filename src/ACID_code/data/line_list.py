@@ -17,9 +17,8 @@ class LineList:
     by indices 0 and 1, or by unpacking the object.
     """
     __slots__ = ("ll",) # the only thing stored in this class is the linelist
-    def __init__(self, ll: str | dict | LineList | list | np.ndarray) -> None:
+    def __init__(self, ll:str|dict|LineList|list|np.ndarray, full:bool=False) -> None:
         wavelengths, depths = self.validate_linelist(ll)
-        wavelengths, depths = self.drop_invalid_lines(wavelengths, depths)
         self.ll = {"wavelengths": wavelengths, "depths": depths}
 
     def __getitem__(self, k):
@@ -36,7 +35,7 @@ class LineList:
         yield self.ll["depths"]
 
     @staticmethod
-    def validate_linelist(linelist) -> tuple[np.ndarray, np.ndarray]:
+    def validate_linelist(linelist, return_mask:bool=False) -> tuple[np.ndarray, np.ndarray]:
         """
         Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist wavelengths 
         and depths as numpy arrays. Used internally by the constructor before
@@ -127,29 +126,9 @@ class LineList:
         linelist_wl = linelist_wl[sort_idx]
         linelist_depths = linelist_depths[sort_idx]
 
-        return linelist_wl, linelist_depths
-
-    @staticmethod
-    def drop_invalid_lines(wavelengths:Array1D, depths:Array1D, return_mask:bool=False) -> tuple:
-        """Removes NaN, non-finite, negative, and greater than 1 values from the wavelengths and depths arrays.
-        This is used internally by the constructor.
-
-        Parameters
-        ----------
-        wavelengths : np.ndarray
-            The array of linelist wavelengths.
-        depths : np.ndarray
-            The array of linelist depths.
-        return_mask : bool, optional
-            If True, also returns the boolean mask of valid lines. Default is False.
-
-        Returns
-        -------
-        tuple or np.ndarray
-            If return_mask is True, returns a tuple of (wavelengths, depths, mask).
-            Otherwise, returns a tuple of (wavelengths, depths) with invalid lines removed.
-        """
-        # Get mask
+        # Drop invalid lines
+        wavelengths = linelist_wl
+        depths = linelist_depths
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
         mask &= (depths >= 0) & (depths < 1)
         mask &= (wavelengths > 0)
@@ -161,7 +140,8 @@ class LineList:
             "Please check your linelist for invalid values.")
         if count_dropped > 0:
             warnings.warn(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
-                  f"These will be removed, but it is still recommended to check your linelist for why this happened.", ACIDDroppedDataWarning, stacklevel=2)
+                    f"These will be removed, but it is still recommended to check your linelist for why this happened.",
+                    ACIDDroppedDataWarning, stacklevel=3)
 
         # Apply mask and return results
         if return_mask:
