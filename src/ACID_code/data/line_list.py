@@ -15,135 +15,157 @@ class LineList:
     array indexed by wavelength/depth, or another :py:class:`LineList`.
     Invalid lines are removed with a warning. Arrays can be accessed by name,
     by indices 0 and 1, or by unpacking the object.
+    With full=True, also read/require "spec_ion" and "lande_factor" (indices
+    2 and 3). Metadata already present in in-memory inputs is preserved.
     """
     __slots__ = ("ll",) # the only thing stored in this class is the linelist
     def __init__(self, ll:str|dict|LineList|list|np.ndarray, full:bool=False) -> None:
-        wavelengths, depths = self.validate_linelist(ll)
-        self.ll = {"wavelengths": wavelengths, "depths": depths}
+        self.ll = self.validate_linelist(ll, full=full, return_dict=True)
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "ll"), name)
+
+    def __len__(self):
+        return len(self.ll)
 
     def __getitem__(self, k):
-        if k == 0:
-            return self.ll["wavelengths"]
-        if k == 1:
-            return self.ll["depths"]
-        if isinstance(k, int):
-            raise ACIDInputError("LineList only has keys 0 and 1, or 'wavelengths' and 'depths'")
-        return self.ll[k]  # allow "wavelengths"/"depths"
+        if isinstance(k, (int, np.integer)):
+            keys = list(self.ll)
+            if k < 0 or k >= len(keys):
+                raise ACIDInputError(f"LineList only has indices 0 to {len(keys)-1}, or keys {keys}")
+            return self.ll[keys[k]]
+        return self.ll[k]  # allow column names
 
     def __iter__(self):
-        yield self.ll["wavelengths"]
-        yield self.ll["depths"]
+        yield from self.ll.values()
 
     @staticmethod
-    def validate_linelist(linelist, return_mask:bool=False) -> tuple[np.ndarray, np.ndarray]:
+    def validate_linelist(linelist, return_mask:bool=False, *, full:bool=False, return_dict:bool=False) -> tuple|dict:
         """
-        Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist wavelengths 
-        and depths as numpy arrays. Used internally by the constructor before
-        invalid lines are removed; use ``LineList(linelist)`` for a fully
+        Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist columns
+        as numpy arrays. Used internally by the constructor; use ``LineList(linelist)`` for a fully
         validated and stored linelist.
 
         Parameters
         ----------
         linelist : str, dict, LineList, list, or np.ndarray
             See :py:class:`Acid`.
+        return_mask : bool, optional
+            Also return the validity mask in wavelength-sorted order, before invalid lines are removed.
+            For files, rows with nonnumeric wavelengths/depths are discarded before this mask.
+        full : bool, optional
+            Read/require wavelengths, depths, spec_ion (strings), and lande_factor (floats), in that order.
+            Metadata already present in in-memory inputs is preserved even when False.
+        return_dict : bool, optional
+            Return named columns instead of a tuple of arrays, for storage by the constructor.
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray]
-            The validated linelist wavelengths and depths as numpy arrays.
+        tuple or dict
+            The validated columns. If return_mask=True, append the mask to the tuple,
+            or return (columns, mask) when return_dict=True.
         """
+        # Column names, VALD indices, and types, in the public indexing/unpacking order.
+        columns = {"wavelengths": (1, float), "depths": (9, float),
+                   "spec_ion": (0, str), "lande_factor": (8, float)}
+        required = list(columns) if full else ["wavelengths", "depths"]
+
         # Run through every possible input type and issue, I'm not going to comment everything but the logic is fairly
         # self-explanatory, and the error messages should be helpful for debugging if the input is not in the correct format.
         if linelist is None:
             raise ACIDInputError("A linelist must be provided. For possible inputs, see https://acid-code.readthedocs.io/en/stable/_api/ACID_code.Acid.html")
 
-        # All loops below set linelist_wl and linelist_depths from their own type sof input
+        # All loops below set linelist_columns from their own types of input
         elif isinstance(linelist, str):
-
+            # pandas returns selected columns in file order, not usecols order.
+            file_columns = sorted(required, key=lambda key: columns[key][0])
             full_linelist = pd.read_csv(
                 linelist,
                 skiprows=4,
                 delimiter=',',
-                usecols=[1, 9],
-                names=['wavelength', 'depth'],
+                usecols=[columns[key][0] for key in file_columns],
+                names=file_columns,
                 dtype=str,
                 engine='python',
                 on_bad_lines='skip'
             )
 
             # Clean whitespace / quotes
-            full_linelist['wavelength'] = full_linelist['wavelength'].astype(str).str.strip()
-            full_linelist['depth'] = full_linelist['depth'].astype(str).str.strip()
+            for key in file_columns:
+                full_linelist[key] = full_linelist[key].str.strip().str.strip("\"'").str.strip()
 
             # Convert numeric columns safely
-            full_linelist['wavelength'] = pd.to_numeric(
-                full_linelist['wavelength'],
-                errors='coerce'
-            )
-
-            full_linelist['depth'] = pd.to_numeric(
-                full_linelist['depth'],
-                errors='coerce'
-            )
+            for key in file_columns:
+                if columns[key][1] is float:
+                    full_linelist[key] = pd.to_numeric(full_linelist[key], errors='coerce')
+                else:
+                    full_linelist[key] = full_linelist[key].fillna("")
 
             # Remove rows where numeric conversion failed
-            full_linelist = full_linelist.dropna(subset=['wavelength', 'depth'])
+            full_linelist = full_linelist.dropna(subset=['wavelengths', 'depths'])
 
             # Convert to NumPy arrays
-            linelist_wl = full_linelist['wavelength'].to_numpy(dtype=float)
-            linelist_depths = full_linelist['depth'].to_numpy(dtype=float)
+            linelist_columns = {key: full_linelist[key].to_numpy(dtype=columns[key][1]) for key in required}
         elif isinstance(linelist, LineList):
-            linelist_wl = linelist[0]
-            linelist_depths = linelist[1]
+            linelist_columns = linelist.ll
         elif isinstance(linelist, dict):
-            if "wavelengths" not in linelist or "depths" not in linelist:
-                raise ACIDInputError("If 'linelist' is a dict, it must contain keys 'wavelengths' and 'depths'")
-            linelist_wl = linelist["wavelengths"]
-            linelist_depths = linelist["depths"]
+            linelist_columns = linelist
         elif isinstance(linelist, (list, np.ndarray)):
-            if len(linelist) != 2 and len(linelist) != 3:
-                raise ACIDInputError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths, and index 1 being depths")
-            linelist_wl = linelist[0]
-            linelist_depths = linelist[1]
+            if len(linelist) not in (2, 3, 4):
+                raise ACIDInputError("If 'linelist' is a list or array, it must have length 2, with index 0 being wavelengths, and index 1 being depths, or length 4 to also include spec_ion and lande_factor")
+            # The legacy length-3 input ignores its third entry.
+            keys = list(columns) if len(linelist) == 4 else ["wavelengths", "depths"]
+            linelist_columns = dict(zip(keys, linelist))
         else:
             raise ACIDInputError(f"'linelist' must be a string path to a VALD linelist, a dictionary with keys 'wavelengths' and 'depths', \n" \
             "a LineList object, or a list/array indexed such that 0 is wavelengths and 1 is depths.")
 
+        missing = [key for key in required if key not in linelist_columns]
+        if missing:
+            raise ACIDInputError(f"The linelist must contain keys {required}; missing {', '.join(missing)}")
+
         # Convert to numpy arrays to ensure their dimensions are correct
         try:
-            linelist_wl = np.array(linelist_wl)
-            linelist_depths = np.array(linelist_depths)
+            linelist_columns = {key: np.array(linelist_columns[key], dtype=dtype)
+                                for key, (_, dtype) in columns.items() if key in linelist_columns}
         except Exception as e:
             raise ACIDInputError(f"Failed to convert linelist inputs into numpy arrays with exception:\n{e}")
-        if linelist_wl.ndim != 1 or linelist_depths.ndim != 1:
-            raise ACIDInputError("'wavelengths' and 'depths' must be one-dimensional arrays or lists")
-        if linelist_wl.shape != linelist_depths.shape:
-            raise ACIDInputError("'wavelengths' and 'depths' must have the same length and shape, \n"
-                             f" but have shapes: {linelist_wl.shape}, {linelist_depths.shape}")
+        if any(values.ndim != 1 for values in linelist_columns.values()):
+            raise ACIDInputError("Linelist columns must be one-dimensional arrays or lists")
+        if any(values.shape != linelist_columns["wavelengths"].shape for values in linelist_columns.values()):
+            raise ACIDInputError("Linelist columns must have the same length and shape, \n"
+                             f" but have shapes: {[values.shape for values in linelist_columns.values()]}")
 
         # Finally, sort the arrays by wavelength
-        sort_idx = np.argsort(linelist_wl)
-        linelist_wl = linelist_wl[sort_idx]
-        linelist_depths = linelist_depths[sort_idx]
+        sort_idx = np.argsort(linelist_columns["wavelengths"], kind="stable")
+        linelist_columns = {key: values[sort_idx] for key, values in linelist_columns.items()}
 
         # Drop invalid lines
-        wavelengths = linelist_wl
-        depths = linelist_depths
+        wavelengths = linelist_columns["wavelengths"]
+        depths = linelist_columns["depths"]
         mask = np.isfinite(wavelengths) & np.isfinite(depths)
         mask &= (depths >= 0) & (depths < 1)
         mask &= (wavelengths > 0)
+        for key in linelist_columns:
+            if key not in ("wavelengths", "depths"):
+                if columns[key][1] is float:
+                    mask &= np.isfinite(linelist_columns[key])
+                else:
+                    mask &= ~np.isin(np.char.strip(linelist_columns[key]), ["", "None", "nan"])
 
         # Count the number of dropped lines
         count_dropped = np.count_nonzero(~mask)
         if count_dropped == len(wavelengths):
-            raise ACIDInputError(f"All lines in the linelist are non-finite, nan, negative, or greater than 1.\n" \
+            raise ACIDInputError(f"All lines in the linelist are non-finite, nan, negative, greater than 1, or have invalid metadata.\n" \
             "Please check your linelist for invalid values.")
         if count_dropped > 0:
-            warnings.warn(f"Your linelist includes {count_dropped} non-finite, nan, negative, or greater than 1 values.\n"
+            warnings.warn(f"Your linelist includes {count_dropped} non-finite, nan, negative, greater than 1, or invalid metadata values.\n"
                     f"These will be removed, but it is still recommended to check your linelist for why this happened.",
                     ACIDDroppedDataWarning, stacklevel=3)
 
         # Apply mask and return results
+        linelist_columns = {key: values[mask] for key, values in linelist_columns.items()}
+        result = linelist_columns if return_dict else tuple(linelist_columns.values())
         if return_mask:
-            return wavelengths[mask], depths[mask], mask
-        return wavelengths[mask], depths[mask]
+            return (result, mask) if return_dict else (*result, mask)
+        return result

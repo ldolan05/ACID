@@ -29,6 +29,33 @@ Remember that all attributes and methods of Data can be found in the :py:class:`
 
    data = result.data  # Acid and Result share the Data class, so this is the same as Acid.data
 
+Full line lists
+---------------
+
+Use ``full=True`` to also read the species/ion and Lande factor from VALD
+columns 0 and 8. The default reads only wavelengths and depths.
+
+.. code-block:: python
+
+    lines = acid.LineList("example_linelist.txt", full=True)
+    wavelengths, depths, species, lande = lines
+    species = lines["spec_ion"]       # also lines[2]
+    lande = lines["lande_factor"]     # also lines[3]
+    Acid = acid.Acid(velocities=velocities, linelist=lines)
+
+The column order is ``wavelengths``, ``depths``, ``spec_ion``, ``lande_factor``.
+You can also provide a dictionary with these keys or a list/array of columns
+in this order. Species are strings; the other columns are float arrays.
+All columns share one wavelength sort and validity mask, so removing an invalid
+row also removes its metadata. Non-finite numeric values, empty species,
+nonpositive wavelengths, and depths outside ``[0, 1)`` are invalid.
+
+``full=True`` requires all four columns. Metadata already present in an
+in-memory input is preserved even with the default ``full=False``. This lets
+``LineList(existing_lines)``, Data assignment, and save/load retain it.
+Saved line lists remain dictionaries of arrays, including the extra columns.
+Two-column line lists still unpack into just wavelengths and depths.
+
 Plotting
 ---------
 You can plot any of the three pre-mcmc set of plots with the following. See the API for the full list of optional inputs to each method.

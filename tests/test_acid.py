@@ -12,9 +12,11 @@ from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList, Result
 from ACID_code.acid import _get_run_kwargs
 
 
-def test_acid_runs_preprocessing_without_mcmc(harps_order_40):
+@pytest.mark.parametrize("full", [False, True])
+def test_acid_runs_preprocessing_without_mcmc(harps_order_40, full):
     # Use the real order-40 extraction, but stop before the sampler for a fast pipeline check.
     wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    linelist = LineList(linelist, full=full)
     acid = Acid(velocities=velocities, linelist=linelist)
 
     result = acid.ACID(wavelengths, flux, errors, sn, run_mcmc=False)
@@ -23,6 +25,8 @@ def test_acid_runs_preprocessing_without_mcmc(harps_order_40):
     assert result is None
     assert "masked" in acid.data.profile
     assert acid.data.alpha["mcmc"].shape[1] == len(velocities)
+    for key in linelist.ll:
+        np.testing.assert_array_equal(acid.data.linelist[key], linelist[key])
 
 
 def test_acid_accepts_multiple_frames_without_sampling(harps_order_40):

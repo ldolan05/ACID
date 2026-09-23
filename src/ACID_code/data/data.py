@@ -325,7 +325,10 @@ class Data:
 
     @property
     def linelist(self) -> LineList|None:
-        """Returns the internally stored linelist. It has keys "wavelengths" and "depths" or index 0 and 1."""
+        """Return the stored LineList, including any species/Lande metadata.
+
+        Wavelengths and depths are always available by name or indices 0 and 1.
+        """
         if self._linelist is None:
             return None
 
@@ -337,7 +340,7 @@ class Data:
         return self._linelist
 
     @linelist.setter
-    def linelist(self, linelist:Array2D|str|LineList|dict[str,Array1D]|None) -> None:
+    def linelist(self, linelist:Array2D|str|LineList|dict|None) -> None:
         """
         Sets the linelist for the data object using the formats documented in
         :py:class:`Acid`. Reading, validation, and storage are handled by
@@ -346,14 +349,14 @@ class Data:
 
         Parameters
         ----------
-        linelist : Array2D, str, LineList, dict[str, Array1D], or None
+        linelist : Array2D, str, LineList, dict, or None
              The linelist to be set, which can be in various formats for convenience.
              See :py:class:`Acid` init for the accepted linelist formats and parameters.
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
             linelist = LineList(linelist)
-            linelist_wl, linelist_depths = linelist
+            linelist_wl, linelist_depths = linelist["wavelengths"], linelist["depths"]
 
             # Check if the new linelist is different from the existing one
             overwriting = False

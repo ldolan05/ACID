@@ -211,7 +211,8 @@ class LSD:
         self.data.linelist = linelist # overwrites if input
         if self.data.linelist is None:
             raise ACIDStateError("No linelist has been set. Please set/input a linelist before running LSD.")
-        wavelengths_linelist, depths_linelist = self.data.linelist
+        wavelengths_linelist = self.data.linelist["wavelengths"]
+        depths_linelist = self.data.linelist["depths"]
         original_wavelengths = wavelengths_linelist
 
         # Clip linelist to wavelength range of spectrum
