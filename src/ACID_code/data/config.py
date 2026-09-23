@@ -26,7 +26,6 @@ class Config:
         "verbose" : 2,
         "sampler_progress" : None,
         "order" : None,
-        "order_range" : [0],
         "masking_lines" : {
             "narrow" : {
                 "default_width" : 200,

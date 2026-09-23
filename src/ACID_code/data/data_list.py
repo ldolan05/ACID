@@ -140,7 +140,7 @@ class DataList:
         self.velocities = velocities
 
         # Configure order_range, creates one if not input from the shape of wavelengths
-        self.order_range = order_range # if None, will be set later, otherwise self.from_datalist handles the range from configs     
+        self.order_range = order_range # if None, infer from the inputs below
 
         # Set class attributes
         self._save_dir = None
@@ -153,6 +153,8 @@ class DataList:
 
         if _data_list is not None:
             self.data_list = _data_list # datalist property handles the rest
+            if self.order_range is None:
+                self.order_range = self.orders.copy()
             return
 
         # From here, the array inputs must be provided
@@ -253,22 +255,6 @@ class DataList:
         if verbose is None:
             verbose = np.max([data.config.verbose for data in data_list])
 
-        # All configs should have the same order_range so that they are internally aware. We just take the first one to 
-        # generate the mapping of order to index in the list. The Load class will configure the correct order range based
-        # off extracted fits header info (if provided), otherwise the default is a pythonic 0-indexed order range.
-        order_range = data_list[0].config.order_range
-        # TODO: Depracate order_range in config/data, only order stored in config and order_range only used here in datalist
-        if len(data_list) > 1:
-            if not all(np.array_equal(data.config.order_range, order_range) for data in data_list):
-                warnings.warn("Not all Data instances have the same order_range. Taking the longest order range.", ACIDInputWarning, stacklevel=2)
-
-        # Take the order range with the greatest length
-        max_order_range_idx = np.argmax([len(data.config.order_range) for data in data_list])
-        order_range = data_list[max_order_range_idx].config.order_range
-        # Individually loaded Data may have inferred labels outside the default [0].
-        if all(data.config.order is not None for data in data_list):
-            order_range = np.union1d(order_range, [data.config.order for data in data_list])
-
         # Check all velocity grids match, store velocities
         v0 = data_list[0].velocities
         for data in data_list:
@@ -280,7 +266,6 @@ class DataList:
             _data_list  = data_list, # skips initialisation of the empty datalist in __init__
             save_dir    = save_dir,
             verbose     = verbose,
-            order_range = order_range,
             velocities  = velocities,
         )
 
@@ -375,7 +360,7 @@ class DataList:
         if np.any([o not in order_range for o in self.orders]):
             raise ACIDInputError("The already saved orders must be a subset of the inputted order_range.")
         self.order_range = np.array(order_range, dtype=np.int32)
-        self.sort_by_order() # re-sorts the list and updates the o2i mapping, and injects the new order_range into each config
+        self.sort_by_order() # re-sorts the list and updates the o2i mapping
 
     def sort_by_order(self) -> None:
         """
@@ -388,8 +373,6 @@ class DataList:
         self.o2i = {data.config.order: i for i, data in enumerate(self.data_list)}
         self.i2o = {i: data.config.order for i, data in enumerate(self.data_list)}
         self.orders = np.array([data.config.order for data in self.data_list], dtype=np.int32)
-        for data in self.data_list:
-            data.config.order_range = self.order_range # inject the order range into each config for internal awareness
 
         if len(np.unique(self.orders)) != len(self.orders):
             raise ACIDInputError("All Data instances within the inputted list must have unique order numbers.")
@@ -648,7 +631,8 @@ class DataList:
             for payload in d["data_list"]:
                 # Resolve the order before opening any sampler from the snapshot.
                 data = Data()
-                data.config = Config(**payload.get("config", {}))
+                # order_range was a legacy field so should not be included in the new config
+                data.config = Config(**{k: v for k, v in payload.get("config", {}).items() if k != "order_range"})
                 data._infer_order_from_path(data.config.save_path)
                 source_path = None
                 if data.config.order is not None:

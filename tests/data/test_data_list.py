@@ -30,7 +30,7 @@ def test_datalist_chi_squared_plot_uses_completed_orders():
     data_list = []
     for order, scale in enumerate((1.0, 2.0), start=10):
         data = Data()
-        data.config = Config(order=order, order_range=[10, 11])
+        data.config = Config(order=order)
         data.velocities = velocities
         data.profile["final"] = (np.ones(3), np.full(3, 0.01), np.eye(3) * 1e-4)
         data.flux["final"] = np.array([1.0, 0.9, 1.1])
@@ -54,7 +54,7 @@ def test_datalist_order_mapping_append_and_range_management(completed_datalist):
 
     # Duplicates require an explicit overwrite rather than silently replacing data.
     duplicate = Data()
-    duplicate.config = Config(order=21, order_range=[20, 21, 22])
+    duplicate.config = Config(order=21)
     duplicate.velocities = datalist.velocities
     with pytest.raises(ValueError, match="already exists"):
         datalist.append(duplicate)
@@ -63,7 +63,7 @@ def test_datalist_order_mapping_append_and_range_management(completed_datalist):
 
     # Extending the range allows a newly observed order to be added safely.
     new_order = Data()
-    new_order.config = Config(order=23, order_range=[20, 21, 22])
+    new_order.config = Config(order=23)
     new_order.velocities = datalist.velocities
     datalist.append(new_order, extend=True)
     assert datalist.orders.tolist() == [20, 21, 22, 23]

@@ -85,6 +85,7 @@ class Acid:
 
     def ACID(
         self,
+                                                                       # Stored in:
         wavelengths           : Array1D|Array2D|None           = None, # Data
         flux                  : Array1D|Array2D|None           = None, # Data
         errors                : Array1D|Array2D|None           = None, # Data
@@ -92,7 +93,6 @@ class Acid:
         velocities            : Array1D|None                   = None, # Data
         linelist              : Array2D|str|LineList|dict|None = None, # Data
         order                 : IntLike|None                   = None, # Config
-        order_range           : Array1D|None                   = None, # Config
         verbose               : IntLike|bool|str|None          = None, # Config
         sampler_progress      : bool|None                      = None, # Config
         masking_lines         : dict|MaskingLines|None         = None, # Config
@@ -184,11 +184,6 @@ class Acid:
             of the spectrograph (ie. some spectrographs start at order ~20). By default None (unset).
             When loading a saved Data instance, an unset order is inferred from its order_<integer> parent directory.
             DataList assigns order labels from order_range when initialized from arrays.
-        order_range : :py:type:`Array1D`, optional
-            Optionally also give ACID the full order range of the spectograph for the observation. ACID only ever runs on one order at a time,
-            but this will allows ACID and eventually the DataList to keep track of which orders have been run and which haven't, and will be 
-            used in the future for plotting and saving results. As with order (above), the orders can be indexed to the spectrograph orders. 
-            By default [0]
         verbose : :py:type:`bool | IntLike | str`, optional
             The verbosity for printing and plotting the progress and warnings of ACID. The verbosities are natively stored as integers corresponding to:
             0: No printing or plotting, all warnings are ignored.
@@ -440,6 +435,12 @@ class Acid:
             # region input kwargs
             # Add init_kwargs to kwargs, with kwargs overwriting
             kwargs = {**self.init_kwargs, **kwargs}
+
+            if "order_range" in kwargs:
+                kwargs.pop("order_range")
+                warnings.warn("'order_range' is deprecated in ACID and will be ignored. "
+                              "Set 'order' for a single order, or pass 'order_range' to DataList.",
+                              ACIDDeprecationWarning, stacklevel=3)
 
             # Catch for the linelist_path, linelist_wl, or linelist_depths arguments, which was old way to input a linelist
             if "linelist_path" in kwargs:

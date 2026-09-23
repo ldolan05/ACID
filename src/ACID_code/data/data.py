@@ -186,7 +186,6 @@ class Data:
             f"Number of linelist points (clipped/full): {len(self.ll_mask['masked'])} / {len(ll_wl)}",
             f"Linelist range (from-to, clipped/full): {cut_ll_range[0]}-{cut_ll_range[1]} / {full_ll_range[0]}-{full_ll_range[1]}",
             f"Order: {self.config.order}",
-            f"Order range (min-max): {np.min(self.config.order_range)} - {np.max(self.config.order_range)}",
             f"Verbosity: {self.config.verbose}",
             f"Save path: {self.config.save_path}",
             f"Sampler path: {self.config.sampler_path}",
@@ -1188,7 +1187,7 @@ class Data:
         for f in fields(self):
             name = f.name
             if name == "_config": # config stored as a dict in payload, but stored here as class
-                cfg_dict = payload.get("config", {})
+                cfg_dict = {k: v for k, v in payload.get("config", {}).items() if k != "order_range"}
                 setattr(self, "_config", Config(**cfg_dict))
             elif name == "_sampler":
                 continue # handled after loop

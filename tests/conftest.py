@@ -223,7 +223,7 @@ def completed_datalist():
     for order, depth in zip([20, 21, 22], [0.02, 0.04, 0.06]):
         # Construct the minimum final state consumed by DataList combination and plots.
         data = Data()
-        data.config = Config(order=order, order_range=[20, 21, 22])
+        data.config = Config(order=order)
         data.velocities = velocities
         profile = 1 - depth * np.exp(-velocities ** 2 / 4)
         errors = np.full_like(profile, 0.01)
