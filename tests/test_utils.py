@@ -222,5 +222,33 @@ def test_show_or_save_writes_the_requested_figure(tmp_path):
     assert (tmp_path / "diagnostic.png").exists()
 
 
+def test_array_helpers_and_optical_depth_round_trip():
+    waves = np.array([1.0, np.nan, 3.0])
+    flux = np.array([1.0, -1.0, 2.0])
+    errors = np.array([0.1, 0.1, np.inf])
+    _, _, _, mask = utils.mask_invalid(waves, flux, errors, return_mask=True)
+    assert mask.tolist() == [True, False, False]
+    assert utils.drop_invalid(waves, flux, errors)[0].tolist() == [1.0]
+
+    original_flux = np.array([0.8, 0.9])
+    original_errors = np.array([0.02, 0.03])
+    original_lines = np.array([0.2, 0.1])
+    od = utils.flux_to_od(original_flux, original_errors, original_lines)
+    restored = utils.od_to_flux(*od)
+    for actual, expected in zip(restored, (original_flux, original_errors, original_lines)):
+        np.testing.assert_allclose(actual, expected)
+
+
+def test_numerical_utilities_and_validation():
+    assert utils.calc_deltav(np.array([5002.0, 5000.0, 5001.0])) > 0
+    assert utils.guess_SNR(np.arange(1, 11), np.ones(10), np.full(10, 0.1)) == pytest.approx(10)
+    np.testing.assert_allclose(utils.guess_errors(np.ones((2, 3)), [10, 20]), [[0.1] * 3, [0.05] * 3])
+    assert utils.next_pow_2(7) == 8
+    with pytest.raises(ValueError):
+        utils.calc_deltav(np.array([-1.0, 1.0]))
+    with pytest.raises(ValueError):
+        utils.convert_moves_to_emcee([("NoMove", 1.0)])
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))

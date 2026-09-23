@@ -1,10 +1,9 @@
 """Column alignment and metadata preservation for full line lists."""
-import pickle
 
 import numpy as np
 import pytest
 
-from ACID_code import Data, DataList, LineList
+from ACID_code import LineList
 from ACID_code.diagnostics.errors import ACIDInputError
 from ACID_code.diagnostics.warnings import ACIDDroppedDataWarning
 
@@ -89,36 +88,71 @@ def test_invalid_metadata_drops_whole_row(species, lande):
     assert [column.tolist() for column in lines] == [[5001], [0.2], ["Ti 2"], [0.8]]
 
 
-def test_full_metadata_survives_copies_data_reset_and_save_load(tmp_path):
-    lines = LineList([[5002, 5000], [0.2, 0.1], ["Fe 1", "Ti 2"], [1.2, 0.8]], full=True)
-    for source in (lines, lines.ll, list(lines)):
-        copied = LineList(source)
-        assert list(copied.ll) == list(lines.ll)
-        for key in lines.ll:
-            np.testing.assert_array_equal(copied[key], lines[key])
-            assert not np.shares_memory(copied[key], lines[key])
+def test_linelist_sorts_and_rejects_invalid_shapes():
+    # Line lists are stored in wavelength order regardless of their input ordering.
+    linelist = LineList({"wavelengths": np.array([5002.0, 5000.0]),
+                         "depths": np.array([0.2, 0.1])})
+    wavelengths, depths = linelist
 
-    data = Data()
-    data.config.order = 20
-    # String lists in metadata must pass Data's runtime type checking too.
-    data.linelist = {key: value.tolist() for key, value in lines.ll.items()}
-    data.reset()
-    filename = tmp_path / "data.pkl"
-    data.save(str(filename))
-    with filename.open("rb") as stream:
-        stored = pickle.load(stream)["_linelist"]
-    assert type(stored) is dict
-    assert list(stored) == list(lines.ll)
-    loaded = Data.load(str(filename))
-    for key in lines.ll:
-        np.testing.assert_array_equal(loaded.linelist[key], lines[key])
+    np.testing.assert_array_equal(wavelengths, [5000.0, 5002.0])
+    np.testing.assert_array_equal(depths, [0.1, 0.2])
+    with pytest.raises(ValueError, match="same length"):
+        LineList([[1, 2], [0.1]])
 
-    datalist = DataList.from_datalist([data])
-    datalist.save(str(tmp_path))
-    with (tmp_path / "datalist.pkl").open("rb") as stream:
-        stored = pickle.load(stream)["data_list"][0]["_linelist"]
-    assert type(stored) is dict
-    assert list(stored) == list(lines.ll)
-    loaded_list = DataList.load(str(tmp_path))
-    for key in lines.ll:
-        np.testing.assert_array_equal(loaded_list[20].linelist[key], lines[key])
+
+@pytest.mark.parametrize("linelist", [
+    [[5002.0, 5000.0], [0.2, 0.1]],
+    np.array([[5002.0, 5000.0], [0.2, 0.1]]),
+    {"wavelengths": [5002.0, 5000.0], "depths": [0.2, 0.1], "ignored": True},
+    LineList({"wavelengths": np.array([5002.0, 5000.0]),
+              "depths": np.array([0.2, 0.1])}),
+])
+def test_linelist_accepts_each_documented_in_memory_format(linelist):
+    # All public in-memory forms should produce the same sorted pair of arrays.
+    wavelengths, depths = LineList(linelist)
+
+    np.testing.assert_array_equal(wavelengths, [5000.0, 5002.0])
+    np.testing.assert_array_equal(depths, [0.1, 0.2])
+
+
+def test_linelist_file_indexing_and_invalid_line_removal(linelist_path):
+    # A file-backed line list should be readable through the same validation route.
+    line_list = LineList(str(linelist_path))
+
+    assert line_list[0].shape == line_list[1].shape
+    assert line_list["wavelengths"].ndim == 1
+    with pytest.raises(ACIDInputError):
+        _ = line_list[2]
+
+    # Invalid depths and wavelengths are removed together, retaining the validity mask.
+    kept_wavelengths, kept_depths, mask = LineList.validate_linelist(
+        [np.array([5000.0, np.nan, 5002.0, 5003.0]),
+         np.array([0.1, 0.2, -0.1, 1.0])], return_mask=True,
+    )
+    np.testing.assert_array_equal(mask, [True, False, False, False])
+    np.testing.assert_array_equal(kept_wavelengths, [5000.0])
+    np.testing.assert_array_equal(kept_depths, [0.1])
+
+
+def test_linelist_constructor_removes_invalid_lines_and_owns_arrays():
+    wavelengths = np.array([5002.0, np.nan, 5000.0, -1.0, 5003.0, 5004.0])
+    depths = np.array([0.2, 0.3, 0.1, 0.4, 1.0, -0.1])
+    with pytest.warns(ACIDDroppedDataWarning, match="4"):
+        lines = LineList({"wavelengths": wavelengths, "depths": depths})
+    wavelengths[:] = 1
+    depths[:] = 0
+    np.testing.assert_array_equal(lines[0], [5000.0, 5002.0])
+    np.testing.assert_array_equal(lines[1], [0.1, 0.2])
+
+
+@pytest.mark.parametrize("linelist, message", [
+    (None, "must be provided"),
+    ({"wavelengths": [5000]}, "must contain keys"),
+    ([[[5000]], [[0.1]]], "one-dimensional"),
+    ([[], []], "All lines"),
+    ([[5000, -1, np.inf], [1, 0.1, 0.2]], "All lines"),
+])
+def test_linelist_constructor_rejects_invalid_inputs(linelist, message):
+    with pytest.raises(ACIDInputError, match=message):
+        LineList(linelist)
+

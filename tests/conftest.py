@@ -12,6 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 matplotlib.use("Agg")
 
+from ACID_code import Config, Data, DataList, LSD, MCMC
+
 
 def pytest_addoption(parser):
     # Keep expensive integrations opt-in while retaining pytest's normal short run.
@@ -202,3 +204,34 @@ def harps_result(harps_order_40):
 
     # One hundred steps exercise sampler-backed behavior without repeating a convergence run.
     return acid.ACID(wavelengths, flux, errors, sn, nsteps=100)
+
+
+@pytest.fixture
+def mcmc(synthetic_spectrum):
+    # Build the compact deterministic model directly, avoiding a full ACID run for unit maths.
+    wavelengths, flux, errors, _, velocities, linelist = synthetic_spectrum
+    alpha = LSD.calc_alpha(wavelengths, linelist["wavelengths"], linelist["depths"], velocities)
+    return MCMC(np.linspace(-1, 1, len(flux)), flux, errors, alpha, velocities,
+                LSD.calc_cholesky(alpha, errors), deterministic_profile=True)
+
+
+@pytest.fixture
+def completed_datalist():
+    """A three-order DataList with deterministic, already-completed profiles."""
+    velocities = np.linspace(-5, 5, 11)
+    data_list = []
+    for order, depth in zip([20, 21, 22], [0.02, 0.04, 0.06]):
+        # Construct the minimum final state consumed by DataList combination and plots.
+        data = Data()
+        data.config = Config(order=order, order_range=[20, 21, 22])
+        data.velocities = velocities
+        profile = 1 - depth * np.exp(-velocities ** 2 / 4)
+        errors = np.full_like(profile, 0.01)
+        data.profile["final"] = (profile, errors, np.diag(errors ** 2))
+        data.profiles = [(profile, errors, np.diag(errors ** 2))]
+        data.complete = True
+        data.flux["final"] = np.array([1.0, 0.98, 1.01])
+        data.forward_y["final"] = np.array([1.0, 0.99, 1.00])
+        data.errors["final"] = np.full(3, 0.01)
+        data_list.append(data)
+    return DataList.from_datalist(data_list)

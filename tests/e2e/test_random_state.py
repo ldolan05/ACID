@@ -192,3 +192,4 @@ def test_dynesty_uses_private_seeded_generator(prepare_acid):
     assert rng_state(first.data.get_rng()) != initial
     assert rng_state(first.data.get_result_rng()) == initial
     np.testing.assert_array_equal(first.sampler.results.samples, second.sampler.results.samples)
+

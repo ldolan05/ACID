@@ -11,6 +11,66 @@ from ACID_code import Data, LSD
 from ACID_code.diagnostics.errors import ACIDLineListRangeError, ACIDSNCutError
 
 
+@pytest.mark.parametrize('scale_regularization', [True, False])
+def test_regularization_matches_augmented_least_squares(scale_regularization):
+    rng = np.random.default_rng(7)
+    alpha = rng.uniform(size=(40, 8))
+    errors = rng.uniform(0.05, 0.1, 40)
+    y = alpha @ np.tile([0.1, 0.3, 0.2, 0.1], 2) + rng.normal(0, errors)
+    D = np.diff(np.eye(alpha.shape[1]), axis=0)
+    strength = 0.5
+    information = np.diag(alpha.T @ np.diag(errors**-2) @ alpha)
+    scale = information.mean() if scale_regularization else 1.0
+    augmented = np.vstack((alpha / errors[:, None],
+                           np.sqrt(strength * scale) * D))
+    expected = np.linalg.lstsq(augmented, np.r_[y / errors, np.zeros(len(D))], rcond=None)[0]
+    factor = LSD.calc_cholesky(alpha, errors, strength, scale_regularization=scale_regularization)
+    profile, _, cov = LSD.solve_z(alpha, y, errors, factor, return_cov=True)
+    np.testing.assert_allclose(profile, expected, atol=1e-12)
+    np.testing.assert_allclose(cov, np.linalg.inv(augmented.T @ augmented), atol=1e-12)
+    # A constant profile is in the penalty's nullspace.
+    constants = np.full(alpha.shape[1], 0.2)
+    recovered = LSD.solve_z(alpha, alpha @ constants, errors, factor, return_error=False)
+    np.testing.assert_allclose(recovered, constants, atol=1e-12)
+
+
+@pytest.mark.parametrize('change', ['errors', 'line_count', 'line_depth', 'flux'])
+def test_relative_regularization_is_invariant_to_input_scale(change):
+    rng = np.random.default_rng(17)
+    alpha = rng.uniform(size=(40, 8))
+    errors = rng.uniform(0.01, 0.03, 40)
+    y = alpha @ rng.uniform(size=8)
+
+    def solve(a, f, e, strength=0.5):
+        return LSD.solve_z(a, f, e, LSD.calc_cholesky(a, e, regularization=strength),
+                           return_error=False)
+
+    baseline = solve(alpha, y, errors)
+    assert np.linalg.norm(np.diff(baseline)) < np.linalg.norm(np.diff(solve(alpha, y, errors, 0)))
+    if change == 'errors':
+        actual = solve(alpha, y, 20 * errors)
+    elif change == 'line_count':
+        actual = solve(np.tile(alpha, (5, 1)), np.tile(y, 5), np.tile(errors, 5))
+    elif change == 'line_depth':
+        actual = 3 * solve(3 * alpha, y, errors)
+    else:
+        actual = solve(alpha, 10 * y, 10 * errors) / 10
+    np.testing.assert_allclose(actual, baseline, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize('od', [True, False])
+def test_standalone_regularization_can_be_disabled(synthetic_spectrum, od):
+    wave, flux, errors, sn, v, lines = synthetic_spectrum
+    lsd = LSD(od=od, verbose=0)
+    kwargs = dict(linelist=lines, velocities=v)
+    lsd.run_LSD(wave, flux, errors, sn, **kwargs)
+    baseline = lsd.profile.copy()
+    lsd.run_LSD(wave, flux, errors, sn, regularization=0.5, **kwargs)
+    assert np.linalg.norm(np.diff(lsd.profile)) < np.linalg.norm(np.diff(baseline))
+    lsd.run_LSD(wave, flux, errors, sn, regularization=0, **kwargs)
+    np.testing.assert_array_equal(lsd.profile, baseline)
+
+
 def test_sparse_and_dense_alpha_agree(synthetic_spectrum):
     # The sparse path is the production default; the dense path is its legacy calculation.
     wavelengths, _, _, _, velocities, linelist = synthetic_spectrum
