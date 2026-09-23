@@ -7,7 +7,7 @@ from . import utils
 from .utils import Array1D, Array2D
 from beartype import beartype
 from scipy.linalg import cho_solve, cho_factor
-from .data import Data
+from .data import Config, Data
 from numpy.polynomial.chebyshev import chebval
 from .lsd import LSD
 
@@ -45,15 +45,19 @@ class MCMC:
             alpha                 : Array2D|None = None,
             velocities            : Array1D|None = None,
             c_factor                             = None,
-            deterministic_profile : bool         = False,
-            sampler_type          : str          = "emcee",
-            od                    : bool         = True,
-            continuum_method      : str          = "polyval",
-            use_jax               : bool         = False,
+            deterministic_profile : bool|None    = None,
+            sampler_type          : str|None     = None,
+            od                    : bool|None    = None,
+            continuum_method      : str|None     = None,
+            use_jax               : bool|None    = None,
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
+        All defaults are None in the signature because they draw from the :py:class:`Config` defaults.
+        Passing a parameter in the signature overides any defaults from the :py:class:`Config` instance.
+        The parameter listings below show the defaults of the config for convenience.
+        Otherwise obtain them with the `Config.print_defaults()` method.
 
         Parameters
         ----------
@@ -86,38 +90,33 @@ class MCMC:
             lazily, and NumPy/SciPy is used if it is unavailable, by default False.
         """
 
-        # No checks are performed here - assume data is valid from ACID class checks,
-        # else user is on their own!
         if isinstance(x_or_data, Data):
             data = x_or_data
-            self.x = data.norm_wavelengths["mcmc"]
-            self.y = data.flux["mcmc"]
-            self.yerr = data.errors["mcmc"]
-            self.alpha = data.alpha["mcmc"]
-            self.velocities = data.velocities
-            self.c_factor = data.c_factor["mcmc"]
-            self.deterministic_profile = data.config.deterministic_profile
-            self.sampler_type = data.config.sampler_type
-            self.od = data.config.od
-            self.continuum_method = data.config.continuum_method
-            self.use_jax = data.config.use_jax
         else:
-            # TODO: input validation through config, use config for all of below checks
-            self.x = x_or_data
-            self.y = y
-            self.yerr = yerr
-            self.alpha = alpha
-            self.velocities = velocities
-            self.c_factor = c_factor
-            self.deterministic_profile = deterministic_profile
-            self.sampler_type = sampler_type
-            self.od = od
-            self.continuum_method = continuum_method
-            self.use_jax = use_jax
-            data = None
+            # Validate raw inputs through the same Data/Config interface.
+            data = Data(norm_wavelengths={"mcmc": np.asarray(x_or_data)}, flux={"mcmc": y},
+                        errors={"mcmc": yerr}, alpha={"mcmc": alpha},
+                        c_factor={"mcmc": c_factor} if c_factor is not None else {})
+            if velocities is not None:
+                data.velocities = velocities
+            data.config = Config(deterministic_profile=deterministic_profile,
+                                 sampler_type=sampler_type, od=od,
+                                 continuum_method=continuum_method, use_jax=use_jax)
+
+        self.x = data.norm_wavelengths["mcmc"]
+        self.y = data.flux["mcmc"]
+        self.yerr = data.errors["mcmc"]
+        self.alpha = data.alpha["mcmc"]
+        self.velocities = data.velocities
+        self.c_factor = data.c_factor.get("mcmc")
+        self.deterministic_profile = data.config.deterministic_profile
+        self.sampler_type = data.config.sampler_type
+        self.od = data.config.od
+        self.continuum_method = data.config.continuum_method
+        self.use_jax = data.config.use_jax
 
         self.k_max = self.alpha.shape[1] # the number of velocity points in the profile
-        self.regularization = data.config.regularization if data is not None else 0.0
+        self.regularization = data.config.regularization
 
         if self.od:
             # For deterministic model, the below variables are used, and are precomputed for speed
@@ -149,7 +148,7 @@ class MCMC:
             self.model_function = self.deterministic_model # infer profile points from continuum
 
         # For dynesty's sake, should delete later
-        if data is not None:
+        if isinstance(x_or_data, Data):
             profile0 = np.asarray(data.profile["masked"][0]).reshape(-1)
             self.model_inputs = np.concatenate((profile0, data.poly_coeffs["masked"]))
         else:
