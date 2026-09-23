@@ -467,9 +467,7 @@ def save_backend_to_hdf5(backend, filename):
 
 def backend_to_sampler(backend, log_prob_fn):
     nwalkers, ndim = backend.shape
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob_fn)
-    sampler.backend = backend
-    return sampler
+    return emcee.EnsembleSampler(nwalkers, ndim, log_prob_fn, backend=backend)
 
 def set_dict_defaults(input_dict: dict | None, default_dict: dict) -> dict:
     """Sets default values in a dictionary if they are not already present.
