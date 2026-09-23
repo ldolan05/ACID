@@ -2,7 +2,6 @@
 Custom error classes for ACID. To be used mainly for handling specific errors in the DataList run_ACID method.
 """
 
-# TODO: Somehow? Make every ACIDError (and its subclass) put the error into the data instance it is related to, like how datalist run_ACID handles warnings.
 
 class ACIDError(Exception):
     """Base class for all ACID-related errors."""

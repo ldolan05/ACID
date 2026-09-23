@@ -124,7 +124,7 @@ class MCMC:
             err_od = self.yerr / self.y # independent of continuum, since it's a ratio
             V = 1.0 / (err_od ** 2) # variance vector in log space, error already in log space
         else:
-            # TODO: This may be mathematically incorrect, need to relook how to move forward with this
+            # In this case for deterministic sampling, the errors are not accurate. They are warned through the Config getters.
             # For non-OD case, we need to precompute the variance vector in flux space for the likelihood calculation
             V = 1.0 / (self.yerr ** 2) # variance vector in flux space
 
