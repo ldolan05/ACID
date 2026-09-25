@@ -196,5 +196,42 @@ def test_result_plot_forward_model_accepts_different_keys(harps_result):
     plt.close(figure)
 
 
+@pytest.mark.parametrize("discard_after_init", [False, True])
+def test_completed_result_without_sampler_keeps_results_and_guards_samples(harps_result, tmp_path, discard_after_init):
+    payload = harps_result.data.to_dict()
+    payload.pop("sampler", None)
+    payload["config"]["_sampler_path"] = str(tmp_path / "missing.h5")
+    data = Data().from_dict(payload)
+    result = Result(data, sampler=harps_result.sampler if discard_after_init else None)
+    # Removing the sampler through Data must also be respected by an existing Result.
+    data.sampler = None
+    data.config.sampler_path = str(tmp_path / "missing.h5")
+    np.testing.assert_array_equal(result["profile"], harps_result["profile"])
+    assert len(list(result)) == len(list(harps_result))
+    for plot in (result.plot_profiles, result.plot_forward_model):
+        figure, _ = plot(return_fig=True)
+        plt.close(figure)
+    for method in (result.process_results, result.continue_sampling, result.plot_walkers,
+                   result.plot_traceplot, result.plot_corner, result.plot_autocorrelation, result.plot_acf):
+        with pytest.raises(ACIDStateError, match="without a sampler"):
+            method()
+    result.save(str(tmp_path / "result.pkl"))
+    loaded = Result.load(str(tmp_path / "result.pkl"))
+    assert loaded.sampler is None
+    np.testing.assert_array_equal(loaded["profile"], result["profile"])
+    # Supplying a sampler later must initialize its type and diagnostic settings.
+    figure, _ = result.plot_walkers(sampler=harps_result.sampler, return_fig=True)
+    plt.close(figure)
+    assert result.sampler_initialized
+
+
+def test_missing_sampler_file_does_not_require_mcmc_intermediates(tmp_path):
+    data = Data(complete=True)
+    with pytest.warns(UserWarning, match="sampler was not found"):
+        data.sampler = str(tmp_path / "missing.h5")
+    assert data.sampler is None
+    assert data.complete
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))

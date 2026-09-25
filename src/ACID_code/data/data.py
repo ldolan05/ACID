@@ -239,7 +239,7 @@ class Data:
         Sets the sampler object from various types.
         This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
         """
-        if sampler is not None:
+        if isinstance(sampler, Backend) or (isinstance(sampler, str) and os.path.exists(sampler)):
             from ..mcmc import MCMC
             log_prob_fn = MCMC(self)
 
@@ -256,7 +256,6 @@ class Data:
                 warnings.warn(f"The sampler was not found at the provided path '{sampler}', it may have been moved or deleted. \n"
                       f"The sampler will be set to None.", ACIDStateWarning, stacklevel=2)
                 self._sampler = None
-                # TODO: Allow sampler to have completed results, but no sampler, and configured methods with _requiresampler property that need them
         elif sampler is None:
             if self._sampler is not None:
                 warnings.warn("You have discarded the sampler.", ACIDStateWarning, stacklevel=2)

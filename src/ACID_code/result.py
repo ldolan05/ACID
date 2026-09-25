@@ -58,9 +58,8 @@ def _require_sampler(method):
 @beartype
 class Result:
     """
-    Class to handle the results from the Acid MCMC sampling, and results processing. Fundamentally, this
-    class requires two objects to run, the Sampler object and the Data object, both of which can be obtained
-    from the Acid object. If one or the other is not provided, some methods will not work.
+    Handles stored results and MCMC result processing. Completed Data can be used without a sampler.
+    Methods decorated with _require_sampler need one to process or inspect samples.
     """
 
     def __init__(
@@ -115,10 +114,6 @@ class Result:
         # Handle the sampler if input, initiate if one exists
         self.sampler = sampler if sampler is not None else self.sampler # update sampler if provided, otherwise keep the same
         if self.sampler is not None:
-            if Sampler is not None: # ie, only if dynesty is installed do this cheeck
-                self.dynesty = isinstance(self.sampler, Sampler)
-            else:
-                self.dynesty = False
             self.initiate_sampler(self.sampler) # set internal variables based on sampler, sets sampler_initialiated to True
 
         if not self.data.complete:
@@ -152,6 +147,7 @@ class Result:
         else:
             flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
 
+        # May be used in a future update for more accurate error estimation
         # Get approximate 1 sigma errors on the parameters using the 16th and 84th percentiles
         # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         # param_errors_upanddown = np.diff(quartiles, axis=0)
@@ -937,10 +933,8 @@ class Result:
             Internal parameter used to track which method is calling initiate_sampler, for error messages. 
             Not intended for user input, by default None.
         """
-        if self.sampler_initialized:
-            if sampler is None:
-                return # sampler already initiated from initialisation, so skip the rest of the method
-            # else: continues to update the sampler and internal variables based on new sampler input
+        if self.sampler_initialized and sampler is None and self.sampler is not None:
+            return # reuse initialization only while the sampler is still available
         self.sampler = sampler if sampler is not None else self.sampler
         if self.sampler is None:
             if _method_name is not None:
@@ -949,12 +943,14 @@ class Result:
                 error_msg = "Cannot initiate sampler without a sampler stored in the instance or passed as a parameter, please pass in a sampler "
             raise ACIDStateError(error_msg)
 
+        self.dynesty = Sampler is not None and isinstance(self.sampler, Sampler)
         if self.dynesty:
             a=ord('a')
             alph=[chr(i) for i in range(a,a+26)]
             poly_labels = [alph[i] for i in range(self.config.poly_ord + 1)]
             self.default_param_labels = poly_labels
             self.default_params = None
+            self.sampler_initialized = True
             return
 
         # Calculate autocorr time, burnin, thin
