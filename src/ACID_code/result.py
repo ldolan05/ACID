@@ -699,8 +699,8 @@ class Result:
         forward = np.copy(self.data.forward_y[key])
 
         # Get the linelist points
-        ll_wl = self.data.linelist["wavelengths"][self.data.ll_mask[key]]
-        ll_depths = 1 - self.data.linelist["depths"][self.data.ll_mask[key]]
+        ll_wl = self.data.linelist["wavelengths"][self.data.ll_mask]
+        ll_depths = 1 - self.data.linelist["depths"][self.data.ll_mask]
         ll_tops = np.ones_like(ll_wl) # top of the linelist lines, for plotting
 
         # Due to distortion at the edges of the profile, we drop the last 2 pixels

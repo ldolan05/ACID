@@ -81,7 +81,7 @@ class Data:
     #: The residuals between the forward model and flux used to generate said model. Scaled to the forward model flux.
     residuals              : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The indexes from the full linelist that was used in this LSD run
-    ll_mask                : Dict[str, np.ndarray] = field(default_factory=dict)
+    ll_mask                : Optional[np.ndarray] = None
 
     # Products generated from residual masking
     # ---------------------------------------------------------
@@ -177,13 +177,13 @@ class Data:
         """String representation of the Data object, showing all stored attributes in a user-friendly format."""
         ll_wl = self.linelist["wavelengths"]
         full_ll_range = [np.min(ll_wl), np.max(ll_wl)]
-        cut_ll_range = [np.min(self.ll_mask["masked"]), np.max(self.ll_mask["masked"])]
+        cut_ll_range = [np.min(self.ll_mask), np.max(self.ll_mask)]
         mp_lsd = self.profile_groups is not None
 
         output = [
             f"Number of velocity points: {len(self.velocities)}",
             f"deltav: {self.velocities[1] - self.velocities[0]} km/s",
-            f"Number of linelist points (clipped/full): {len(self.ll_mask['masked'])} / {len(ll_wl)}",
+            f"Number of linelist points (clipped/full): {len(self.ll_mask)} / {len(ll_wl)}",
             f"Linelist range (from-to, clipped/full): {cut_ll_range[0]}-{cut_ll_range[1]} / {full_ll_range[0]}-{full_ll_range[1]}",
             f"Order: {self.config.order}",
             f"Verbosity: {self.config.verbose}",

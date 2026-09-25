@@ -231,7 +231,7 @@ class LSD:
         wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups)
 
         # Save the mask that constructs the clipped linelist from the original, wavelengths are sorted already
-        self.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
+        self.data.ll_mask = self.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
 
         # Now we mask after cuts applied
         flux        = flux[mask]
