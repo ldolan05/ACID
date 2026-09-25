@@ -300,7 +300,7 @@ class Acid:
         profile_groups : :py:type:`Array1D | None`, optional
             A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
             If provided, the resulting profiles will be a 2D array in with the same order as the index of the group.
-            The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match the inputted linelist.
+            The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match either the full linelist or the linelist after wavelength and S/N clipping.
             If None, then just one profile is generated (as if the mask was [0,0,0,0,0,...]). By default None.
         depth_group_rules : :py:type:`dict`, optional
             A way to automatically generate the profile_groups based on a set of rules.

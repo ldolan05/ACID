@@ -64,6 +64,8 @@ def test_data_input_sorting_skips_and_selective_reset():
     errors = np.full(5, 0.01)
     data.set_inputs(wavelengths, flux, errors, input_sn=100.0, skips=2)
     data.config.profile_groups = np.array([0, 1])
+    data.linelist = [[1.0, 3.0], [0.2, 0.3]]
+    data.ll_mask = np.array([0, 1])
     data.profile_groups = np.array([0, 1])
     data.alpha["derived"] = np.ones((2, 2))
 

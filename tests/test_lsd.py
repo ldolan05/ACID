@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code import Data, LSD
-from ACID_code.diagnostics.errors import ACIDLineListRangeError, ACIDSNCutError
+from ACID_code.diagnostics.errors import ACIDInputError, ACIDLineListRangeError, ACIDSNCutError
 
 
 @pytest.mark.parametrize('scale_regularization', [True, False])
@@ -118,7 +118,9 @@ def test_multi_profile_convolution_matches_flattened_alpha(synthetic_spectrum):
                                LSD.flatten_alpha(alpha) @ profiles.ravel())
 
 
-def test_profile_groups_follow_wavelength_and_sn_clipping_through_run_lsd():
+@pytest.mark.parametrize("profile_groups", [[9, 0, 1, 9], [0], [0, 1], [0, 1, 2], [], [[0]]])
+@pytest.mark.parametrize("from_config", [False, True])
+def test_profile_groups_follow_wavelength_and_sn_clipping_through_run_lsd(profile_groups, from_config, monkeypatch):
     # Construct a spectrum from the one line that should survive both clipping stages.
     wavelengths = np.linspace(5000, 5010, 1001)
     velocities = np.array([-5.0, 0.0, 5.0])
@@ -130,35 +132,63 @@ def test_profile_groups_follow_wavelength_and_sn_clipping_through_run_lsd():
     # Lines 0 and 3 lie outside the padded spectrum; line 2 fails the S/N depth cut.
     linelist = {"wavelengths": np.array([4990.0, 5003.0, 5007.0, 5020.0]),
                 "depths": np.array([0.5, 0.2, 0.001, 0.3])}
-    profile_groups = np.array([9, 0, 1, 9])
+    profile_groups = np.array(profile_groups)
+    input_groups_before = profile_groups.copy()
     lsd = LSD()
+    kwargs = {}
+    if from_config:
+        lsd.data.config.profile_groups = profile_groups
+    else:
+        kwargs["profile_groups"] = profile_groups
+    if profile_groups.ndim != 1 or len(profile_groups) not in (1, 4):
+        error = BeartypeCallHintParamViolation if profile_groups.ndim != 1 and not from_config else ACIDInputError
+        with pytest.raises(error, match="profile_groups"):
+            lsd.run_LSD(wavelengths, flux, errors, 100.0, linelist=linelist,
+                        velocities=velocities, **kwargs)
+        return
     lsd.run_LSD(wavelengths, flux, errors, 100.0, linelist=linelist,
-                velocities=velocities, profile_groups=profile_groups)
+                velocities=velocities, **kwargs)
 
     # The group array and stored line-list mask must identify the same surviving line.
     np.testing.assert_array_equal(lsd.profile_groups, [0])
     np.testing.assert_array_equal(lsd.data.profile_groups, [0])
     np.testing.assert_array_equal(lsd.ll_mask, [1])
+    np.testing.assert_array_equal(lsd.data.ll_mask, [1])
     assert lsd.alpha.shape == (1, len(wavelengths), len(velocities))
+    np.testing.assert_array_equal(profile_groups, input_groups_before)
+    assert not np.shares_memory(lsd.data.profile_groups, profile_groups)
+    if from_config:
+        assert lsd.data.config.profile_groups is profile_groups
+        # Accessing the full linelist must not alter the input or revalidate derived groups.
+        assert len(lsd.data.linelist["wavelengths"]) == 4
+        assert lsd.data.config.profile_groups is profile_groups
+
+    # Reusing the mask must skip both cuts and preserve the solution.
+    cached_mask = lsd.data.ll_mask
+    previous_profile = lsd.profile_F.copy()
+    def unexpected_clip(*args, **kwargs):
+        pytest.fail("The cached linelist mask should skip clipping")
+    monkeypatch.setattr(LSD, "clip_wavelengths", unexpected_clip)
+    monkeypatch.setattr(LSD, "sn_clip", unexpected_clip)
+    lsd.run_LSD(wavelengths, flux, errors, 100.0, velocities=velocities, alpha=lsd.alpha, **kwargs)
+    assert lsd.data.ll_mask is cached_mask
+    np.testing.assert_allclose(lsd.profile_F, previous_profile)
 
 
-def test_wavelength_and_sn_clippers_apply_identical_masks_to_groups():
-    # Use distinctive group labels so accidental reordering or unmasked groups are obvious.
+def test_wavelength_and_sn_clippers_keep_matching_wavelengths_and_depths():
     line_wavelengths = np.array([4990.0, 5002.0, 5004.0, 5006.0, 5020.0])
     line_depths = np.array([0.9, 0.001, 0.02, 0.005, 0.8])
-    groups = np.array([10, 11, 12, 13, 14])
     clipped = LSD.clip_wavelengths(np.array([5000.0, 5010.0]), line_wavelengths,
-                                   line_depths, groups, pad=0)
+                                   line_depths, pad=0)
 
-    # Wavelength clipping retains the middle three entries and their matching labels.
+    # Wavelength clipping retains the middle three lines.
     np.testing.assert_array_equal(clipped[0], [5002.0, 5004.0, 5006.0])
-    np.testing.assert_array_equal(clipped[2], [11, 12, 13])
+    np.testing.assert_array_equal(clipped[1], [0.001, 0.02, 0.005])
 
     # At S/N=100 the 0.001-depth line is removed from every parallel array.
-    sn_clipped = LSD().sn_clip(*clipped[:2], 100.0, clipped[2])
+    sn_clipped = LSD().sn_clip(*clipped, 100.0)
     np.testing.assert_array_equal(sn_clipped[0], [5004.0, 5006.0])
     np.testing.assert_array_equal(sn_clipped[1], [0.02, 0.005])
-    np.testing.assert_array_equal(sn_clipped[2], [12, 13])
 
 
 def test_convolve_profile_uses_supplied_or_calculated_alpha(synthetic_spectrum):
@@ -269,8 +299,9 @@ def test_runlsd_and_store_populates_each_data_product(synthetic_spectrum):
     # The class helper should store every downstream product under the requested key.
     lsd = LSD.runlsd_and_store(data, "test", return_cls=True)
     for mapping in (data.alpha, data.c_factor, data.forward_x, data.forward_y,
-                    data.profile, data.residuals, data.ll_mask):
+                    data.profile, data.residuals):
         assert "test" in mapping
+    np.testing.assert_array_equal(data.ll_mask, lsd.ll_mask)
     np.testing.assert_allclose(data.forward_y["test"], lsd.forward_model)
 
 

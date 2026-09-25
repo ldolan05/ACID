@@ -82,6 +82,7 @@ def test_data_velocity_and_linelist_overwrites_clear_derived_state(synthetic_spe
 
     data.alpha["derived"] = np.ones((2, 2))
     data.config.profile_groups = np.array([0, 1])
+    data.ll_mask = np.array([0, 1])
     data.profile_groups = np.array([0, 1])
     changed_linelist = {"wavelengths": linelist["wavelengths"],
                         "depths": linelist["depths"] * 0.9}
@@ -97,7 +98,7 @@ def test_data_velocity_and_linelist_overwrites_clear_derived_state(synthetic_spe
         data.velocities = np.array([0.0, np.nan])
 
 
-def test_profile_groups_are_revalidated_after_config_changes(synthetic_spectrum):
+def test_profile_groups_are_validated_when_clipped_groups_are_set(synthetic_spectrum):
     *_, linelist = synthetic_spectrum
     data = Data()
     data.linelist = linelist
@@ -106,6 +107,12 @@ def test_profile_groups_are_revalidated_after_config_changes(synthetic_spectrum)
     np.testing.assert_array_equal(data.linelist["wavelengths"], linelist["wavelengths"])
 
     data.config.profile_groups = np.array([0])
-    with pytest.raises(ValueError, match="same length"):
-        _ = data.linelist
+    # The full linelist may be accessed before clipping determines the expected length.
+    np.testing.assert_array_equal(data.linelist["wavelengths"], linelist["wavelengths"])
+    data.ll_mask = np.array([0, 1])
+    with pytest.raises(ValueError, match="after S/N and wavelength clipping"):
+        data.profile_groups = data.config.profile_groups
+    data.ll_mask = np.array([0])
+    data.profile_groups = data.config.profile_groups
+    np.testing.assert_array_equal(data.profile_groups, [0])
 

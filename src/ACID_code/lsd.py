@@ -213,46 +213,45 @@ class LSD:
             raise ACIDStateError("No linelist has been set. Please set/input a linelist before running LSD.")
         wavelengths_linelist = self.data.linelist["wavelengths"]
         depths_linelist = self.data.linelist["depths"]
-        original_wavelengths = wavelengths_linelist
 
-        # Clip linelist to wavelength range of spectrum
-        wavelengths_linelist, depths_linelist, profile_groups = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups)
-        if len(wavelengths_linelist) == 0:
-            error = ACIDLineListRangeError(
-                "No lines in linelist are within the wavelength range of the observed spectrum.\n"
-                "You may have mismatched wavelength units between linelist and spectrum or an empty linelist.\n"
-                "Please check your linelist and input spectrum."
-            )
-            self.data.exception = error
-            self.data.traceback = traceback.format_stack()
-            raise error
+
+        if self.data.ll_mask is None:
+            original_wavelengths = wavelengths_linelist
+
+            # Clip linelist to wavelength range of spectrum
+            wavelengths_linelist, depths_linelist = self.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+            if len(wavelengths_linelist) == 0:
+                error = ACIDLineListRangeError(
+                    "No lines in linelist are within the wavelength range of the observed spectrum.\n"
+                    "You may have mismatched wavelength units between linelist and spectrum or an empty linelist.\n"
+                    "Please check your linelist and input spectrum."
+                )
+                self.data.exception = error
+                self.data.traceback = traceback.format_stack()
+                raise error
+
+            # Apply S/N cut (of 1/(3*SN)) to linelist
+            wavelengths_linelist, depths_linelist = self.sn_clip(wavelengths_linelist, depths_linelist, sn)
+
+            # Save the mask that constructs the clipped linelist from the original, wavelengths are sorted already
+            self.data.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
+
+        else:
+            wavelengths_linelist = wavelengths_linelist[self.data.ll_mask]
+            depths_linelist = depths_linelist[self.data.ll_mask]
         
-        # Apply S/N cut (of 1/(3*SN)) to linelist
-        wavelengths_linelist, depths_linelist, profile_groups = self.sn_clip(wavelengths_linelist, depths_linelist, sn, profile_groups)
-
-        # Save the mask that constructs the clipped linelist from the original, wavelengths are sorted already
-        self.data.ll_mask = self.ll_mask = np.searchsorted(original_wavelengths, wavelengths_linelist)
+        self.ll_mask = self.data.ll_mask
 
         # Now we mask after cuts applied
         flux        = flux[mask]
         wavelengths = wavelengths[mask]
         errors      = errors[mask]
 
-        # Handle multi-profile groups validation and logic
-        if profile_groups is not None:
-            self.profile_groups = np.asarray(profile_groups)
-            if len(self.profile_groups) != len(depths_linelist):
-                raise ACIDInputError(f"profile_groups has {len(self.profile_groups)} entries but the linelist "
-                                f"has {len(depths_linelist)} lines (after S/N and wavelength clipping).\n"
-                                f"Please check len(profile_groups) matches len(depths_linelist). "
-                                f"Also see profile_groups parameter description.")
-        # Group by depth rules if given
-        elif self.config.depth_group_rules is not None:
-            self.profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
-        # Else its just a standard single profile
-        else:
-            self.profile_groups = None
-        self.data.profile_groups = self.profile_groups
+        # Generate groups when needed, then let Data validate and store the clipped result.
+        if profile_groups is None and self.config.depth_group_rules is not None:
+            profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
+        self.data.profile_groups = profile_groups
+        self.profile_groups = self.data.profile_groups
 
         mp_lsd_mode = self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
         # Finally, we allow the mp_lsd override, this override is only a False override, True/None is default
@@ -358,8 +357,7 @@ class LSD:
             wavelengths_linelist : Array1D,
             depths_linelist      : Array1D,
             sn                   : Scalar,
-            profile_groups       : Array1D | None = None,
-        ) -> tuple[Array1D, Array1D, Array1D | None]:
+        ) -> tuple[Array1D, Array1D]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
 
@@ -371,13 +369,11 @@ class LSD:
             Depths from the linelist
         sn : :py:type:`Scalar`
             Signal-to-noise ratio threshold
-        profile_groups : :py:type:`Array1D` | None, optional
-            The profile group mask, if provided. If None, no profile grouping is applied.
 
         Returns
         -------
-        tuple[:py:type:`Array1D`, :py:type:`Array1D`, :py:type:`Array1D`]
-            Clipped wavelengths, depths, and profile groups from the linelist
+        tuple[:py:type:`Array1D`, :py:type:`Array1D`]
+            Clipped wavelengths and depths from the linelist
         """
         # Selecting lines deeper than 1/(3*sn)
         idx = (depths_linelist >= 1/(3*sn))
@@ -396,10 +392,10 @@ class LSD:
         if perc < 5:
             warnings.warn("Less than 5% of lines remain after S/N cut. Check your linelist and S/N value.", ACIDRuntimeWarning, stacklevel=2)
         logger.debug(f"{perc:.2f}% of lines used in LSD: {nrest} out of {nrest + ncut} remain from S/N cut.")
-        return wavelengths_linelist, depths_linelist, profile_groups[idx] if profile_groups is not None else None
+        return wavelengths_linelist, depths_linelist
 
     @staticmethod
-    def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, profile_groups=None, pad=5):
+    def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
         """
         Clips the linelist to only include lines within the wavelength range of the observed spectrum.
         Includes a pad either side of the wavelength range so that the wings of lines outside
@@ -413,8 +409,6 @@ class LSD:
             Wavelengths from the linelist
         depths_linelist : np.ndarray
             Depths from the linelist
-        profile_groups : np.ndarray | None, optional
-            The profile group mask.
         pad : float, optional
             Number of angstroms to pad on either side of the wavelength range. By default, 5.
 
@@ -424,12 +418,10 @@ class LSD:
             Clipped wavelengths from the linelist
         depths_linelist : np.ndarray
             Clipped depths from the linelist
-        profile_groups : np.ndarray | None
-            Clipped profile group mask, if provided
         """
         lower, upper = np.nanmin(wavelengths)-pad, np.nanmax(wavelengths)+pad
         idx = (wavelengths_linelist >= lower) & (wavelengths_linelist <= upper)
-        return wavelengths_linelist[idx], depths_linelist[idx], profile_groups[idx] if profile_groups is not None else None
+        return wavelengths_linelist[idx], depths_linelist[idx]
 
     @staticmethod
     def calc_alpha(
@@ -477,7 +469,7 @@ class LSD:
         deltav = velocities[1] - velocities[0]
 
         # Clip linelist to wavelength range of spectrum (again just in case this is called without run_LSD, saves memory by reducing lines)
-        wavelengths_linelist, depths_linelist, _ = LSD.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
+        wavelengths_linelist, depths_linelist = LSD.clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist)
 
         # Find differences and velocities
         blankwaves = wavelengths
@@ -1013,6 +1005,5 @@ class LSD:
         data.forward_y[key] = lsd.forward_model * data.continuum[key]
         data.profile[key]   = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
         data.residuals[key] = (data.flux[key] - data.forward_y[key]) / data.forward_y[key]
-        data.ll_mask[key]   = lsd.ll_mask
         if return_cls:
             return lsd

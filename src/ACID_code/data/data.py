@@ -119,8 +119,8 @@ class Data:
 
     # Other useful data and figures
     # -----------------------------
-    #: The grouping of the profiles based on their depth, used for plotting and analysis
-    profile_groups : Optional[np.ndarray] = None
+    #: The groups for the clipped linelist, used for plotting and analysis.
+    _profile_groups : Optional[np.ndarray] = None
     #: Internal variables used for plotting the continuum_fit and the residual masks
     plotting_variables   : Dict[str, Any]  = field(default_factory=dict)
     #: setup_time (float) - The time taken for initialization
@@ -334,17 +334,15 @@ class Data:
         # Reconstruct the saved dictionary once, rather than on every access.
         if not isinstance(self._linelist, LineList):
             self._linelist = LineList(self._linelist)
-        self._validate_profile_groups(self._linelist)
 
         return self._linelist
 
     @linelist.setter
     def linelist(self, linelist:Array2D|str|LineList|dict|None) -> None:
         """
-        Sets the linelist for the data object using the formats documented in
-        :py:class:`Acid`. Reading, validation, and storage are handled by
-        :py:class:`LineList`. Data checks profile groups and resets dependent
-        calculations when the linelist changes.
+        Sets the linelist for the data object using the formats documented in :py:class:`Acid`.
+        Reading, validation, and storage are handled by :py:class:`LineList`.
+        Data resets dependent calculations when the linelist changes.
 
         Parameters
         ----------
@@ -368,10 +366,6 @@ class Data:
             # Set new linelist
             self._linelist = linelist
 
-            # Validate profile groups with the new linelist
-            # If profile_groups is not None, this will check that it has the same length as the new linelist and is 1D.
-            self._validate_profile_groups(self._linelist)
-
             # If overwriting, reset variables and warn
             if overwriting:
                 warnings.warn("The input linelist has been modified. \n" \
@@ -379,19 +373,24 @@ class Data:
                 ACIDStateWarning, stacklevel=2)
                 self.reset()
 
-    def _validate_profile_groups(self, input_linelist) -> None:
-        """To be called when setting/accessing a linelist if the config.profile_groups has not been validated with the current (validated) linelist."""
-        if self.config.profile_groups is not None:
-            self.config.profile_groups = np.asarray(self.config.profile_groups).copy()
-            if self.config.profile_groups.ndim != 1:
-                raise ACIDInputError("profile_groups must be a 1D array. Using profile_groups with multiple frames is not supported.\n"
-                "If you wish to use different frames, please first combine the frames yourself and then input the combined " \
-                "spectrum with the corresponding profile_groups.")
-            linelist_wavelengths = input_linelist["wavelengths"]
-            # TODO: This needs to check also against the clipped linelist
-            if len(self.config.profile_groups) != len(linelist_wavelengths):
-                raise ACIDInputError(f"The inputted profile_groups must have the same length as the input linelist. "
-                                    f"Got {len(self.config.profile_groups)} groups for {len(linelist_wavelengths)} lines.")
+    @property
+    def profile_groups(self) -> Optional[np.ndarray]:
+        """The validated groups for the clipped linelist."""
+        return self._profile_groups
+
+    @profile_groups.setter
+    def profile_groups(self, profile_groups) -> None:
+        """Accept full or clipped groups, storing only the clipped groups."""
+        if profile_groups is not None:
+            profile_groups = np.asarray(profile_groups).copy()
+            if profile_groups.ndim != 1:
+                raise ACIDInputError("profile_groups must be a 1D array.")
+            if len(profile_groups) == len(self.linelist["wavelengths"]):
+                profile_groups = profile_groups[self.ll_mask]
+            if len(profile_groups) != len(self.ll_mask):
+                raise ACIDInputError(
+                    "The provided profile_groups parameter must match the full linelist or the linelist after S/N and wavelength clipping.")
+        self._profile_groups = profile_groups
 
     def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
         """
@@ -865,7 +864,7 @@ class Data:
         ll_wl = self.linelist["wavelengths"]
         ll_depths = self.linelist["depths"]
         from ..lsd import LSD
-        ll_wl, ll_depths, _ = LSD.clip_wavelengths(self.wavelengths[key], ll_wl, ll_depths)
+        ll_wl, ll_depths = LSD.clip_wavelengths(self.wavelengths[key], ll_wl, ll_depths)
         idx = np.argsort(ll_depths)
         ll_wl = ll_wl[idx]
         ll_depths = ll_depths[idx]
@@ -1159,6 +1158,8 @@ class Data:
 
             if name == "_config":
                 payload["config"] = val.to_dict() # store as dict in payload, but store as class in Data
+            elif name == "_profile_groups":
+                payload["profile_groups"] = val
             elif name == "_linelist":
                 payload[name] = val.ll.copy() if isinstance(val, LineList) else val
             elif name == "_sampler":
@@ -1189,6 +1190,12 @@ class Data:
             if name == "_config": # config stored as a dict in payload, but stored here as class
                 cfg_dict = {k: v for k, v in payload.get("config", {}).items() if k != "order_range"}
                 setattr(self, "_config", Config(**cfg_dict))
+            elif name == "ll_mask" and isinstance(payload.get(name), dict):
+                masks = payload[name]
+                self.ll_mask = next(reversed(masks.values()), None)
+            elif name == "_profile_groups":
+                # Preserve compatibility with saved data predating the property.
+                self._profile_groups = payload.get("profile_groups")
             elif name == "_sampler":
                 continue # handled after loop
             else:
