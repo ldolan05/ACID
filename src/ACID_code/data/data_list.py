@@ -950,10 +950,7 @@ class DataList:
             if "final" in data.profile:
                 orders.append(data.config.order)
                 try:
-                    flux = np.asarray(data.flux["final"])
-                    model = np.asarray(data.forward_y["final"])
-                    err = np.asarray(data.errors["final"])
-                    chi2 = np.sum(((flux-model)/err) ** 2)
+                    chi2 = utils.calc_chi2(data.forward_y["final"], data.flux["final"], data.errors["final"])
                     chi2_values.append(chi2)
                 except Exception as e:
                     warnings.warn(f"Could not calculate chi-squared for order {data.config.order}. :\n{e}", ACIDRuntimeWarning, stacklevel=2)

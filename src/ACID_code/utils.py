@@ -26,6 +26,13 @@ Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[li
 
 logger = get_logger(__name__)
 
+def calc_chi2(model, data, error):
+    """Return chi-squared for a model, data, and their measurement errors."""
+    model = np.asarray(model)
+    data = np.asarray(data)
+    error = np.asarray(error)
+    return np.sum(((data-model)/error) ** 2)
+
 def eval_continuum(x, coefs, method="polyval", **kwargs):
     """
     Evaluates the continuum at given points using specified method.
