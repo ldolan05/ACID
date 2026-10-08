@@ -1044,7 +1044,14 @@ class Result:
             A Result object loaded from the pickle file or from the provided object.
         """
         if isinstance(data, str):
-            return cls(Data.load(data))
+            if os.path.isdir(data):
+                try:
+                    result = cls(Data.load(os.path.join(data, "data.pkl")))
+                except FileNotFoundError:
+                    raise FileNotFoundError(f"No 'data.pkl' found in provided directory '{data}'")
+            else:
+                result = cls(Data.load(data))
+            return result
         elif isinstance(data, Result):
             return cls(data.data)
         elif isinstance(data, Data):
