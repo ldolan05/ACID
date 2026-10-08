@@ -1056,3 +1056,11 @@ class Result:
             return cls(data.data)
         elif isinstance(data, Data):
             return cls(data)
+
+    @property
+    @_require_profiles
+    def chi2(self) -> float:
+        """Calculates and returns the chi-squared value for the final model."""
+        data = self.data
+        key = "final"
+        return utils.calc_chi2(data.forward_y[key], data.flux[key], data.errors[key])
