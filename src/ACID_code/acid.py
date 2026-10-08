@@ -574,7 +574,7 @@ class Acid:
             # Masking based off residuals
             if all((
                 # Again we only need to check if some of the keys have been made, not all of them
-                "masked" in self.data.wavelengths,
+                "mcmc" in self.data.wavelengths,
                 "mcmc" in self.data.c_factor,
             )):
                 logger.debug("Residual masks already exists, skipping residual masking step.")

@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from ACID_code.diagnostics.errors import ACIDStateError
-from ACID_code import Config, Data
+from ACID_code import Acid, Config, Data, MCMC
 
 
 @pytest.mark.parametrize("saved_order, folder, expected", [
@@ -34,6 +34,59 @@ def test_data_without_linelist_save_load(tmp_path):
     filename = str(tmp_path / "data.pkl")
     data.save(filename)
     assert Data.load(filename).linelist is None
+
+
+def test_data_thin_requires_setup():
+    with pytest.raises(ACIDStateError, match="setup"):
+        Data().thin()
+
+
+@pytest.mark.parametrize("deterministic_profile", [True, False])
+def test_data_thin_preserves_sampling_and_results(tmp_path, harps_order_40, deterministic_profile):
+    wavelengths, flux, errors, sn, velocities, linelist = harps_order_40
+    results = []
+    chains = []
+    for thin in (False, True):
+        acid = Acid(velocities=velocities, linelist=linelist, seed=19, verbose=0,
+                    parallel=False, poly_ord=2, deterministic_profile=deterministic_profile)
+        acid.ACID(np.array([wavelengths, wavelengths]), np.array([flux, flux * 1.01]),
+                  np.array([errors, errors]), np.array([sn, sn]), run_mcmc=False)
+        if thin:
+            before = MCMC(acid.data)
+            state = acid.data.initial_state.copy()
+            acid.data.debug["large_copy"] = acid.data.alpha["initial"].copy()
+            acid.data.thin()
+            acid.data.thin()
+            assert "masked" not in acid.data.errors
+            assert "initial" not in acid.data.fitted_flux
+            assert "masked" not in acid.data.alpha
+            assert not acid.data.plotting_variables
+            assert not acid.data.debug
+            after = MCMC(acid.data)
+            assert before(state[0]) == after(state[0])
+            unit_coeffs = np.full(acid.config.poly_ord + 1, 0.5)
+            np.testing.assert_array_equal(before.ptform(unit_coeffs), after.ptform(unit_coeffs))
+            path = str(tmp_path / "thinned.pkl")
+            acid.data.save(path)
+            acid = Acid(data=Data.load(path))
+
+        # Re-enter ACID to check its setup caches, then finish the full pipeline.
+        result = acid.ACID(run_mcmc=True, nsteps=20)
+        assert result is not None
+        if thin:
+            final = acid.data.profile["final"]
+            combined = acid.data.flux["combined"]
+            acid.data.thin()
+            assert acid.data.profile["final"] is final
+            assert acid.data.flux["combined"] is combined
+        result.continue_sampling(nsteps=2)
+        chains.append(acid.sampler.get_chain())
+        results.append(acid.data.profiles)
+
+    np.testing.assert_array_equal(chains[0], chains[1])
+    for original, thinned in zip(results[0], results[1]):
+        for original_array, thinned_array in zip(original, thinned):
+            np.testing.assert_array_equal(original_array, thinned_array)
 
 
 def test_data_input_reset_and_pickle_round_trip(tmp_path, synthetic_spectrum):

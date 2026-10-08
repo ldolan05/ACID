@@ -765,6 +765,35 @@ class Data:
             self.sn["combined"]
         )
 
+    def thin(self) -> None:
+        """Discard unused intermediate arrays in place after ACID setup.
+
+        Keeps input, combined and final data, and the initial/MCMC products
+        needed for sampling, processing results and continuing a run. Masked
+        profiles and polynomial coefficients are retained for walker/prior
+        initialisation. Intermediate fit/masking plots and debug copies are
+        discarded. Calling this repeatedly is safe; it is never automatic.
+        """
+        if "mcmc" not in self.c_factor and not self.complete:
+            raise ACIDStateError("Run ACID setup before calling Data.thin().")
+
+        # Initial spectra and alpha are reused when processing final results.
+        for name in ("wavelengths", "flux", "errors", "sn", "alpha"):
+            for key in ("masked", "fitted"):
+                getattr(self, name).pop(key, None)
+
+        # These initial/masked products are no longer used after setup.
+        for name in ("norm_wavelengths", "fitted_flux", "fitted_errors", "continuum",
+                     "continuum_error", "c_factor", "forward_x", "forward_y", "residuals"):
+            for key in ("initial", "masked", "fitted"):
+                getattr(self, name).pop(key, None)
+
+        for key in ("initial", "fitted"):
+            self.profile.pop(key, None)
+        self.poly_coeffs.pop("fitted", None)
+        self.plotting_variables.clear()
+        self.debug.clear()
+
     def reset(self, preserve_combined:bool=True) -> None:
         """
         Resets all derived states while preserving:
