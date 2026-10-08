@@ -1,7 +1,7 @@
 """Optional JAX backend for the MCMC log-probability calculation."""
 from __future__ import annotations
-from .diagnostics.errors import *
-from .diagnostics.warnings import *
+from ..diagnostics.errors import *
+from ..diagnostics.warnings import *
 import warnings
 import numpy as np
 

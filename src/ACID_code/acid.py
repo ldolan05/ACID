@@ -9,8 +9,9 @@ from beartype import beartype
 from contextlib import nullcontext
 
 from tqdm import tqdm
-from . import utils, mcmc
+from . import utils
 from .lsd import LSD
+from .mcmc import mcmc
 from .result import Result
 from .data import Data, Config, MaskingLines, LineList
 from .diagnostics.errors import *

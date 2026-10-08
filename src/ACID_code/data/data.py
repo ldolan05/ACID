@@ -240,7 +240,7 @@ class Data:
         This is stored as a class variable but when saved, only the path to the sampler is stored to avoid pickling issues.
         """
         if isinstance(sampler, Backend) or (isinstance(sampler, str) and os.path.exists(sampler)):
-            from ..mcmc import MCMC
+            from ..mcmc.mcmc import MCMC
             log_prob_fn = MCMC(self)
 
         if isinstance(sampler, EnsembleSampler):

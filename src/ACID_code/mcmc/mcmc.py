@@ -1,15 +1,15 @@
 from __future__ import annotations
 import warnings
-from .diagnostics.warnings import ACIDInputWarning
+from ..diagnostics.warnings import ACIDInputWarning
 import numpy as np
 from numpy.linalg import norm
-from . import utils
-from .utils import Array1D, Array2D
+from .. import utils
+from ..utils import Array1D, Array2D
 from beartype import beartype
 from scipy.linalg import cho_solve, cho_factor
-from .data import Config, Data
+from ..data import Config, Data
 from numpy.polynomial.chebyshev import chebval
-from .lsd import LSD
+from ..lsd import LSD
 
 # The following wrapper functions allow each worker to initialise the model once
 # rather than serialising it with every likelihood call.

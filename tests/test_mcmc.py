@@ -11,8 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
 from ACID_code import Acid, Config, LSD, MCMC
-from ACID_code import mcmc as mcmc_module
-from ACID_code import jax as jax_module
+from ACID_code.mcmc import mcmc as mcmc_module
+from ACID_code.mcmc import jax as jax_module
 from emcee.ensemble import walkers_independent
 
 

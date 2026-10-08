@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 from ACID_code import Acid, MCMC
 from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
-from ACID_code import mcmc as mcmc_module
-from ACID_code import jax as jax_module
+from ACID_code.mcmc import mcmc as mcmc_module
+from ACID_code.mcmc import jax as jax_module
 
 
 @pytest.mark.skipif(importlib.util.find_spec('jax') is None, reason='JAX is optional')
