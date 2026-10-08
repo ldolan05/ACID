@@ -219,8 +219,6 @@ class DataList:
                         logger.info(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
                         data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
                         self._update_paths_for_data(data, self.save_dir)
-                else:
-                    data.save() # save the newly initialized, but mostly empty data instance to the file for future reference and use
 
             datalist.append(data) # finally append to the datalist
 
