@@ -180,13 +180,10 @@ def mask_invalid(wavelengths, flux, errors=None, return_mask=False):
 
     num_invalid = np.size(wavelengths) - np.count_nonzero(mask)
     perc_invalid = num_invalid / np.size(wavelengths) * 100
-    if perc_invalid > 10:
+    if perc_invalid > 20:
         warnings.warn(
-            f"Your spectrum includes {num_invalid} out of {np.size(wavelengths)} non-positive/non-finite/nan values ({perc_invalid:.2f}%), \n"
-            f"which will be dropped when necessary, but it is still recommended to check your wavelength, \n"
-            f"flux, and error arrays for potential issues.",
-            ACIDDroppedDataWarning, stacklevel=2
-        )
+            "Your spectrum includes more than 20% non-positive/non-finite/nan values, which will be masked.\n" \
+            "Please check your data", stacklevel=2)
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output
@@ -224,9 +221,8 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False):
     perc_invalid = num_invalid / np.size(wavelengths) * 100
     if num_invalid > 0:
         warnings.warn(
-            f"Some invalid (negative, non-finite, or NaN) pixels were found and dropped from the spectrum. \n"
-            f"Please note that the stored arrays will have a different shape to the one you passed. \n"
-            f"Dropped {num_invalid} invalid pixels out of {np.size(wavelengths)} ({perc_invalid:.2f}%).",
+            f"Some invalid (negative, non-finite, or NaN) pixels were dropped from the spectrum. \n"
+            f"Stored internal arrays will have a different size to the one you passed.",
             ACIDDroppedDataWarning, stacklevel=2)
 
     output = (w, f, e) if errors is not None else (w, f)
