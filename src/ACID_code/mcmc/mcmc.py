@@ -147,7 +147,7 @@ class MCMC:
         else:
             self.model_function = self.deterministic_model # infer profile points from continuum
 
-        # For dynesty's sake, should delete later
+        # For dynesty
         if isinstance(x_or_data, Data):
             profile0 = np.asarray(data.profile["masked"][0]).reshape(-1)
             self.model_inputs = np.concatenate((profile0, data.poly_coeffs["masked"]))
@@ -160,6 +160,17 @@ class MCMC:
             from .jax import JAXBackend
             self._jax_backend = JAXBackend(self)
             self.jax_enabled = self._jax_backend.enabled
+
+        # Lastly, just warn once for determinstic non-OD option
+        if self.deterministic_profile and not self.od:
+            warnings.warn("Using precomputed AtV matrix for non-OD deterministic model; errors may not be accurate.\n" \
+                "Explanation:\nFor deterministic (default) sampling (ie. inferring the profile from the continuum), the errors do not change in OD.\n" \
+                "However, in flux space, the errors do depend on the continuum model, and AtV would need to be recomputed at each MCMC step.\n" \
+                "On testing, this took a significant amount of time, and hence we use the precomputed AtV matrix on the assumption that the" \
+                "continuum does not move much from the initial guess.\n" \
+                "If you wish to get accurate errors, use deterministic=False, which will fit each profile point (we then recommend increasing " \
+                "the number of steps).",
+                ACIDInputWarning, stacklevel=2)
 
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
@@ -230,15 +241,6 @@ class MCMC:
             flux = (-np.log(fitted_flux))
             AtV = self.AtV
         else:
-            # AtV = self.AtV * (mdl * mdl) # This is for when we get around to fixing non-OD deterministic
-            warnings.warn("Using precomputed AtV matrix for non-OD deterministic model; errors may not be accurate.\n" \
-            "Explanation:\nFor deterministic (default) sampling (ie. inferring the profile from the continuum), the errors do not change in OD.\n" \
-            "However, in flux space, the errors do depend on the continuum model, and AtV would need to be recomputed at each MCMC step.\n" \
-            "On testing, this took a significant amount of time, and hence we use the precomputed AtV matrix on the assumption that the" \
-            "continuum does not move much from the initial guess.\n" \
-            "If you wish to get accurate errors, use deterministic=False, which will fit each profile point (we then recommend increasing " \
-            "the number of steps).",
-            ACIDInputWarning, stacklevel=2)
             AtV = self.AtV
             flux = fitted_flux - 1
 
