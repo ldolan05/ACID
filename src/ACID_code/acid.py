@@ -497,9 +497,8 @@ class Acid:
                     init_input = kwargs.pop(name, None)
                     config_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
 
-            old_profile_groups = self.config.profile_groups
-
             # Update config if any of the above config settings are new
+            old_profile_groups = self.config.profile_groups
             self.config.update_hipri(**config_kwargs) # self.config overwrites config_kwargs if overlapping
             if config_kwargs.get("profile_groups") is not None and (
                 old_profile_groups is None
@@ -846,7 +845,7 @@ class Acid:
         n_profile_params = self.data.alpha["mcmc"].shape[1]
 
         # Set the number of dimensions, add the no. of velocity points if also fitting the profile
-        self.data.ndim = self.config.poly_ord + 1
+        self.data.ndim = len(self.data.poly_coeffs["masked"])
         if not self.config.deterministic_profile:
             self.data.ndim += n_profile_params
 
@@ -868,7 +867,7 @@ class Acid:
             test_mcmc = mcmc.MCMC(self.data)
             width = np.maximum(0.5 * np.abs(theta0), 1e-3)
             walkers = []
-            max_attempts = 1000
+            max_attempts = max(1000, 100 * self.data.nwalkers)
             n_attempt = 0
             while len(walkers) < self.data.nwalkers:
                 theta = rng.normal(theta0, width)
