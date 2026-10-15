@@ -229,7 +229,7 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False):
         warnings.warn(
             f"Some invalid (negative, non-finite, or NaN) pixels were dropped from the spectrum. \n"
             f"Stored internal arrays will have a different size to the one you passed.",
-            ACIDDroppedDataWarning, stacklevel=2)
+            ACIDDroppedDataWarning, stacklevel=1)
 
     output = (w, f, e) if errors is not None else (w, f)
     output = output + (mask,) if return_mask else output

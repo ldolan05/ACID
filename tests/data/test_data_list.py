@@ -4,10 +4,37 @@ import pytest
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
+import warnings
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from ACID_code import Config, Data, DataList
+from ACID_code.diagnostics.warnings import ACIDDroppedDataWarning
+
+
+def test_datalist_reads_linelist_once_and_warns_once_for_invalid_pixels(tmp_path, monkeypatch):
+    filename = tmp_path / "lines.txt"
+    filename.write_text("header\n" * 4
+                        + "'Fe 1',5003,0,0,0,0,0,0,1,.2\n"
+                        + "'Fe 1',5007,0,0,0,0,0,0,1,.3\n")
+    reads = []
+    original = pd.read_csv
+
+    def read_csv(*args, **kwargs):
+        reads.append(args[0])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_csv", read_csv)
+    wave = np.tile(np.linspace(5000., 5010., 501), (3, 1))
+    flux = np.ones_like(wave)
+    flux[:, 0] = np.nan
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("once", ACIDDroppedDataWarning)
+        DataList(wave, flux, np.full_like(wave, .01), np.full(3, 100.),
+                 velocities=np.array([-5., 0., 5.]), linelist=str(filename), verbose=0)
+    assert reads == [str(filename)]
+    assert sum(w.category is ACIDDroppedDataWarning for w in caught) == 1
 
 
 def test_datalist_rejects_unset_orders_before_building_paths(tmp_path, completed_datalist):

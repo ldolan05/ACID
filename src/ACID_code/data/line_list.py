@@ -161,7 +161,7 @@ class LineList:
         if count_dropped > 0:
             warnings.warn(f"Your linelist includes {count_dropped} non-finite, nan, negative, greater than 1, or invalid metadata values.\n"
                     f"These will be removed, but it is still recommended to check your linelist for why this happened.",
-                    ACIDDroppedDataWarning, stacklevel=3)
+                    ACIDDroppedDataWarning, stacklevel=1)
 
         # Apply mask and return results
         linelist_columns = {key: values[mask] for key, values in linelist_columns.items()}

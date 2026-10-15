@@ -181,6 +181,7 @@ class DataList:
             config_dict = config.to_dict() if config is not None else {}
 
         # --- Create datalist of Data instances for each order ---
+        linelist = LineList(linelist) if linelist is not None else None
         datalist = []
         for idx, order in enumerate(self.order_range):
             data = Data() # create data instance
