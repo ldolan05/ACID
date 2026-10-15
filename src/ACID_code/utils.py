@@ -33,7 +33,7 @@ def calc_chi2(model, data, error):
     error = np.asarray(error)
     return np.sum(((data-model)/error) ** 2)
 
-def eval_continuum(x, coefs, method="polyval", **kwargs):
+def eval_continuum(x, coefs, method="polyval", slices=None, **kwargs):
     """
     Evaluates the continuum at given points using specified method.
     
@@ -45,6 +45,9 @@ def eval_continuum(x, coefs, method="polyval", **kwargs):
         Coefficients of the polynomial, ordered from lowest degree to highest.
     method : str, optional
         Method to use for evaluation. Default is "polyval".
+    slices : array-like, optional
+        Rows of (pixel_start, pixel_stop, coefficient_start, coefficient_stop)
+        for independent order continua in a joint fit.
     **kwargs : dict
         Additional keyword arguments passed to the evaluation function.
     
@@ -53,6 +56,9 @@ def eval_continuum(x, coefs, method="polyval", **kwargs):
     array-like
         Evaluated polynomial values at x.
     """
+    if slices is not None:
+        return np.concatenate([eval_continuum(x[i:j], coefs[a:b], method, **kwargs)
+                               for i, j, a, b in slices])
     if method == "polyval":
         return polyval(x, coefs, **kwargs)
     elif method == "chebval":
