@@ -35,8 +35,8 @@ class Data:
     Stores necessary data for the Acid class which can be conveniently updated and saved.
     Allows ACID to handle data that has already been computed to avoid recalculation. This class
     is designed to be lightweight in memory and hence does not store the sampler as an object. This is handled in the Result class.
-    Note that a Data class should only hold the data for ONE order or observation, but it can hold
-    the data for multiple frames of the same order.
+    Normally holds one order, with multiple frames if needed. DataList can also
+    create a joint Data instance with continuum slices for multiple orders.
     """
 
     # The standard necessary inputs, stored in dictionaries so we can store their state at multiple different
@@ -52,7 +52,7 @@ class Data:
     sn          : Dict[str, np.ndarray] = field(default_factory=dict)
 
     # Generated arrays from the above inputs, stored in dictionaries so we can store their state at multiple different stages
-    # -------------------------------------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------------
     #: The normalised wavelengths to be used with the poly_coeffs to generate the continuum
     norm_wavelengths : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The fitted flux from either the initial continuum fits, or the final mcmc fitted continua
@@ -66,8 +66,15 @@ class Data:
     #: The corresponding polynomial coefficients for just the above continuum
     poly_coeffs      : Dict[str, np.ndarray] = field(default_factory=dict)
 
+    # For multiorder joint fitting, we reuse most code in ACID with the following additional information to demarcate orders
+    # ----------------------------------------------------------------------------------------------------------------------
+    #: Tuple of length 4: Pixel (start, stop) and coefficient (start, stop) slices for each order in a joint fit, keyed by spectrum stage.
+    continuum_slices : Dict[str, np.ndarray] = field(default_factory=dict)
+    #: Each order's independently clipped line-list indices.
+    order_ll_masks : list[np.ndarray] = field(default_factory=list)
+
     # Cached LSD products that can be expensive and useful for resuming or loading runs
-    # ---------------------------------------------------------
+    # ---------------------------------------------------------------------------------
     #: The alpha vector used in the linear model, used for solving the linear system in MCMC
     alpha                  : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The forward model x-axis for each frame, used for solving the linear system in MCMC
