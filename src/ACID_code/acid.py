@@ -611,6 +611,7 @@ class Acid:
                 # Use the iterative sigma clipping in astropy, returning a masked array of clipped residuals
                 result, lower_clip, upper_clip = sigma_clip(
                     masked_residuals,
+                    axis=0, # residuals are 1D; use Astropy's fast path without changing warning filters
                     sigma_lower=self.config.sigma_lower,
                     sigma_upper=self.config.sigma_upper,
                     return_bounds=True
