@@ -571,7 +571,7 @@ class DataList:
         **kwargs,
     ) -> None|object:
         """
-        Fit one shared profile with an independent continuum for each order.
+        Fit shared profiles with an independent continuum for each order.
 
         Order selection and setup options follow ``run_ACID``. Failed orders are
         skipped; all retained orders must share a velocity grid, line list,
@@ -618,10 +618,24 @@ class DataList:
             for key in ("od", "continuum_method", "regularization", "scale_regularization"):
                 if getattr(data.config, key) != getattr(first.config, key):
                     raise ACIDInputError(f"Joint orders must share the same {key} setting.")
-            if data.profile_groups is not None:
-                raise ACIDInputError("Joint fitting requires a single profile per order.")
+            if (data.profile_groups is None) != (first.profile_groups is None):
+                raise ACIDInputError("Joint orders must all use profile groups or all use a single profile.")
             if len(data.wavelengths["input"]) != nframes:
                 raise ACIDInputError("Joint orders must have the same number of frames.")
+
+        # Map clipped groups back to line indices, checking overlapping orders.
+        line_indices = np.unique(np.concatenate([data.ll_mask for data in selected]))
+        groups = None
+        if first.profile_groups is not None:
+            groups = np.zeros(len(line_indices), dtype=first.profile_groups.dtype)
+            assigned = np.zeros(len(line_indices), dtype=bool)
+            for data in selected:
+                indices = np.searchsorted(line_indices, data.ll_mask)
+                if np.any(assigned[indices] & (groups[indices] != data.profile_groups)):
+                    raise ACIDInputError("Joint orders must assign the same profile group to shared lines.")
+                groups[indices] = data.profile_groups
+                assigned[indices] = True
+            unique_groups = np.unique(groups)
 
         # Discard unused orders if requested and thin the selected data.
         if discard_unused_orders:
@@ -641,7 +655,9 @@ class DataList:
         joint.velocities = first.velocities
         joint.linelist = first.linelist
         joint.order_ll_masks = [data.ll_mask.copy() for data in selected]
-        joint.ll_mask = np.unique(np.concatenate([data.ll_mask for data in selected]))
+        joint.ll_mask = line_indices
+        joint.profile_groups = groups
+        joint.config.update_hipri(profile_groups=groups, depth_group_rules=None)
         for name in ("full_mask", "line_mask", "pix_mask", "sigma_mask"):
             setattr(joint, name, np.concatenate([getattr(data, name) for data in selected]))
         joint.poly_coeffs["masked"] = np.concatenate([data.poly_coeffs["masked"] for data in selected])
@@ -653,8 +669,20 @@ class DataList:
             edges = np.r_[0, np.cumsum([len(data.flux[key]) for data in selected])]
             joint.continuum_slices[key] = np.column_stack((edges[:-1], edges[1:],
                                                          coeff_edges[:-1], coeff_edges[1:]))
-            for name in ("wavelengths", "flux", "errors", "alpha"):
+            for name in ("wavelengths", "flux", "errors"):
                 getattr(joint, name)[key] = np.concatenate([getattr(data, name)[key] for data in selected])
+            matrices = []
+            for data in selected:
+                alpha = data.alpha[key]
+                if groups is not None:
+                    local_groups = np.unique(data.profile_groups)
+                    if key == "mcmc":
+                        alpha = np.stack(np.split(alpha, len(local_groups), axis=1))
+                    aligned = np.zeros((len(unique_groups), *alpha.shape[1:]))
+                    aligned[np.searchsorted(unique_groups, local_groups)] = alpha
+                    alpha = LSD.flatten_alpha(aligned) if key == "mcmc" else aligned
+                matrices.append(alpha)
+            joint.alpha[key] = np.concatenate(matrices, axis=1 if groups is not None and key == "initial" else 0)
             joint.sn[key] = min(float(data.sn[key]) for data in selected)
         joint.norm_wavelengths["mcmc"] = np.concatenate([data.norm_wavelengths["mcmc"] for data in selected])
         _, errors = utils.flux_to_od(joint.flux["mcmc"], joint.errors["mcmc"], od=joint.config.od)
@@ -984,6 +1012,8 @@ class DataList:
             The figure and axis objects if return_fig is True, otherwise None.
 
         """
+        if self.multi_order_data is not None and self.multi_order_data.profile_groups is not None:
+            return self.multi_order_data.result.plot_profiles(return_fig=return_fig)
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
         for data in self.data_list:

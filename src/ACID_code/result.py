@@ -191,6 +191,9 @@ class Result:
         if self.data.profile_groups is not None:
             # Set the inputs, reset alpha, force LSD to use non multi-profile mode
             self.data.alpha["single_profile"] = None
+            if self.data.continuum_slices:
+                self.data.continuum_slices["single_profile"] = self.data.continuum_slices["initial"]
+                self.data.alpha["single_profile"] = self.data.alpha["initial"].sum(axis=0)
             self.data.wavelengths["single_profile"] = self.data.wavelengths["initial"]
             self.data.flux["single_profile"] = self.data.flux["initial"]
             self.data.errors["single_profile"] = self.data.errors["initial"]
@@ -287,13 +290,23 @@ class Result:
         if not self.data.order_ll_masks:
             raise ACIDStateError("Recalculating joint alpha requires per-order line selections. Rerun run_multi_order_ACID.")
         matrices = []
+        groups = self.data.profile_groups
         for (i, j, _, _), mask in zip(slices, self.data.order_ll_masks):
             lines = self.data.linelist["wavelengths"][mask]
             depths = self.data.linelist["depths"][mask]
             depths = utils.flux_to_od(linelist=depths, od=self.config.od)
-            matrices.append(LSD.calc_alpha(wavelengths[i:j], lines, depths,
-                                           self.data.velocities, sparse=self.config.sparse))
-        return np.concatenate(matrices)
+            if groups is None:
+                alpha = LSD.calc_alpha(wavelengths[i:j], lines, depths,
+                                       self.data.velocities, sparse=self.config.sparse)
+            else:
+                order_groups = groups[np.searchsorted(self.data.ll_mask, mask)]
+                alpha = np.stack([LSD.calc_alpha(wavelengths[i:j], lines[order_groups == group],
+                                 depths[order_groups == group], self.data.velocities,
+                                 sparse=self.config.sparse) for group in np.unique(groups)])
+                if key == "mcmc":
+                    alpha = LSD.flatten_alpha(alpha)
+            matrices.append(alpha)
+        return np.concatenate(matrices, axis=1 if groups is not None and key != "mcmc" else 0)
 
     def _get_continuum(self, wavelengths, samples, key):
         slices = self.data.continuum_slices.get(key)
@@ -842,8 +855,10 @@ class Result:
                 ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
                 ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
             if show_linelist:
-                colors = ([f"C{group}" for group in self.data.profile_groups[in_order]]
-                          if self.data.profile_groups is not None else "green")
+                colors = "green"
+                if self.data.profile_groups is not None:
+                    groups = self.data.profile_groups[np.searchsorted(self.data.ll_mask, ll_mask)]
+                    colors = [f"C{group}" for group in groups[in_order]]
                 ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color=colors,
                              linewidth=1, label='Line List', alpha=0.5)
 

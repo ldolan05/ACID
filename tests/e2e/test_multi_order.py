@@ -2,11 +2,13 @@
 import numpy as np
 import pytest
 import shutil
+import warnings
 import matplotlib.pyplot as plt
 
 from ACID_code import Config, Data, DataList, LSD, MCMC, Result
 from ACID_code import utils
 from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError
+from ACID_code.diagnostics.warnings import ACIDDroppedDataWarning
 
 
 def make_orders(nframes=1, **kwargs):
@@ -63,6 +65,82 @@ def test_joint_solve_matches_weighted_least_squares(regularization, scaled):
     assert joint.initial_state.shape == (24, 7)
     assert all(data.sampler is None and data.config.run_mcmc for data in orders)
     assert model(np.r_[-1., theta[1:]]) == -np.inf
+
+
+@pytest.mark.parametrize("use_jax", [False, True])
+def test_joint_groups_recover_distinct_profiles_with_missing_groups(tmp_path, use_jax):
+    if use_jax:
+        pytest.importorskip("jax")
+    groups = np.array([2, 2, 2, 7, 7, 7])
+    orders, theta = make_orders(nframes=2, profile_groups=groups, use_jax=use_jax)
+    expected = np.array([[.07, .12, .07], [.03, .2, .09]])
+    for data in orders:
+        wave = data.wavelengths["input"]
+        spectra = []
+        for frame, grid in enumerate(wave):
+            grid = grid + frame * .003
+            wave[frame] = grid
+            alpha, _ = LSD.calc_mp_alpha(grid, data.velocities, data.linelist["wavelengths"],
+                                        -np.log1p(-data.linelist["depths"]), groups, verbose=0)
+            index = data.config.order - 10
+            start = [0, 2, 5][index]
+            coefs = theta[start:start + data.config.poly_ord + 1]
+            continuum = utils.eval_continuum(utils.normalize_wavelengths(grid), coefs)
+            spectra.append(continuum * np.exp(-LSD.flatten_alpha(alpha) @ (expected + frame * .01).ravel()))
+        data.set_inputs(wave, np.array(spectra), data.errors["input"], data.sn["input"])
+
+    orders.save_dir = str(tmp_path)
+    result = orders.run_multi_order_ACID(pack=True)
+    joint = result.data
+    model = MCMC(joint)
+    continuum = utils.eval_continuum(model.x, theta, slices=model.continuum_slices)
+    weighted = model.alpha / (model.yerr / model.y)[:, None]
+    reference = np.linalg.lstsq(weighted, -np.log(model.y / continuum) / (model.yerr / model.y), rcond=None)[0]
+    np.testing.assert_allclose(model.model_function(theta)[1], reference, atol=1e-12)
+    assert joint.profile["final"][0].shape == (2, 3)
+    assert joint.profile["single_profile"][0].shape == (3,)
+    fig, _ = orders.plot_combined_profile(return_fig=True)
+    plt.close(fig)
+    assert all(profile[0].shape == (2, 3) for profile in joint.profiles)
+    assert all(np.all(np.isfinite(profile[0])) and np.all(profile[1] > 0) for profile in joint.profiles)
+    np.testing.assert_allclose(result._get_order_alpha(joint.wavelengths["mcmc"], "mcmc"), joint.alpha["mcmc"])
+    for frame in range(2):
+        alpha = result._get_order_alpha(joint.wavelengths["input"][frame], f"input_{frame}")
+        assert alpha.shape == (2, sum(len(data.wavelengths["input"][frame]) for data in orders), 3)
+        slices = joint.continuum_slices[f"input_{frame}"]
+        continuum = np.concatenate([utils.eval_continuum(utils.normalize_wavelengths(
+            joint.wavelengths["input"][frame][i:j]), theta[a:b]) for i, j, a, b in slices])
+        recovered = np.linalg.lstsq(LSD.flatten_alpha(alpha),
+                                   -np.log(joint.flux["input"][frame] / continuum), rcond=None)[0]
+        np.testing.assert_allclose(recovered.reshape(2, 3), expected + frame * .01, atol=1e-12)
+    restored = DataList.load(str(tmp_path), verbose=0).multi_order_data.result
+    np.testing.assert_array_equal(restored.data.profile_groups, groups)
+    restored.continue_sampling(nsteps=2)
+    assert restored[0].shape == (2, 3)
+    fig, ax = restored.plot_profiles(return_fig=True)
+    assert ax.get_legend_handles_labels()[1] == ["Group 2", "Group 7", "Group 2", "Group 7"]
+    plt.close(fig)
+    fig, _ = restored.plot_forward_model(separate_orders=True, show_linelist=True, return_fig=True)
+    plt.close(fig)
+
+
+def test_joint_groups_reject_conflicting_shared_line_assignments():
+    orders = make_overlapping_orders()
+    for data in orders:
+        data.config.profile_groups = np.array([0, 1, 0, 1, 0, 1])
+    orders[41].config.profile_groups = np.array([0, 1, 1, 1, 0, 1])
+    with pytest.raises(ACIDInputError, match="same profile group"):
+        orders.run_multi_order_ACID(run_mcmc=False)
+
+
+def test_joint_invalid_pixels_warn_once_across_orders():
+    orders, _ = make_orders()
+    for data in orders:
+        data.flux["input"][0][0] = np.nan
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("once", ACIDDroppedDataWarning)
+        orders.run_multi_order_ACID(run_mcmc=False)
+    assert sum(w.category is ACIDDroppedDataWarning for w in caught) == 1
 
 
 def test_joint_sampling_frames_continuum_errors_and_persistence(tmp_path):
@@ -233,8 +311,12 @@ def make_overlapping_orders():
     return DataList.from_datalist(orders, verbose=0)
 
 
-def test_overlapping_orders_keep_interpolation_and_line_cuts_independent(monkeypatch):
+@pytest.mark.parametrize("grouped", [False, True])
+def test_overlapping_orders_keep_interpolation_and_line_cuts_independent(monkeypatch, grouped):
     orders = make_overlapping_orders()
+    if grouped:
+        for data in orders:
+            data.config.profile_groups = np.array([2, 7, 2, 7, 2, 7])
     original = LSD.calc_alpha
     grids = []
 
@@ -255,7 +337,8 @@ def test_overlapping_orders_keep_interpolation_and_line_cuts_independent(monkeyp
     recalculated = result._get_order_alpha(data.wavelengths["mcmc"], "mcmc")
     np.testing.assert_allclose(recalculated, data.alpha["mcmc"])
     for (i, j, _, _), order in zip(data.continuum_slices["final"], orders):
-        np.testing.assert_array_equal(data.alpha["final"][i:j], order.alpha["initial"])
+        alpha = data.alpha["final"][:, i:j] if grouped else data.alpha["final"][i:j]
+        np.testing.assert_array_equal(alpha, order.alpha["initial"])
 
 
 @pytest.mark.parametrize("show_masking", [False, True])

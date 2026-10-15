@@ -127,7 +127,7 @@ Fitting one profile across orders
 
 ``run_multi_order_ACID`` prepares and masks each selected order using the usual
 ACID setup, then fits an independent continuum for each order while solving
-one shared profile from all their pixels at every sampling step.
+shared profiles from all their pixels at every sampling step.
 
 .. code-block:: python
 
@@ -161,8 +161,12 @@ as a list, while each individual order's Config retains its single label.
 Orders may have different pixel counts and polynomial degrees. They must share
 the velocity grid, line list, optical-depth setting, continuum method and
 regularization settings, and contain the same corresponding frames in the
-same sequence. Grouped profiles are not supported by this single-profile fit.
-The shared profile is solved deterministically, with sampling settings taken
+same sequence. Pass ``profile_groups=groups`` to the DataList constructor or
+``run_multi_order_ACID`` to fit one shared profile per line group. Labels refer
+to the full line list; shared lines must belong to the same group in every
+order. An order can lack groups that are present in other orders. Final profiles
+have shape ``(n_groups, n_velocities)``, ordered by sorted group label.
+The shared profiles are solved deterministically, with sampling settings taken
 from the first selected order's Config. Keyword priority follows ``run_ACID``;
 use ``overwrite_kwargs=True`` to override settings already in that Config.
 
