@@ -103,6 +103,7 @@ class MCMC:
                                  sampler_type=sampler_type, od=od,
                                  continuum_method=continuum_method, use_jax=use_jax)
 
+        self.continuum_slices = data.continuum_slices.get("mcmc")
         self.x = data.norm_wavelengths["mcmc"]
         self.y = data.flux["mcmc"]
         self.yerr = data.errors["mcmc"]
@@ -205,7 +206,7 @@ class MCMC:
         coefs = np.asarray(theta[self.k_max:], dtype=float)
 
         # Apply continuum model
-        mdl *= utils.eval_continuum(self.x, coefs, method=self.continuum_method)
+        mdl *= utils.eval_continuum(self.x, coefs, method=self.continuum_method, slices=self.continuum_slices)
 
         return mdl, z
 
@@ -227,7 +228,7 @@ class MCMC:
         coefs = np.asarray(theta, dtype=float)
 
         # Build continuum model
-        mdl = utils.eval_continuum(self.x, coefs, method=self.continuum_method)
+        mdl = utils.eval_continuum(self.x, coefs, method=self.continuum_method, slices=self.continuum_slices)
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
@@ -291,7 +292,10 @@ class MCMC:
             return -np.inf
 
         coefs = theta[self.k_max:] if not self.deterministic_profile else theta
-        lp += self.continuum_prior(coefs)
+        if self.continuum_slices is None:
+            lp += self.continuum_prior(coefs)
+        else:
+            lp += sum(self.continuum_prior(coefs[a:b]) for _, _, a, b in self.continuum_slices)
 
         return lp
 

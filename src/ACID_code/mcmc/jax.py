@@ -59,6 +59,7 @@ class JAXBackend:
             self.n_velocities = len(mcmc.velocities)
             self.regularization_weights = self.jnp.asarray(mcmc._regularization_weights)
         self.continuum_method      = mcmc.continuum_method
+        self.continuum_slices      = mcmc.continuum_slices
         self.neg_inf               = self.jnp.asarray(-np.inf, dtype=self.y.dtype)
 
         if self.deterministic_profile:
@@ -85,11 +86,16 @@ class JAXBackend:
     def _calculate_log_likelihood(self, theta):
         return self._calculate_probabilities(theta)[1]
 
-    def _eval_continuum(self, coefs):
+    def _eval_continuum(self, coefs, x=None):
+        if x is None:
+            if self.continuum_slices is not None:
+                return self.jnp.concatenate([self._eval_continuum(coefs[a:b], self.x[i:j])
+                                             for i, j, a, b in self.continuum_slices])
+            x = self.x
         # The basis and coefficient count are static, so JAX compiles away these branches and loops
         if self.continuum_method == "polyval":
             # numpy.polynomial.polyval uses ascending coefficients; jnp.polyval uses descending.
-            return self.jnp.polyval(coefs[::-1], self.x)
+            return self.jnp.polyval(coefs[::-1], x)
 
         # JAX has no chebval, so follow NumPy's Clenshaw recurrence directly.
         if len(coefs) == 1:
@@ -97,8 +103,8 @@ class JAXBackend:
         else:
             c0, c1 = coefs[-2], coefs[-1]
             for coef in coefs[-3::-1]:
-                c0, c1 = coef - c1, c0 + c1 * (2 * self.x)
-        return self.jnp.exp(c0 + c1 * self.x)
+                c0, c1 = coef - c1, c0 + c1 * (2 * x)
+        return self.jnp.exp(c0 + c1 * x)
 
     def _soft_z_prior(self, z):
         if self.od:
@@ -117,9 +123,12 @@ class JAXBackend:
         differences = self.jnp.diff(z.reshape(-1, self.n_velocities), axis=1)
         return -0.5 * self.jnp.sum(self.regularization_weights[:, None] * differences**2)
 
-    def _continuum_prior(self, coefs):
+    def _continuum_prior(self, coefs, per_order=False):
         if self.continuum_method != "chebval":
             return self.jnp.asarray(0.0, dtype=self.y.dtype)
+        if self.continuum_slices is not None and not per_order:
+            return sum(self._continuum_prior(coefs[a:b], per_order=True)
+                       for _, _, a, b in self.continuum_slices)
 
         k = self.jnp.arange(coefs.shape[0], dtype=self.y.dtype)
         sigma = 0.25 / (1.0 + k) ** 2
