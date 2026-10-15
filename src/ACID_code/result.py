@@ -167,7 +167,7 @@ class Result:
 
         # We first run LSD on the final state of the sampler (for debugging, but this can be useful to see how masking is affecting the sampler)
         if self.config.verbose == 4: # debugging mode
-            self.data.alpha["mcmc"] = None # reset alpha so that it is recalculated
+            self.data.alpha["mcmc"] = self._get_order_alpha(self.data.wavelengths["mcmc"], "mcmc")
             _lsd = self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs, return_cls=True) # alpha is recalculated
             self.data.debug["lsd_mcmc"] = _lsd.__dict__.copy()
 
@@ -177,6 +177,8 @@ class Result:
         self.data.errors["final"]      = self.data.errors["initial"] # includes the line_mask set to 1e12 (and hence masked for LSD)
         self.data.sn["final"]          = self.data.sn["initial"]
         self.data.alpha["final"]       = self.data.alpha["initial"]
+        if self.data.continuum_slices:
+            self.data.continuum_slices["final"] = self.data.continuum_slices["initial"]
 
         # Final continuum correction and LSD run on the unmasked spectrum, generates the final profiles
         _lsd = self._continuum_correct_and_runlsd("final", all_poly_coeffs, return_cls=True)
@@ -213,8 +215,9 @@ class Result:
             wavelengths, flux, errors = utils.drop_invalid(wavelengths, flux, errors)
 
             # Reapply the line_mask to the errors
-            line_mask = self.config.masking_lines.get_1d_mask_on_grid(wavelengths)
-            errors = np.where(line_mask, 1e12, errors) # set masked errors to 1e12 (so that those points are ignored in LSD)
+            if not self.data.continuum_slices: # joint input frames already carry each order's line mask
+                line_mask = self.config.masking_lines.get_1d_mask_on_grid(wavelengths)
+                errors = np.where(line_mask, 1e12, errors) # set masked errors to 1e12 (so that those points are ignored in LSD)
 
             # Avoid alpha recalculation if the input wavelengths are the same as the combined wavelengths, always true for single frame LSD
             if np.array_equal(wavelengths, self.data.wavelengths["final"]):
@@ -225,13 +228,11 @@ class Result:
                 else: # here they only share a common wavelength grid, so alpha can be reused, otherwise alpha is None and needs to be recalculated
                     alpha = self.data.alpha["final"]
             else:
-                alpha = None
+                alpha = self._get_order_alpha(wavelengths, f"input_{i}")
 
             # The process below is almost identical to self._continuum_correct_and_runlsd, see that for more details.
-            poly_coeffs = np.median(all_poly_coeffs, axis=0)
-            norm_wl = utils.normalize_wavelengths(wavelengths)
-            continuum = utils.eval_continuum(norm_wl, poly_coeffs, method=self.config.continuum_method)
-            continuum_error = self._get_continuum_error(norm_wl, all_poly_coeffs)
+            norm_wl, continuum, continuum_error = self._get_continuum(
+                wavelengths, all_poly_coeffs, key=f"input_{i}")
             fitted_flux = flux / continuum
             fitted_errors = np.sqrt((errors/continuum)**2 + (fitted_flux*continuum_error/continuum)**2)
             lsd = LSD(self.data)
@@ -258,9 +259,8 @@ class Result:
         poly_coeffs = np.median(all_poly_coeffs, axis=0)
 
         # Normalise the wavelengths and evaluate the continuum and error from the median
-        norm_wavelengths = utils.normalize_wavelengths(data.wavelengths[key])
-        continuum = utils.eval_continuum(norm_wavelengths, poly_coeffs, method=data.config.continuum_method)
-        continuum_error = self._get_continuum_error(norm_wavelengths, all_poly_coeffs)
+        norm_wavelengths, continuum, continuum_error = self._get_continuum(
+            data.wavelengths[key], all_poly_coeffs, key)
 
         # Fit the flux and error with the continuum
         fitted_flux = data.flux[key] / continuum
@@ -278,6 +278,37 @@ class Result:
         _lsd = LSD.runlsd_and_store(data, key, **kwargs)
 
         return _lsd
+
+    def _get_order_alpha(self, wavelengths, key):
+        """Recalculate each order's triangular interpolation on its own grid."""
+        slices = self.data.continuum_slices.get(key)
+        if slices is None:
+            return None # let the usual single-order LSD path calculate alpha
+        if not self.data.order_ll_masks:
+            raise ACIDStateError("Recalculating joint alpha requires per-order line selections. Rerun run_multi_order_ACID.")
+        matrices = []
+        for (i, j, _, _), mask in zip(slices, self.data.order_ll_masks):
+            lines = self.data.linelist["wavelengths"][mask]
+            depths = self.data.linelist["depths"][mask]
+            depths = utils.flux_to_od(linelist=depths, od=self.config.od)
+            matrices.append(LSD.calc_alpha(wavelengths[i:j], lines, depths,
+                                           self.data.velocities, sparse=self.config.sparse))
+        return np.concatenate(matrices)
+
+    def _get_continuum(self, wavelengths, samples, key):
+        slices = self.data.continuum_slices.get(key)
+        if slices is None:
+            slices = [(0, len(wavelengths), 0, samples.shape[1])]
+        norm_wl, continua, errors = [], [], []
+        for i, j, a, b in slices:
+            # MCMC wavelengths were normalised before residual masking.
+            x = (self.data.norm_wavelengths[key][i:j] if key == "mcmc"
+                 else utils.normalize_wavelengths(wavelengths[i:j]))
+            norm_wl.append(x)
+            continua.append(utils.eval_continuum(x, np.median(samples[:, a:b], axis=0),
+                                                method=self.config.continuum_method))
+            errors.append(self._get_continuum_error(x, samples[:, a:b]))
+        return tuple(np.concatenate(values) for values in (norm_wl, continua, errors))
 
     def _get_continuum_error(self, norm_wl, all_poly_coeffs):
         ncoeffs = all_poly_coeffs.shape[1]
@@ -299,7 +330,8 @@ class Result:
         matrix_size_gb = (2 * n_samples * npix + n_samples * ncoeffs + npix * ncoeffs) * 8 / (1024**3)
         # If memory exceeded, fallback to using 1000 random samples
         if matrix_size_gb > m_available:
-            warnings.warn(f"Calculating continuum error with all samples may exceed available memory ({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
+            warnings.warn(f"Calculating continuum error with all samples may exceed available memory "
+                          f"({matrix_size_gb:.2f} GB required, {m_available:.2f} GB available). "
                           "Calculating with a max of 1000 random samples instead.", ACIDPerformanceWarning, stacklevel=3)
             indices_size = min(1000, n_samples)
             random_indices = self.data.get_result_rng().choice(n_samples, size=indices_size, replace=False)
@@ -632,6 +664,8 @@ class Result:
         labels           : dict|None  = None,
         return_fig       : bool       = False,
         subplot_kwargs   : dict|None  = None,
+        order            : IntLike|None = None,
+        separate_orders  : bool       = False,
         ) -> None | tuple:
         """
         Plots the forward model calculated from the final profiles to the combined input spectrum.
@@ -663,6 +697,13 @@ class Result:
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
         
+        order : IntLike | None, optional
+            Plot only this instrument order. None plots all orders.
+        separate_orders : bool, optional
+            Stack a spectrum/residual pair for each order in one figure, with
+            independent axes between orders. Default is False. Returned axes
+            have shape (n_orders, 2) when True.
+
         Returns
         ----------
         If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing the plot.
@@ -678,6 +719,42 @@ class Result:
         }
         labels = utils.set_dict_defaults(labels, default_labels)
 
+        slices = self.data.continuum_slices.get(key)
+        if slices is None:
+            slices = np.array([[0, len(self.data.flux[key]), 0, 0]])
+        numbers = np.atleast_1d(self.config.order).tolist()
+        indices = list(range(len(slices)))
+        if order is not None:
+            if order not in numbers:
+                raise ACIDInputError(f"Order {order} is unavailable; available orders are {list(numbers)}.")
+            indices = [numbers.index(order)]
+
+        if separate_orders:
+            if fig_ax is None:
+                options = dict(subplot_kwargs or {})
+                options.setdefault("figsize", (12, 8 * len(indices)))
+                options.setdefault("gridspec_kw", {"height_ratios": [3, 1] * len(indices)})
+                options.update(sharex=False, sharey=False, squeeze=False)
+                fig, axes = plt.subplots(2 * len(indices), 1, **options)
+            else:
+                fig, axes = fig_ax
+            axes = np.asarray(axes).reshape(len(indices), 2)
+            for index, pair in zip(indices, axes):
+                self.plot_forward_model(key=key, normalized=normalized, divide_by_median=divide_by_median,
+                    show_masking=show_masking, show_continuum=show_continuum, show_linelist=show_linelist,
+                    fig_ax=(fig, pair), grid=grid, labels=labels, return_fig=True, order=numbers[index])
+                if fig_ax is None:
+                    pair[0].set_title(f"{labels['title']} — Order {numbers[index]}")
+                    pair[0].set_ylabel(labels["ylabel"])
+                    pair[1].set_ylabel(labels["residuals_ylabel"])
+                    pair[1].set_xlabel(labels["xlabel"])
+                    for axis in pair:
+                        axis.grid(grid)
+            if return_fig:
+                return fig, axes
+            utils.show_or_save(plt, self.config.figure_dir, "forward_model.png")
+            return
+
         # Set default subplot kwargs
         default_kwargs = {
             "figsize": (12, 8),
@@ -685,25 +762,6 @@ class Result:
             "gridspec_kw": {'height_ratios': [3, 1]}
         }
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, default_kwargs)
-
-        # Get input data
-        wavelengths = np.copy(self.data.forward_x[key])
-        flux = np.copy(self.data.flux[key])
-
-        # Get flat_samples which are the same samples used to calculate the final profile, alpha is OD, 
-        # so convert profile back to OD and reconvert to flux for forward model
-        forward = np.copy(self.data.forward_y[key])
-
-        # Get the linelist points
-        ll_wl = self.data.linelist["wavelengths"][self.data.ll_mask]
-        ll_depths = 1 - self.data.linelist["depths"][self.data.ll_mask]
-        ll_tops = np.ones_like(ll_wl) # top of the linelist lines, for plotting
-
-        # Due to distortion at the edges of the profile, we drop the last 2 pixels
-        wavelengths = utils.drop_edges(wavelengths)
-        flux = utils.drop_edges(flux)
-        forward = utils.drop_edges(forward)
-        continuum_model = utils.drop_edges(self.data.continuum[key])
 
         # Plotting
         if fig_ax is not None:
@@ -718,60 +776,85 @@ class Result:
             ax[1].grid(grid)
             plt.subplots_adjust(hspace=0.05)
 
-        if normalized:
-            flux /= continuum_model
-            forward /= continuum_model
-            continuum_model /= continuum_model # is just 1s
-        else:
-            # Interpolate the continuum model to the linelist points so that the 
-            # linelist can be plotted on the same scale as the flux and forward model
-            continuum_at_ll = np.interp(ll_wl, wavelengths, continuum_model)
-            ll_depths *= continuum_at_ll # scale the linelist depths to the continuum model
-            ll_tops *= continuum_at_ll # scale the linelist tops to the continuum model
+        mask = self.data.full_mask
+        if mask is None or len(mask) != len(self.data.flux[key]):
+            mask = np.zeros(len(self.data.flux[key]), dtype=bool)
+            # Recover masks for joint results saved before full_mask was stored.
+            mcmc_slices = self.data.continuum_slices.get("mcmc")
+            if key != "mcmc" and mcmc_slices is not None:
+                for (i, j, _, _), (a, b, _, _) in zip(slices, mcmc_slices):
+                    mask[i:j] = ~np.isin(self.data.forward_x[key][i:j], self.data.wavelengths["mcmc"][a:b])
 
-        if divide_by_median:
-            median_continuum = np.median(continuum_model)
-            flux /= median_continuum
-            forward /= median_continuum
-            continuum_model /= median_continuum
-            ll_depths /= median_continuum
-            ll_tops /= median_continuum
-
-        residuals = flux - forward
-
+        flux_limits, residual_limits = [], []
+        median_continuum = 1.
+        if divide_by_median and not normalized:
+            median_continuum = np.median(np.concatenate([
+                utils.drop_edges(self.data.continuum[key][slices[index, 0]:slices[index, 1]])
+                for index in indices]))
         ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
-        ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
+        for index in indices:
+            i, j, _, _ = slices[index]
+            # Trim and plot each order independently, even on the combined axes.
+            wavelengths = utils.drop_edges(self.data.forward_x[key][i:j])
+            flux = utils.drop_edges(self.data.flux[key][i:j]).copy()
+            forward = utils.drop_edges(self.data.forward_y[key][i:j]).copy()
+            continuum_model = utils.drop_edges(self.data.continuum[key][i:j]).copy()
+            full_mask = utils.drop_edges(~mask[i:j])
+            ll_mask = (self.data.order_ll_masks[index] if self.data.order_ll_masks
+                       else self.data.ll_mask)
+            ll_wl = self.data.linelist["wavelengths"][ll_mask]
+            in_order = (ll_wl >= wavelengths.min()) & (ll_wl <= wavelengths.max())
+            ll_wl = ll_wl[in_order]
+            ll_depths = 1 - self.data.linelist["depths"][ll_mask][in_order]
+            ll_tops = np.ones_like(ll_wl)
 
-        if show_continuum:
-            ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        
-        if show_masking:
-            full_mask = utils.drop_edges(~self.data.full_mask)
-
-            utils.plot_masked_line(ax[0], wavelengths, forward, full_mask, label=["Forward model", "Masked Forward model"])
-            utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask, label=["Residuals", "Masked Residuals"])
-
-            ymax = max(max(forward[full_mask]), max(flux))
-            ymin = min(min(forward[full_mask]), min(flux))
-            diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
-            ax[0].set_ylim(ymin - diff, ymax + diff)
-
-            ymax = np.max(residuals[full_mask])
-            ymin = np.min(residuals[full_mask])
-            diff = (ymax - ymin) * 0.1
-            ax[1].set_ylim(ymin - diff, ymax + diff)
-        else:
-            ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
-            ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
-
-        if show_linelist:
-            if self.data.profile_groups is not None:
-                colors = [f"C{group}" for group in self.data.profile_groups]
+            if normalized:
+                flux /= continuum_model
+                forward /= continuum_model
+                continuum_model[:] = 1
             else:
-                colors = "green"
-            ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color=colors, linewidth=1, label='Line List', alpha=0.5)
-            
-        ax[0].legend()
+                # Interpolation never crosses an order boundary or overlap.
+                continuum_at_ll = np.interp(ll_wl, wavelengths, continuum_model)
+                ll_depths *= continuum_at_ll
+                ll_tops *= continuum_at_ll
+
+            if divide_by_median:
+                flux /= median_continuum
+                forward /= median_continuum
+                continuum_model /= median_continuum
+                ll_depths /= median_continuum
+                ll_tops /= median_continuum
+
+            residuals = flux - forward
+            ax[0].plot(wavelengths, flux, color='black', linewidth=1, label='Observed Spectrum')
+            if show_continuum:
+                ax[0].plot(wavelengths, continuum_model, color='C1', linewidth=1,
+                           label='Fitted Continuum', linestyle='--')
+            if show_masking:
+                utils.plot_masked_line(ax[0], wavelengths, forward, full_mask,
+                                       label=["Forward model", "Masked Forward model"])
+                utils.plot_masked_line(ax[1], wavelengths, residuals, full_mask,
+                                       label=["Residuals", "Masked Residuals"])
+                good = full_mask if np.any(full_mask) else np.ones_like(full_mask)
+                flux_limits.extend([flux.min(), flux.max(), forward[good].min(), forward[good].max()])
+                residual_limits.extend([residuals[good].min(), residuals[good].max()])
+            else:
+                ax[0].plot(wavelengths, forward, color='C0', linewidth=1, label='Forward Model Fit')
+                ax[1].plot(wavelengths, residuals, color='C0', linewidth=1, label='Residuals')
+            if show_linelist:
+                colors = ([f"C{group}" for group in self.data.profile_groups[in_order]]
+                          if self.data.profile_groups is not None else "green")
+                ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color=colors,
+                             linewidth=1, label='Line List', alpha=0.5)
+
+        if show_masking:
+            for axis, limits in zip(ax, (flux_limits, residual_limits)):
+                ymin, ymax = min(limits), max(limits)
+                padding = (ymax - ymin) * 0.1 or 0.01
+                axis.set_ylim(ymin - padding, ymax + padding)
+        handles, names = ax[0].get_legend_handles_labels()
+        legend = dict(zip(names, handles))
+        ax[0].legend(legend.values(), legend.keys())
 
         if return_fig:
             return fig, ax
@@ -947,7 +1030,7 @@ class Result:
         if self.dynesty:
             a=ord('a')
             alph=[chr(i) for i in range(a,a+26)]
-            poly_labels = [alph[i] for i in range(self.config.poly_ord + 1)]
+            poly_labels = [alph[i] if i < len(alph) else f"c{i}" for i in range(self.data.ndim)]
             self.default_param_labels = poly_labels
             self.default_params = None
             self.sampler_initialized = True
@@ -992,13 +1075,13 @@ class Result:
         self.thin = int(np.clip(self.thin, 1, self.data.nsteps-1)) # ensure thin is at least 1, and not clipping to nsteps
 
         # Below is used for the parameters for the walker and corner plots
-        n_poly_params = self.config.poly_ord + 1
+        n_poly_params = len(self.data.poly_coeffs["masked"])
         poly_params = np.arange(-1, -n_poly_params-1, -1).tolist()
         
         # Generates labels for the polynomial coefficients, starting from 'a' for the highest order term, and going backwards in the alphabet.
         a=ord('a')
         alph=[chr(i) for i in range(a,a+26)]
-        poly_labels = [alph[i] for i in range(n_poly_params)]
+        poly_labels = [alph[i] if i < len(alph) else f"c{i}" for i in range(n_poly_params)]
         
         samples = self.sampler.get_chain(thin=self.thin, discard=self.burnin)
         if not self.config.deterministic_profile:
