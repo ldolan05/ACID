@@ -937,7 +937,7 @@ class Result:
 
         fig, ax = plt.subplots(**subplot_kwargs)
 
-        for label, p in zip(self.default_param_labels, self.default_params):
+        for i, (label, p) in enumerate(zip(self.default_param_labels, self.default_params)):
             ax.loglog(Ns, tau_estimates[p], "o-", label=f"{label}")
 
         # Reference line tau = N/50
@@ -946,7 +946,8 @@ class Result:
         ax.set_xlabel("Number of post-burnin samples per walker (N)")
         ax.set_ylabel(r"Estimated integrated autocorrelation time $\tau$")
         ax.set_title("Autocorrelation time estimates vs chain length")
-        ax.legend()
+        if i < 10: # too many labels make the plot ugly
+            ax.legend(loc="upper left")
         ax.grid(True, which="both")
 
         if return_fig:
@@ -991,7 +992,7 @@ class Result:
 
         fig, ax = plt.subplots(**subplot_kwargs)
 
-        for param, label in zip(self.default_params, self.default_param_labels):
+        for i, (param, label) in enumerate(zip(self.default_params, self.default_param_labels)):
 
             y = chain[:, :, param].T  # (nwalkers, nsteps)
 
@@ -1013,7 +1014,8 @@ class Result:
         ax.set_xscale("log")
         ax.grid(True)
         ax.axhline(0, color="black", linestyle="--", linewidth=1)
-        ax.legend()
+        if i < 10: # too many labels make the plot ugly
+            ax.legend()
 
         if return_fig:
             return fig, ax
