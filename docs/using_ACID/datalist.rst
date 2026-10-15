@@ -122,6 +122,63 @@ This is useful for loading in previously saved Data instances (see :ref:`data` f
     # Run ACID if not already done
     datalist.run_ACID(allow_overwrite=False) # run but don't overwrite any existing results (this is actually default)
 
+Fitting one profile across orders
+---------------------------------
+
+``run_multi_order_ACID`` prepares and masks each selected order using the usual
+ACID setup, then fits an independent continuum for each order while solving
+one shared profile from all their pixels at every sampling step.
+
+.. code-block:: python
+
+    result = datalist.run_multi_order_ACID(
+        orders=[20, 21, 22], nsteps=5000, overwrite_kwargs=True,
+    )
+    result.plot_profiles()       # one joint profile per corresponding input frame
+    datalist.plot_combined_profile()
+    result.continue_sampling(nsteps=1000)
+
+Orders remain separate observations, including where their wavelengths overlap.
+Frame combination, residual masking, continuum normalization, line-list cuts
+and triangular interpolation are performed within each order. Pixel rows are
+stacked without sorting, merging or resampling between orders; repeated
+wavelengths remain separate measurements with their own errors. Only the
+shared profile solve combines information across orders, during sampling and
+final profile extraction. Continuum estimates can therefore be correlated
+through that shared profile.
+
+.. code-block:: python
+
+    result.plot_forward_model()                        # entire range, one pair of axes
+    result.plot_forward_model(order=21)                # instrument order 21 only
+    result.plot_forward_model(separate_orders=True)    # one pair per order, stacked vertically
+
+The stacked view has independent x and y axes between orders. With
+``return_fig=True`` it returns an axes array of shape ``(n_orders, 2)``.
+The joint result stores its selected instrument labels in ``result.config.order``
+as a list, while each individual order's Config retains its single label.
+
+Orders may have different pixel counts and polynomial degrees. They must share
+the velocity grid, line list, optical-depth setting, continuum method and
+regularization settings, and contain the same corresponding frames in the
+same sequence. Grouped profiles are not supported by this single-profile fit.
+The shared profile is solved deterministically, with sampling settings taken
+from the first selected order's Config. Keyword priority follows ``run_ACID``;
+use ``overwrite_kwargs=True`` to override settings already in that Config.
+
+The returned ``Result`` and ``datalist.multi_order_data`` hold the joint
+spectra, sampler, continua, profile errors and covariance. ``combined_profile``
+returns this joint profile. Individual orders retain their setup products;
+their existing independent results, if any, are separate from the joint fit.
+To exclude an order from a completed joint fit, rerun with a different
+``orders`` selection.
+
+Failed and unselected orders are removed from the DataList by default; set
+``discard_unused_orders=False`` to retain them. ``run_mcmc=False`` prepares
+``multi_order_data`` without sampling. When ``save_dir`` is set, joint results
+are saved under ``multi_order/``. Use ``pack=True`` (or ``datalist.save()``)
+to include the joint data in a packed DataList for ``DataList.load``.
+
 Using the DataList results
 ----------------------------
 
