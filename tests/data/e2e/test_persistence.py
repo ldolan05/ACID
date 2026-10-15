@@ -71,11 +71,16 @@ def test_datalist_indexes_orders_and_persists_inputs(tmp_path, synthetic_spectru
                         np.array([errors, errors]), np.array([sn, sn]), velocities, linelist,
                         order_range=[10, 12], config=configs, save_dir=str(save_dir))
 
-    # Initialisation saves a lightweight Data object for every requested order.
+    # Initialisation keeps each order in memory until explicitly saved.
     assert len(datalist) == 2
     assert datalist[12].config.order == 12
     assert [datalist[order].config.poly_ord for order in [10, 12]] == [2, 4]
-    assert (save_dir / "order_10" / "data.pkl").exists()
+    for data in datalist:
+        assert not Path(data.config.save_path).exists()
+        data.save()
+        assert Path(data.config.save_path).exists()
+    loaded = DataList.load(str(save_dir), verbose=0)
+    np.testing.assert_array_equal(loaded[10].wavelengths["input"], datalist[10].wavelengths["input"])
     with pytest.raises(KeyError):
         _ = datalist[11]
 
@@ -420,6 +425,7 @@ def test_datalist_save_dir_overrides_paths_and_controls_sampler(
         assert cfg.figure_dir == str(order_dir / "figures")
         expected_sampler = str(order_dir / "sampler.h5") if store_sampler else None
         assert cfg.sampler_path == expected_sampler
+        datalist[20].save()
         loaded = DataList.load(str(save_dir), verbose=0)
         assert loaded[20].config.sampler_path == expected_sampler
         assert not (custom_dir / "custom.pkl").exists()
@@ -440,7 +446,7 @@ def test_datalist_constructor_relocates_reused_data(tmp_path, synthetic_spectrum
                   sn=[sn], velocities=velocities, linelist=linelist,
                   order_range=[20], config=Config(verbose=0), verbose=0)
     original, copied = tmp_path / "original", tmp_path / "copied"
-    DataList(**inputs, save_dir=str(original))
+    DataList(**inputs, save_dir=str(original))[20].save()
     original_file = original / "order_20" / "data.pkl"
     before = original_file.read_bytes()
     shutil.copytree(original, copied)
