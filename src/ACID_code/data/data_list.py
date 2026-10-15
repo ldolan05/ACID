@@ -6,6 +6,7 @@ from .data import Data
 from .line_list import LineList
 from emcee.backends import HDFBackend
 import os, pickle, warnings
+from time import time
 import traceback as tb
 import numpy as np
 import matplotlib.pyplot as plt
@@ -147,6 +148,7 @@ class DataList:
         self._data_list = None
         self._combined_profile = None
         self._results = None
+        self.multi_order_data = None
         self.overwrite = overwrite
         self.excluded_orders = []
         self.save_dir = save_dir
@@ -384,8 +386,10 @@ class DataList:
         overwrite         : bool|None            = None,
         overwrite_kwargs  : bool                 = False,
         pack              : bool                 = False,
+        save_on_exception : bool                 = True,
+        _return_orders    : bool                 = False,
         **kwargs,
-        ) -> None:
+        ) -> Array1D|None:
         """
         Runs ACID on the Data instances in the data list for the specified orders. The results are saved in the save_dir if it is not None, 
         with one pickle file per order containing the Result object. The idea is that you can run ACID on any orders you choose
@@ -423,12 +427,17 @@ class DataList:
         pack : bool, optional
             If True, a copy of all the DataList instances are packed into a single pickle for faster loading. Only applies if this task is not being split
             over multiple workers, otherwise, reverts back to False. By default, False.
+        save_on_exception : bool, optional
+            Determines whether to save the results if an exception occurs during processing. Default is True.
         **kwargs :
             Additional keyword arguments to be passed to the ACID method for each order. These will not overwrite any existing keys unless
             overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
             The kwargs passed also allow you to add/overwrite the linelist and velocities in the Data instance with the same overwrite logic.
         """
         from ..acid import Acid # local import to avoid circular imports, since Acid imports Data
+        if not _return_orders:
+            self.multi_order_data = None
+            self._combined_profile = self._results = None
 
         # Configure overwrite from class default if not input in the method call
         if overwrite is None:
@@ -476,6 +485,7 @@ class DataList:
         ll = kwargs.pop("linelist", None)
         vel = kwargs.pop("velocities", None)
 
+        successful_orders = []
         iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose >= 2 else orders
         for order in iterable:
 
@@ -487,6 +497,8 @@ class DataList:
                 if data.complete:
                     logger.info(f"An ACID completed result for order {order} already exists. \n"
                             f"Skipping this order. To overwrite existing results, set overwrite=True.")
+                    if _return_orders and "mcmc" in data.alpha:
+                        successful_orders.append(order)
                     continue
                 elif data.exception is not None:
                     logger.info(f"An ACID run for order {order} previously encountered an exception. \n"
@@ -508,7 +520,13 @@ class DataList:
             failed_msg = f"Order {order} (list index {self.o2i[order]}) failed with error:"
             exception_raised = False
             try:
-                _result = Acid(data=data).ACID() # All params are stored in Data and Config (in Data)
+                run_mcmc = data.config.run_mcmc
+                data.exception = data.traceback = None
+                try:
+                    _result = Acid(data=data).ACID(run_mcmc=False if _return_orders else None)
+                finally:
+                    data.config.run_mcmc = run_mcmc
+                successful_orders.append(order)
             except ACIDLineListRangeError:
                 warnings.warn(f"{failed_msg} line list range error. Your linelist is likely out of "\
                       f"range of the wavelengths. Skipping this order.", ACIDRuntimeWarning, stacklevel=2)
@@ -529,7 +547,7 @@ class DataList:
                 data.exception = str(e)
                 data.traceback = tb.format_exc(limit=-3)
             
-            if exception_raised:
+            if exception_raised and save_on_exception:
                 try:
                     data.save() # save the data instance with the exception for future reference
                 except:
@@ -540,6 +558,147 @@ class DataList:
         # The data instances are very light as they do not store the sampler, so we can usually afford to pack and store duplicates
         if pack and np.array_equal(orders, self.orders):
             self.save()
+
+        # Return orders if internally requested
+        if _return_orders:
+            return np.asarray(successful_orders, dtype=np.int32)
+
+    def run_multi_order_ACID(
+        self,
+        discard_unused_orders : bool = True,
+        run_mcmc : bool = True,
+        **kwargs,
+    ) -> None|object:
+        """
+        Fit one shared profile with an independent continuum for each order.
+
+        Order selection and setup options follow ``run_ACID``. Failed orders are
+        skipped; all retained orders must share a velocity grid, line list,
+        continuum method, OD setting and regularization settings, and have the
+        same number of frames. Polynomial degrees and pixel counts may differ.
+        The shared profile is solved deterministically; sampling options come
+        from the first selected order's Config.
+
+        Parameters
+        ----------
+        discard_unused_orders : bool, optional
+            Whether to remove orders that were not successfully prepared for the joint fit, by default True.
+        run_mcmc : bool, optional
+            Whether to run MCMC sampling for the joint fit, by default True.
+        **kwargs
+            Additional keyword arguments passed to ``run_ACID``.
+
+        Returns
+        -------
+        None or Result
+            The result of the joint fit if successful and if running mcmc, otherwise None.
+        """
+        from ..acid import Acid
+        from ..result import Result
+        from ..lsd import LSD
+
+        # Remove and discard unused orders if requested, working on kwargs to pass to run_ACID
+        pack = kwargs.pop("pack", False)
+        kwargs["save_on_exception"] = False
+        orders = self.run_ACID(_return_orders=True, **kwargs)
+        selected = [self.data_list[self.o2i[order]] for order in orders]
+        if not selected:
+            raise ACIDStateError("No orders were successfully prepared for a joint fit.")
+
+        # Raise errors if the selected orders are not compatible for joint fitting.
+        first = selected[0]
+        nframes = len(first.wavelengths["input"])
+        for data in selected:
+            if not np.array_equal(data.velocities, first.velocities):
+                raise ACIDInputError("Joint orders must share the same velocity grid.")
+            if any(not np.array_equal(data.linelist[key], first.linelist[key])
+                   for key in ("wavelengths", "depths")):
+                raise ACIDInputError("Joint orders must share the same line list.")
+            for key in ("od", "continuum_method", "regularization", "scale_regularization"):
+                if getattr(data.config, key) != getattr(first.config, key):
+                    raise ACIDInputError(f"Joint orders must share the same {key} setting.")
+            if data.profile_groups is not None:
+                raise ACIDInputError("Joint fitting requires a single profile per order.")
+            if len(data.wavelengths["input"]) != nframes:
+                raise ACIDInputError("Joint orders must have the same number of frames.")
+
+        # Discard unused orders if requested and thin the selected data.
+        if discard_unused_orders:
+            self.data_list = selected.copy()
+        for data in selected:
+            data.thin()
+
+        # Package the main Data instance holding the result of all the orders
+        joint = Data()
+        paths = {"order", "dir", "save_path", "sampler_path", "figure_dir"}
+        joint.config = Config(**{k: v for k, v in first.config.to_dict().items() if k not in paths})
+        joint.config.update_hipri(order=orders.tolist(), deterministic_profile=True, run_mcmc=run_mcmc)
+        if self.save_dir is not None:
+            joint.config.dir = os.path.join(self.save_dir, "multi_order")
+            if Config._no_save(first.config.__dict__.get("_sampler_path")):
+                joint.config.sampler_path = "False"
+        joint.velocities = first.velocities
+        joint.linelist = first.linelist
+        joint.order_ll_masks = [data.ll_mask.copy() for data in selected]
+        joint.ll_mask = np.unique(np.concatenate([data.ll_mask for data in selected]))
+        for name in ("full_mask", "line_mask", "pix_mask", "sigma_mask"):
+            setattr(joint, name, np.concatenate([getattr(data, name) for data in selected]))
+        joint.poly_coeffs["masked"] = np.concatenate([data.poly_coeffs["masked"] for data in selected])
+        joint.profile["masked"] = first.profile["masked"]
+        coeff_edges = np.r_[0, np.cumsum([len(data.poly_coeffs["masked"]) for data in selected])]
+
+        # Stack pixels, preserving the boundaries for each order's continuum.
+        for key in ("initial", "mcmc"):
+            edges = np.r_[0, np.cumsum([len(data.flux[key]) for data in selected])]
+            joint.continuum_slices[key] = np.column_stack((edges[:-1], edges[1:],
+                                                         coeff_edges[:-1], coeff_edges[1:]))
+            for name in ("wavelengths", "flux", "errors", "alpha"):
+                getattr(joint, name)[key] = np.concatenate([getattr(data, name)[key] for data in selected])
+            joint.sn[key] = min(float(data.sn[key]) for data in selected)
+        joint.norm_wavelengths["mcmc"] = np.concatenate([data.norm_wavelengths["mcmc"] for data in selected])
+        _, errors = utils.flux_to_od(joint.flux["mcmc"], joint.errors["mcmc"], od=joint.config.od)
+        joint.c_factor["mcmc"] = LSD.calc_cholesky(joint.alpha["mcmc"], errors,
+            regularization=joint.config.regularization, scale_regularization=joint.config.scale_regularization)
+
+        # Corresponding frames across orders also share one final profile.
+        for name in ("wavelengths", "flux", "errors"):
+            getattr(joint, name)["input"] = np.empty(nframes, dtype=object)
+        joint.sn["input"] = np.empty(nframes)
+        for frame in range(nframes):
+            spectra = [utils.drop_invalid(data.wavelengths["input"][frame],
+                       data.flux["input"][frame], data.errors["input"][frame]) for data in selected]
+            # A very neat trick for computing the cumulative edges of all spectra
+            edges = np.r_[0, np.cumsum([len(spectrum[0]) for spectrum in spectra])]
+            joint.continuum_slices[f"input_{frame}"] = np.column_stack((edges[:-1], edges[1:],
+                                                                       coeff_edges[:-1], coeff_edges[1:]))
+            for data, (wave, flux, err) in zip(selected, spectra):
+                err[data.config.masking_lines.get_1d_mask_on_grid(wave)] = 1e12
+            for i, name in enumerate(("wavelengths", "flux", "errors")):
+                getattr(joint, name)["input"][frame] = np.concatenate([spectrum[i] for spectrum in spectra])
+            joint.sn["input"][frame] = min(float(data.sn["input"][frame]) for data in selected)
+
+        # Set class values
+        joint.setup_time = sum(data.setup_time for data in selected)
+        self.multi_order_data = joint
+        self._combined_profile = self._results = None
+
+        # Run the ACID analysis on the combined joint data
+        acid = Acid(data=joint)
+        joint.initial_state = acid.get_initial_state()
+        if not run_mcmc:
+            return None
+        started = time()
+        if joint.config.max_steps is None:
+            acid.run_mcmc(joint.config.nsteps, joint.initial_state)
+        else:
+            acid.run_mcmc_until_converged(joint.config.max_steps, joint.initial_state)
+        joint.nsteps = acid.sampler.backend.iteration if joint.config.sampler_type == "emcee" else joint.config.nsteps
+        joint.mcmc_time = time() - started
+        result = Result(acid)
+        self._combined_profile = tuple(joint.profile["final"])
+        if pack:
+            self.save()
+        return result
 
     def save(self, save_dir:str|None=None) -> None:
         """
@@ -567,6 +726,8 @@ class DataList:
             "verbose": self.verbose,
             "data_list": [data.to_dict() for data in self.data_list],
         }
+        if self.multi_order_data is not None:
+            d["multi_order_data"] = self.multi_order_data.to_dict()
         utils.save_pickle_atomic(d, save_loc)
 
     @classmethod
@@ -667,6 +828,18 @@ class DataList:
                           ACIDStateWarning, stacklevel=2)
 
         obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+        if "multi_order_data" in d:
+            payload = d["multi_order_data"].copy()
+            cfg = payload["config"].copy()
+            for key in ("save_path", "sampler_path", "figure_dir"):
+                cfg[key] = "False" if Config._no_save(cfg.get(key)) else None
+            cfg["dir"] = join(path, "multi_order")
+            payload["config"] = cfg
+            if payload.get("sampler") is not None:
+                payload["sampler"] = join(path, "multi_order", "sampler.h5")
+            obj.multi_order_data = Data().from_dict(payload)
+            if obj.multi_order_data.complete:
+                obj._combined_profile = tuple(obj.multi_order_data.profile["final"])
         if folder_moved_flag and "data_list" in d:
             obj.save() # repack with new save locations, including newly discovered orders
         return obj
@@ -693,6 +866,8 @@ class DataList:
         Returns:
             tuple[Array1D, Array1D]|None: The combined profile and its errors, or None if not available.
         """
+        if self.multi_order_data is not None and self.multi_order_data.complete:
+            return tuple(self.multi_order_data.profile["final"])
         if self._combined_profile is None:
             try:
                 self.combine_profiles()
@@ -748,6 +923,15 @@ class DataList:
         od : bool, optional
             If True, the combination is done in optical depth. The returned profile is always in flux. By default, True.
         """
+        if self.multi_order_data is not None:
+            if exclude is not None:
+                raise ACIDInputError("To exclude orders from a joint fit, rerun run_multi_order_ACID with orders=.")
+            if not self.multi_order_data.complete:
+                raise ACIDStateError("The joint fit has not been processed yet.")
+            if must_have_converged and not self.multi_order_data.result.converged:
+                raise ACIDStateError("The joint fit has not converged.")
+            self._combined_profile = tuple(self.multi_order_data.profile["final"])
+            return
         if isinstance(exclude, int):
             exclude = [exclude]
         elif exclude is None:
