@@ -91,7 +91,7 @@ def test_legacy_wrapper_maps_positional_arguments(harps_order_40):
     assert result is None
 
 
-def test_output_directory_creates_only_the_requested_leaf(tmp_path):
+def test_output_directories_are_created_on_write(tmp_path):
     output_dir = tmp_path / "acid_run"
     acid = Acid(dir=str(output_dir), verbose=0)
 
@@ -99,17 +99,23 @@ def test_output_directory_creates_only_the_requested_leaf(tmp_path):
     assert acid.config.save_path == str(output_dir / "data.pkl")
     assert acid.config.sampler_path == str(output_dir / "sampler.h5")
     assert acid.config.figure_dir == str(output_dir / "figures")
+    assert not output_dir.exists()
+    acid.data.save()
     assert output_dir.is_dir()
-    assert (output_dir / "figures").is_dir()
+    assert not (output_dir / "figures").exists()
+    acid.config.plot_masking_lines()
+    assert (output_dir / "figures" / "masking_lines.png").exists()
 
     config_dir = tmp_path / "configured_run"
     configured = Acid(config=Config(dir=str(config_dir)), verbose=0)
     assert configured.config.save_path == str(config_dir / "data.pkl")
     assert configured.config.figure_dir == str(config_dir / "figures")
+    assert not config_dir.exists()
 
     mistyped_parent = tmp_path / "does_not_exist"
+    invalid = Acid(dir=str(mistyped_parent / "acid_run"), verbose=0)
     with pytest.raises(FileNotFoundError, match="Only the final directory is created"):
-        Config(dir=str(mistyped_parent / "acid_run"))
+        invalid.data.save()
     assert not mistyped_parent.exists()
 
 

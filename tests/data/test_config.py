@@ -77,6 +77,18 @@ def test_config_sampler_path_is_non_destructive_and_sampler_type_is_validated(tm
         Config(sampler_type="nested")
 
 
+@pytest.mark.parametrize("name, path", [("dir", "run"), ("save_path", "run/data.pkl"),
+                                       ("sampler_path", "run/sampler.h5"), ("figure_dir", "run/figures")])
+def test_config_paths_and_inspection_do_not_create_directories(tmp_path, name, path):
+    target = tmp_path / path
+    config = Config(**{name: str(target)})
+    assert getattr(config, name) == str(target)
+    repr(config)
+    config.to_full_dict()
+    Config(**config.to_dict())
+    assert list(tmp_path.iterdir()) == []
+
+
 @pytest.mark.parametrize("path_name", ["save_path", "sampler_path", "figure_dir"])
 @pytest.mark.parametrize("disabled", ["None", "False", "OFF", "no", "n", "0"])
 def test_config_path_disabling_strings_survive_round_trip(tmp_path, monkeypatch, path_name, disabled):

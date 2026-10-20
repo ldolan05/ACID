@@ -272,14 +272,13 @@ class Config:
 
     @dir.setter
     def dir(self, value:str|None) -> None:
-        """Set the output root, creating only the final directory component."""
+        """Store the output root; directories are created when writing output."""
         if value is None:
             return
 
-        value = utils.ensure_directory(value, "data output directory")
-        self._dir = value
-        if self.figure_dir is not None:
-            utils.ensure_directory(self.figure_dir, "figure directory")
+        if not value:
+            raise ACIDInputError("The data output directory path cannot be empty.")
+        self._dir = os.path.abspath(os.path.expanduser(value))
 
     @property
     def save_path(self) -> str|None:
@@ -307,7 +306,6 @@ class Config:
         if not save_path.endswith(".pkl"):
             raise ACIDInputError("'save_path' must end with '.pkl'.")
         save_path = os.path.abspath(save_path)
-        utils.ensure_directory(os.path.dirname(save_path), "data directory")
         self._save_path = save_path
 
     @property
@@ -336,8 +334,6 @@ class Config:
         if not sampler_path.endswith(".h5"):
             raise ACIDInputError("'sampler_path' must end with '.h5'.")
         sampler_path = os.path.abspath(sampler_path)
-        utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
-
         self._sampler_path = sampler_path
 
     @property
@@ -363,7 +359,9 @@ class Config:
             self._figure_dir = figure_dir
             return
 
-        self._figure_dir = utils.ensure_directory(figure_dir, "figure directory")
+        if not figure_dir:
+            raise ACIDInputError("The figure directory path cannot be empty.")
+        self._figure_dir = os.path.abspath(os.path.expanduser(figure_dir))
 
     @staticmethod
     def _no_save(path) -> bool:
@@ -499,7 +497,7 @@ class Config:
         ax.legend()
         if return_fig:
              return fig, ax
-        utils.show_or_save(plt, self.figure_dir, "masking_lines.png")
+        utils.show_or_save(plt, self.figure_dir, "masking_lines.png", output_dir=self.dir)
 
     @classmethod
     def print_defaults(cls, use_logger:bool=True) -> None:

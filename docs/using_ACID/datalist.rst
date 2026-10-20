@@ -17,6 +17,11 @@ entry's stored save path to infer an unset order. Explicit orders are preserved
 and determine the order directories used when updating relocated save and
 sampler paths. The loaded order range includes all loaded labels.
 
+Creating a DataList creates its root save directory, but no per-order directories.
+Order directories are created only when writing data, sampling or saving figures;
+``figures/`` is created only when a figure is saved. Reading or printing configuration
+paths does not create directories for unused orders.
+
 For now, loading FITS files should be done by you to get the wavelength, spectrum, error, and sn arrays into the correct format.
 Over time, I may add another class to handle the loading of common FITS file formats for certain instruments (feel free to help with this).
 

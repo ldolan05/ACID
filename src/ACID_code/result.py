@@ -513,7 +513,7 @@ class Result:
         plt.subplots_adjust(hspace=0.05)
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "walkers.png")
+        utils.show_or_save(plt, self.config.figure_dir, "walkers.png", output_dir=self.config.dir)
 
     @_require_sampler
     def plot_traceplot(self, return_fig:bool=False, **kwargs) -> None | tuple:
@@ -523,7 +523,7 @@ class Result:
         plt.suptitle('Dynesty Traceplot')
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png")
+        utils.show_or_save(plt, self.config.figure_dir, "traceplot.png", output_dir=self.config.dir)
 
     @_require_sampler
     def plot_corner(
@@ -553,7 +553,7 @@ class Result:
             plt.suptitle('Dynesty Corner Plot')
             if return_fig:
                 return fig, axes
-            utils.show_or_save(plt, self.config.figure_dir, "corner.png")
+            utils.show_or_save(plt, self.config.figure_dir, "corner.png", output_dir=self.config.dir)
             return
 
         # Get samples and thin and burnin from the class variables
@@ -569,7 +569,7 @@ class Result:
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
             return fig
-        utils.show_or_save(plt, self.config.figure_dir, "corner.png")
+        utils.show_or_save(plt, self.config.figure_dir, "corner.png", output_dir=self.config.dir)
 
     @_require_profiles
     def plot_profiles(
@@ -661,7 +661,7 @@ class Result:
         ax.grid(grid)
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png")
+        utils.show_or_save(plt, self.config.figure_dir, "final_profiles.png", output_dir=self.config.dir)
 
     @_require_profiles
     def plot_forward_model(
@@ -765,7 +765,7 @@ class Result:
                         axis.grid(grid)
             if return_fig:
                 return fig, axes
-            utils.show_or_save(plt, self.config.figure_dir, "forward_model.png")
+            utils.show_or_save(plt, self.config.figure_dir, "forward_model.png", output_dir=self.config.dir)
             return
 
         # Set default subplot kwargs
@@ -873,7 +873,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png")
+        utils.show_or_save(plt, self.config.figure_dir, "forward_model.png", output_dir=self.config.dir)
 
     @_require_sampler
     def plot_autocorrelation(
@@ -952,7 +952,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png")
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_time.png", output_dir=self.config.dir)
 
         return
 
@@ -1019,7 +1019,7 @@ class Result:
 
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png")
+        utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png", output_dir=self.config.dir)
 
     def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
         """

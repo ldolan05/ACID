@@ -214,13 +214,13 @@ class Acid:
             Derives the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
             Any inputted paths for save_path, sampler_path, or figure_dir will override this input.
             If None, the save_path, sampler_path, and figure_dir are not set. By default None.
-            If the directory does not exist, only its final component is created; its parent must already exist.
+            Created when output is written, rather than when configured. Only its parent must already exist.
             All of the three paths (save_path, sampler_path, and figure_dir) can be overriden explicitly, or turned off with a string such as
             "none", "off", "0", "false", etc.
         save_path : :py:type:`str`, optional
             The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
             If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
-            Should be a valid file path that ends with ".pkl". If its direct parent does not exist, that final directory is created.
+            Should be a valid file path that ends with ".pkl". Only its direct parent is created when saving if needed.
             The parent's parent must already exist.
             If a file already exists at this path, it will be overwritten on Acid initialization.
             Note that we separate the save and sampler paths, as the sampler can be very large and may not be desired to be saved.
@@ -229,13 +229,13 @@ class Acid:
             If None, the sampler is not saved and only stored in memory. By default None.
             Note that if your path points to an existing file, it will be overwritten on Acid initialization.
             If existing, we use the emcee HDF5 backend to store and load the sampler.
-            Should be a valid file path that ends with ".h5". If its direct parent does not exist, that final directory is created.
+            Should be a valid file path that ends with ".h5". Only its direct parent is created when sampling if needed.
             The parent's parent must already exist.
             Note that if you later try and save the sampler through the data class, it is converted to a HDF5 backend.
         figure_dir : :py:type:`str`, optional
             A directory to save the figures to.
             If None, figures are not saved to disk and figures are instead shown (if asked) with plt.show(), by default None.
-            If the directory does not exist, only its final component is created; its parent must already exist.
+            Created when saving a figure. For the default path, dir is also created if needed.
         deterministic_profile : bool, optional
             If True, fits both the continuum and the LSD profile simultaneously. If False, only fits the continuum in mcmc, the
             profile is inferred from the continuum fit. This is a new feature that has been set to the default as it significantly

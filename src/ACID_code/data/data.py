@@ -446,7 +446,7 @@ class Data:
         ax.legend()
         if return_fig:
             return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "linelist.png")
+        utils.show_or_save(plt, self.config.figure_dir, "linelist.png", output_dir=self.config.dir)
 
     # Store config as a property for handling it to/from dictionary on saving
     @property
@@ -960,7 +960,7 @@ class Data:
         if return_fig:
             return fig, ax
         title = "continuum_fit_initial.png" if key == "initial" else "continuum_fit_masked.png"
-        utils.show_or_save(plt, self.config.figure_dir, title)
+        utils.show_or_save(plt, self.config.figure_dir, title, output_dir=self.config.dir)
 
     def plot_residual_masking(self) -> None:
         """
@@ -1036,7 +1036,7 @@ class Data:
         ax.set_xlabel('Wavelength')
         ax.set_ylabel('Residuals')
         ax.legend()
-        utils.show_or_save(plt, self.config.figure_dir, "masking_residuals.png")
+        utils.show_or_save(plt, self.config.figure_dir, "masking_residuals.png", output_dir=self.config.dir)
 
         # Plot the LSD profile
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -1050,7 +1050,7 @@ class Data:
         ax.axhline(1, color='black', linestyle='--')
         ax.legend()
         ax.grid(True)
-        utils.show_or_save(plt, self.config.figure_dir, "masking_profile.png")
+        utils.show_or_save(plt, self.config.figure_dir, "masking_profile.png", output_dir=self.config.dir)
 
         # Finally plot the forward model
         x = self.wavelengths["combined"]
@@ -1082,7 +1082,7 @@ class Data:
         ax[1].legend()
         plt.tight_layout()
 
-        utils.show_or_save(plt, self.config.figure_dir, "initial_forward_model.png")
+        utils.show_or_save(plt, self.config.figure_dir, "initial_forward_model.png", output_dir=self.config.dir)
 
     def save(self, save_path:str|None=None, sampler_path:str|None=None) -> None:
         """

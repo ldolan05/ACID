@@ -915,12 +915,14 @@ def ensure_directory(path:str, description:str="directory") -> str:
     return path
 
 @beartype
-def show_or_save(plt, figure_path:str|None, name:str):
-    """A helper function to either show a matplotlib figure or save it to a specified path."""
+def show_or_save(plt, figure_path:str|None, name:str, output_dir:str|None=None):
+    """Show a figure or save it, creating the output root for derived figure paths."""
     if figure_path is None:
         if plt.get_backend().lower() != "agg":
             plt.show()
     else:
+        if output_dir is not None and os.path.dirname(figure_path) == output_dir:
+            ensure_directory(output_dir, "data output directory")
         figure_path = ensure_directory(figure_path, "figure directory")
         filename = os.path.join(figure_path, name)
         plt.savefig(filename, bbox_inches="tight")

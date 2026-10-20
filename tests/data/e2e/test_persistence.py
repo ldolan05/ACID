@@ -9,6 +9,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 from ACID_code import Config, Data, DataList
 
 
+def test_datalist_only_creates_directories_for_orders_with_output(tmp_path, harps_order_40):
+    wave, flux, errors, sn, velocities, linelist = harps_order_40
+    root = tmp_path / "results"
+    datalist = DataList(np.tile(wave, (3, 1)), np.tile(flux, (3, 1)),
+                        np.tile(errors, (3, 1)), [sn] * 3, velocities, linelist,
+                        order_range=[20, 21, 22], save_dir=str(root), verbose=0,
+                        parallel=False, nsteps=12, poly_ord=2, seed=1)
+    for data in datalist:
+        repr(data.config)
+        data.config.to_full_dict()
+    assert list(root.iterdir()) == []
+
+    datalist.run_ACID(orders=21)
+    assert {path.name for path in root.iterdir()} == {"order_21"}
+    assert (root / "order_21" / "data.pkl").exists()
+    assert (root / "order_21" / "sampler.h5").exists()
+    assert not (root / "order_21" / "figures").exists()
+
+    # Plotting before ACID runs must create both the order and figure directories.
+    datalist[20].plot_linelist()
+    assert (root / "order_20" / "figures" / "linelist.png").exists()
+    assert not (root / "order_22").exists()
+
+
 def test_datalist_load_infers_current_directory_after_move(tmp_path):
     data = Data()
     data.config = Config(verbose=0)
@@ -154,7 +178,7 @@ def test_datalist_load_without_sampler_does_not_rewrite(tmp_path, capsys, packed
     data.save(str(filename))
     if packed:
         DataList.from_datalist([data], save_dir=str(tmp_path)).save()
-    (tmp_path / "order_50" / "figures").rmdir()
+    assert not (tmp_path / "order_50" / "figures").exists()
     paths = [filename] + ([tmp_path / "datalist.pkl"] if packed else [])
     before = [(path.read_bytes(), path.stat().st_mtime_ns) for path in paths]
     capsys.readouterr()
@@ -215,6 +239,7 @@ def test_datalist_relocation_rebinds_sampler(tmp_path, harps_result, packed, kee
     original.mkdir()
     data = Data().from_dict(harps_result.data.to_dict())
     data.config = Config(order=0, dir=str(original / "order_0"), verbose=0)
+    Path(data.config.dir).mkdir()
     backend = HDFBackend(data.config.sampler_path)
     backend.reset(4, 1)
     data.sampler = backend
@@ -254,11 +279,13 @@ def test_datalist_repairs_explicit_path_with_matching_dir(tmp_path, harps_result
     data = Data().from_dict(harps_result.data.to_dict())
     data.config = Config(order=20, dir=str(order_dir), verbose=0)
     if path_kind == "sampler_path":
+        order_dir.mkdir()
         HDFBackend(str(order_dir / "sampler.h5")).reset(4, 1)
         data.config.sampler_path = str(tmp_path / "missing.h5")
     elif path_kind == "figure_dir":
+        (order_dir / "figures").mkdir(parents=True)
         data.config.figure_dir = str(tmp_path / "old_figures")
-        (tmp_path / "old_figures").rmdir()
+        assert not (tmp_path / "old_figures").exists()
     else:
         data.config.save_path = str(tmp_path / "old.pkl")
     assert DataList._update_paths_for_data(data, str(tmp_path)) is True
@@ -379,6 +406,7 @@ def test_datalist_copy_without_sampler_detaches_original(tmp_path, harps_result,
     original.mkdir()
     data = Data().from_dict(harps_result.data.to_dict())
     data.config = Config(order=20, dir=str(original / "order_20"), verbose=0)
+    Path(data.config.dir).mkdir()
     backend = HDFBackend(data.config.sampler_path)
     backend.reset(4, 1)
     data.sampler = backend
