@@ -61,6 +61,47 @@ We recommended leaving this on True when running the deterministic profile model
 If you try to open the dictionary yourself with pickle.load() and without using the class method, you will run into errors.
 If the sampler is not stored, some of the methods when loading the result will not work (eg. plotting walkers).
 
+Resuming an interrupted run
+--------------------------
+
+For emcee runs with both ``save_path`` and ``sampler_path`` configured, ACID saves
+the prepared Data immediately before sampling. The usual ``dir`` setting supplies
+both paths: ``data.pkl`` stores the inputs, configuration and prepared likelihood,
+while ``sampler.h5`` stores the chain, walker positions and sampling RNG state.
+
+.. code-block:: python
+
+    # Initial run; its prepared Data is saved before the first sampling step.
+    runner = acid.Acid(dir="run", velocities=velocities, linelist=linelist)
+    result = runner.ACID(wavelength, spectrum, error, sn, nsteps=10000)
+
+    # After an interruption, including in a new Python process:
+    result = acid.Acid(dir="run").ACID(resume=True, nsteps=10000)
+
+``resume=True`` loads the saved run before preprocessing or walker initialization
+and uses the existing ``continue_sampling`` implementation. ``nsteps`` is the
+total target: a chain with 3000 saved steps runs another 7000 in this example.
+``max_steps`` also includes saved steps and retains convergence checking. If the
+target has already been reached, ACID processes the saved chain without appending
+samples. ``result.continue_sampling(nsteps=M)`` still adds M steps.
+
+Supplied spectra and model settings are ignored during resume; the saved
+likelihood is retained. You can override runtime settings such as ``parallel``,
+``cores``, ``moves``, ``use_jax``, verbosity and stopping criteria.
+``run_mcmc=False`` restores the run without sampling or processing results.
+Use ``dir`` for a relocated run with the standard filenames, or explicit
+``save_path`` and ``sampler_path`` for custom filenames.
+
+Both files are required. The HDF5 chain alone does not contain the spectra or
+prepared likelihood. Older runs can resume if their saved Data is also available;
+this feature cannot recover missing Data from an older HDF5-only run. Missing,
+empty or dimensionally incompatible chains raise an error without resetting the
+backend. Use ``resume=False`` to start a fresh run.
+
+``DataList.run_ACID(resume=True)`` also resumes selected orders, including orders
+marked complete or failed. Each selected order needs its saved Data and chain;
+use ``overwrite_kwargs=True`` when overriding settings already stored per order.
+
 Reproducible sampling
 ---------------------
 

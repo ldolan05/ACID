@@ -493,7 +493,8 @@ class DataList:
             data = self.data_list[self.o2i[order]]
 
             # Check if ACID already ran for this order
-            if (overwrite is False and data.config.save_path is not None
+            if (overwrite is False and not kwargs.get("resume", data.config.resume)
+                    and data.config.save_path is not None
                     and os.path.exists(data.config.save_path)):
                 if data.complete:
                     logger.info(f"An ACID completed result for order {order} already exists. \n"

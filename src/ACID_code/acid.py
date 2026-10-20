@@ -7,6 +7,7 @@ import multiprocessing as mp
 from multiprocessing.pool import ThreadPool
 from beartype import beartype
 from contextlib import nullcontext
+from dataclasses import fields
 
 from tqdm import tqdm
 from . import utils
@@ -132,6 +133,7 @@ class Acid:
         run_mcmc              : bool|None                      = None, # Config
         regularization        : Scalar|None                    = None, # Config
         scale_regularization  : bool|None                      = None, # Config
+        resume                : bool|None                      = None, # Config
         **kwargs,
         ) -> Result | None:
         """
@@ -395,6 +397,13 @@ class Acid:
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
             If True, the method returns a :py:class:`Result` object, and if False, the method returns None, but attributes are updated.
+        resume : :py:type:`bool`, optional
+            Restore save_path and its HDF5 sampler, skipping preprocessing and walker initialization.
+            Requires both files; dir supplies their usual data.pkl and sampler.h5 paths.
+            Saved inputs and model settings take precedence over supplied inputs. Runtime settings
+            (parallelism, moves, verbosity, paths and stopping criteria) can be overridden.
+            nsteps and max_steps are total step targets, including already saved samples.
+            With run_mcmc=False, only restores the run. By default False.
         **kwargs : :py:type:`dict`, optional
             Unused except to catch accidental inputs of initialisation arguments into the ACID method and warn if so.
 
@@ -497,15 +506,6 @@ class Acid:
                     init_input = kwargs.pop(name, None)
                     config_kwargs[name] = local_kwargs[name] if local_kwargs[name] is not None else init_input
 
-            # Update config if any of the above config settings are new
-            old_profile_groups = self.config.profile_groups
-            self.config.update_hipri(**config_kwargs) # self.config overwrites config_kwargs if overlapping
-            if config_kwargs.get("profile_groups") is not None and (
-                old_profile_groups is None
-                or not np.array_equal(old_profile_groups, self.config.profile_groups)
-            ):
-                self.data.reset()
-
             # Then also remove the valid data kwargs, preferring ACID inputs over init inputs
             valid_data_kwargs = ["wavelengths", "flux", "errors", "sn", "velocities", "linelist"]
             data_kwargs = {}
@@ -519,6 +519,22 @@ class Acid:
             if kwargs:
                 raise ACIDInputError(f"Unexpected keyword argument(s) for Acid.ACID: {', '.join(sorted(kwargs))}")
             self.init_kwargs = {}
+
+            # Resume before changing model settings or touching any input arrays.
+            resume_run = config_kwargs.get("resume")
+            if resume_run is None:
+                resume_run = self.config.resume
+            if resume_run:
+                return self._resume(config_kwargs)
+
+            # Update config if any of the above config settings are new
+            old_profile_groups = self.config.profile_groups
+            self.config.update_hipri(**config_kwargs)
+            if config_kwargs.get("profile_groups") is not None and (
+                old_profile_groups is None
+                or not np.array_equal(old_profile_groups, self.config.profile_groups)
+            ):
+                self.data.reset()
 
             if self.config.parallel and sys.platform == "win32":
                 warnings.warn("Parallel MCMC on Windows is not currently supported. Running MCMC serially.", ACIDInputWarning, stacklevel=3)
@@ -838,6 +854,58 @@ class Acid:
 
         return
 
+    def _resume(self, config_kwargs:dict) -> Result|None:
+        """Restore the existing save format and use the normal continuation path."""
+
+        # Define the editable runtime settings for the continuation of the MCMC run.
+        runtime_settings = (
+            "verbose", "sampler_progress", "dir", "save_path", "sampler_path", "figure_dir",
+            "parallel", "cores", "use_jax", "moves", "nsteps", "max_steps", "check_interval",
+            "min_checks", "min_tau_factor", "tau_tol", "run_mcmc", "resume",
+        )
+        # Include settings supplied through Acid.__init__ or an existing Config.
+        overrides = self.config.to_dict()
+        overrides = {name: getattr(self.config, name) for name in runtime_settings
+                     if name in overrides or "_" + name in overrides}
+        overrides.update({name: value for name, value in config_kwargs.items()
+                          if name in runtime_settings and value is not None})
+        config = Config(**overrides)
+        if config.save_path is None or not os.path.isfile(config.save_path):
+            raise ACIDStateError("resume=True requires the saved Data .pkl file as well as the .h5 chain. "
+                                 "Set dir or save_path to the saved run.")
+
+        data = Data.load(config.save_path, sampler_path=config.sampler_path)
+        data.config.update_hipri(**overrides)
+        # Point relocated runs at the paths used to load them.
+        data.config.update_hipri(save_path=config.save_path, sampler_path=config.sampler_path,
+                                figure_dir=config.figure_dir)
+        if data.config.sampler_type != "emcee" or data.sampler is None:
+            raise ACIDStateError("resume=True requires a saved emcee HDF5 sampler.")
+        backend = data.sampler.backend
+        if backend.iteration == 0:
+            raise ACIDStateError("The saved sampler has no samples to resume. Start a new run with resume=False.")
+        if backend.shape != (data.nwalkers, data.ndim):
+            raise ACIDStateError("The saved sampler shape does not match the saved Data.")
+
+        # Restore in place so DataList and Result retain their reference to this Data.
+        for field in fields(data):
+            setattr(self.data, field.name, getattr(data, field.name))
+        self.config = self.data.config
+        self.data.exception = self.data.traceback = None
+        self.data.nsteps = backend.iteration
+        self.data.complete = False
+        self.data.get_rng().set_state(self.sampler.random_state)
+        if not self.config.run_mcmc:
+            return None
+
+        logger.info("Resuming MCMC from step %d", self.data.nsteps)
+        started = time.time()
+        remaining_steps = max(0, self.config.nsteps - self.data.nsteps)
+        if self.config.max_steps is not None or remaining_steps > 0:
+            self.continue_sampling(nsteps=remaining_steps, max_steps=self.config.max_steps)
+        self.data.mcmc_time += time.time() - started
+        return Result(self)
+
     def get_initial_state(self, reuse:bool=False) -> np.ndarray|None:
 
         # Preserve the initial RNG for results; only walkers and sampling advance this one.
@@ -1087,6 +1155,11 @@ class Acid:
             "tune"           : True,
             "progress_kwargs": {"mininterval":0.5}
         }
+        # Save the prepared likelihood before sampling can be interrupted. The chain
+        # stays in HDF5 and Data.load reconnects it through config.sampler_path.
+        if state is not None and isinstance(backend, emcee.backends.HDFBackend) and self.config.save_path is not None:
+            self.data.complete = False
+            self.data.save()
         return sampler_kwargs, mcmc_kwargs
 
     def continue_sampling(

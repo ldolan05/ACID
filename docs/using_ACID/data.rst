@@ -94,6 +94,9 @@ see "Saving the Result" in :ref:`result` for an explanation why).
     data.save("data.pkl")
     new_data = acid.Data.load("data.pkl")
 
+If the sampler has moved, supply its new path when loading, so the old sampler
+is never attached: ``acid.Data.load("data.pkl", sampler_path="moved/chain.h5")``.
+
 The default ``config.order`` is ``None`` (unset). Loading a file such as
 ``order_20/data.pkl`` assigns order ``20`` if no order was saved. An explicitly
 saved order, including ``0``, is preserved even if the containing folder has a

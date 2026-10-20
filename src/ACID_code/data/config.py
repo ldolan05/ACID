@@ -104,6 +104,7 @@ class Config:
             ("DEMove", 0.1, {"gamma0": 1.0}),
         ],
         "run_mcmc" : True,
+        "resume" : False,
         "continuum_method" : None,
     }
 

@@ -1137,7 +1137,7 @@ class Data:
         logger.info(f"Data object saved to {save_path}")
 
     @classmethod
-    def load(cls, filename:str) -> Data:
+    def load(cls, filename:str, sampler_path:str|None=None) -> Data:
         """
         Loads a data object from a file using pickling. This will read the dictionary from the file and 
         then use it to initialise a new Data class.
@@ -1148,6 +1148,8 @@ class Data:
         ----------
         filename : str
             The name of the file to load the data object from. This should be a .pkl file.
+        sampler_path : str | None, optional
+            Override the stored sampler path before loading, for example after moving a run.
         Returns
         -------
         Data
@@ -1155,6 +1157,10 @@ class Data:
         """
         with open(filename, "rb") as f:
             payload = pickle.load(f)
+
+        if sampler_path is not None:
+            payload["sampler"] = sampler_path
+            payload["config"]["_sampler_path"] = sampler_path
 
         # Initialise a new Data object and update it with the payload dictionary
         data = cls().from_dict(payload)
