@@ -358,10 +358,10 @@ class Profiles:
             The covariance matrix associated with the flux values.
         p0 : list
             Initial guess for the parameters.
-        **kwargs : dict
-            Additional keyword arguments to pass to curve_fit.
         bounds : tuple, optional
             Bounds for the parameters in the form (lower_bounds, upper_bounds), by default None.
+        **kwargs : dict
+            Additional keyword arguments to pass to curve_fit.
         Returns
         -------
         tuple
@@ -372,8 +372,7 @@ class Profiles:
 
         # Perform the curve fitting
         sigma = yerr if cov_matrix is None else cov_matrix
-        absolute_sigma = kwargs.pop("absolute_sigma", sigma is not None) # If sigma is None, then absolute_sigma is False, else True
-        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, bounds=bounds, absolute_sigma=absolute_sigma, **kwargs)
+        popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, bounds=bounds, **kwargs)
         self.fitted_y[model_name] = model_func(self.fitted_x, *popt)
         self.fit_on_x[model_name] = model_func(x, *popt)
 
