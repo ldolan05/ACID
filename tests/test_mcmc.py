@@ -48,6 +48,21 @@ def test_stopping_criterion(mcmc, tau_list, steps, expected):
     assert converged is expected
 
 
+@pytest.mark.parametrize("min_tau_factor, tau_tol, steps, expected", [
+    (0, 0.1, 40, True),
+    (0, 0.001, 40, False),
+    (0, 0.1, 10, False),
+    (50, 0, 200, True),
+    (50, 0, 100, False),
+])
+def test_stopping_criterion_with_disabled_threshold(min_tau_factor, tau_tol, steps, expected):
+    tau_list = [np.array([3.0]), np.array([2.0])]
+    if tau_tol != 0:
+        tau_list = [np.array([2.0]), np.array([2.01])]
+    converged, _, _ = MCMC._get_mcmc_stopping_criterion(tau_list, steps, 1, min_tau_factor, tau_tol)
+    assert converged is expected
+
+
 def test_soft_prior_penalises_out_of_range_profiles(mcmc):
     # The profile prior should leave physical values unchanged and penalise extreme ones.
     assert mcmc.soft_z_prior(np.zeros(mcmc.k_max)) == 0
@@ -118,6 +133,15 @@ def test_stopping_description_formats_tolerance_and_effective_samples():
 
     assert tolerance == "0.0500<0.1"
     assert effective == "75.00>50"
+
+
+@pytest.mark.parametrize("min_tau_factor, tau_tol, expected", [
+    (0, 0.1, ("0.0500<0.1", "disabled")),
+    (50, 0, ("disabled", "75.00>50")),
+])
+def test_stopping_description_labels_disabled_threshold(min_tau_factor, tau_tol, expected):
+    config = Config(min_tau_factor=min_tau_factor, tau_tol=tau_tol)
+    assert MCMC._get_tqdm_desc(0.05, 75, config) == expected
 
 
 # def test_multiprocessing_wrappers_delegate_to_the_worker_model(harps_result):

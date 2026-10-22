@@ -12,6 +12,12 @@ from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList, Result
 from ACID_code.acid import _get_run_kwargs
 
 
+def test_convergence_requires_an_enabled_criterion():
+    acid = Acid(min_tau_factor=0, tau_tol=0)
+    with pytest.raises(ACIDInputError, match="cannot both be 0"):
+        acid.run_mcmc_until_converged(100)
+
+
 @pytest.mark.parametrize("full", [False, True])
 def test_acid_runs_preprocessing_without_mcmc(harps_order_40, full):
     # Use the real order-40 extraction, but stop before the sampler for a fast pipeline check.

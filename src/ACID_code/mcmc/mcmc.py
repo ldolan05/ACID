@@ -388,7 +388,7 @@ class MCMC:
         tau_ref = np.max(tau)
         if step_number < 10 * tau_ref:
             return False, tol_metric, n_eff
-        if not (step_number > min_tau_factor * tau_ref):
+        if min_tau_factor != 0 and not (step_number > min_tau_factor * tau_ref):
             return False, tol_metric, n_eff
 
         # Stability over last min_checks deltas
@@ -399,7 +399,7 @@ class MCMC:
             rel_changes.append(np.percentile(np.abs(b - a) / den, 90))
 
         tol_metric = float(np.max(rel_changes))  # overwrite with the stricter metric
-        return (tol_metric < tau_rel_tol), tol_metric, n_eff
+        return (tau_rel_tol == 0 or tol_metric < tau_rel_tol), tol_metric, n_eff
 
     @staticmethod
     def _get_tqdm_desc(last_tolerance, last_neff, config):
@@ -408,6 +408,10 @@ class MCMC:
         tol_str = f"{last_tolerance:.4f}{tol_str}{config.tau_tol}"
         neff_str = ">" if last_neff > config.min_tau_factor else "<"
         neff_str = f"{last_neff:.2f}{neff_str}{config.min_tau_factor}"
+        if config.tau_tol == 0:
+            tol_str = "disabled"
+        if config.min_tau_factor == 0:
+            neff_str = "disabled"
         return tol_str, neff_str
 
     def dynesty_logprob(self, theta):

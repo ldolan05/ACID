@@ -363,11 +363,12 @@ class Acid:
         min_checks : :py:type:`IntLike`, optional
             Minimum number of checks before MCMC can be stopped, by default 1. Only used if max_steps is set.
         min_tau_factor : :py:type:`IntLike`, optional
-            Minimum tau factor for MCMC stopping criterion, by default 50, which is the emcee recommendation, it's not
+            Minimum tau factor for MCMC stopping criterion (neff), by default 50, which is the emcee recommendation, it's not
             recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
-            Only used if max_steps is set.
+            Only used if max_steps is set. If set to 0, the effective sample size criterion is disabled.
         tau_tol : :py:type:`float`, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
+            If set to 0, the tau stability criterion is disabled. At least one of min_tau_factor and tau_tol must be nonzero.
         moves : list[tuple], optional
             A list of tuples specifying the moves for the MCMC sampler. The format
             tries to follow the emcee documentation as closely as possible.
@@ -1018,6 +1019,9 @@ class Acid:
         Acid.ACID(run_mcmc=True) to run MCMC for the first pass if not already done, which will skip already performed calculations.
         Otherwise, use Acid.continue_sampling or Result.continue_sampling if you have already run MCMC and want to continue.
         """
+        if self.config.min_tau_factor == 0 and self.config.tau_tol == 0:
+            raise ACIDInputError("min_tau_factor and tau_tol cannot both be 0; at least one convergence criterion must be enabled.")
+
         # Get sampler and stopping criterion kwargs for the first run based on initial state, then update nsteps in mcmc_kwargs for subsequent runs
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
         show_progress = mcmc_kwargs.get("progress", True)
