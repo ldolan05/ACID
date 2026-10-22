@@ -84,7 +84,7 @@ class Load:
         if blaze_profile is not None:
             self.data.blaze = blaze_profile
         elif blaze_file is not None:
-            pass # TODO: load blaze file and save to self.data.blaze or tailor blaze files to each instrument
+            pass
 
     def to_datalist(self, **kwargs) -> DataList:
         datalist = DataList.create(

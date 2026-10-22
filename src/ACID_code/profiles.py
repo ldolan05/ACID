@@ -8,7 +8,7 @@ from beartype import beartype
 from scipy.special import wofz
 from .utils import Array1D, Array2D
 from .data import Data
-
+#TODO: Adapt for multi-profile runs
 @beartype
 class Profiles:
     """

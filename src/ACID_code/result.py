@@ -152,6 +152,8 @@ class Result:
         # quartiles = np.percentile(flat_samples, [16, 50, 84], axis=0)
         # param_errors_upanddown = np.diff(quartiles, axis=0)
         # param_errors = np.max(param_errors_upanddown, axis=0)
+        # TODO: Is this the right treatment of errors? What about the intuition of LSD errors being more like an absolute_sigma=True
+        # rather than false?
 
         # Getting the final profile and continuum values
         # Slice the samples to get the poly_coeffs, as the profile params are included in the non-determinstic model
@@ -722,6 +724,8 @@ class Result:
         If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing the plot.
         Otherwise, displays the plot and returns None.
         """
+
+        # TODO: Move this and rest to its own plotting class
         
         # Set default labels
         default_labels = {
