@@ -58,7 +58,34 @@ Two-column line lists still unpack into just wavelengths and depths.
 
 Plotting
 ---------
-You can plot any of the three pre-mcmc set of plots with the following. See the API for the full list of optional inputs to each method.
+The :py:class:`ACID_code.Plot` class uses the stored state of a Data instance.
+It can plot profiles and forward models before MCMC has run, once the corresponding
+LSD step is available. It shares the Data instance, so an existing plotter sees
+subsequent updates without being recreated.
+
+.. code-block:: python
+
+    plots = acid.Plot(data)  # Also accepts an Acid instance
+    plots.profiles(key="initial")
+    plots.forward_model(key="masked", normalized=True, show_linelist=True)
+    plots.continuum_fit(key="initial")
+    plots.linelist()
+    plots.masking_lines()
+    plots.residual_masking()
+
+    # The same methods are available through Data.plot
+    data.plot.forward_model(key="initial")
+
+The default ``key="final"`` selects the final results. ``profiles()`` plots all
+input frames for final results and the combined profile for intermediate stages.
+Unavailable stages raise an error without running any calculations.
+``walkers()``, ``traceplot()``, ``corner()``, ``autocorrelation()``, and ``acf()``
+are also available when a sampler has been stored or supplied to the method.
+
+Existing ``Data.plot_*`` and ``Result.plot_*`` calls continue to work. Result's
+final plotting calls still process unprocessed results when a sampler is available;
+intermediate keys do not require that processing. For example, the following calls
+are retained for compatibility. See the API for the optional inputs to each method.
 
 .. code-block:: python
 

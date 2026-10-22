@@ -7,8 +7,6 @@ from beartype.typing import Any, Dict, Optional
 from emcee import EnsembleSampler
 from emcee.backends.backend import Backend
 from emcee.backends.hdf import HDFBackend
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 import pickle, os, copy, re, warnings
 import numpy as np
 from .. import utils
@@ -399,54 +397,8 @@ class Data:
         self._profile_groups = profile_groups
 
     def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
-        """
-        Plots the linelist points with their corresponding depths as delta-function lines.
-
-        Parameters
-        ----------
-        idx : np.ndarray or list, optional
-            The indices of the linelist points to plot. If None, plots all points.
-        bounds : tuple or list, optional
-            The wavelength bounds (min, max) to clip the linelist for plotting. If None, plots all points.
-        fig_ax : tuple, optional
-            A tuple of (figure, axis) objects to plot on. If None, a new figure and axis are created.
-        return_fig : bool, optional
-            If True, returns the figure and axis objects instead of displaying the plot.
-
-        Returns
-        -------
-        tuple or None
-            If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
-        """
-        if self.linelist is None:
-            raise ACIDStateError("No linelist found. Please set a linelist before trying to plot it.")
-        wl = self.linelist["wavelengths"]
-        depths = self.linelist["depths"]
-
-        if idx is not None:
-            wl = wl[idx]
-            depths = depths[idx]
-
-        # Clip the linelist to the specified bounds if provided, and to the min_depth
-        if bounds is not None:
-            idx_in_bounds = (wl >= bounds[0]) & (wl <= bounds[1])
-            wl = wl[idx_in_bounds]
-            depths = depths[idx_in_bounds]
-
-        # Plot linelist
-        if fig_ax is None:
-            fig, ax = plt.subplots(figsize=(15, 9))
-        else:
-            fig, ax = fig_ax
-
-        ax.vlines(wl, 1, 1-depths, color='C0', alpha=0.7, label='Line List')
-        ax.set_title('Line List')
-        ax.set_xlabel('Wavelength (Angstroms)')
-        ax.set_ylabel('Relative Line Depth')
-        ax.legend()
-        if return_fig:
-            return fig, ax
-        utils.show_or_save(plt, self.config.figure_dir, "linelist.png", output_dir=self.config.dir)
+        """Forward to :py:meth:`Plot.linelist`."""
+        return self.plot.linelist(idx=idx, bounds=bounds, fig_ax=fig_ax, return_fig=return_fig)
 
     # Store config as a property for handling it to/from dictionary on saving
     @property
@@ -856,233 +808,12 @@ class Data:
                 getattr(self, name)["input"] = value
 
     def plot_continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None|tuple:
-        """
-        Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
-
-        Parameters
-        ----------
-        key : str, optional
-            The type of continuum fit to plot and pull the data from, either "initial" for the initial continuum fit or
-            "masked" for the continuum fit after residual masking. Default is "masked".
-        return_fig : bool, optional
-            Whether to return the figure and axis objects instead of showing the plot, by default False.
-        save_fig : str or None, optional
-            If provided, the path to save the figure. If None, the figure will not be saved. Default is None.
-        """
-        # Check we have all inputs needed for plot
-        if key not in ["initial", "masked"]:
-            raise ACIDInputError("key must be either 'initial' or 'masked' (these are the only two steps that produce a scipy continuum fit).")
-        if key not in self.plotting_variables:
-            raise ACIDStateError(f"No plotting variables found for key={key!r}. " \
-                             "Please ensure that the continuum fit has been performed for this key.")
-        if not all(
-            attr in self.plotting_variables[key] for attr in [
-                "clipped_waves", "clipped_flux", "good"]
-            ):
-            raise ACIDStateError("To plot the continuum fit, please first run the continuum fitting in ACID step for the specified plot_type.")
-
-        # Unpack variables
-        good                     = self.plotting_variables[key]["good"]
-        clipped_waves            = self.plotting_variables[key]["clipped_waves"]
-        clipped_flux             = self.plotting_variables[key]["clipped_flux"]
-
-        # Normalise wavelengths and plot flux and fit
-        fig, ax = plt.subplots(figsize=(15, 9))
-       
-        ax.plot(self.wavelengths[key], self.flux[key], label='Original Spectrum', color="C0", alpha=0.7)
-        ax.plot(self.wavelengths[key], self.continuum[key], label='Fitted Continuum', color='red')
-        a, b = utils.get_normalisation_coeffs(self.wavelengths[key])
-        ax.plot((clipped_waves[good]-b)/a, clipped_flux[good], 'o', label='Continuum Normalized Spectrum', color='green')
-
-        # Plot the linelist points, with a color corresponding to their depth in the linelist within the range
-        # Only plot the 20 strongest lines to avoid overcrowding.
-        ll_wl = self.linelist["wavelengths"]
-        ll_depths = self.linelist["depths"]
-        from ..lsd import LSD
-        ll_wl, ll_depths = LSD.clip_wavelengths(self.wavelengths[key], ll_wl, ll_depths)
-        idx = np.argsort(ll_depths)
-        ll_wl = ll_wl[idx]
-        ll_depths = ll_depths[idx]
-        ll_wl = ll_wl[-20:]
-        ll_depths = ll_depths[-20:]
-
-        # Try colouring them, but often the linelist points will be outside the wavelength range so just skip if 
-        # there's an error to avoid breaking the plot
-        try:
-            cmap = plt.cm.viridis_r
-            norm = mpl.colors.Normalize(vmin=np.nanmin(ll_depths), vmax=np.nanmax(ll_depths))
-            for i, (wl, depth) in enumerate(zip(ll_wl, ll_depths)):
-                ax.axvline(
-                    wl,
-                    color=cmap(norm(depth)),
-                    linestyle="--",
-                    alpha=1,
-                    label="Line List (20 strongest lines in region)" if i == 0 else None,
-                )
-            # Create colorbar for depth
-            sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-            sm.set_array([])  # needed for some matplotlib versions
-            cbar = fig.colorbar(sm, ax=ax)
-            cbar.set_label("Line depth")
-        except:
-            warnings.warn("There was an error plotting the linelist points, most likely your linelist range is outside your wavelength range.",
-                          ACIDRuntimeWarning, stacklevel=2)
-            pass
-
-        # Plot the line masks with their names
-        x = self.wavelengths[key]
-        line_mask = self.config.masking_lines.get_masks(x, with_names=True)
-        for i, (name, masks) in enumerate(line_mask.items()):
-            padded = np.concatenate(([False], masks, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-            for j, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((x[start]), (x[end-1]), color=f'C{i+2}', alpha=0.3,
-                        label=f"{name} Line masks" if j == 0 else None)
-        
-        # Plot the other two masking regions if in the masked plot type, these masking are only done after the initial fit
-        if key == "masked":
-            masked = self.pix_mask | self.sigma_mask
-            padded = np.concatenate(([False], masked, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-            for i, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((x[start]), (x[end-1]),
-                            color='red', alpha=0.15, label="Sigma masking and pixel deviation regions" if i == 0 else None)
-
-        # Add labels and legend, and save or show figure
-        plot_title = "Initial Continuum Fit" if key == "initial" else "Continuum Fit after Residual Masking"
-        ax.set_title(plot_title)
-        ax.legend()
-        ax.set_ylim(np.min(self.flux[key])*0.9, np.max(self.flux[key])*1.1)
-        if save_fig is not None:
-            plt.savefig(save_fig)
-        if return_fig:
-            return fig, ax
-        title = "continuum_fit_initial.png" if key == "initial" else "continuum_fit_masked.png"
-        utils.show_or_save(plt, self.config.figure_dir, title, output_dir=self.config.dir)
+        """Forward to :py:meth:`Plot.continuum_fit`."""
+        return self.plot.continuum_fit(key=key, return_fig=return_fig, save_fig=save_fig)
 
     def plot_residual_masking(self) -> None:
-        """
-        Creates 3 plots to show the result of the residual masking step, showing the residuals with the sigma clipping thresholds, 
-        the masked regions, and the initial profile after masking.
-        """
-        # Check we have all inputs needed for plot
-        if "masked" not in self.plotting_variables:
-            raise ACIDStateError("No plotting variables found for masking. Residual masking likely has not been performed in Acid.")
-        if "masked" not in self.wavelengths and "masked" not in self.flux:
-            raise ACIDStateError("No masked wavelengths or fluxes found. Please ensure that the residual masking step has been performed")
-
-        # Unpack variables
-        x = self.wavelengths["combined"]
-        y = self.flux["combined"]
-        residuals = self.residuals["masked"]
-        upper_clip = self.plotting_variables["masked"]["upper_clip"]
-        lower_clip = self.plotting_variables["masked"]["lower_clip"]
-        uc_finite = np.isfinite(upper_clip) # useful for plotting
-        lc_finite = np.isfinite(lower_clip)
-        pix_mask = self.pix_mask
-        line_mask = self.line_mask
-        full_mask = self.full_mask
-
-        nremoved = np.sum(full_mask)
-        logger.info(f"{nremoved}/{len(residuals)} pixels were removed after residual masking.")
-
-        # Create plot and add residuals with sigma clipping thresholds and masked regions
-        fig, ax = plt.subplots(figsize=(15, 9))
-        ax.axhline(0, color='black', linestyle='--', linewidth=1)
-
-        utils.plot_masked_line(ax, x, residuals, ~full_mask, colors=["blue", "red"], label=["Residuals", "Masked Residuals"])
-
-        # Show sigma clipping
-        if uc_finite:
-            ax.axhline(upper_clip, color='C0', linestyle='--', label='Sigma Clip Thresholds', linewidth=2)
-        if lc_finite:
-            lc_label = 'Sigma Clip Thresholds' if not uc_finite else None
-            ax.axhline(lower_clip, color='C0', linestyle='--', linewidth=2, label=lc_label)
-
-        # Show line masking regions
-        line_mask = self.config.masking_lines.get_masks(x, with_names=True)
-        for i, (name, masks) in enumerate(line_mask.items()):
-            padded = np.concatenate(([False], masks, [False]))
-            starts = np.flatnonzero(~padded[:-1] & padded[1:])
-            ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-            for j, (start, end) in enumerate(zip(starts, ends)):
-                ax.axvspan((x[start]), (x[end-1]), color=f'C{i+2}', alpha=0.3,
-                           label=f"{name.capitalize()} line masks" if j == 0 else None)
-
-        # Show pix_chunk masked points:
-        masked = pix_mask
-        padded = np.concatenate(([False], masked, [False]))
-        starts = np.flatnonzero(~padded[:-1] & padded[1:])
-        ends   = np.flatnonzero(padded[:-1] & ~padded[1:])
-        for i, (start, end) in enumerate(zip(starts, ends)):
-            ax.axvspan((x[start]), (x[end-1]),
-                        color='red', alpha=0.15, label="Applied chunk deviation masking" if i == 0 else None)
-        
-        # And show chunk deviation range
-        dev = self.config.dev_perc / 100
-        ax.hlines([-dev, dev], xmin=np.min(x), xmax=np.max(x), color='C1', linestyle='--', linewidth=2, label="Chunk deviation masking range")
-
-        # Set a good ylim off everything but the masked points
-        ymax = np.nanmax([dev, upper_clip if uc_finite else np.nan, np.max(residuals[~full_mask])])
-        ymin = np.nanmin([-dev, lower_clip if lc_finite else np.nan, np.min(residuals[~full_mask])])
-        diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
-        ax.set_ylim(ymin - diff, ymax + diff)
-
-        ax.set_xlim(np.min(x), np.max(x))
-        ax.grid(True)
-        ax.set_title('Residuals with Sigma Clipping Thresholds')
-        ax.set_xlabel('Wavelength')
-        ax.set_ylabel('Residuals')
-        ax.legend()
-        utils.show_or_save(plt, self.config.figure_dir, "masking_residuals.png", output_dir=self.config.dir)
-
-        # Plot the LSD profile
-        fig, ax = plt.subplots(figsize=(10, 6))
-        try:
-            ax.plot(self.velocities, self.profile["masked"][0], label='LSD Profile after Masking and before sampling', color='red')
-        except:
-            ax.plot(self.velocities, np.median(self.profile["masked"][0], axis=0), label='MEDIAN LSD Profile after Masking and before sampling', color='red')
-        ax.set_title('LSD Profile after Residual Masking')
-        ax.set_xlabel('Velocity (km/s)')
-        ax.set_ylabel('LSD Profile')
-        ax.axhline(1, color='black', linestyle='--')
-        ax.legend()
-        ax.grid(True)
-        utils.show_or_save(plt, self.config.figure_dir, "masking_profile.png", output_dir=self.config.dir)
-
-        # Finally plot the forward model
-        x = self.wavelengths["combined"]
-        y = self.flux["combined"]
-        forward = self.forward_y["masked"]
-        continuum = self.continuum["masked"]
-        residuals = (y - forward) / forward
-        fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
-        ax[0].plot(x, y, label='Original data', color='black', linewidth=1)
-        ax[0].plot(x, continuum, color='C1', linewidth=1, label='Fitted Continuum', linestyle='--')
-        utils.plot_masked_line(ax[0], x, forward, ~full_mask, label=["Forward model", "Masked Forward model"])
-        ax[0].set_title('Masked Forward Model')
-        ax[0].set_ylabel('Flux')
-        ax[0].grid(True)
-        ax[0].legend()
-        
-        utils.plot_masked_line(ax[1], x, residuals, ~full_mask, label=["Residuals", "Masked Residuals"])
-        ax[1].axhline(0, color='black', linestyle='--', linewidth=1)
-
-        ymax = np.max(residuals[~full_mask])
-        ymin = np.min(residuals[~full_mask])
-        diff = (ymax - ymin) * 0.1 # Set an even 10% buffer on either side of max/min
-        ax[1].set_ylim(ymin - diff, ymax + diff)
-
-        ax[1].grid(True)
-        # ax[1].set_title('Residuals of forward model with masked residuals')
-        ax[1].set_xlabel('Wavelength')
-        ax[1].set_ylabel('Residuals')
-        ax[1].legend()
-        plt.tight_layout()
-
-        utils.show_or_save(plt, self.config.figure_dir, "initial_forward_model.png", output_dir=self.config.dir)
+        """Forward to :py:meth:`Plot.residual_masking`."""
+        return self.plot.residual_masking()
 
     def save(self, save_path:str|None=None, sampler_path:str|None=None) -> None:
         """
@@ -1253,6 +984,12 @@ class Data:
                 self.sampler = None
 
         return self
+
+    @property
+    def plot(self):
+        """Access plots for any available stage of this Data instance."""
+        from ..plot import Plot
+        return Plot(self)
 
     @property
     def result(self):

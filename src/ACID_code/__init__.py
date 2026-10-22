@@ -5,6 +5,7 @@ from .diagnostics.errors import ACIDError
 from .acid import ACID, ACID_HARPS, Acid
 from .lsd import LSD
 from .result import Result
+from .plot import Plot
 from . import utils
 from .profiles import Profiles
 from .mcmc.mcmc import MCMC

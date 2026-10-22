@@ -14,6 +14,7 @@ Core Classes
 
    Acid
    Result
+   Plot
    Data
    Config
    DataList
