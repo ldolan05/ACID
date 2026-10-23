@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from ..diagnostics.errors import *
 from ..diagnostics.warnings import *
 from ..diagnostics.logging import get_logger
+from ..diagnostics.output import Output, normalize_verbose, output_settings
 from .. import utils
 from tqdm import tqdm
 import matplotlib as mpl
@@ -111,9 +112,9 @@ class DataList:
             If False, if a Data instance already exists for an order, it will be loaded and used instead of generating a new Data instance from the ACID run for that order.
             Default is False.
         verbose : int | bool | str | None, optional
-            The verbosity level for printing information during the initialization. 
-            Follows the same format as the "verbose" input in the :py:class:`Config` class. 
-            Default is None.
+            Batch output level, using the same values as Config.verbose. Level 2 shows
+            order progress and warnings; levels 3 and 4 also enable detailed per-order output.
+            Defaults to Config's verbosity (normally 2).
         _load : Any, optional
             Not yet implemented, do not use. The idea is that you can input a Load object which has its own tools to pull s2d data from common instruments 
             such as ESPRESSO, HARPS, etc. If you want to use this feature, please open an issue or contribute a pull request with the implementation.
@@ -135,7 +136,7 @@ class DataList:
                                       f"contribute a pull request with the implementation.")
 
         # Configure verbosity
-        self.verbose = Config(verbose=verbose).verbose
+        self.verbose = normalize_verbose(verbose, Config.defaults["verbose"])
 
         # All orders should have the same velocity grid and line list
         self.velocities = velocities
@@ -198,7 +199,8 @@ class DataList:
             # If errors or sn are not provided, they will be set to None and approximated in the Data class.
             input_errors = errors[idx] if errors is not None else None
             input_sn = sn[idx] if sn is not None else None
-            data.set_inputs(wavelengths[idx], flux[idx], input_errors, input_sn)
+            with output_settings(data.config, verbose=self.verbose, per_order=True):
+                data.set_inputs(wavelengths[idx], flux[idx], input_errors, input_sn)
 
             # Set linelist and velocities, which always should be same for all orders
             data.linelist = linelist # sets the linelist for this Data instance, which is shared across all orders in the DataList
@@ -217,9 +219,11 @@ class DataList:
                 # Check if file already exists
                 if os.path.exists(data.config.save_path):
                     if self.overwrite:
-                        logger.info(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
+                        if self.verbose >= 3:
+                            logger.info(f"File {data.config.save_path} already exists, but will be overwritten (when using run_ACID) due to setting.")
                     else:
-                        logger.info(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
+                        if self.verbose >= 3:
+                            logger.info(f"File {data.config.save_path} already exists. The data for this order will be loaded from this file.")
                         data = Data.load(data.config.save_path) # load the existing data from the file instead of using the newly initialized data
                         self._update_paths_for_data(data, self.save_dir)
 
@@ -241,8 +245,8 @@ class DataList:
         save_dir : str | None, optional
             The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
         verbose : int | bool | str | None, optional
-            The verbosity level for printing information during the initialization. Follows the same format as the "verbose" input in the 
-            :py:class:`Config` class. Default is None.
+            Batch output level, as in the constructor. If None, uses the highest
+            verbosity among the supplied Data instances.
 
         Returns
         -------
@@ -389,6 +393,7 @@ class DataList:
         pack              : bool                 = False,
         save_on_exception : bool                 = True,
         _return_orders    : bool                 = False,
+        verbose           : IntLike|bool|str|None = None,
         **kwargs,
         ) -> Array1D|None:
         """
@@ -430,12 +435,19 @@ class DataList:
             over multiple workers, otherwise, reverts back to False. By default, False.
         save_on_exception : bool, optional
             Determines whether to save the results if an exception occurs during processing. Default is True.
+        verbose : IntLike | bool | str | None, optional
+            Output level for this call, defaulting to DataList.verbose. Level 2 shows
+            one progress bar showing the current order; warnings use Python warning filters.
+            Per-order alpha and sampler bars are suppressed at levels 0--2; levels
+            3--4 enable detailed output and plots. Stored Config values are unchanged.
+            Python warning filters control whether warnings are displayed at every level.
         **kwargs :
             Additional keyword arguments to be passed to the ACID method for each order. These will not overwrite any existing keys unless
             overwrite_kwargs is set to True, in which case they will overwrite existing keys in the config for the Data instance for that order.
             The kwargs passed also allow you to add/overwrite the linelist and velocities in the Data instance with the same overwrite logic.
         """
         from ..acid import Acid # local import to avoid circular imports, since Acid imports Data
+        verbose = Output.current(verbose=self.verbose if verbose is None else verbose).verbose
         if not _return_orders:
             self.multi_order_data = None
             self._combined_profile = self._results = None
@@ -487,8 +499,11 @@ class DataList:
         vel = kwargs.pop("velocities", None)
 
         successful_orders = []
-        iterable = tqdm(orders, "Running ACID on orders", unit="order") if self.verbose >= 2 else orders
+        desc = "Running ACID on orders" if not _return_orders else "Preparing orders"
+        iterable = tqdm(orders, desc=desc, unit="order") if verbose >= 2 else orders
         for order in iterable:
+            if verbose >= 2:
+                iterable.set_postfix(order=order)
 
             data = self.data_list[self.o2i[order]]
 
@@ -497,14 +512,16 @@ class DataList:
                     and data.config.save_path is not None
                     and os.path.exists(data.config.save_path)):
                 if data.complete:
-                    logger.info(f"An ACID completed result for order {order} already exists. \n"
-                            f"Skipping this order. To overwrite existing results, set overwrite=True.")
+                    if verbose >= 3:
+                        logger.info(f"An ACID completed result for order {order} already exists. \n"
+                                f"Skipping this order. To overwrite existing results, set overwrite=True.")
                     if _return_orders and "mcmc" in data.alpha:
                         successful_orders.append(order)
                     continue
                 elif data.exception is not None:
-                    logger.info(f"An ACID run for order {order} previously encountered an exception. \n"
-                            f"Skipping this order. To retry and overwrite existing results, set overwrite=True.")
+                    if verbose >= 3:
+                        logger.info(f"An ACID run for order {order} previously encountered an exception. \n"
+                                f"Skipping this order. To retry and overwrite existing results, set overwrite=True.")
                     continue
 
             # Handling if any kwargs were input
@@ -525,7 +542,8 @@ class DataList:
                 run_mcmc = data.config.run_mcmc
                 data.exception = data.traceback = None
                 try:
-                    _result = Acid(data=data).ACID(run_mcmc=False if _return_orders else None)
+                    with output_settings(data.config, verbose=verbose, per_order=True):
+                        _result = Acid(data=data).ACID(run_mcmc=False if _return_orders else None)
                 finally:
                     data.config.run_mcmc = run_mcmc
                 successful_orders.append(order)
@@ -551,7 +569,8 @@ class DataList:
             
             if exception_raised and save_on_exception:
                 try:
-                    data.save() # save the data instance with the exception for future reference
+                    with output_settings(data.config, verbose=verbose, per_order=True):
+                        data.save() # save the data instance with the exception for future reference
                 except:
                     warnings.warn(f"Failed to save the Data instance for order {order} after an exception was raised.\n" \
                           f"This is possibly due to a corrupted Data instance.", ACIDRuntimeWarning, stacklevel=2)
@@ -569,6 +588,7 @@ class DataList:
         self,
         discard_unused_orders : bool = True,
         run_mcmc : bool = True,
+        verbose : IntLike|bool|str|None = None,
         **kwargs,
     ) -> None|object:
         """
@@ -587,6 +607,9 @@ class DataList:
             Whether to remove orders that were not successfully prepared for the joint fit, by default True.
         run_mcmc : bool, optional
             Whether to run MCMC sampling for the joint fit, by default True.
+        verbose : IntLike | bool | str | None, optional
+            Output level for this call, as in run_ACID. Order preparation uses quieter
+            batch output; the main joint fit uses normal standalone output at this level.
         **kwargs
             Additional keyword arguments passed to ``run_ACID``.
 
@@ -598,11 +621,12 @@ class DataList:
         from ..acid import Acid
         from ..result import Result
         from ..lsd import LSD
+        verbose = Output.current(verbose=self.verbose if verbose is None else verbose).verbose
 
         # Remove and discard unused orders if requested, working on kwargs to pass to run_ACID
         pack = kwargs.pop("pack", False)
         kwargs["save_on_exception"] = False
-        orders = self.run_ACID(_return_orders=True, **kwargs)
+        orders = self.run_ACID(_return_orders=True, verbose=verbose, **kwargs)
         selected = [self.data_list[self.o2i[order]] for order in orders]
         if not selected:
             raise ACIDStateError("No orders were successfully prepared for a joint fit.")
@@ -643,6 +667,9 @@ class DataList:
             self.data_list = selected.copy()
         for data in selected:
             data.thin()
+
+        with output_settings(first.config, verbose=verbose):
+            logger.info("Creating joint data from prepared orders.")
 
         # Package the main Data instance holding the result of all the orders
         joint = Data()
@@ -713,18 +740,19 @@ class DataList:
         self._combined_profile = self._results = None
 
         # Run the ACID analysis on the combined joint data
-        acid = Acid(data=joint)
-        joint.initial_state = acid.get_initial_state()
-        if not run_mcmc:
-            return None
-        started = time()
-        if joint.config.max_steps is None:
-            acid.run_mcmc(joint.config.nsteps, joint.initial_state)
-        else:
-            acid.run_mcmc_until_converged(joint.config.max_steps, joint.initial_state)
-        joint.nsteps = acid.sampler.backend.iteration if joint.config.sampler_type == "emcee" else joint.config.nsteps
-        joint.mcmc_time = time() - started
-        result = Result(acid)
+        with output_settings(joint.config, verbose=verbose):
+            acid = Acid(data=joint)
+            joint.initial_state = acid.get_initial_state()
+            if not run_mcmc:
+                return None
+            started = time()
+            if joint.config.max_steps is None:
+                acid.run_mcmc(joint.config.nsteps, joint.initial_state)
+            else:
+                acid.run_mcmc_until_converged(joint.config.max_steps, joint.initial_state)
+            joint.nsteps = acid.sampler.backend.iteration if joint.config.sampler_type == "emcee" else joint.config.nsteps
+            joint.mcmc_time = time() - started
+            result = Result(acid)
         self._combined_profile = tuple(joint.profile["final"])
         if pack:
             self.save()
@@ -811,7 +839,7 @@ class DataList:
 
         if verbose is None:
             verbose = d.get("verbose", None)
-        verbose = Config(verbose=verbose).verbose
+        verbose = Output.current(verbose=normalize_verbose(verbose, Config.defaults["verbose"])).verbose
 
         # Prefer the packed snapshot unless an order has been saved more recently.
         data_list = []

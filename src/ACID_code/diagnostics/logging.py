@@ -10,6 +10,7 @@ from .errors import ACIDInputError
 
 import logging
 from typing import Optional, Union
+from .output import Output, VERBOSITY_LOG_LEVELS
 
 
 LOGGER_NAME = "ACID_code"
@@ -17,26 +18,36 @@ DEFAULT_LOG_LEVEL = logging.INFO
 DISABLED_LOG_LEVEL = logging.CRITICAL + 1
 DEFAULT_LOG_FORMAT = "%(levelname)s: %(message)s"
 
-# This mapping preserves the textual-output meaning of the legacy verbosity
-# setting.  Levels 3 and 4 may additionally control plots/debug-data storage.
-VERBOSITY_LOG_LEVELS = {
-    0: DISABLED_LOG_LEVEL,
-    1: logging.WARNING,
-    2: logging.INFO,
-    3: logging.INFO,
-    4: logging.DEBUG,
-}
-
 _HANDLER_MARKER = "_acid_default_handler"
+_level_limit = None
+
+
+class _OutputFilter(logging.Filter):
+    """Filter records using the caller's output scope and an optional global cap."""
+    def filter(self, record):
+        if record.name != LOGGER_NAME and not record.name.startswith(LOGGER_NAME + "."):
+            return True
+        output = Output.current()
+        level = DEFAULT_LOG_LEVEL if output is None else output.log_level
+        if _level_limit is not None:
+            level = _level_limit if output is None else max(level, _level_limit)
+        return record.levelno >= level
+
+
+_output_filter = _OutputFilter()
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Return the ACID package logger or one of its child loggers."""
     if name is None or name == LOGGER_NAME:
-        return logging.getLogger(LOGGER_NAME)
-    if name.startswith(LOGGER_NAME + "."):
-        return logging.getLogger(name)
-    return logging.getLogger(f"{LOGGER_NAME}.{name}")
+        logger = logging.getLogger(LOGGER_NAME)
+    elif name.startswith(LOGGER_NAME + "."):
+        logger = logging.getLogger(name)
+    else:
+        logger = logging.getLogger(f"{LOGGER_NAME}.{name}")
+    if _output_filter not in logger.filters:
+        logger.addFilter(_output_filter)
+    return logger
 
 
 def _normalise_level(level: Union[int, str]) -> int:
@@ -90,7 +101,12 @@ def configure_logging(
             handler.setStream(stream)
         handler.setFormatter(logging.Formatter(format))
 
-    logger.setLevel(DISABLED_LOG_LEVEL if level is None else _normalise_level(level))
+    # Keep records available for per-operation filtering, including debug runs.
+    logger.setLevel(logging.DEBUG)
+    for installed in logger.handlers:
+        if _output_filter not in installed.filters:
+            installed.addFilter(_output_filter)
+    set_log_level(level)
 
     # Avoid duplicate output through a root handler. Applications can opt back
     # into propagation if they deliberately manage the complete logging tree.
@@ -99,8 +115,12 @@ def configure_logging(
 
 
 def set_log_level(level: Union[int, str, None]) -> None:
-    """Set the threshold for ACID log messages; ``None`` disables them."""
-    get_logger().setLevel(DISABLED_LOG_LEVEL if level is None else _normalise_level(level))
+    """Set a global minimum severity for ACID messages; ``None`` disables them.
+
+    Runtime verbosity can further restrict output, but cannot bypass this limit.
+    """
+    global _level_limit
+    _level_limit = DISABLED_LOG_LEVEL if level is None else _normalise_level(level)
 
 
 def log_level_from_verbosity(verbose: int) -> int:
@@ -118,6 +138,7 @@ def set_log_level_from_verbosity(verbose: int) -> None:
 
 def _configure_default_logging() -> None:
     """Install ACID's INFO-by-default behavior without changing root logging."""
+    global _level_limit
     logger = get_logger()
     if logger.handlers:
         # An application configured ACID before importing it; do not replace
@@ -126,6 +147,9 @@ def _configure_default_logging() -> None:
 
     level = DEFAULT_LOG_LEVEL if logger.level == logging.NOTSET else logger.level
     configure_logging(level)
+    # Import defaults allow verbose=4 to enable DEBUG; only explicit user logging
+    # configuration imposes a global severity limit.
+    _level_limit = None
 
 
 _configure_default_logging()

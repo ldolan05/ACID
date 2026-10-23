@@ -127,6 +127,50 @@ This is useful for loading in previously saved Data instances (see :ref:`data` f
     # Run ACID if not already done
     datalist.run_ACID(allow_overwrite=False) # run but don't overwrite any existing results (this is actually default)
 
+Verbosity and progress
+---------------------
+
+``DataList(verbose=...)`` controls output for both ``run_ACID`` and
+``run_multi_order_ACID``. Either method also accepts ``verbose=...`` to override
+it for that call, without needing ``overwrite_kwargs=True``.
+
+* ``0``: no routine logging, progress bars, or automatic plots.
+* ``1``: warnings, without routine progress output.
+* ``2`` (default): one progress bar counting the requested orders, plus warnings.
+  The bar identifies the current order. Warnings retain Python's normal
+  messages and filtering; failures also identify their order. For a joint fit,
+  the main sampling run then uses normal standalone output, as described below.
+* ``3``: detailed per-order logging, alpha progress bars, and diagnostic plots.
+* ``4``: the above plus debug logging and stored debug data.
+
+At levels 0--2, each order's alpha and sampler progress bars are suppressed,
+including when its Config has ``sampler_progress=True``. This keeps independent
+fits and joint-fit preparation readable. The joint sampler is also quiet by
+default at levels 0--1. The main joint fit uses the requested verbosity without
+the per-order suppression: at level 2 it includes normal logging, calculation
+progress, and its single sampler bar. ``sampler_progress=True`` or ``False``
+overrides that sampler bar independently:
+
+.. code-block:: python
+
+    datalist.run_multi_order_ACID(
+        orders=[20, 21, 22], verbose=2,
+        sampler_progress=False, overwrite_kwargs=True,
+    )
+
+Batch output settings apply temporarily. Each order retains its stored Config
+settings, including in saved files, for later standalone use. A standalone
+``Acid`` run at level 2 includes its usual logging and calculation progress.
+
+Python warnings are controlled separately by warning filters at every verbosity
+level; setting ``verbose=0`` does not ignore them. Existing ``ignore``, ``once``,
+and other filters still apply. ``acid.configure_warnings("ignore")`` suppresses
+ACID warnings, and ``acid.configure_warnings("default")`` restores normal handling.
+``Config.verbose`` stores settings without changing another instance's output.
+Runtime output belongs to the current operation and is inherited by nested
+calls. Explicit ``acid.set_log_level(...)`` or ``acid.configure_logging(...)``
+sets a package-wide minimum logging severity; a verbose run respects this limit.
+
 Fitting one profile across orders
 ---------------------------------
 

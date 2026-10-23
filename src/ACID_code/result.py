@@ -15,6 +15,7 @@ from .plot import Plot, _require_sampler
 from .utils import IntLike, Scalar
 from .diagnostics.warnings import *
 from .diagnostics.logging import get_logger
+from .diagnostics.output import with_output_settings
 try:
     from dynesty.sampler import Sampler
 except ImportError:
@@ -110,6 +111,7 @@ class Result(Plot):
             ACIDStateWarning, stacklevel=2)
 
     @_require_sampler
+    @with_output_settings
     def process_results(self) -> None:
         """
         Processes the MCMC sampler results to obtain the final LSD profiles and continuum fit, and errors on both.
@@ -147,7 +149,7 @@ class Result(Plot):
         logger.info('Getting the final profiles...')
 
         # We first run LSD on the final state of the sampler (for debugging, but this can be useful to see how masking is affecting the sampler)
-        if self.config.verbose == 4: # debugging mode
+        if self.config.output.debug: # debugging mode
             self.data.alpha["mcmc"] = self._get_order_alpha(self.data.wavelengths["mcmc"], "mcmc")
             _lsd = self._continuum_correct_and_runlsd("mcmc", all_poly_coeffs, return_cls=True) # alpha is recalculated
             self.data.debug["lsd_mcmc"] = _lsd.__dict__.copy()
@@ -164,7 +166,7 @@ class Result(Plot):
         # Final continuum correction and LSD run on the unmasked spectrum, generates the final profiles
         _lsd = self._continuum_correct_and_runlsd("final", all_poly_coeffs, return_cls=True)
 
-        if self.config.verbose == 4: # save if debugging is on
+        if self.config.output.debug: # save if debugging is on
             self.data.debug["lsd_final"] = _lsd.__dict__.copy()
         _lsd = None
 
@@ -181,7 +183,7 @@ class Result(Plot):
             self.data.sn["single_profile"] = self.data.sn["initial"]
             _lsd = self._continuum_correct_and_runlsd("single_profile", all_poly_coeffs, mp_lsd=False, return_cls=True)
 
-            if self.config.verbose == 4: # save if debugging is on
+            if self.config.output.debug: # save if debugging is on
                 self.data.debug["lsd_single_profile"] = _lsd.__dict__.copy()
             _lsd = None
 
@@ -389,6 +391,7 @@ class Result(Plot):
         return self.__repr__()
 
     @_require_sampler
+    @with_output_settings
     def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler|None=None, **kwargs) -> None:
         """
         Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
@@ -436,6 +439,7 @@ class Result(Plot):
                 "Warning: Results not processed. profiles attribute will not be available until " \
                 "Result.process_results() is called.", ACIDStateWarning, stacklevel=3)
 
+    # Forward model plots to Plot class, allowing for hints to carry accross too
     plot_walkers = Plot.walkers
     plot_traceplot = Plot.traceplot
     plot_corner = Plot.corner

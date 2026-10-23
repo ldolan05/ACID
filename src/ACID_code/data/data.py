@@ -13,6 +13,7 @@ from .. import utils
 from ..diagnostics.errors import *
 from ..diagnostics.warnings import *
 from ..diagnostics.logging import get_logger
+from ..diagnostics.output import with_output_settings
 from ..utils import IntLike, Array1D, Array2D, Scalar
 from .config import Config
 from .line_list import LineList
@@ -411,6 +412,7 @@ class Data:
         """Sets the internally stored config object."""
         self._config = value
 
+    @with_output_settings
     def set_inputs(
         self,
         input_wavelengths: Array1D|Array2D|None        = None,
@@ -815,7 +817,8 @@ class Data:
         """Forward to :py:meth:`Plot.residual_masking`."""
         return self.plot.residual_masking()
 
-    def save(self, save_path:str|None=None, sampler_path:str|None=None) -> None:
+    @with_output_settings
+    def save(self, save_path:str|None=None, sampler_path:str|None=None, quiet:bool=False) -> None:
         """
         Saves the data object to a file using pickling. This will store just the dictionary of the class, 
         not the actual class itself. The load function then will initialise a new Data class using the dictionary.
@@ -834,6 +837,8 @@ class Data:
             If the sampler is already set up to save as a HDF5 file, this argument is ignored. 
             If you want to move the file location, move it yourself and set Data.sampler = sampler_path to update the location in the Data object.
             If None, this will do nothing.
+        quiet : bool, optional
+            If True, suppresses output messages during saving. Default is False.
         """
         # First we handle the sampler saving, so that when saved it can be added to the sampler path saved in the dictionary later
         if sampler_path is not None:
@@ -846,9 +851,11 @@ class Data:
                     utils.ensure_directory(os.path.dirname(sampler_path), "sampler directory")
                     self.sampler.backend = utils.save_backend_to_hdf5(self.sampler.backend, sampler_path)
                     self.config.sampler_path = sampler_path # update config with sampler path for future reference
-                    logger.info(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
+                    if not quiet:
+                        logger.info(f"Sampler backend converted and saved as HDF5 file to {sampler_path}")
                 else:
-                    logger.info("Sampler is already set up to save as a HDF5 file, ignoring sampler_path argument.")
+                    if not quiet:
+                        logger.info("Sampler is already set up to save as a HDF5 file, ignoring sampler_path argument.")
             else:
                 warnings.warn("Cannot save sampler as sampler does not exist.", ACIDStateWarning, stacklevel=2)
 
@@ -865,7 +872,8 @@ class Data:
         save_dir = os.path.dirname(os.path.abspath(save_path))
         utils.ensure_directory(save_dir, "data directory")
         utils.save_pickle_atomic(payload, save_path)
-        logger.info(f"Data object saved to {save_path}")
+        if not quiet:
+            logger.info(f"Data object saved to {save_path}")
 
     @classmethod
     def load(cls, filename:str, sampler_path:str|None=None) -> Data:

@@ -5,6 +5,7 @@ import glob, psutil, os, traceback
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from tqdm import tqdm
+from .diagnostics.output import normalize_verbose, Output, with_output_settings
 from scipy.linalg import cho_factor, cho_solve
 from beartype import beartype
 from . import utils
@@ -58,6 +59,7 @@ class LSD:
             self.config = Config() # uses defaults
         self.config.update_hipri(verbose=verbose) # Update config with new values, if not None
 
+    @with_output_settings
     def run_LSD(
         self,
         wavelengths    : Array1D|None                   = None,
@@ -273,7 +275,7 @@ class LSD:
                     wavelengths_linelist,
                     depths_linelist,
                     self.profile_groups,
-                    verbose=self.config.verbose,
+                    verbose=self.config.output.verbose,
                     sparse=sparse
                 )
                 self.n_profs = len(self.unique_prof_groups)
@@ -284,7 +286,7 @@ class LSD:
                     wavelengths_linelist,
                     depths_linelist,
                     self.data.velocities,
-                    verbose=self.config.verbose,
+                    verbose=self.config.output.verbose,
                     sparse=sparse
                 )
                 self.alpha_flat = self.alpha
@@ -459,7 +461,9 @@ class LSD:
             The alpha matrix, to be used in the Cholesky decomposition and solving for the profile. 
             The units will match the units of the input linelist (OD or flux).
         """
-        verbose = Config(verbose=verbose).verbose
+        verbose = normalize_verbose(verbose, Config.defaults["verbose"])
+        if Output.current() is not None:
+            verbose = min(verbose, Output.current().verbose)
 
         # Check velocity spacing is constant
         if not np.allclose(np.diff(velocities), velocities[1] - velocities[0]):
@@ -875,7 +879,9 @@ class LSD:
         unique_profile_groups = np.unique(profile_groups)
         alpha_blocks = []
 
-        verbose = Config(verbose=verbose).verbose
+        verbose = normalize_verbose(verbose, Config.defaults["verbose"])
+        if Output.current() is not None:
+            verbose = min(verbose, Output.current().verbose)
         if verbose >= 2:
             iterator = tqdm(unique_profile_groups, desc="Calculating alpha blocks for each profile group")
         else:

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import contextlib, functools, inspect, os, warnings
+import functools, inspect, warnings
 import corner
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -11,6 +11,7 @@ from .data import Data
 from .diagnostics.errors import *
 from .diagnostics.warnings import *
 from .diagnostics.logging import get_logger
+from .diagnostics.output import with_output_settings
 from .utils import IntLike
 try:
     from dynesty.sampler import Sampler
@@ -53,6 +54,7 @@ class Plot:
         self.config = self.data.config
         self.sampler_initialized = False
 
+    @with_output_settings
     def linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
         """
         Plots the linelist points with their corresponding depths as delta-function lines.
@@ -107,6 +109,7 @@ class Plot:
         """Forward to :py:meth:`Config.plot_masking_lines`."""
         return self.config.plot_masking_lines(return_fig=return_fig)
 
+    @with_output_settings
     def continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None|tuple:
         """
         Plots the result of the continuum fitting step, showing the original spectrum, the fitted continuum, and the clipped points used for the continuum fit.
@@ -214,6 +217,7 @@ class Plot:
         title = "continuum_fit_initial.png" if key == "initial" else "continuum_fit_masked.png"
         utils.show_or_save(plt, self.config.figure_dir, title, output_dir=self.config.dir)
 
+    @with_output_settings
     def residual_masking(self) -> None:
         """
         Creates 3 plots to show the result of the residual masking step, showing the residuals with the sigma clipping thresholds, 
@@ -337,6 +341,7 @@ class Plot:
         utils.show_or_save(plt, self.config.figure_dir, "initial_forward_model.png", output_dir=self.config.dir)
 
     @_require_sampler
+    @with_output_settings
     def walkers(
         self,
         sampler    : EnsembleSampler|None = None,
@@ -397,6 +402,7 @@ class Plot:
         utils.show_or_save(plt, self.config.figure_dir, "walkers.png", output_dir=self.config.dir)
 
     @_require_sampler
+    @with_output_settings
     def traceplot(self, return_fig:bool=False, **kwargs) -> None | tuple:
         if not self.dynesty:
             raise ACIDInputError("Traceplot is only available for dynesty samplers, as emcee traceplots are already plotted in plot_walkers.")
@@ -407,6 +413,7 @@ class Plot:
         utils.show_or_save(plt, self.config.figure_dir, "traceplot.png", output_dir=self.config.dir)
 
     @_require_sampler
+    @with_output_settings
     def corner(
         self,
         sampler    :EnsembleSampler|None = None,
@@ -452,6 +459,7 @@ class Plot:
             return fig
         utils.show_or_save(plt, self.config.figure_dir, "corner.png", output_dir=self.config.dir)
 
+    @with_output_settings
     def profiles(
         self,
         grid            :bool      = True,
@@ -552,6 +560,7 @@ class Plot:
             return fig, ax
         utils.show_or_save(plt, self.config.figure_dir, f"{key}_profiles.png", output_dir=self.config.dir)
 
+    @with_output_settings
     def forward_model(
         self,
         key              : str        = "final",
@@ -771,6 +780,7 @@ class Plot:
         utils.show_or_save(plt, self.config.figure_dir, "forward_model.png", output_dir=self.config.dir)
 
     @_require_sampler
+    @with_output_settings
     def autocorrelation(
         self,
         sampler        : EnsembleSampler|None = None,
@@ -852,6 +862,7 @@ class Plot:
         return
 
     @_require_sampler
+    @with_output_settings
     def acf(
         self,
         sampler        : EnsembleSampler|None = None,
@@ -916,6 +927,7 @@ class Plot:
             return fig, ax
         utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png", output_dir=self.config.dir)
 
+    @with_output_settings
     def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
         """
         Initiates the sampler attribute from an external sampler.
@@ -949,21 +961,17 @@ class Plot:
             return
 
         # Calculate autocorr time, burnin, thin
-        # Suppress output from get_autocorr_time call
-        with open(os.devnull, "w") as devnull, \
-            contextlib.redirect_stdout(devnull), \
-            contextlib.redirect_stderr(devnull):
-            self.tau = self.sampler.get_autocorr_time(quiet=True)
+        # ACID performs its own convergence check below.
+        self.tau = self.sampler.get_autocorr_time(tol=0)
 
         self.converged = True
         if self.data.nsteps < 50 * np.max(self.tau):
             self.converged = False
             warnings.warn(
-                "The number of MCMC steps is less than 50 times the maximum autocorrelation " \
-                "time.\n The sampler may not have converged. Consider running more steps or checking " \
-                f"the walker plots.\n The max autocorrelation time is {np.max(self.tau):.2f}, therefore " \
-                f"the minimum number of steps should be roughly {int(50 * np.max(self.tau))}.\n Disabling burnin " \
-                f"from autocorrelation time, instead using burnin=steps-1000",
+                f"The number of MCMC steps ({self.data.nsteps}) is less than 50 times the maximum autocorrelation time.\n" \
+                f"The sampler may not have converged. Consider running more steps and checking the walker plots.\n" \
+                f"The minimum number of steps should be roughly {int(50*np.max(self.tau))}.\n " \
+                f"Using only up to the last 1000 steps as the posterior samples.",
                 ACIDConvergenceWarning, stacklevel=2
             )
 

@@ -174,6 +174,120 @@ def test_datalist_combination_validation_and_lazy_property(completed_datalist):
         datalist.combine_profiles(exclude=datalist.orders)
 
 
+def test_medium_batch_preserves_warnings_without_inner_progress(synthetic_spectrum, monkeypatch, capfd):
+    from ACID_code import LSD
+    from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
+
+    wave, flux, errors, sn, velocities, lines = synthetic_spectrum
+    config = Config(verbose=4, sampler_progress=True, run_mcmc=False, parallel=False,
+                    poly_ord=1, masking_lines={}, profile_groups=np.array([0, 1]))
+    datalist = DataList(np.tile(wave, (2, 1)), np.tile(flux, (2, 1)),
+                        np.tile(errors, (2, 1)), np.full(2, sn),
+                        velocities=velocities, linelist=lines, config=config,
+                        order_range=[10, 11], verbose=2)
+    original = LSD.runlsd_and_store
+
+    def warn_on_one_order(data, key, **kwargs):
+        if data.config.order == 11 and key == "initial":
+            warnings.warn("test order warning", ACIDRuntimeWarning)
+        return original(data, key, **kwargs)
+
+    monkeypatch.setattr(LSD, "runlsd_and_store", staticmethod(warn_on_one_order))
+    capfd.readouterr()
+    with pytest.warns(ACIDRuntimeWarning, match="test order warning"):
+        datalist.run_ACID(save_on_exception=False)
+    captured = capfd.readouterr()
+    output = captured.out + captured.err
+    assert "Running ACID on orders" in output
+    assert "order=11" in output
+    assert "Calculating" not in output
+    assert "INFO:" not in output
+    assert "MCMC" not in output
+    for data in datalist:
+        assert "masked" in data.profile
+        assert data.config.verbose == 4
+        assert data.config.sampler_progress is True
+
+
+@pytest.mark.parametrize("verbose", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("fail", [False, True])
+def test_batch_output_override_restores_settings_and_logging(completed_datalist, monkeypatch, capfd, verbose, fail):
+    import logging
+    from ACID_code import Acid
+    from ACID_code.diagnostics.errors import ACIDLineListRangeError
+    from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
+
+    datalist = completed_datalist
+    data = datalist[20]
+    batch_verbose = datalist.verbose
+    # Default verbosity/progress must remain unset after the temporary batch override.
+    data.config.__dict__.pop("_verbose", None)
+    data.config.__dict__.pop("sampler_progress", None)
+    logger = logging.getLogger("ACID_code")
+    original_level = logger.level
+    observed = []
+    snapshots = []
+
+    def run(self, **kwargs):
+        observed.append((self.config.output.verbose, self.config.output.sampler_progress))
+        self.config.poly_ord = 2
+        snapshots.append(self.data.to_dict()["config"])
+        if fail:
+            raise ACIDLineListRangeError("test failure")
+
+    monkeypatch.setattr(Acid, "ACID", run)
+    capfd.readouterr()
+    try:
+        logger.setLevel(logging.ERROR)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ACIDRuntimeWarning)
+            datalist.run_ACID(orders=[20], verbose=verbose, save_on_exception=False)
+        assert logger.level == logging.ERROR
+    finally:
+        logger.setLevel(original_level)
+    captured = capfd.readouterr()
+    assert ("Running ACID on orders" in captured.err) == (verbose >= 2)
+    assert observed == [(verbose if verbose >= 3 else min(verbose, 1),
+                         False if verbose <= 2 else None)]
+    assert "_verbose" not in data.config.__dict__
+    assert "sampler_progress" not in data.config.__dict__
+    assert data.config.poly_ord == 2
+    assert "_verbose" not in snapshots[0]
+    assert "sampler_progress" not in snapshots[0]
+    assert datalist.verbose == batch_verbose
+    assert bool(caught) == fail
+    if fail:
+        assert "Order 20" in str(caught[0].message)
+
+
+def test_quiet_batch_saves_original_output_settings_and_skips_quietly(synthetic_spectrum, tmp_path, capfd):
+    import pickle
+
+    wave, flux, errors, sn, velocities, lines = synthetic_spectrum
+    config = Config(verbose=4, sampler_progress=True, parallel=False, nsteps=40,
+                    poly_ord=1, masking_lines={}, seed=1,
+                    sigma_lower=100., sigma_upper=100., dev_perc=100.)
+    datalist = DataList(wave[None], flux[None], errors[None], np.array([sn]),
+                        velocities=velocities, linelist=lines, config=config,
+                        verbose=2, save_dir=str(tmp_path))
+    capfd.readouterr()
+    datalist.run_ACID()
+    captured = capfd.readouterr()
+    assert "Calculating" not in captured.err
+    assert "INFO:" not in captured.err
+    assert "MCMC" not in captured.err
+    assert datalist[0].complete
+    with open(datalist[0].config.save_path, "rb") as saved:
+        settings = pickle.load(saved)["config"]
+    assert settings["_verbose"] == 4
+    assert settings["sampler_progress"] is True
+
+    datalist.run_ACID(overwrite=False)
+    captured = capfd.readouterr()
+    assert "Running ACID on orders" in captured.err
+    assert "Skipping" not in captured.err
+    assert "INFO:" not in captured.err
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--tb=auto"]))

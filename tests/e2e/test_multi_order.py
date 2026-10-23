@@ -5,9 +5,10 @@ import shutil
 import warnings
 import matplotlib.pyplot as plt
 
-from ACID_code import Config, Data, DataList, LSD, MCMC, Result
+from ACID_code import Acid, Config, Data, DataList, LSD, MCMC, Result
 from ACID_code import utils
 from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError
+from ACID_code.diagnostics.logging import get_logger
 from ACID_code.diagnostics.warnings import ACIDDroppedDataWarning
 
 
@@ -401,3 +402,47 @@ def test_joint_plot_recovers_missing_masks_in_older_saved_results(monkeypatch):
     fig, _ = result.plot_forward_model(return_fig=True)
     np.testing.assert_array_equal(seen[0], ~expected[2:599])
     plt.close(fig)
+
+
+@pytest.mark.parametrize("verbose", [0, 1, 2])
+def test_joint_creation_log_obeys_call_verbosity(verbose, caplog):
+    orders, _ = make_orders()
+    logger = get_logger()
+    logger.addHandler(caplog.handler)
+    try:
+        orders.run_multi_order_ACID(run_mcmc=False, verbose=verbose)
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert ("Creating joint data from prepared orders." in caplog.messages) == (verbose >= 2)
+
+
+@pytest.mark.parametrize("sampler_progress", [None, False])
+def test_joint_output_quiets_preparation_but_uses_requested_level_for_main_fit(capfd, monkeypatch, sampler_progress):
+    orders, _ = make_orders(profile_groups=np.array([0, 1, 0, 1, 0, 1]),
+                            sampler_progress=sampler_progress)
+    preparation, sampling = [], []
+    original_acid, original_mcmc = Acid.ACID, Acid.run_mcmc
+
+    def prepare(self, *args, **kwargs):
+        preparation.append(self.config.output)
+        return original_acid(self, *args, **kwargs)
+
+    def sample(self, *args, **kwargs):
+        sampling.append(self.config.output)
+        return original_mcmc(self, *args, **kwargs)
+
+    monkeypatch.setattr(Acid, "ACID", prepare)
+    monkeypatch.setattr(Acid, "run_mcmc", sample)
+    capfd.readouterr()
+    result = orders.run_multi_order_ACID(verbose=2)
+    assert result.data.complete
+    assert result.config.verbose == 0
+    assert result.config.sampler_progress is sampler_progress
+    assert len(preparation) == 3
+    assert all(p.verbose == 1 and not p.progress and not p.sampling for p in preparation)
+    assert len(sampling) == 1
+    assert sampling[0].verbose == 2 and sampling[0].progress
+    assert sampling[0].sampling is (sampler_progress is not False)
+    captured = capfd.readouterr()
+    output = captured.out + captured.err
+    assert "Preparing orders" in output

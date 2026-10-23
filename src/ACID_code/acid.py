@@ -1,6 +1,6 @@
 from __future__ import annotations
 import traceback
-import sys, emcee, os, time, contextlib, warnings
+import sys, emcee, os, time, warnings
 from emcee import EnsembleSampler
 import numpy as np
 import multiprocessing as mp
@@ -17,6 +17,7 @@ from .result import Result
 from .data import Data, Config, MaskingLines, LineList
 from .diagnostics.errors import *
 from .diagnostics.logging import get_logger
+from .diagnostics.output import with_output_settings
 from ACID_code.diagnostics.warnings import *
 from .utils import IntLike, Scalar, Array1D, Array2D
 from astropy.stats.sigma_clipping import sigma_clip
@@ -85,6 +86,7 @@ class Acid:
         # Store the init kwargs to be handled on ACID call
         self.init_kwargs = kwargs
 
+    @with_output_settings
     def ACID(
         self,
                                                                        # Stored in:
@@ -189,7 +191,7 @@ class Acid:
             DataList assigns order labels from order_range when initialized from arrays.
         verbose : :py:type:`bool | IntLike | str`, optional
             The verbosity for printing and plotting the progress and warnings of ACID. The verbosities are natively stored as integers corresponding to:
-            0: No printing or plotting, all warnings are ignored.
+            0: No routine logging, progress bars, or automatic plots.
             1: Only printing warnings.
             2: Printing progress and warnings.
             3: Printing progress and warnings, as well as additional plots and helpful information about the run.
@@ -199,6 +201,9 @@ class Acid:
             - Boolean: If True, defaults to 2. If False, defaults to 0.
             - String: Can be one of ["none", "low", "medium", "high", "debug"] or their common variants.
             By default 2 (medium).
+            Python warning filters control warnings independently of verbosity; use
+            ACID_code.configure_warnings() to change their handling. DataList batch
+            runs use a quieter level-2 output, described in the DataList documentation.
         sampler_progress : :py:type:`bool`, optional
             A verbosity override for just the MCMC sampling progress.
             By default None which does not override, but if True/False, it will overwrite with that value, and use/don't use a tqdm output for the sampler.
@@ -582,7 +587,7 @@ class Acid:
                 _lsd = LSD.runlsd_and_store(self.data, key="initial", return_cls=True)
 
                 # Save lsd dict if debugging mode
-                if self.config.verbose == 4:
+                if self.config.output.debug:
                     self.data.debug["lsd_initial"] = _lsd.__dict__.copy()
 
                 _lsd = None # discard to save memory
@@ -669,7 +674,7 @@ class Acid:
                 lsd = LSD.runlsd_and_store(self.data, key="masked", return_cls=True)
 
                 # Save lsd dict if debugging mode
-                if self.config.verbose == 4:
+                if self.config.output.debug:
                     self.data.debug["lsd_masked"] = lsd.__dict__.copy()
 
 
@@ -703,7 +708,7 @@ class Acid:
                 self.data.plotting_variables["masked"]["masked_residuals"] = masked_residuals
                 self.data.plotting_variables["masked"]["lower_clip"]       = lower_clip
                 self.data.plotting_variables["masked"]["upper_clip"]       = upper_clip
-                if self.config.verbose >= 3: # Plot now if verbose enough
+                if self.config.output.plots: # Plot now if verbose enough
                     self.data.plot_residual_masking()
 
             # ACID Initialialised
@@ -842,8 +847,8 @@ class Acid:
         data.plotting_variables[key]["clipped_waves"]            = clipped_waves
         data.plotting_variables[key]["clipped_flux"]             = clipped_flux
         data.plotting_variables[key]["good"]                     = good
-        if config.verbose >= 3:
-                data.plot_continuum_fit(key=key)
+        if config.output.plots:
+            data.plot_continuum_fit(key=key)
 
         if np.any(data.fitted_flux[key][~data.line_mask] <= 0) or np.any(data.fitted_errors[key][~data.line_mask] <= 0):
             error = ACIDContinuumFitError("Continuum fit resulted in non-positive flux or errors, which is not physical.\n " \
@@ -978,6 +983,7 @@ class Acid:
         pool = ThreadPool(processes=self.config.cores) if self.config.parallel else nullcontext(None)
         return pool, log_prob, model.ptform
 
+    @with_output_settings
     def run_mcmc(
         self,
         nsteps:IntLike,
@@ -1011,8 +1017,9 @@ class Acid:
                     pool.size = self.config.cores
                 self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps,
                                                     pool=pool, queue_size=queue_size, rstate=self.data.get_rng())
-                self.sampler.run_nested(print_progress=self.config.sampler_progress if self.config.sampler_progress is not None else self.config.verbose >= 2)
+                self.sampler.run_nested(print_progress=self.config.output.sampling)
 
+    @with_output_settings
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
         """
         Runs MCMC until convergence is reached. A purely class method that I do not recommend you use directly. Use
@@ -1060,10 +1067,7 @@ class Acid:
                 # It scales with the number of steps, so thin by the number of steps taken divided by 
                 # the check interval to keep the same number of samples for get_autocorr_time to process.
                 try:
-                    with open(os.devnull, "w") as devnull, \
-                        contextlib.redirect_stdout(devnull), \
-                        contextlib.redirect_stderr(devnull):
-                        tau = self.sampler.get_autocorr_time(tol=0, thin=max(1, self.sampler.backend.iteration//self.config.check_interval))
+                    tau = self.sampler.get_autocorr_time(tol=0, thin=max(1, self.sampler.backend.iteration//self.config.check_interval))
                 except emcee.autocorr.AutocorrError:
                     progress.set_postfix_str("autocorrelation unavailable", refresh=False)
                     progress.update(1)
@@ -1073,6 +1077,11 @@ class Acid:
                 # The stopping criterion function below handles the logic for determining stopping condition
                 total_step_number = self.sampler.backend.iteration
                 condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, total_step_number, *stopping_criterion_args)
+                if condition is True:
+                    # Confirm convergence using the full chain before stopping.
+                    full_tau = self.sampler.get_autocorr_time(tol=0)
+                    condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(
+                        tau_list[:-1] + [full_tau], total_step_number, *stopping_criterion_args)
                 tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
                 progress.set_postfix_str(f"tolerance: {tol_str}, neff: {neff_str}", refresh=False)
                 if condition is True:
@@ -1090,12 +1099,6 @@ class Acid:
                 last_neff,
             )
 
-        # Warn if convergence not reached after either parallel or non-parallel version
-        else:
-            warnings.warn(f"Not converged after reaching max steps of {step_number}. \n"
-                          f"Final effective sample size: {last_neff:.2f}, final tolerance: {last_tolerance:.4f}.\n"
-                          f"Consider increasing max_steps.", ACIDConvergenceWarning, stacklevel=2)
-
         self.step_number = step_number # Update step number once mcmc has finished
         return
 
@@ -1104,8 +1107,7 @@ class Acid:
         # ACID instance and the inputted nsteps and state.
 
         # Set verbosity of the sampler with sampler_progress override if specified
-        sampler_verbosity = True if self.config.verbose >= 2 else False
-        sampler_verbosity = self.config.sampler_progress if self.config.sampler_progress is not None else sampler_verbosity
+        sampler_verbosity = self.config.output.sampling
         
         backend = None
         if state is None:
@@ -1120,7 +1122,6 @@ class Acid:
             backend = emcee.backends.HDFBackend(self.config.sampler_path)
             if state is not None:
                 backend.reset(self.data.nwalkers, self.data.ndim)
-            logger.info("Using sampler backend at %s", self.config.sampler_path)
 
         elif self.sampler is not None:
             # And, if it is still none, we check if self.sampler already exists in memory, 
@@ -1159,13 +1160,14 @@ class Acid:
             "tune"           : True,
             "progress_kwargs": {"mininterval":0.5}
         }
-        # Save the prepared likelihood before sampling can be interrupted. The chain
+        # Quietly save the prepared likelihood before sampling can be interrupted. The chain
         # stays in HDF5 and Data.load reconnects it through config.sampler_path.
         if state is not None and isinstance(backend, emcee.backends.HDFBackend) and self.config.save_path is not None:
             self.data.complete = False
-            self.data.save()
+            self.data.save(quiet=True)
         return sampler_kwargs, mcmc_kwargs
 
+    @with_output_settings
     def continue_sampling(
         self,
         nsteps           : IntLike|None = None,

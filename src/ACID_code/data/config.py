@@ -5,7 +5,8 @@ from beartype import beartype
 from .. import utils
 from beartype.typing import Any
 from ..utils import IntLike, Scalar
-from ..diagnostics.logging import set_log_level_from_verbosity, get_logger
+from ..diagnostics.logging import get_logger
+from ..diagnostics.output import Output, normalize_verbose, with_output_settings
 from ..diagnostics.errors import ACIDInputError
 from .masking_lines import MaskingLines
 import matplotlib.pyplot as plt
@@ -374,43 +375,19 @@ class Config:
 
     @property
     def verbose(self) -> IntLike:
-        """The stored global verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
+        """The stored verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
         return self.__dict__.get("_verbose", self.defaults["verbose"])
 
     @verbose.setter
     def verbose(self, value:IntLike|str|bool|None) -> None:
-        """Set the global verbosity setting for ACID. Accepts an integer, boolean, or string indicating the verbosity level."""
-        # Make verbosity always an int regardless of input type, and check correct range
-        if value is None:
-            return
-        elif value is True:
-            value = self.defaults["verbose"] # normally 2
-        elif value is False:
-            value = 0
-        elif isinstance(value, (int, np.integer)):
-            if value < 0 or value > 4:
-                raise ACIDInputError("verbose must be an integer between 0 and 4")
-        elif isinstance(value, str):
-            value = value.lower()
-            if value in ["none", "no", "false", "off", "n", "0"]:
-                value = 0
-            elif value in ["low", "lo", "l", "1"]:
-                value = 1
-            elif value in ["medium", "med", "m", "2"]:
-                value = 2
-            elif value in ["high", "all", "hi", "h", "3"]:
-                value = 3
-            elif value in ["debug", "dbg", "d", "4"]:
-                value = 4
-            else:
-                raise ACIDInputError("verbose string not recognised, must be one of 'none', 'low', 'medium', 'high', 'debug' or their common variants")
-        else:
-            raise ACIDInputError("verbose must be an integer between 0 and 4, a boolean, or a string indicating the verbosity level")
+        """Store verbosity without changing logging or another instance's output."""
+        if value is not None:
+            self._verbose = normalize_verbose(value, self.defaults["verbose"])
 
-        self._verbose = value
-        # Preserve the textual-output behavior of the legacy verbosity API.
-        # Logging can also be configured directly with ACID_code.set_log_level.
-        set_log_level_from_verbosity(value)
+    @property
+    def output(self) -> Output:
+        """Runtime output policy, resolved from the active scope or this Config."""
+        return Output.current(self)
 
     @property
     def masking_lines(self) -> MaskingLines:
@@ -468,6 +445,7 @@ class Config:
         self._continuum_method = continuum_method
     
     # --- Plotting/info methods ---
+    @with_output_settings
     def plot_masking_lines(self, return_fig:bool=False) -> None|tuple:
         """
         Plots the telluric and/or hydrogen lines that will be masked in the residual masking step, with shaded regions indicating 
