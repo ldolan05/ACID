@@ -1,13 +1,14 @@
 from __future__ import annotations
 from .diagnostics.errors import *
 import numpy as np
-import copy
+import copy, warnings
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
 from scipy.special import wofz
 from .utils import Array1D, Array2D
 from .data import Data
+from .diagnostics.warnings import ACIDRuntimeWarning
 #TODO: Adapt for multi-profile runs
 @beartype
 class Profiles:
@@ -137,7 +138,7 @@ class Profiles:
             return fig, ax
         plt.show()
 
-    def fit_voigt(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
+    def fit_voigt(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception:str="raise", **kwargs) -> tuple:
         """Fits a Voigt profile to the given data.
 
         Parameters
@@ -152,6 +153,10 @@ class Profiles:
             The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, sigma, gamma, offset], by default None.
+        on_exception : str, optional
+            Determines the behavior when an exception occurs during fitting.
+            Options are "raise" (default) to raise the exception, "warn" to issue a warning, or "pass" to silently continue.
+            If "pass" or "warn", returns NaN-filled parameter (5,) and covariance (5, 5) arrays on failure.
         **kwargs : dict
             Additional keyword arguments to pass to curve_fit.
 
@@ -159,40 +164,52 @@ class Profiles:
         -------
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
+            If the fit fails and on_exception is "pass" or "warn", returns NaN-filled arrays with the same shapes.
         """
-        x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
+        if on_exception not in ["raise", "warn", "pass"]:
+            raise ValueError(f"Invalid value for on_exception: {on_exception}. Must be 'raise', 'warn', or 'pass'.")
 
-        bounds = (
-            [-1.5, np.min(x), 0, 0, -np.inf], # Lower bounds
-            [0, np.max(x), np.inf, np.inf, np.inf] # Upper
-        )
+        try:
+            x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
 
-        if p0 is None:
-            amplitude_guess = np.nanmin(y) - 1
-            centre_guess = x[np.nanargmin(y)]
+            bounds = (
+                [-1.5, np.min(x), 0, 0, -np.inf], # Lower bounds
+                [0, np.max(x), np.inf, np.inf, np.inf] # Upper
+            )
 
-            half = 0.5 * (np.nanmax(y) + np.nanmin(y))
-            above = np.flatnonzero(y < half)
-            if above.size >= 2:
-                fwhm = abs(x[above[-1]] - x[above[0]])
-            else:
-                raise ACIDResultError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
-            sigma0 = fwhm / 2.355
+            if p0 is None:
+                amplitude_guess = np.nanmin(y) - 1
+                centre_guess = x[np.nanargmin(y)]
 
-            gamma0 = sigma0 * 0.1
-            offset = 0
-            p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
+                half = 0.5 * (np.nanmax(y) + np.nanmin(y))
+                above = np.flatnonzero(y < half)
+                if above.size >= 2:
+                    fwhm = abs(x[above[-1]] - x[above[0]])
+                else:
+                    raise ACIDResultError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
+                sigma0 = fwhm / 2.355
 
-            # Raise an error if the initial guess is outside the bounds
-            for i in range(len(p0)):
-                if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
-                    raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
-                                     f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
+                gamma0 = sigma0 * 0.1
+                offset = 0
+                p0 = [amplitude_guess, centre_guess, sigma0, gamma0, offset]
 
-        popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
-        return popt, pcov
+                # Raise an error if the initial guess is outside the bounds
+                for i in range(len(p0)):
+                    if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
+                        raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                                        f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
-    def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
+            popt, pcov = self._fit_model("voigt", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
+            return popt, pcov
+        
+        except Exception as e:
+            if on_exception == "raise":
+                raise
+            elif on_exception == "warn":
+                warnings.warn(f"Voigt fit failed: {e}", ACIDRuntimeWarning, stacklevel=2)
+            return np.full(5, np.nan), np.full((5, 5), np.nan)
+
+    def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception:str="raise", **kwargs) -> tuple:
         """Fits a Gaussian profile to the given data.
 
         Parameters
@@ -206,44 +223,57 @@ class Profiles:
         cov_matrix : np.ndarray, optional
             The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
         p0 : list, optional
-            Initial guess for the parameters [amplitude, mean, stddev], by default None.
+            Initial guess for the parameters [amplitude, mean, stddev, offset], by default None.
+        on_exception : str, optional
+            Determines behavior when an exception occurs. Options are "raise" (default), "warn", or "pass".
+            If "pass" or "warn", returns NaN-filled parameter (4,) and covariance (4, 4) arrays on failure.
         **kwargs : dict
             Additional keyword arguments to pass to curve_fit.
-
         Returns
         -------
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
+        if on_exception not in ["raise", "warn", "pass"]:
+            raise ValueError(f"Invalid value for on_exception: {on_exception}. Must be 'raise', 'warn', or 'pass'.")
 
-        bounds = (
-            [-1.5, np.min(x), 0, -np.inf], # Lower bounds
-            [0, np.max(x), np.inf, np.inf] # Upper bounds
-        )
+        try:
+            x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
 
-        if p0 is None:
-            amplitude_guess = np.nanmin(y) - 1
-            mean_guess = x[np.nanargmin(y)]
-            half = 0.5 * (np.nanmax(y) + np.nanmin(y))
-            above = np.flatnonzero(y < half)
-            if above.size >= 2:
-                fwhm = abs(x[above[-1]] - x[above[0]])
-            else:
-                raise ACIDResultError("Could not estimate FWHM for Gaussian profile. Not enough points above half maximum.")
-            sigma0 = fwhm / 2.355
-            offset = 0
-            p0 = [amplitude_guess, mean_guess, sigma0, offset]
-            
-            for i in range(len(p0)):
-                if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
-                    raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
-                                     f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
+            bounds = (
+                [-1.5, np.min(x), 0, -np.inf], # Lower bounds
+                [0, np.max(x), np.inf, np.inf] # Upper bounds
+            )
 
-        popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
-        return popt, pcov
+            if p0 is None:
+                amplitude_guess = np.nanmin(y) - 1
+                mean_guess = x[np.nanargmin(y)]
+                half = 0.5 * (np.nanmax(y) + np.nanmin(y))
+                above = np.flatnonzero(y < half)
+                if above.size >= 2:
+                    fwhm = abs(x[above[-1]] - x[above[0]])
+                else:
+                    raise ACIDResultError("Could not estimate FWHM for Gaussian profile. Not enough points above half maximum.")
+                sigma0 = fwhm / 2.355
+                offset = 0
+                p0 = [amplitude_guess, mean_guess, sigma0, offset]
+                
+                for i in range(len(p0)):
+                    if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
+                        raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                                         f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
 
-    def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, **kwargs) -> tuple:
+            popt, pcov = self._fit_model("gaussian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
+            return popt, pcov
+
+        except Exception as e:
+            if on_exception == "raise":
+                raise
+            elif on_exception == "warn":
+                warnings.warn(f"Gaussian fit failed: {e}", ACIDRuntimeWarning, stacklevel=2)
+            return np.full(4, np.nan), np.full((4, 4), np.nan)
+
+    def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception:str="raise", **kwargs) -> tuple:
         """Fits a Lorentzian profile to the given data.
 
         Parameters
@@ -258,6 +288,9 @@ class Profiles:
             The covariance matrix associated with the flux values. If None, uses self.cov_matrix.
         p0 : list, optional
             Initial guess for the parameters [amplitude, centre, gamma, offset], by default None.
+        on_exception : str, optional
+            Determines behavior when an exception occurs. Options are "raise" (default), "warn", or "pass".
+            If "pass" or "warn", returns NaN-filled parameter (4,) and covariance (4, 4) arrays on failure.
         **kwargs : dict
             Additional keyword arguments to pass to curve_fit.
 
@@ -266,34 +299,45 @@ class Profiles:
         tuple
             A tuple containing the optimal parameters and the covariance matrix.
         """
-        x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
+        if on_exception not in ["raise", "warn", "pass"]:
+            raise ValueError(f"Invalid value for on_exception: {on_exception}. Must be 'raise', 'warn', or 'pass'.")
 
-        bounds = (
-            [-1, np.min(x), 0, -np.inf], # Lower bounds
-            [0, np.max(x), np.inf, np.inf] # Upper bounds
-        )
+        try:
+            x, y, yerr, cov_matrix = self._remove_nans(*self._copy_inputs(x, y, yerr, cov_matrix))
 
-        if p0 is None:
-            amplitude_guess = np.nanmin(y) - 1
-            centre_guess = x[np.nanargmin(y)]
-            half = 0.5 * (np.nanmax(y) + np.nanmin(y))
-            above = np.flatnonzero(y < half)
-            if above.size >= 2:
-                fwhm = abs(x[above[-1]] - x[above[0]])
-            else:
-                raise ACIDResultError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
-            sigma0 = fwhm / 2.355
-            gamma0 = sigma0 * 0.1
-            offset = 0
-            p0 = [amplitude_guess, centre_guess, gamma0, offset]
+            bounds = (
+                [-1, np.min(x), 0, -np.inf], # Lower bounds
+                [0, np.max(x), np.inf, np.inf] # Upper bounds
+            )
 
-            for i in range(len(p0)):
-                if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
-                    raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
-                                        f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
+            if p0 is None:
+                amplitude_guess = np.nanmin(y) - 1
+                centre_guess = x[np.nanargmin(y)]
+                half = 0.5 * (np.nanmax(y) + np.nanmin(y))
+                above = np.flatnonzero(y < half)
+                if above.size >= 2:
+                    fwhm = abs(x[above[-1]] - x[above[0]])
+                else:
+                    raise ACIDResultError("Could not estimate FWHM for Voigt profile. Not enough points above half maximum.")
+                sigma0 = fwhm / 2.355
+                gamma0 = sigma0 * 0.1
+                offset = 0
+                p0 = [amplitude_guess, centre_guess, gamma0, offset]
 
-        popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
-        return popt, pcov
+                for i in range(len(p0)):
+                    if not (bounds[0][i] <= p0[i] <= bounds[1][i]):
+                        raise ACIDResultError(f"Initial guess for parameter {i} is outside the bounds.\n"
+                                            f"Initial guess: {p0[i]}, Bounds: {bounds[0][i]} to {bounds[1][i]}")
+
+            popt, pcov = self._fit_model("lorentzian", x, y, yerr, cov_matrix, p0, bounds=bounds, **kwargs)
+            return popt, pcov
+
+        except Exception as e:
+            if on_exception == "raise":
+                raise
+            elif on_exception == "warn":
+                warnings.warn(f"Lorentzian fit failed: {e}", ACIDRuntimeWarning, stacklevel=2)
+            return np.full(4, np.nan), np.full((4, 4), np.nan)
 
     @staticmethod
     def _remove_nans(x, y, yerr, cov_matrix):

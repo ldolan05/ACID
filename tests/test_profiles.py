@@ -9,6 +9,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code.diagnostics.errors import ACIDResultError, ACIDStateError
+from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
 from ACID_code import Data, Profiles
 
 
@@ -30,6 +31,34 @@ def test_profile_fit_recovers_absorption_centre(gaussian_profile, model):
     assert parameters[0] < 0
     assert parameters[1] == pytest.approx(1.5, abs=0.2)
     assert covariance.shape[0] == len(parameters)
+
+
+@pytest.mark.parametrize("model", ["gaussian", "lorentzian", "voigt"])
+@pytest.mark.parametrize("on_exception", ["raise", "warn", "pass"])
+@pytest.mark.parametrize("stage", ["_copy_inputs", "_fit_model"])
+def test_profile_fit_exception_handling(gaussian_profile, monkeypatch, model, on_exception, stage):
+    profiles = Profiles(*gaussian_profile)
+
+    def fail(*args, **kwargs):
+        raise ACIDResultError("Fit failed")
+
+    monkeypatch.setattr(profiles, stage, fail)
+    fit = getattr(profiles, f"fit_{model}")
+    if on_exception == "raise":
+        with pytest.raises(ACIDResultError, match="Fit failed"):
+            fit(on_exception=on_exception)
+    else:
+        if on_exception == "warn":
+            with pytest.warns(ACIDRuntimeWarning, match=f"{model.capitalize()} fit failed"):
+                result = fit(on_exception=on_exception)
+        else:
+            result = fit(on_exception=on_exception)
+        parameters, covariance = result
+        size = 5 if model == "voigt" else 4
+        assert parameters.shape == (size,)
+        assert covariance.shape == (size, size)
+        assert np.isnan(parameters).all()
+        assert np.isnan(covariance).all()
 
 
 def test_voigt_uncertainties_exclude_unphysical_draws(gaussian_profile, monkeypatch):
