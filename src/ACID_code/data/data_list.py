@@ -938,6 +938,12 @@ class DataList:
         return self._data_list
 
     @property
+    def profiles(self):
+        """Return a fresh fitter for the combined profile across orders."""
+        from ..profiles import Profiles
+        return Profiles(self.velocities, *self.combined_profile)
+
+    @property
     def results(self):
         """
         Returns a list of Result objects for each Data instance in the DataList.
@@ -1075,9 +1081,7 @@ class DataList:
         tuple[plt.Figure, plt.Axes] | None
             The figure and axis objects from the profile fit plot if return_fig is True, otherwise None.
         """
-        from ..profiles import Profiles
-        profiles = Profiles(self.velocities, *self.combined_profile)
-        return profiles.plot_fit(**kwargs)
+        return self.profiles.plot_fit(**kwargs)
 
     def plot_all_profiles(self, od:bool=False, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
@@ -1132,6 +1136,58 @@ class DataList:
         ax.set_title("All ACID profiles")
         ax.grid(True)
         ax.legend()
+        if return_fig:
+            return fig, ax
+        plt.show()
+
+    def plot_all_rvs(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+        """
+        Plots the radial velocities for all orders in the DataList. Includes the combined profile's RV.
+
+        Parameters
+        ----------
+        return_fig : bool
+            If True, returns the figure and axis objects instead of displaying the plot.
+
+        Returns
+        -------
+        tuple[plt.Figure, plt.Axes] | None
+            The figure and axis objects if return_fig is True, otherwise None.
+        """
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Fit completed orders, keeping their labels aligned when orders are missing.
+        orders, rvs, rverrs = [], [], []
+        for data in self.data_list:
+            if "final" not in data.profile:
+                continue
+            popt, pcov = data.result.profiles.fit_voigt(on_exception="pass")
+            orders.append(data.config.order)
+            rvs.append(np.atleast_1d(popt[..., 1]))
+            rverrs.append(np.atleast_1d(np.sqrt(pcov[..., 1, 1])))
+
+        rvs = np.array(rvs)
+        rverrs = np.array(rverrs)
+
+        # Plot the fitted centre and uncertainty for each profile group across orders.
+        if orders:
+            for i, (rv, error) in enumerate(zip(rvs.T, rverrs.T)):
+                ax.errorbar(orders, rv, yerr=error, marker='o', linestyle='-', color=f'C{i}')
+
+        # Add the corresponding centres from the combined profile fit.
+        popt, pcov = self.profiles.fit_voigt()
+        centres = np.atleast_1d(popt[..., 1])
+        errors = np.atleast_1d(np.sqrt(pcov[..., 1, 1]))
+        for i, (rv, error) in enumerate(zip(centres, errors)):
+            label = "Combined profile" if popt.ndim == 1 else f"Combined profile {i}"
+            ax.axhline(rv, color=f'C{i}', linestyle='--', label=f"{label} RV: {rv:.4f} ± {error:.4f}")
+
+        ax.legend()
+        ax.set_xlabel("Order")
+        ax.set_ylabel("Radial Velocity (km/s)")
+        ax.set_title("Radial Velocities for each order")
+        ax.grid(True)
+
         if return_fig:
             return fig, ax
         plt.show()

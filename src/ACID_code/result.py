@@ -225,7 +225,7 @@ class Result(Plot):
             lsd.run_LSD(wavelengths, fitted_flux, fitted_errors, sn, alpha=alpha)
             profiles.append((lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F))
 
-        self.data.profiles = profiles # point Data.profiles to Result.profiles to keep them in sync
+        self.data.profiles = profiles # store per-frame flux, errors and covariance
         self.data.results_time = time() - t0
         self.data.total_time = self.data.setup_time + self.data.mcmc_time + self.data.results_time
         self.data.complete = True
@@ -382,6 +382,13 @@ class Result(Plot):
     def __iter__(self):
         """Allows iterating over the profiles array directly from the Result object."""
         return iter(self.data.profiles)
+
+    @property
+    @_require_profiles
+    def profiles(self):
+        """Return a the fitter for the final profiles; use plot_profiles for raw plots."""
+        from .profiles import Profiles
+        return Profiles(data=self.data)
 
     def __repr__(self):
         # Only print out the sampler and data attributes, and whether profiles is available, to avoid printing large arrays
