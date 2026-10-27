@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from ACID_code import Acid, Profiles
+from ACID_code import Acid
 
 @pytest.mark.long
 def test_multiple_frames(pysme_synthetic_spectrum_multiple_frames):
@@ -22,7 +22,7 @@ def test_multiple_frames(pysme_synthetic_spectrum_multiple_frames):
     assert len(result.data.profiles) == len(spectra)
 
     # We can assume the final profile looks ok if we can fit a gaussian with no errors:
-    _popt = Profiles(data=result.data).fit_gaussian()
+    _popt = result.profiles.fit_gaussian()
 
 @pytest.mark.long
 def test_final_profile_is_sensible_to_input_velocities(pysme_synthetic_spectrum):

@@ -4,6 +4,8 @@ import pytest
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
+from contextlib import nullcontext
+from emcee import EnsembleSampler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -16,6 +18,39 @@ def test_convergence_requires_an_enabled_criterion():
     acid = Acid(min_tau_factor=0, tau_tol=0)
     with pytest.raises(ACIDInputError, match="cannot both be 0"):
         acid.run_mcmc_until_converged(100)
+
+
+@pytest.mark.parametrize("full_tau, min_tau_factor, expected_steps", [
+    (30.0, 50, 2000),
+    (50.0, 50, 3000),
+    (np.nan, 50, 3000),
+    (50.0, 0, 2000),
+])
+def test_final_convergence_check_only_validates_neff(monkeypatch, full_tau, min_tau_factor, expected_steps):
+    acid = Acid(verbose=0, check_interval=1000, min_tau_factor=min_tau_factor)
+    calls, tolerances = [], []
+    sampler = EnsembleSampler(4, 1, lambda theta: 0.0)
+
+    def run_mcmc(nsteps, **kwargs):
+        sampler.backend.iteration += nsteps
+
+    def get_autocorr_time(tol, thin=None):
+        calls.append(thin)
+        return np.array([full_tau if thin is None else 10.0 + 0.1 * thin])
+
+    sampler.run_mcmc = run_mcmc
+    sampler.get_autocorr_time = get_autocorr_time
+    monkeypatch.setattr("ACID_code.acid.EnsembleSampler", lambda **kwargs: sampler)
+    monkeypatch.setattr(acid, "_get_sampler_kwargs", lambda **kwargs: ({}, {"progress": False}))
+    monkeypatch.setattr(acid, "_get_sampler_pool", lambda: (nullcontext(None), None, None))
+    monkeypatch.setattr("ACID_code.mcmc.mcmc.MCMC._get_tqdm_desc",
+                        lambda tolerance, neff, config: (tolerances.append(tolerance) or "", ""))
+
+    acid.run_mcmc_until_converged(3000)
+
+    assert sampler.backend.iteration == expected_steps
+    assert tolerances[1] == pytest.approx(0.1 / 10.2)
+    assert (None in calls) == (min_tau_factor != 0)
 
 
 @pytest.mark.parametrize("full", [False, True])

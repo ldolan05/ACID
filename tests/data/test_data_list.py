@@ -9,7 +9,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from ACID_code import Config, Data, DataList
+from ACID_code import Config, Data, DataList, Profiles
 from ACID_code.diagnostics.warnings import ACIDDroppedDataWarning
 
 
@@ -172,6 +172,47 @@ def test_datalist_combination_validation_and_lazy_property(completed_datalist):
         datalist.combine_profiles(exclude=[99])
     with pytest.raises(ValueError):
         datalist.combine_profiles(exclude=datalist.orders)
+
+
+def test_datalist_profiles_returns_a_fresh_combined_fitter(completed_datalist):
+    first = completed_datalist.profiles
+    assert isinstance(first, Profiles)
+    np.testing.assert_array_equal(first.flux, completed_datalist.combined_profile[0])
+    assert completed_datalist.profiles is not first
+
+
+@pytest.mark.parametrize("multiple", [False, True])
+def test_datalist_rvs_use_centres_and_skip_missing_orders(completed_datalist, monkeypatch, multiple):
+    datalist = completed_datalist
+    # A missing middle order must not shift the remaining order labels.
+    del datalist[21].profile["final"]
+    for data in [datalist[20], datalist[22]]:
+        flux, errors, covariance = data.profile["final"]
+        if multiple:
+            data.profile["final"] = (np.tile(flux, (2, 1)), np.tile(errors, (2, 1)),
+                                     np.kron(np.eye(2), covariance))
+    datalist._combined_profile = datalist[20].profile["final"]
+
+    def fit_voigt(self, **kwargs):
+        # Distinguish the centre from amplitude and its uncertainty from amplitude error.
+        popt = np.array([-0.3, 2.5, 1.0, 0.1, 0.0])
+        pcov = np.diag([0.01, 0.04, 0.01, 0.01, 0.01])
+        if self.flux.ndim == 2:
+            popt = np.tile(popt, (2, 1))
+            popt[1, 1] = -1.5
+            pcov = np.tile(pcov, (2, 1, 1))
+        return popt, pcov
+
+    monkeypatch.setattr(Profiles, "fit_voigt", fit_voigt)
+    fig, ax = datalist.plot_all_rvs(return_fig=True)
+    count = 2 if multiple else 1
+    for i, centre in enumerate([2.5, -1.5][:count]):
+        np.testing.assert_array_equal(ax.lines[i].get_xdata(), [20, 22])
+        np.testing.assert_allclose(ax.lines[i].get_ydata(), centre)
+        np.testing.assert_allclose(ax.lines[count + i].get_ydata(), centre)
+        segments = ax.collections[i].get_segments()
+        np.testing.assert_allclose(segments[0][:, 1], [centre - 0.2, centre + 0.2])
+    plt.close(fig)
 
 
 def test_medium_batch_preserves_warnings_without_inner_progress(synthetic_spectrum, monkeypatch, capfd):

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ACID_code.diagnostics.errors import ACIDResultError, ACIDStateError
+from ACID_code.diagnostics.errors import ACIDInputError, ACIDResultError, ACIDStateError
 from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
 from ACID_code import Data, Profiles
 
@@ -194,6 +194,80 @@ def test_profiles_can_initialise_from_completed_data(harps_result):
     # Incomplete Data lacks the required final profile products.
     with pytest.raises(ACIDStateError, match="running ACID"):
         Profiles(data=Data())
+
+
+@pytest.mark.parametrize("model", ["gaussian", "lorentzian", "voigt"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_multiple_profiles_match_individual_fits(gaussian_profile, model, explicit):
+    x, first, errors = gaussian_profile
+    flux = np.array([first, Profiles.gaussian_func(x, -0.4, -2, 3)])
+    flux[0, 2] = np.nan
+    flux[1, 5] = np.nan
+    profiles = Profiles(x, first, errors) if explicit else Profiles(x, flux, errors)
+    fit = getattr(profiles, f"fit_{model}")
+    popt, pcov = fit(x=np.tile(x, (2, 1)), y=flux) if explicit else fit()
+
+    size = 5 if model == "voigt" else 4
+    assert popt.shape == (2, size)
+    assert pcov.shape == (2, size, size)
+    assert profiles.fit_on_x[model].shape == flux.shape
+    assert profiles.fitted_yerr[model].shape == (2, 2, 1000)
+    for i in range(2):
+        expected = getattr(Profiles(x, flux[i], errors), f"fit_{model}")()
+        np.testing.assert_allclose(popt[i], expected[0])
+        np.testing.assert_allclose(pcov[i], expected[1])
+
+
+@pytest.mark.parametrize("covariance_kind", ["shared", "stacked", "flattened"])
+def test_multiple_profiles_from_data_use_covariance_blocks(gaussian_profile, covariance_kind):
+    x, flux, errors = gaussian_profile
+    flux = np.array([flux, Profiles.gaussian_func(x, -0.4, -2, 3)])
+    covariance = np.diag(errors ** 2)
+    cov = covariance
+    if covariance_kind == "stacked":
+        cov = np.array([covariance, covariance * 2])
+    elif covariance_kind == "flattened":
+        cov = np.kron(np.array([[1, 0.1], [0.1, 2]]), covariance)
+    data = Data()
+    data.velocities = x
+    data.profile["final"] = [flux, np.tile(errors, (2, 1)), cov]
+    profiles = Profiles(data=data)
+    popt, pcov = profiles.fit_gaussian()
+    for i in range(2):
+        block = covariance if covariance_kind == "shared" else covariance * (i + 1)
+        expected = Profiles(x, flux[i], errors, block).fit_gaussian()
+        np.testing.assert_allclose(popt[i], expected[0])
+        np.testing.assert_allclose(pcov[i], expected[1])
+
+
+def test_multiple_profiles_handle_failed_rows(gaussian_profile):
+    x, flux, errors = gaussian_profile
+    profiles = Profiles(x, np.array([flux, np.full_like(flux, np.nan)]), errors)
+    popt, pcov = profiles.fit_gaussian(on_exception="pass")
+    assert np.isfinite(popt[0]).all()
+    assert np.isnan(popt[1]).all()
+    assert np.isnan(pcov[1]).all()
+    assert np.isnan(profiles.fitted_y["gaussian"][1]).all()
+
+
+def test_multiple_profiles_plot_only_requested_model(gaussian_profile):
+    x, flux, errors = gaussian_profile
+    profiles = Profiles(np.tile(x, (2, 1)), np.array([flux, flux]), errors)
+    profiles.fit_lorentzian()
+    fig, axes = profiles.plot_fit("gaussian", return_fig=True)
+    labels = axes[0].get_legend_handles_labels()[1]
+    assert sum("Gaussian Fit" in label for label in labels) == 2
+    assert not any("Lorentzian" in label for label in labels)
+    plt.close(fig)
+    for model in ["all", None]:
+        with pytest.raises(ACIDInputError, match="single model"):
+            profiles.plot_fit(model)
+
+
+def test_multiple_profiles_reject_different_velocity_grids(gaussian_profile):
+    x, flux, errors = gaussian_profile
+    with pytest.raises(ACIDInputError, match="same velocity grid"):
+        Profiles(np.array([x, x + 1]), np.array([flux, flux]), errors)
 
 
 if __name__ == "__main__":

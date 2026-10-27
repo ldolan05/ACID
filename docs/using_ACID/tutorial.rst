@@ -131,7 +131,7 @@ Once the inputs have been constructed, ACID can be applied and the results plott
    frame_error = result[0,1] # frame 0 error
    frame_cov = result[0,2]   # frame 0 covariance matrix
    # Or the full frame profile list
-   full_profiles = result.profiles # Is a 3D list of shape (n_frames, 3, n_velocities) containing the flux, error and covariance profiles for each frame.
+   full_profiles = result.data.profiles # Per-frame (flux, error, covariance) tuples.
 
 Multiple Orders
 ---------------

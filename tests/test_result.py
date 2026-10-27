@@ -10,7 +10,22 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code.diagnostics.errors import ACIDStateError
-from ACID_code import Acid, Data, Result
+from ACID_code import Acid, Data, Profiles, Result
+
+
+def test_result_profiles_returns_a_fresh_fitter(harps_result):
+    # Each access uses the current final products without retaining previous fits.
+    first = harps_result.profiles
+    assert isinstance(first, Profiles)
+    np.testing.assert_array_equal(first.flux, harps_result[0])
+    first.fit_gaussian()
+    second = harps_result.profiles
+    assert second is not first
+    assert second.fitted_y == {}
+
+    # The fitter shortcut leaves the explicit raw-profile plotting alias available.
+    figure, _ = harps_result.plot_profiles(return_fig=True)
+    plt.close(figure)
 
 
 def test_result_indexes_profiles_errors_covariance_and_frames(harps_result, harps_order_40):
