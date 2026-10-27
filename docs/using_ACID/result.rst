@@ -27,15 +27,41 @@ the profile values (0), the errors (1), or the covariance matrix (2).
 
 .. code-block:: python
 
-    # Access per-frame profiles, for eg frame 0:
-    profiles = results[0,0]
-    errors = results[0,1]
-    cov_matrix = results[0,2]
-
     # Access the combined profile
     combined_profile = result[0]
     errors = result[1]
     cov_matrix = result[2]
+
+    # Access per-frame profiles, for eg frame 0:
+    profiles = result[0,0]
+    errors = result[0,1]
+    cov_matrix = result[0,2]
+
+If ``profile_groups`` was supplied, the profile values and errors have shape
+``(n_profiles, n_velocities)``. The profiles follow the sorted unique group labels
+in ``result.data.profile_groups`` (after line-list clipping), so the profile index
+is a position in that sequence, rather than the group label itself.
+
+.. code-block:: python
+
+    # Access the first profile group from the combined result
+    profile_flux = result[0][0]
+    profile_error = result[1][0]
+
+    # Access the same profile group for frame 0
+    frame_flux = result[0,0][0]
+    frame_error = result[0,1][0]
+
+The extra group index is applied to the returned array. The covariance matrix
+remains flattened, with shape ``(n_profiles * n_velocities, n_profiles * n_velocities)``,
+including covariances between groups. To select the covariance block for group
+index ``i``:
+
+.. code-block:: python
+
+    n_velocities = len(result.data.velocities)
+    group_slice = slice(i * n_velocities, (i + 1) * n_velocities)
+    profile_cov = result[2][group_slice, group_slice]
 
 Saving the Result
 -----------------
