@@ -71,6 +71,8 @@ class LSD:
         velocities     : Array1D|None                   = None,
         alpha          : Array2D|Array3D|None           = None,
         profile_groups : Array1D|None                   = None,
+        profile_names  : list|dict|None                 = None,
+        seperate_species : list|None                   = None,
         mp_lsd         : bool|None                      = None,
         sparse         : bool|None                      = None,
         skip_warnings  : bool|None                      = None,
@@ -111,6 +113,11 @@ class LSD:
             The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match the inputted linelist, otherwise,
             we attempt to cut the linelist to the input wavelength range and apply the S/N cut, after which they must match.
             If None, then just one profile is generated (as if the mask was [0,0,0,0,0,...]). By default None.
+        profile_names : list | dict, optional
+            Names indexed by group ID; see :ref:`profile_groups`. Defaults to Config.profile_names.
+        seperate_species : list, optional
+            Species strings to separate after clipping; each group requires 20 lines.
+            Defaults to Config.seperate_species. See :ref:`profile_groups`.
         mp_lsd : bool, optional
             An override to the automatic multi-profile LSD detection. If profile_groups is input and this has been overriden
             to False, then profile_groups is ignored and you will only receive one profile. By default None.
@@ -167,6 +174,9 @@ class LSD:
 
         sparse         = sparse if sparse is not None else self.config.sparse
         profile_groups = profile_groups if profile_groups is not None else self.config.profile_groups
+        profile_names = profile_names if profile_names is not None else self.config.profile_names
+        if seperate_species is not None:
+            self.config.seperate_species = seperate_species
         regularization = self.config.regularization if regularization is None else regularization
         scale_regularization = self.config.scale_regularization if scale_regularization is None else scale_regularization
 
@@ -249,11 +259,28 @@ class LSD:
         wavelengths = wavelengths[mask]
         errors      = errors[mask]
 
-        # Generate groups when needed, then let Data validate and store the clipped result.
-        if profile_groups is None and self.config.depth_group_rules is not None:
-            profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
+        # Generate groups after line-list cuts, using linear depths or species metadata.
+        automatic_names = None
+        if profile_groups is None:
+            if self.config.depth_group_rules is not None and self.config.seperate_species:
+                raise ACIDInputError("Use either depth_group_rules or seperate_species, not both.")
+            if self.config.seperate_species:
+                if "spec_ion" not in self.data.linelist.keys():
+                    raise ACIDInputError("seperate_species requires spec_ion metadata in the linelist.")
+                species = self.data.linelist["spec_ion"][self.ll_mask]
+                profile_groups, automatic_names = self.group_profs_by_species(species, self.config.seperate_species)
+            elif self.config.depth_group_rules is not None:
+                profile_groups = self.group_profs_by_depth(depths_linelist, prof_group_rules=self.config.depth_group_rules)
+                automatic_names = {int(g): f"Depth {depths_linelist[profile_groups == g].min():.3g}–{depths_linelist[profile_groups == g].max():.3g}"
+                                   for g in np.unique(profile_groups)}
+
+        # Validate names against the input groups before clipping removes any whole groups.
+        names = utils.profile_name_map(profile_names, [0] if profile_groups is None else profile_groups)
         self.data.profile_groups = profile_groups
         self.profile_groups = self.data.profile_groups
+        labels = [0] if self.profile_groups is None else np.unique(self.profile_groups)
+        names = automatic_names if names is None else names
+        self.data.profile_names = None if names is None else {int(g): names[g] for g in labels}
 
         mp_lsd_mode = self.profile_groups is not None or (alpha is not None and alpha.ndim == 3)
         # Finally, we allow the mp_lsd override, this override is only a False override, True/None is default
@@ -900,6 +927,37 @@ class LSD:
         if alpha.ndim != 3:
             raise ACIDInputError(f"Expected 3D alpha matrix, got shape {alpha.shape}")
         return np.concatenate(alpha, axis=1)
+
+    @staticmethod
+    def group_profs_by_species(species, requested):
+        """Separate well-populated species, retaining rejected lines in group 0."""
+        utils.validate_seperate_species(requested)
+        species = np.asarray(species)
+        groups = np.zeros(len(species), dtype=int)
+        names = {0: "Everything else"}
+
+        # Only create species groups with enough lines after wavelength and S/N cuts.
+        for name in requested:
+            mask = species == name
+            count = np.count_nonzero(mask)
+            if count < 20:
+                warnings.warn(f"Species {name!r} has {count} lines; at least 20 are required. Keeping it in Everything else.",
+                              ACIDProfileGroupsWarning, stacklevel=2)
+                continue
+            group = len(names)
+            groups[mask] = group
+            names[group] = name
+
+        # The remainder also needs 20 lines; merge the last species back if necessary.
+        while np.count_nonzero(groups == 0) < 20 and len(names) > 1:
+            group, name = names.popitem()
+            warnings.warn(f"Everything else has fewer than 20 lines. Returning species {name!r} to group 0.",
+                          ACIDProfileGroupsWarning, stacklevel=2)
+            groups[groups == group] = 0
+        if len(species) < 20:
+            warnings.warn("Fewer than 20 lines remain in total; only 'Everything else' can be fitted.",
+                          ACIDProfileGroupsWarning, stacklevel=2)
+        return groups, names
 
     @staticmethod
     def group_profs_by_depth(depths_linelist:Array1D, prof_group_rules:dict|None=None) -> Array1D:

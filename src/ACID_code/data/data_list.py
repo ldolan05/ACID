@@ -182,7 +182,9 @@ class DataList:
             config_dict = config.to_dict() if config is not None else {}
 
         # --- Create datalist of Data instances for each order ---
-        linelist = LineList(linelist) if linelist is not None else None
+        configs = config_dict if isinstance(config_dict, list) else [config_dict]
+        needs_species = bool(config_kwargs.get("seperate_species")) or any(cfg.get("seperate_species") for cfg in configs)
+        linelist = LineList(linelist, full=needs_species) if linelist is not None else None
         datalist = []
         for idx, order in enumerate(self.order_range):
             data = Data() # create data instance
@@ -685,7 +687,8 @@ class DataList:
         joint.order_ll_masks = [data.ll_mask.copy() for data in selected]
         joint.ll_mask = line_indices
         joint.profile_groups = groups
-        joint.config.update_hipri(profile_groups=groups, depth_group_rules=None)
+        joint.profile_names = self._collect_profile_names(selected)
+        joint.config.update_hipri(profile_groups=groups, profile_names=joint.profile_names, depth_group_rules=None)
         for name in ("full_mask", "line_mask", "pix_mask", "sigma_mask"):
             setattr(joint, name, np.concatenate([getattr(data, name) for data in selected]))
         joint.poly_coeffs["masked"] = np.concatenate([data.poly_coeffs["masked"] for data in selected])
@@ -941,7 +944,36 @@ class DataList:
     def profiles(self):
         """Return a fresh fitter for the combined profile across orders."""
         from ..profiles import Profiles
-        return Profiles(self.velocities, *self.combined_profile)
+        if self.multi_order_data is not None:
+            return Profiles(data=self.multi_order_data)
+        names = self.profile_names
+        return Profiles(self.velocities, *self.combined_profile,
+                        profile_names=None if names is None else [names[g] for g in sorted(names)])
+
+    @property
+    def profile_names(self):
+        """Names for the combined groups, preserving actual group IDs across orders."""
+        if self.multi_order_data is not None:
+            return self.multi_order_data.profile_names
+        return self._collect_profile_names([data for data in self.data_list if data.config.order not in self.excluded_orders])
+
+    def _collect_profile_names(self, data_list):
+        """Merge names from the selected orders, including their actual depth ranges."""
+        names, depths = {}, {}
+        for data in data_list:
+            if data.profile_names is None:
+                continue
+            for group, name in data.profile_names.items():
+                # Automatic depth labels describe the complete depth range across orders.
+                if data.config.depth_group_rules is not None and data.config.profile_names is None:
+                    values = data.linelist["depths"][data.ll_mask][data.profile_groups == group]
+                    depths.setdefault(group, []).extend(values)
+                elif group in names and names[group] != name:
+                    raise ACIDInputError(f"Orders must use the same profile name for group {group}.")
+                names[group] = name
+        for group, values in depths.items():
+            names[group] = f"Depth {min(values):.3g}–{max(values):.3g}"
+        return names or None
 
     @property
     def results(self):
@@ -1054,10 +1086,14 @@ class DataList:
         for data in self.data_list:
             if "final" not in data.profile or data.config.order in self.excluded_orders:
                 continue # failed or excluded orders
-            ax.errorbar(self.velocities, data.profile["final"][0], alpha=0.2, color="C0",
-                        label=f"All profiles" if data.config.order == self.orders[0] else None)
+            for profile in np.atleast_2d(data.profile["final"][0]):
+                ax.plot(self.velocities, profile, alpha=0.2, color="C0")
 
-        ax.errorbar(self.velocities, self.combined_profile[0], self.combined_profile[1], color="black", fmt=".-", ecolor="red", label="Combined profile")
+        # Label each combined profile using the same names as its individual orders.
+        names = self.profile_names or {}
+        groups = sorted(names) if names else range(len(np.atleast_2d(self.combined_profile[0])))
+        for group, flux, error in zip(groups, np.atleast_2d(self.combined_profile[0]), np.atleast_2d(self.combined_profile[1])):
+            ax.errorbar(self.velocities, flux, error, fmt=".-", label=names.get(group, "Combined profile"))
         ax.legend()
         ax.set_xlabel("Velocity (km/s)")
         ax.set_ylabel("Relative Flux")
@@ -1104,21 +1140,22 @@ class DataList:
         norm = mpl.colors.Normalize(vmin=self.order_range[0], vmax=self.order_range[-1])
         cmap = mpl.colormaps.get_cmap("viridis")#, len(self.order_range))
 
-        peak_vel_idx = np.nanargmin(self.combined_profile[0])
         min_prof = 1
         for data in self.data_list:
             order = data.config.order
             color = cmap(norm(order))
             if "final" not in data.profile:
                 continue # failed orders
-            ax.plot(self.velocities, utils.flux_to_od(data.profile["final"][0], od=od), alpha=0.2, color=color)
+            for profile in np.atleast_2d(data.profile["final"][0]):
+                ax.plot(self.velocities, utils.flux_to_od(profile, od=od), alpha=0.2, color=color)
+            min_prof = min(min_prof, np.nanmin(data.profile["final"][0]))
 
-            if data.profile["final"][0][peak_vel_idx] < min_prof:
-                min_prof = data.profile["final"][0][peak_vel_idx]
-        
-        ax.errorbar(self.velocities, # self.combined_profile[0], self.combined_profile[1],
-                    *utils.flux_to_od(self.combined_profile[0], self.combined_profile[1], od=od),
-                    color="black", fmt=".-", ecolor="red", label="Combined profile", zorder=10)
+        # Overlay all combined groups with their resolved labels.
+        names = self.profile_names or {}
+        groups = sorted(names) if names else range(len(np.atleast_2d(self.combined_profile[0])))
+        for group, flux, error in zip(groups, np.atleast_2d(self.combined_profile[0]), np.atleast_2d(self.combined_profile[1])):
+            ax.errorbar(self.velocities, *utils.flux_to_od(flux, error, od=od),
+                        fmt=".-", label=names.get(group, "Combined profile"), zorder=10)
 
         ax.axhline(1, color="black", linestyle="--", alpha=0.5)
 
@@ -1156,30 +1193,31 @@ class DataList:
         """
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Fit completed orders, keeping their labels aligned when orders are missing.
-        orders, rvs, rverrs = [], [], []
+        # Collect RVs by actual group ID, allowing orders to lack some groups.
+        curves = {}
         for data in self.data_list:
             if "final" not in data.profile:
                 continue
-            popt, pcov = data.result.profiles.fit_voigt(on_exception="pass")
-            orders.append(data.config.order)
-            rvs.append(np.atleast_1d(popt[..., 1]))
-            rverrs.append(np.atleast_1d(np.sqrt(pcov[..., 1, 1])))
-
-        rvs = np.array(rvs)
-        rverrs = np.array(rverrs)
+            fitter = data.result.profiles
+            popt, pcov = fitter.fit_voigt(on_exception="pass")
+            for group, centre, error in zip(fitter.profile_ids, np.atleast_1d(popt[..., 1]), np.atleast_1d(np.sqrt(pcov[..., 1, 1]))):
+                orders, rvs, rverrs = curves.setdefault(group, ([], [], []))
+                orders.append(data.config.order)
+                rvs.append(centre)
+                rverrs.append(error)
 
         # Plot the fitted centre and uncertainty for each profile group across orders.
-        if orders:
-            for i, (rv, error) in enumerate(zip(rvs.T, rverrs.T)):
-                ax.errorbar(orders, rv, yerr=error, marker='o', linestyle='-', color=f'C{i}')
+        for i, group in enumerate(sorted(curves)):
+            orders, rvs, rverrs = curves[group]
+            ax.errorbar(orders, np.asarray(rvs), yerr=np.asarray(rverrs), marker='o', linestyle='-', color=f'C{i}')
 
         # Add the corresponding centres from the combined profile fit.
-        popt, pcov = self.profiles.fit_voigt()
+        fitter = self.profiles
+        popt, pcov = fitter.fit_voigt()
         centres = np.atleast_1d(popt[..., 1])
         errors = np.atleast_1d(np.sqrt(pcov[..., 1, 1]))
         for i, (rv, error) in enumerate(zip(centres, errors)):
-            label = "Combined profile" if popt.ndim == 1 else f"Combined profile {i}"
+            label = fitter.profile_names.get(fitter.profile_ids[i], "Combined profile" if popt.ndim == 1 else f"Combined profile {i}")
             ax.axhline(rv, color=f'C{i}', linestyle='--', label=f"{label} RV: {rv:.4f} ± {error:.4f}")
 
         ax.legend()

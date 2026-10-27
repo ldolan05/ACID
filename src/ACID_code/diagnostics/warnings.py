@@ -15,6 +15,10 @@ class ACIDDroppedDataWarning(ACIDInputWarning):
     """Input data contain invalid values that may cause errors during processing."""
 
 
+class ACIDProfileGroupsWarning(ACIDInputWarning):
+    """An automatic profile group was dropped because too few lines were available."""
+
+
 class ACIDRuntimeWarning(ACIDWarning):
     """A runtime issue occurred during ACID execution."""
 

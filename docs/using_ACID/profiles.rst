@@ -43,6 +43,10 @@ To save time we load a saved data instance, with the profiles already calculated
 Multiple profile groups
 -----------------------
 
+See :ref:`profile_groups` to assign groups and names, or generate groups by depth
+or species. Names stored on Data are used automatically in fit plots; direct
+array inputs can pass ``profile_names=["Iron", "Titanium"]``.
+
 For a multi-profile run, ``Profiles(data=data)`` automatically uses all profile
 groups from the selected key. You can also supply flux with shape
 ``(n_profiles, n_velocities)`` directly. Velocities must be a shared 1D grid,

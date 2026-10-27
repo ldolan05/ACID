@@ -26,6 +26,33 @@ Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[li
 
 logger = get_logger(__name__)
 
+def profile_name_map(names, groups=None):
+    """Validate optional names and map them to the actual profile group IDs."""
+    if names is None:
+        return None
+    if isinstance(names, list):
+        names = dict(enumerate(names))
+    if not isinstance(names, dict) or not names:
+        raise ACIDInputError("profile_names must be a non-empty list of strings or a dictionary of group IDs to strings.")
+    if any(isinstance(k, (bool, np.bool_)) or not isinstance(k, (int, np.integer)) or k < 0 for k in names):
+        raise ACIDInputError("profile_names dictionary keys must be non-negative integer group IDs.")
+    if any(not isinstance(name, str) or not name.strip() for name in names.values()):
+        raise ACIDInputError("profile_names values must be non-empty strings.")
+    if groups is not None and set(names) != set(np.unique(groups)):
+        raise ACIDInputError(f"profile_names keys {sorted(names)} must match profile group IDs {np.unique(groups).tolist()}.")
+    return dict(names)
+
+
+def validate_seperate_species(species):
+    """Validate the requested species without changing their order or identifiers."""
+    if species is not None and (
+        not isinstance(species, list)
+        or any(not isinstance(name, str) or not name.strip() for name in species)
+        or len(set(species)) != len(species)
+    ):
+        raise ACIDInputError("seperate_species must be a list of unique, non-empty species strings.")
+
+
 def calc_chi2(model, data, error):
     """Return chi-squared for a model, data, and their measurement errors."""
     model = np.asarray(model)

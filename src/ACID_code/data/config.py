@@ -87,6 +87,8 @@ class Config:
         "scale_regularization" : True,
         "depth_group_rules" : None,
         "profile_groups" : None,
+        "profile_names" : None,
+        "seperate_species" : None,
         "sampler_type" : "emcee",
         "use_jax" : False,
         "parallel" : True,
@@ -158,6 +160,12 @@ class Config:
         if value is None:
             # If value is None, do not set the attribute
             return
+
+        # Validate naming and automatic species inputs even when Config is used directly.
+        if name == "profile_names":
+            utils.profile_name_map(value)
+        elif name == "seperate_species":
+            utils.validate_seperate_species(value)
 
         if name in self._properties or name in self.defaults:
             super().__setattr__(name, value)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import traceback
-import sys, emcee, os, time, warnings
+import sys, emcee, os, time, warnings, copy
 from emcee import EnsembleSampler
 import numpy as np
 import multiprocessing as mp
@@ -118,6 +118,8 @@ class Acid:
         od                    : bool|None                      = None, # Config
         sparse                : bool|None                      = None, # Config
         profile_groups        : Array1D|Array2D|None           = None, # Config, then Data after LSD clipping/grouping
+        profile_names         : list|dict|None                 = None, # Config, then Data after clipping/grouping
+        seperate_species      : list|None                      = None, # Config
         depth_group_rules     : dict|None                      = None, # Config
         sampler_type          : str|None                       = None, # Config
         use_jax               : bool|None                      = None, # Config
@@ -307,9 +309,24 @@ class Acid:
             coefficient in Kochukhov et al. (2010), Eq. (24). If None, uses the config value.
         profile_groups : :py:type:`Array1D | None`, optional
             A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
-            If provided, the resulting profiles will be a 2D array in with the same order as the index of the group.
-            The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match either the full linelist or the linelist after wavelength and S/N clipping.
+            If provided, the resulting profiles are a 2D array ordered by sorted group ID.
+            IDs must be non-negative integers, e.g. [0,0,2,0,1,0,3,...], and need not be consecutive.
+            The shape must match either the full linelist or the linelist after wavelength and S/N clipping.
             If None, then just one profile is generated (as if the mask was [0,0,0,0,0,...]). By default None.
+        profile_names : list | dict, optional
+            Names for each group, supplied as a list indexed by consecutive group IDs
+            starting at 0, or a dictionary mapping actual group IDs to strings. All input
+            group IDs must be named; invalid or extra IDs raise an error. Names for groups
+            lost during line-list clipping are discarded. Used in profile plots and fitting.
+        seperate_species : list, optional
+            Species identifiers to fit separately, matching the line list's spec_ion strings
+            exactly (e.g. ["Fe 1", "Ti 1"]). Group 0 is Everything else; surviving species
+            receive consecutive IDs starting at 1, in input order. Each group needs at
+            least 20 lines after wavelength and S/N cuts. Undersized species remain in
+            group 0 with an ACIDProfileGroupsWarning warning. If group 0 is too small, the last
+            retained species is merged back with a warning. Cannot be combined with
+            depth_group_rules. Explicit profile_groups override automatic grouping.
+            Requires a VALD linelist input.
         depth_group_rules : :py:type:`dict`, optional
             A way to automatically generate the profile_groups based on a set of rules.
             This was set up as a way to seperate the the linelist into groups of similar depth.
@@ -333,7 +350,9 @@ class Acid:
             are filled evenly with the remaining lines.
             Any additional dictionary keys should corresond to integer indices and float absorption depths as shown in the example above.
             The groups will only be generated with this ruleset after the linelist wavelength ranges and S/N cuts have been applied.
+            Names are generated from each group's actual linear depth range unless profile_names is provided.
             Note that providing profile_groups will override this parameter, causing it to have no effect.
+            Requires a VALD linelist input.
         sampler_type : :py:type:`str`, optional
             If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
@@ -534,12 +553,12 @@ class Acid:
                 return self._resume(config_kwargs)
 
             # Update config if any of the above config settings are new
-            old_profile_groups = self.config.profile_groups
+            old_grouping = {name: copy.deepcopy(getattr(self.config, name))
+                            for name in ("profile_groups", "depth_group_rules", "seperate_species")}
             self.config.update_hipri(**config_kwargs)
-            if config_kwargs.get("profile_groups") is not None and (
-                old_profile_groups is None
-                or not np.array_equal(old_profile_groups, self.config.profile_groups)
-            ):
+            if any(config_kwargs.get(name) is not None and
+                   not np.array_equal(previous, getattr(self.config, name))
+                   for name, previous in old_grouping.items()):
                 self.data.reset()
 
             if self.config.parallel and sys.platform == "win32":

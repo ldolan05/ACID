@@ -8,6 +8,7 @@ Tutorials - Using ACID
 
    using_ACID/tutorial
    using_ACID/result
+   using_ACID/profile_groups
    using_ACID/multiprocessing
    using_ACID/data
    using_ACID/datalist

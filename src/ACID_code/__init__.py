@@ -1,6 +1,6 @@
 # Configure ACID's package-specific logger before importing modules that use it.
 from .diagnostics.logging import configure_logging, set_log_level
-from .diagnostics.warnings import ACIDWarning, configure_warnings
+from .diagnostics.warnings import ACIDWarning, ACIDProfileGroupsWarning, configure_warnings
 from .diagnostics.errors import ACIDError
 from .acid import ACID, ACID_HARPS, Acid
 from .lsd import LSD

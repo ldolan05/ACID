@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
 from scipy.special import wofz
-from .utils import Array1D, Array2D, Array3D
+from .utils import Array1D, Array2D, Array3D, profile_name_map
 from .data import Data
 from .diagnostics.warnings import ACIDRuntimeWarning
 
@@ -62,12 +62,13 @@ class Profiles:
     """
     def __init__(
             self,
-            velocities : Array1D|Array2D|None = None,
-            flux       : Array1D|Array2D|None = None,
-            flux_err   : Array1D|Array2D|None = None,
-            cov_matrix : Array2D|Array3D|None = None,
-            data       : Data|None = None,
-            key        : str     = "final",
+            velocities    : Array1D|Array2D|None = None,
+            flux          : Array1D|Array2D|None = None,
+            flux_err      : Array1D|Array2D|None = None,
+            cov_matrix    : Array2D|Array3D|None = None,
+            data          : Data|None            = None,
+            key           : str                  = "final",
+            profile_names : list|dict|None       = None,
         ) -> None:
         """
         Initializes the Profiles class with velocity, flux, and optional flux error data.
@@ -96,6 +97,9 @@ class Profiles:
             Must be provided if all four of the above inputs were not passed, by default None. 
         key : str, optional
             The key to select a specific profile from the data instance, by default "final".
+        profile_names : list | dict, optional
+            Names for profile rows, or actual group IDs when using Data. Defaults to
+            Data.profile_names when available. Direct array inputs use row IDs 0, 1, ...
         """
 
         if data is not None:
@@ -142,6 +146,19 @@ class Profiles:
         if y.ndim == 1:
             x, y, yerr, cov = self._remove_nans(x, y, yerr, cov)
         self.velocities, self.flux, self.flux_err, self.cov_matrix = x, y, yerr, cov
+
+        # Resolve labels in the same sorted group order as the profile rows.
+        n_profiles = y.shape[0] if y.ndim == 2 else 1
+        self.profile_ids = np.arange(n_profiles)
+        if data is not None:
+            if y.ndim == 2 and data.profile_groups is not None:
+                self.profile_ids = np.unique(data.profile_groups)
+            if profile_names is None:
+                profile_names = data.profile_names
+                # A single-profile diagnostic does not correspond to individual groups.
+                if y.ndim == 1 and data.profile_groups is not None:
+                    profile_names = None
+        self.profile_names = profile_name_map(profile_names, self.profile_ids) or {}
 
         # Cache fitted curves and uncertainties on a dense grid for plotting.
         self.fitted_y    = {}
@@ -215,7 +232,7 @@ class Profiles:
         multiple = self.flux.ndim == 2
         for i, flux in enumerate(np.atleast_2d(self.flux)):
             error = None if self.flux_err is None else (self.flux_err[i] if multiple else self.flux_err)
-            label = f'Profile {i}' if multiple else 'ACID Profile'
+            label = self.profile_names.get(self.profile_ids[i], f'Profile {i}' if multiple else 'ACID Profile')
             ax[0].errorbar(self.velocities, flux, yerr=error, fmt='.', label=label, color=f'C{i}')
             for j, name in enumerate(model_list):
                 y_fit = self.fitted_y[name][i] if multiple else self.fitted_y[name]

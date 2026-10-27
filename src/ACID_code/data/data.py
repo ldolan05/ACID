@@ -127,6 +127,8 @@ class Data:
     # -----------------------------
     #: The groups for the clipped linelist, used for plotting and analysis.
     _profile_groups : Optional[np.ndarray] = None
+    #: Resolved names keyed by the clipped line list's profile group IDs.
+    profile_names : Optional[dict] = None
     #: Internal variables used for plotting the continuum_fit and the residual masks
     plotting_variables   : Dict[str, Any]  = field(default_factory=dict)
     #: setup_time (float) - The time taken for initialization
@@ -357,7 +359,7 @@ class Data:
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
-            linelist = LineList(linelist)
+            linelist = LineList(linelist, full=bool(self.config.seperate_species))
             linelist_wl, linelist_depths = linelist["wavelengths"], linelist["depths"]
 
             # Check if the new linelist is different from the existing one
@@ -390,6 +392,10 @@ class Data:
             profile_groups = np.asarray(profile_groups).copy()
             if profile_groups.ndim != 1:
                 raise ACIDInputError("profile_groups must be a 1D array.")
+            if (profile_groups.dtype.kind not in "iuf" or np.any(~np.isfinite(profile_groups))
+                or np.any(profile_groups < 0) or np.any(profile_groups != np.floor(profile_groups))):
+                raise ACIDInputError("profile_groups must contain non-negative integer group IDs.")
+            profile_groups = profile_groups.astype(int)
             if len(profile_groups) == len(self.linelist["wavelengths"]):
                 profile_groups = profile_groups[self.ll_mask]
             if len(profile_groups) != len(self.ll_mask):

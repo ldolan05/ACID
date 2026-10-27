@@ -68,6 +68,24 @@ def test_joint_solve_matches_weighted_least_squares(regularization, scaled):
     assert model(np.r_[-1., theta[1:]]) == -np.inf
 
 
+def test_joint_profile_names_follow_missing_groups_and_survive_plots(tmp_path):
+    names = {2: "Iron", 7: "Titanium"}
+    orders, _ = make_orders(profile_groups=np.array([2, 2, 2, 7, 7, 7]), profile_names=names)
+    result = orders.run_multi_order_ACID()
+    assert result.data.profile_names == names
+    assert orders.profiles.profile_names == names
+    figure, axis = result.plot_profiles(return_fig=True)
+    assert axis.get_legend_handles_labels()[1] == ["Iron", "Titanium"]
+    plt.close(figure)
+    figure, axes = result.plot_forward_model(show_linelist=True, show_masking=False, return_fig=True)
+    labels = axes[0].get_legend_handles_labels()[1]
+    assert "Line List: Iron" in labels and "Line List: Titanium" in labels
+    plt.close(figure)
+    result.save(str(tmp_path / "named.pkl"))
+    restored = Result.load(str(tmp_path / "named.pkl"))
+    assert restored.profiles.profile_names == names
+
+
 @pytest.mark.parametrize("use_jax", [False, True])
 def test_joint_groups_recover_distinct_profiles_with_missing_groups(tmp_path, use_jax):
     if use_jax:

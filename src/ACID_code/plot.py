@@ -533,13 +533,15 @@ class Plot:
             x, y, yerr = self.data.velocities, frame[0], frame[1]
 
             if x.shape == y.shape:
-                errorbar_kwargs["label"] = f"Frame {f+1}" if nframes > 1 else None
+                name = (self.data.profile_names or {}).get(0)
+                errorbar_kwargs["label"] = f"{name}, Frame {f+1}" if name and nframes > 1 else name or (f"Frame {f+1}" if nframes > 1 else None)
                 ax.errorbar(x, y, yerr=yerr, **errorbar_kwargs)
 
             else: # multi-profile case
                 groups = np.unique(self.data.profile_groups)
                 for prof, err, g in zip(y, yerr, groups):
-                    errorbar_kwargs["label"] = f"Group {g}"
+                    name = (self.data.profile_names or {}).get(g, f"Group {g}")
+                    errorbar_kwargs["label"] = name
                     errorbar_kwargs["ecolor"] = None
                     ax.errorbar(x, prof, yerr=err, **errorbar_kwargs)               
 
@@ -762,9 +764,14 @@ class Plot:
                 colors = "green"
                 if self.data.profile_groups is not None:
                     groups = self.data.profile_groups[np.searchsorted(self.data.ll_mask, ll_mask)]
-                    colors = [f"C{group}" for group in groups[in_order]]
-                ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color=colors,
-                             linewidth=1, label='Line List', alpha=0.5)
+                    for i, group in enumerate(np.unique(self.data.profile_groups)):
+                        mask = groups[in_order] == group
+                        name = (self.data.profile_names or {}).get(group, f"Group {group}")
+                        ax[0].vlines(ll_wl[mask], ll_tops[mask], ymax=ll_depths[mask], color=f"C{i}",
+                                     linewidth=1, label=f'Line List: {name}', alpha=0.5)
+                else:
+                    ax[0].vlines(ll_wl, ll_tops, ymax=ll_depths, color=colors,
+                                 linewidth=1, label='Line List', alpha=0.5)
 
         if show_masking:
             for axis, limits in zip(ax, (flux_limits, residual_limits)):
