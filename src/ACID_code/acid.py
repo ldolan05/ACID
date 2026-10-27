@@ -1077,11 +1077,12 @@ class Acid:
                 # The stopping criterion function below handles the logic for determining stopping condition
                 total_step_number = self.sampler.backend.iteration
                 condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, total_step_number, *stopping_criterion_args)
-                if condition is True:
-                    # Confirm convergence using the full chain before stopping.
+                if condition is True and self.config.min_tau_factor != 0:
+                    # Confirm only the effective sample size using the full chain.
                     full_tau = self.sampler.get_autocorr_time(tol=0)
-                    condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(
-                        tau_list[:-1] + [full_tau], total_step_number, *stopping_criterion_args)
+                    tau_max = np.max(full_tau)
+                    last_neff = total_step_number / tau_max if np.all(np.isfinite(full_tau)) and tau_max > 0 else 0
+                    condition = bool(last_neff > self.config.min_tau_factor)
                 tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
                 progress.set_postfix_str(f"tolerance: {tol_str}, neff: {neff_str}", refresh=False)
                 if condition is True:
