@@ -150,10 +150,11 @@ def test_datalist_rejects_any_invalid_member_before_replacing_orders(completed_d
     assert completed_datalist.data_list is original
 
 
-def test_datalist_combines_profiles_and_exposes_all_diagnostics(completed_datalist):
+@pytest.mark.parametrize("exclude", [22, [22], np.array([22])])
+def test_datalist_combines_profiles_and_exposes_all_diagnostics(completed_datalist, exclude):
     # Combine the fabricated final profiles in the same optical-depth space as production.
     datalist = completed_datalist
-    datalist.combine_profiles(exclude=22)
+    datalist.combine_profiles(exclude=exclude)
     profile, errors, covariance = datalist.combined_profile
 
     assert profile.shape == datalist.velocities.shape
@@ -182,6 +183,8 @@ def test_datalist_combination_validation_and_lazy_property(completed_datalist):
     # Exclusions must refer to real instrument orders, and all orders cannot be removed.
     with pytest.raises(ValueError, match="available orders"):
         datalist.combine_profiles(exclude=[99])
+    assert datalist.exclude == []
+    assert datalist._combined_profile is profile
     with pytest.raises(ValueError):
         datalist.combine_profiles(exclude=datalist.orders)
 

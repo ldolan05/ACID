@@ -153,10 +153,10 @@ class DataList:
         self._save_dir = None
         self._data_list = None
         self._combined_profile = None
+        self._exclude = []
         self._results = None
         self.multi_order_data = None
         self.overwrite = overwrite
-        self.excluded_orders = []
         self.save_dir = save_dir
 
         if _data_list is not None:
@@ -960,7 +960,7 @@ class DataList:
         """Names for the combined groups, preserving actual group IDs across orders."""
         if self.multi_order_data is not None:
             return self.multi_order_data.profile_names
-        return self._collect_profile_names([data for data in self.data_list if data.config.order not in self.excluded_orders])
+        return self._collect_profile_names([data for data in self.data_list if data.config.order not in self.exclude])
 
     def _collect_profile_names(self, data_list:list[Data]) -> dict[IntLike, str]|None:
         """Merge names from the selected orders, including their actual depth ranges."""
@@ -1032,19 +1032,15 @@ class DataList:
                 raise ACIDStateError("The joint fit has not converged.")
             self._combined_profile = tuple(self.multi_order_data.profile["final"])
             return
-        if isinstance(exclude, int):
-            exclude = [exclude]
-        elif exclude is None:
-            exclude = []
 
-        if not all(o in self.orders for o in exclude):
-            raise ACIDInputError(f"All orders in the exclude list must be in the DataList. \nGot: {exclude!r}, but available orders are: {self.orders!r}")
+        if exclude is not None:
+            self.exclude = exclude
 
         profiles = []
         errors = []
         covariances = []
         for data in self.data_list:
-            if data.config.order in exclude:
+            if data.config.order in self.exclude:
                 continue
             try:
                 if (must_have_converged and not data.result.converged):
@@ -1065,7 +1061,6 @@ class DataList:
 
         self._combined_profile = utils.od_to_flux(self._combined_profile[0], self._combined_profile[1], cov_matrix=self._combined_profile[2], od=od)
 
-        self.excluded_orders = exclude
         return
 
     def plot_combined_profile(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
@@ -1088,7 +1083,7 @@ class DataList:
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
         for data in self.data_list:
-            if "final" not in data.profile or data.config.order in self.excluded_orders:
+            if "final" not in data.profile or data.config.order in self.exclude:
                 continue # failed or excluded orders
             for profile in np.atleast_2d(data.profile["final"][0]):
                 ax.plot(self.velocities, profile, alpha=0.2, color="C0")
@@ -1181,12 +1176,14 @@ class DataList:
             return fig, ax
         plt.show()
 
-    def plot_all_rvs(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
+    def plot_all_rvs(self, exclude:int|list[int]|None=None, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
         Plots the radial velocities for all orders in the DataList. Includes the combined profile's RV.
 
         Parameters
         ----------
+        exclude : list[int] | None
+            List of orders to exclude from the plot. If None, no orders are excluded.
         return_fig : bool
             If True, returns the figure and axis objects instead of displaying the plot.
 
@@ -1195,12 +1192,15 @@ class DataList:
         tuple[plt.Figure, plt.Axes] | None
             The figure and axis objects if return_fig is True, otherwise None.
         """
+        if exclude is not None:
+            self.exclude = exclude
+
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Collect RVs by actual group ID, allowing orders to lack some groups.
         curves = {}
         for data in self.data_list:
-            if "final" not in data.profile:
+            if "final" not in data.profile or (data.config.order in self.exclude):
                 continue
             fitter = data.result.profiles
             popt, pcov = fitter.fit_voigt(on_exception="pass")
@@ -1223,6 +1223,7 @@ class DataList:
         for i, (rv, error) in enumerate(zip(centres, errors)):
             label = fitter.profile_names.get(fitter.profile_ids[i], "Combined profile" if popt.ndim == 1 else f"Combined profile {i}")
             ax.axhline(rv, color=f'C{i}', linestyle='--', label=f"{label} RV: {rv:.4f} ± {error:.4f}")
+            ax.axhspan(rv - error, rv + error, color=f'C{i}', alpha=0.2)
 
         ax.legend()
         ax.set_xlabel("Order")
@@ -1306,6 +1307,27 @@ class DataList:
         if return_fig:
             return fig, ax
         plt.show()
+
+    @property
+    def exclude(self) -> list:
+        return getattr(self, "_exclude", [])
+
+    @exclude.setter
+    def exclude(self, value:int|Array1D):
+        if isinstance(value, int):
+            value = [value]
+        else:
+            value = list(value)
+
+        if not all(o in self.orders for o in value):
+            raise ACIDInputError(f"All orders in the exclude list must be in the DataList. \nGot: {value!r}, but available orders are: {self.orders!r}")
+
+        # Setting excludes changes the combined_profile so must be reset if changed
+        if self.exclude != value:
+            self._combined_profile = None
+        self._exclude = value
+
+    excluded_orders = exclude
 
     @staticmethod
     def _update_paths_for_data(data: Data, save_dir: str, source_path: str|None = None) -> bool:
