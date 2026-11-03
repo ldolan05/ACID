@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 class Config:
     """The main class for storing ACID configuration settings, with methods to plot and save/load the configuration state."""
 
-    #: The default configuration settings for ACID, used if not set by the user. See :py:class:`Acid` for more details on how these are used in ACID.
+    #: The default configuration settings for ACID, used if not set by the user. See :py:class:`~ACID_code.Acid` for more details on how these are used in ACID.
     defaults = {
         # INIT CONFIGURATION
         "verbose" : 2,
@@ -116,7 +116,7 @@ class Config:
                   "regularization"]
     _properties = [f"_{prop}" for prop in properties]
 
-    #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`Data` instead
+    #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`~ACID_code.Data` instead
     data_attributes = ["linelist", "velocities"]
     data_attributes_input_str = "'{}' is a Data property and should not be set in the Config class.\nSet it directly with 'Data.{}={}' instead."
 
@@ -133,7 +133,7 @@ class Config:
             return self.defaults[name]
         raise AttributeError(f"'Config' object has no attribute '{name}'")
 
-    def __getattribute__(self, name):
+    def __getattribute__(self, name:str) -> Any:
         """Override the default attribute access to allow for environment variable overrides."""
         if name.startswith("_"):
             return object.__getattribute__(self, name)
@@ -182,7 +182,7 @@ class Config:
         return f"Config instance with the following settings:\n" + "\n".join([f"{k}: {v}" for k, v in full_dict.items()])
 
     # --- Update methods ---
-    def update_hipri(self, force=False, **kwargs: Any) -> None:
+    def update_hipri(self, force:bool|np.bool_=False, **kwargs: Any) -> None:
         """Updates and overwrites existing keys if the overwriting value is not None or if force is True.
         
         Parameters
@@ -191,12 +191,12 @@ class Config:
             If True, will overwrite existing configuration regardless of None values. Default is False.
         **kwargs : dict
             Keyword arguments corresponding to the configuration settings to be updated. 
-            The keys must be valid configuration options as defined in the `defaults` class variable.
+            The keys must be valid configuration options as defined in the :py:attr:`~ACID_code.Config.defaults` class variable.
         
         Raises
         ------
         ACIDInputError
-            If any key in `kwargs` is not a valid configuration option as defined in the `defaults` class variable.
+            If any key in ``kwargs`` is not a valid configuration option as defined in the :py:attr:`~ACID_code.Config.defaults` class variable.
         """
         for k, v in kwargs.items():
             # First raise error if Data attribute was input
@@ -220,12 +220,12 @@ class Config:
         ----------
         **kwargs : dict
             Keyword arguments corresponding to the configuration settings to be updated. 
-            The keys must be valid configuration options as defined in the `defaults` class variable.
+            The keys must be valid configuration options as defined in the :py:attr:`~ACID_code.Config.defaults` class variable.
 
         Raises
         ------
         ACIDInputError
-            If any key in `kwargs` is not a valid configuration option as defined in the `defaults` class variable.
+            If any key in ``kwargs`` is not a valid configuration option as defined in the :py:attr:`~ACID_code.Config.defaults` class variable.
         """
         for k, v in kwargs.items():
             # First raise error if Data attribute was input
@@ -244,7 +244,7 @@ class Config:
 
     def to_dict(self) -> dict:
         """Convert the Config object to a dictionary of only the stored/modified attributes,
-        if you want the full dictionary including defaults, use `to_full_dict`."""
+        if you want the full dictionary including defaults, use :py:meth:`~ACID_code.Config.to_full_dict`."""
         return {k: v for k, v in self.__dict__.items()}
 
     def to_full_dict(self) -> dict:
@@ -373,7 +373,7 @@ class Config:
         self._figure_dir = os.path.abspath(os.path.expanduser(figure_dir))
 
     @staticmethod
-    def _no_save(path) -> bool:
+    def _no_save(path:object) -> bool:
         """Allow no saving overrides for paths over the dir."""
         if isinstance(path, str):
             path = path.lower()
@@ -383,7 +383,7 @@ class Config:
 
     @property
     def verbose(self) -> IntLike:
-        """The stored verbosity setting for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
+        """The stored verbosity setting for ACID. See :py:class:`~ACID_code.Acid` for more details on how this is used in ACID."""
         return self.__dict__.get("_verbose", self.defaults["verbose"])
 
     @verbose.setter
@@ -410,7 +410,7 @@ class Config:
 
     @property
     def sampler_type(self) -> str:
-        """The stored sampler type for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
+        """The stored sampler type for ACID. See :py:class:`~ACID_code.Acid` for more details on how this is used in ACID."""
         stored_sampler_type = self.__dict__.get("_sampler_type", self.defaults["sampler_type"])
 
         # We validate on access (after deterministic_profile and max_steps are set)
@@ -433,7 +433,7 @@ class Config:
     
     @property
     def continuum_method(self) -> str:
-        """The stored continuum method for ACID. See :py:class:`Acid` for more details on how this is used in ACID."""
+        """The stored continuum method for ACID. See :py:class:`~ACID_code.Acid` for more details on how this is used in ACID."""
         continuum_method = self.__dict__.get("_continuum_method", self.defaults["continuum_method"])
 
         # Return the default continuum method based on the polynomial order if not explicitly set

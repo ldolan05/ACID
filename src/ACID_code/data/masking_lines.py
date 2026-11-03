@@ -14,7 +14,7 @@ class MaskingLines:
 
     def __init__(self, lines:dict) -> None:
         """
-        Sets the lines attribute after validating the input lines dictionary. The format is specified in :py:class:`Acid`.
+        Sets the lines attribute after validating the input lines dictionary. The format is specified in :py:class:`~ACID_code.Acid`.
         """
         self.lines = self.validate_lines(lines)
 
@@ -27,7 +27,7 @@ class MaskingLines:
 
     def get_masks(self, x, with_names=False) -> list | dict:
         """
-        Generates masks for the given input array `x` based on the stored lines and widths.
+        Generates masks for the given input array ``x`` based on the stored lines and widths.
 
         Parameters
         ----------
@@ -57,7 +57,7 @@ class MaskingLines:
     
     def get_1d_mask_on_grid(self, x:np.ndarray) -> np.ndarray:
         """
-        Generates a single 1D mask for the given input array `x` based on the stored lines and widths.
+        Generates a single 1D mask for the given input array ``x`` based on the stored lines and widths.
 
         Parameters
         ----------
@@ -67,7 +67,7 @@ class MaskingLines:
         Returns
         -------
         np.ndarray
-            A 1D boolean mask array where True indicates that the corresponding element in `x` is within the masking region of any line.
+            A 1D boolean mask array where True indicates that the corresponding element in ``x`` is within the masking region of any line.
         """
         masks = self.get_masks(x)
         if len(masks) == 0:

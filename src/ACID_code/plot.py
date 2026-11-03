@@ -1,5 +1,7 @@
 from __future__ import annotations
 import functools, inspect, warnings
+from collections.abc import Callable
+from typing import Any, TYPE_CHECKING
 import corner
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -13,6 +15,10 @@ from .diagnostics.warnings import *
 from .diagnostics.logging import get_logger
 from .diagnostics.output import with_output_settings
 from .utils import IntLike
+
+if TYPE_CHECKING:
+    import ACID_code
+
 try:
     from dynesty.sampler import Sampler
     from dynesty import plotting as dyplot
@@ -22,11 +28,11 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-def _require_sampler(method):
+def _require_sampler(method:Callable[..., Any]) -> Callable[..., Any]:
     # Make sure sampler object is available before calling method
     sig = inspect.signature(method)
     @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self, *args:Any, **kwargs:Any) -> Any:
         bound = sig.bind_partial(self, *args, **kwargs)
         inputted_sampler = bound.arguments.get("sampler", None)
         self.initiate_sampler(inputted_sampler, _method_name=method.__qualname__)
@@ -42,15 +48,9 @@ class Plot:
     sampler diagnostics require a stored sampler or one supplied to the method.
     """
 
-    def __init__(self, data: Data|object) -> None:
-        from .acid import Acid
-        from .result import Result
-        if isinstance(data, (Acid, Result)):
-            self.data = data.data
-        elif isinstance(data, Data):
-            self.data = data
-        else:
-            raise ACIDInputError(f"First argument must be either an Acid, Result or Data object. Got {type(data)} instead.")
+    def __init__(self, data:"Data | ACID_code.acid.Acid | ACID_code.result.Result") -> None:
+        # Beartype validates the class; only Acid and Result need unwrapping.
+        self.data = data if isinstance(data, Data) else data.data
         self.config = self.data.config
         self.sampler_initialized = False
 
@@ -75,6 +75,7 @@ class Plot:
         tuple or None
             If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
         """
+        #TODO: Add ability to plot multiple profile group lines
         if self.data.linelist is None:
             raise ACIDStateError("No linelist found. Please set a linelist before trying to plot it.")
         wl = self.data.linelist["wavelengths"]
@@ -106,7 +107,7 @@ class Plot:
         utils.show_or_save(plt, self.config.figure_dir, "linelist.png", output_dir=self.config.dir)
 
     def masking_lines(self, return_fig:bool=False) -> None|tuple:
-        """Forward to :py:meth:`Config.plot_masking_lines`."""
+        """Forward to :py:meth:`~ACID_code.Config.plot_masking_lines`."""
         return self.config.plot_masking_lines(return_fig=return_fig)
 
     @with_output_settings
@@ -344,13 +345,13 @@ class Plot:
     @with_output_settings
     def walkers(
         self,
-        sampler    : EnsembleSampler|None = None,
-        burnin     : IntLike|None         = None,
-        thin       : IntLike|None         = None,
-        plot_kwargs  : dict|None         = None,
-        subplot_kwargs : dict|None         = None,
-        return_fig : bool                 = False,
-        **kwargs
+        sampler        : EnsembleSampler|None = None,
+        burnin         : IntLike|None         = None,
+        thin           : IntLike|None         = None,
+        plot_kwargs    : dict|None            = None,
+        subplot_kwargs : dict|None            = None,
+        return_fig     : bool                 = False,
+        **kwargs,
         ) -> None | tuple:
         """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
         polynomial coefficients.
@@ -360,9 +361,9 @@ class Plot:
         sampler : :py:class:`emcee.EnsembleSampler`, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        burnin : :py:type:`IntLike`, optional
+        burnin : :py:type:`~ACID_code.IntLike`, optional
             Optionally define the number of burnin steps, by default uses the burnin calculated when the sampler was initiated.
-        thin : :py:type:`IntLike`, optional
+        thin : :py:type:`~ACID_code.IntLike`, optional
             Optionally define the number of thinning steps, by default uses the thinning calculated when the sampler was initiated.
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
@@ -416,8 +417,8 @@ class Plot:
     @with_output_settings
     def corner(
         self,
-        sampler    :EnsembleSampler|None = None,
-        return_fig :bool                 = False,
+        sampler    : EnsembleSampler|None = None,
+        return_fig : bool                 = False,
         **kwargs,
         ) -> None | plt.Figure | tuple:
         """Creates a corner plot for at maximum the last 8 LSD profile and continuum polynomial coefficients.
@@ -462,13 +463,13 @@ class Plot:
     @with_output_settings
     def profiles(
         self,
-        grid            :bool      = True,
-        labels          :dict|None = None,
-        return_fig      :bool      = False,
-        subplot_kwargs  :dict|None = None,
-        errorbar_kwargs :dict|None = None,
-        fig_ax                     = None,
-        key             :str       = "final",
+        grid            : bool                                                       = True,
+        labels          : dict|None                                                  = None,
+        return_fig      : bool                                                       = False,
+        subplot_kwargs  : dict|None                                                  = None,
+        errorbar_kwargs : dict|None                                                  = None,
+        fig_ax          : tuple[plt.Figure, plt.Axes]|list[plt.Figure|plt.Axes]|None = None,
+        key             : str                                                        = "final",
         ) -> None | tuple:
         """Plots the LSD profiles stored for the selected stage.
 
@@ -565,19 +566,19 @@ class Plot:
     @with_output_settings
     def forward_model(
         self,
-        key              : str        = "final",
-        normalized       : bool       = False,
-        divide_by_median : bool       = False,
-        show_masking     : bool       = True,
-        show_continuum   : bool       = True,
-        show_linelist    : bool       = False,
-        fig_ax           : tuple|None = None,
-        grid             : bool       = True,
-        labels           : dict|None  = None,
-        return_fig       : bool       = False,
-        subplot_kwargs   : dict|None  = None,
+        key              : str          = "final",
+        normalized       : bool         = False,
+        divide_by_median : bool         = False,
+        show_masking     : bool         = True,
+        show_continuum   : bool         = True,
+        show_linelist    : bool         = False,
+        fig_ax           : tuple|None   = None,
+        grid             : bool         = True,
+        labels           : dict|None    = None,
+        return_fig       : bool         = False,
+        subplot_kwargs   : dict|None    = None,
         order            : IntLike|None = None,
-        separate_orders  : bool       = False,
+        separate_orders  : bool         = False,
         ) -> None | tuple:
         """
         Plots the stored forward model against the spectrum for the selected stage.
@@ -795,7 +796,7 @@ class Plot:
         c              : float                = 5.0,
         return_fig     : bool                 = False,
         subplot_kwargs : dict|None            = None,
-        min_steps      : IntLike              = 100
+        min_steps      : IntLike              = 100,
         ) -> None | tuple:
         """
         Plot estimated integrated autocorrelation time as a function of chain length.
@@ -809,7 +810,7 @@ class Plot:
         sampler : :py:class:`emcee.EnsembleSampler` | None, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        n_grid : :py:type:`IntLike`, optional
+        n_grid : :py:type:`~ACID_code.IntLike`, optional
             Number of N values (prefix lengths) to evaluate, by default 12.
         c : float, optional
             Sokal window constant, by default 5.0.
@@ -817,7 +818,7 @@ class Plot:
             Whether to return the figure and axes objects, by default False
         subplot_kwargs : dict | None, optional
             Keyword arguments to be passed to plt.subplots(). Allows label overrides, by default None
-        min_steps : :py:type:`IntLike`, optional
+        min_steps : :py:type:`~ACID_code.IntLike`, optional
             Minimum number of post-burnin samples required to attempt autocorrelation estimation, by default 100
             If you decrease this, you may get unreliable estimates or errors from the autocorrelation time estimation.
 
@@ -885,7 +886,7 @@ class Plot:
         sampler : :py:class:`emcee.EnsembleSampler`, optional
             Optionally provide a different sampler to plot from, otherwise,
             takes the sampler from the Result object, by default None
-        max_lag : :py:type:`IntLike`, optional
+        max_lag : :py:type:`~ACID_code.IntLike`, optional
             Maximum lag to plot, by default None (plots up to min(5000, nsteps-1))
         return_fig : bool, optional
             Whether to return the figure and axes objects, by default False
@@ -935,7 +936,7 @@ class Plot:
         utils.show_or_save(plt, self.config.figure_dir, "autocorrelation_function.png", output_dir=self.config.dir)
 
     @with_output_settings
-    def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name=None) -> None: # type:ignore
+    def initiate_sampler(self, sampler:EnsembleSampler|Sampler|None, _method_name:str|None=None) -> None: # type:ignore
         """
         Initiates the sampler attribute from an external sampler.
 

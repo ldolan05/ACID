@@ -19,7 +19,7 @@ def _import_jax():
 
 class JAXBackend:
     """
-    JAX implementation of the numerical work in :class:`MCMC`.
+    JAX implementation of the numerical work in :py:class:`~ACID_code.MCMC`.
     This class has all the copies of the standard functions used in MCMC but with JAX compilations.
     """
 

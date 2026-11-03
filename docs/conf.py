@@ -1,7 +1,7 @@
 
-import os
+from pathlib import Path
 import sys
-sys.path.insert(0, os.path.abspath('../src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -23,10 +23,13 @@ extensions = ["sphinx.ext.autodoc",
               "sphinx.ext.napoleon",
               "sphinx.ext.doctest",
               "sphinx.ext.viewcode",
-              "sphinx.ext.autosummary"
+              "sphinx.ext.autosummary",
+              "sphinx.ext.intersphinx"
               ]
 
 autosummary_generate = True
+# Keep the Acid class and legacy ACID function distinct on case-insensitive filesystems.
+autosummary_filename_map = {"ACID_code.Acid": "ACID_code.Acid_class"}
 autodoc_default_options = {
     'members': True,
     'inherited-members': True,
@@ -54,6 +57,15 @@ napoleon_type_aliases = {
     "Array1D": "ACID_code.Array1D",
     "Array2D": "ACID_code.Array2D",
     "Array3D": "ACID_code.Array3D",
+}
+
+# Resolve references to dependencies against their published API inventories.
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "matplotlib": ("https://matplotlib.org/stable", None),
+    "emcee": ("https://emcee.readthedocs.io/en/stable", None),
+    "dynesty": ("https://dynesty.readthedocs.io/en/stable", None),
 }
 
 templates_path = ['_templates']

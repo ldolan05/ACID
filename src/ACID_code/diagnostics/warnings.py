@@ -39,7 +39,7 @@ class ACIDDeprecationWarning(ACIDWarning, DeprecationWarning):
     """A deprecated ACID function/method was used."""
 
 
-def configure_warnings(action="default", *, append=False):
+def configure_warnings(action:str="default", *, append:bool=False) -> None:
     """Set the default action for ACID warnings only.
 
     Explicit calls take priority over existing filters by default. Set

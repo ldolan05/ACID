@@ -13,7 +13,7 @@ from .diagnostics.errors import *
 from .diagnostics.warnings import *
 from .diagnostics.logging import get_logger
 from .data import Config, Data, LineList
-from .utils import c_kms, IntLike, Scalar, Array1D, Array2D, Array3D
+from .utils import c_kms, IntLike, Scalar, Array1D, Array2D, Array3D, ArrayLike, ProfileNames
 
 logger = get_logger(__name__)
 
@@ -27,87 +27,84 @@ class LSD:
     For more details and an example, see :ref:`LSD` in the documentation.
     """
     def __init__(
-            self,
-            data    : object|None           = None,
-            od      : bool                  = None,
-            verbose : IntLike|bool|str|None = None,
+        self,
+        data    : Data|None             = None,
+        od      : bool|None             = None,
+        verbose : IntLike|bool|str|None = None,
         ) -> None:
         """Initialises the LSD class, optionally with a Data instance to take parameters from.
 
         Parameters
         ----------
-        data : object | None, optional
+        data : :py:class:`~ACID_code.Data` | None, optional
             A data instance to draw parameters and configs from, by default None
         od : bool, optional
             Whether to perform LSD in optical depth space (True) or flux space (False), by default None.
             If None, takes from Data instance if provided, else defaults to True.
             We generally recommend always using optical depth as ACID was always intended, but you can set
             this to False if you wish to do your own testing. See :ref:`LSD` in the documentation for more details.
-        verbose : :py:type:`IntLike | bool | str | None`, optional
-            Verbosity level, if None, uses the :py:class:`Config` class existing value (in Data), or default of 2.
-            Should follow the same format as :py:class:`Acid` verbosity. 
+        verbose : :py:type:`~ACID_code.IntLike` | :py:class:`bool` | :py:class:`str` | None, optional
+            Verbosity level, if None, uses the :py:class:`~ACID_code.Config` class existing value (in Data), or default of 2.
+            Should follow the same format as :py:class:`~ACID_code.Acid` verbosity.
             Will overwrite the verbosity level in the config if a Data instance is input, by default None.
         """
         # Set class variables, taking from input data if it exists, else setting to defaults
         self.slurm             = "SLURM_JOB_ID" in os.environ
         self.data              = data if data is not None else Data()
-        self.linelist          = self.data.linelist if self.data is not None else None
+        self.linelist          = self.data.linelist
         self.od                = od if od is not None else self.data.config.od
-        try: # try access the provided config, otherwise just use all defaults
-            self.config = self.data.config
-        except:
-            self.config = Config() # uses defaults
+        self.config = self.data.config
         self.config.update_hipri(verbose=verbose) # Update config with new values, if not None
 
     @with_output_settings
     def run_LSD(
         self,
-        wavelengths    : Array1D|None                   = None,
-        flux           : Array1D|None                   = None,
-        errors         : Array1D|None                   = None,
-        sn             : Scalar|None                    = None,
-        key            : str|None                       = None,
-        linelist       : Array2D|str|LineList|dict|None = None,
-        velocities     : Array1D|None                   = None,
-        alpha          : Array2D|Array3D|None           = None,
-        profile_groups : Array1D|None                   = None,
-        profile_names  : list|dict|None                 = None,
-        seperate_species : list|None                   = None,
-        mp_lsd         : bool|None                      = None,
-        sparse         : bool|None                      = None,
-        skip_warnings  : bool|None                      = None,
-        regularization : Scalar|None                    = None,
-        scale_regularization : bool|None                = None,
+        wavelengths          : Array1D|None                   = None,
+        flux                 : Array1D|None                   = None,
+        errors               : Array1D|None                   = None,
+        sn                   : Scalar|None                    = None,
+        key                  : str|None                       = None,
+        linelist             : Array2D|str|LineList|dict|None = None,
+        velocities           : Array1D|None                   = None,
+        alpha                : Array2D|Array3D|None           = None,
+        profile_groups       : Array1D|None                   = None,
+        profile_names        : ProfileNames|None              = None,
+        seperate_species     : list[str]|None                 = None,
+        mp_lsd               : bool|None                      = None,
+        sparse               : bool|None                      = None,
+        skip_warnings        : bool|None                      = None,
+        regularization       : Scalar|None                    = None,
+        scale_regularization : bool|None                      = None,
         ) -> None:
         """Runs the LSD algorithm to extract the average line profile from the observed spectrum.
 
         Parameters
         ----------
-        wavelengths : :py:type:`Array1D`, optional
+        wavelengths : :py:type:`~ACID_code.Array1D`, optional
             Array of wavelengths of the observed spectrum in Angstroms. By default None.
             Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
-        flux : :py:type:`Array1D`, optional
+        flux : :py:type:`~ACID_code.Array1D`, optional
             Array of flux values corresponding to the wavelengths (in linear space, and should be continuum normalized).
             Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
-        errors : :py:type:`Array1D`, optional
+        errors : :py:type:`~ACID_code.Array1D`, optional
             Array of error values corresponding to the flux.
             Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
-        sn : :py:type:`Scalar`, optional
+        sn : :py:type:`~ACID_code.Scalar`, optional
             Signal-to-noise ratio of the observed spectrum.
             Must be provided here or pulled from the Data instance (input in initialisation) with the "key" argument.
         key : str, optional
             The dictionary key to pull wavelengths, flux, errors, and sn from the Data instance provided in initialisation.
             If provided, will ignore the 4 previous parameters. By default None.
-        linelist : :py:type:`Array2D | str | LineList | dict | None`, optional
-            Linelist to use for LSD, should follow the same format as :py:class:`Acid`. 
+        linelist : :py:type:`~ACID_code.Array2D` | :py:class:`str` | :py:class:`~ACID_code.LineList` | :py:class:`dict` | None, optional
+            Linelist to use for LSD, should follow the same format as :py:class:`~ACID_code.Acid`.
             If None, uses the linelist already stored in the class, if it exists, by default None.
-        velocities : :py:type:`Array1D`, optional
+        velocities : :py:type:`~ACID_code.Array1D`, optional
             Array of velocities corresponding to the observed spectrum.
             If the class was not initialised with an Acid instance, this is required, by default None
-        alpha : :py:type:`Array2D | Array3D | None`, optional
+        alpha : :py:type:`~ACID_code.Array2D` | :py:type:`~ACID_code.Array3D` | None, optional
             Precomputed alpha matrix, if already calculated and you want to skip directly to the Cholesky 
             decomposition and solving for the profile, by default None
-        profile_groups : :py:type:`Array1D | None`, optional
+        profile_groups : :py:type:`~ACID_code.Array1D` | None, optional
             A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
             If provided, the resulting profiles will be a 2D array in with the same order as the index of the group.
             The groups should be 0 indexed, e.g. [0,0,2,0,1,0,3,...]. The shape must match the inputted linelist, otherwise,
@@ -127,7 +124,7 @@ class LSD:
             It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
             we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
             For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
-        regularization : :py:type:`Scalar`, optional
+        regularization : :py:type:`~ACID_code.Scalar`, optional
             Non-negative strength of first-difference smoothing, by default 0 (off).
             If None, uses config.regularization. Applied in fitting space (OD or flux).
         scale_regularization : bool, optional
@@ -382,26 +379,26 @@ class LSD:
         return
 
     def sn_clip(
-            self,
-            wavelengths_linelist : Array1D,
-            depths_linelist      : Array1D,
-            sn                   : Scalar,
+        self,
+        wavelengths_linelist : Array1D,
+        depths_linelist      : Array1D,
+        sn                   : Scalar,
         ) -> tuple[Array1D, Array1D]:
         """
         Applies a signal-to-noise cut to the linelist, removing lines shallower than 1/(3*sn) as per Dolan et al (2024).
 
         Parameters
         ----------
-        wavelengths_linelist : :py:type:`Array1D`
+        wavelengths_linelist : :py:type:`~ACID_code.Array1D`
             Wavelengths from the linelist
-        depths_linelist : :py:type:`Array1D`
+        depths_linelist : :py:type:`~ACID_code.Array1D`
             Depths from the linelist
-        sn : :py:type:`Scalar`
+        sn : :py:type:`~ACID_code.Scalar`
             Signal-to-noise ratio threshold
 
         Returns
         -------
-        tuple[:py:type:`Array1D`, :py:type:`Array1D`]
+        :py:class:`tuple` of :py:type:`~ACID_code.Array1D`
             Clipped wavelengths and depths from the linelist
         """
         # Selecting lines deeper than 1/(3*sn)
@@ -424,7 +421,12 @@ class LSD:
         return wavelengths_linelist, depths_linelist
 
     @staticmethod
-    def clip_wavelengths(wavelengths, wavelengths_linelist, depths_linelist, pad=5):
+    def clip_wavelengths(
+        wavelengths          : ArrayLike,
+        wavelengths_linelist : np.ndarray,
+        depths_linelist      : np.ndarray,
+        pad                  : Scalar     = 5,
+        ) -> tuple[np.ndarray, np.ndarray]:
         """
         Clips the linelist to only include lines within the wavelength range of the observed spectrum.
         Includes a pad either side of the wavelength range so that the wings of lines outside
@@ -459,7 +461,7 @@ class LSD:
         depths_linelist      : Array1D,
         velocities           : Array1D|None,
         verbose              : IntLike|bool|str|None = None,
-        sparse               : bool = True,
+        sparse               : bool                  = True,
         ) -> Array2D:
         """
         Calculates the alpha matrix given flux and errors and a linelist.
@@ -469,22 +471,22 @@ class LSD:
 
         Parameters
         ----------
-        wavelengths : :py:type:`Array1D`
+        wavelengths : :py:type:`~ACID_code.Array1D`
             Array of wavelengths of the observed spectrum in optical depth space
-        wavelengths_linelist : :py:type:`Array1D`
+        wavelengths_linelist : :py:type:`~ACID_code.Array1D`
             Array of wavelengths from the linelist in optical depth space
-        depths_linelist : :py:type:`Array1D`
+        depths_linelist : :py:type:`~ACID_code.Array1D`
             Array of depths from the linelist in optical depth space
-        velocities : :py:type:`Array1D`, optional
+        velocities : :py:type:`~ACID_code.Array1D`, optional
             Array of velocities, needs to either be initialised by class with Acid instance, or input here, by default None
-        verbose : :py:type:`IntLike`, :py:type:`bool`, :py:type:`str`, optional
-            Verbosity level, by default None, see :py:class:`Acid` for more details on verbosity levels.
+        verbose : :py:type:`~ACID_code.IntLike`, :py:class:`bool`, :py:class:`str`, optional
+            Verbosity level, by default None, see :py:class:`~ACID_code.Acid` for more details on verbosity levels.
         sparse : bool, optional
             Optionally override the sparse setting with a boolean True/False, by default True.
             
         Returns
         -------
-        :py:type:`Array2D`
+        :py:type:`~ACID_code.Array2D`
             The alpha matrix, to be used in the Cholesky decomposition and solving for the profile. 
             The units will match the units of the input linelist (OD or flux).
         """
@@ -656,10 +658,10 @@ class LSD:
 
     @staticmethod
     def calc_cholesky(
-        alpha : Array2D,
-        error : Array1D,
-        regularization : Scalar = 0.0,
-        scale_regularization : bool = True,
+        alpha                : Array2D,
+        error                : Array1D,
+        regularization       : Scalar  = 0.0,
+        scale_regularization : bool    = True,
         **kwargs,
         ) -> tuple:
         """
@@ -668,11 +670,11 @@ class LSD:
 
         Parameters
         ----------
-        alpha : :py:type:`Array2D`
+        alpha : :py:type:`~ACID_code.Array2D`
             The precomputed alpha matrix
-        error : :py:type:`Array1D`
+        error : :py:type:`~ACID_code.Array1D`
             Flux errors
-        regularization : :py:type:`Scalar`, optional
+        regularization : :py:type:`~ACID_code.Scalar`, optional
             Non-negative first-difference smoothing strength, by default 0 (disabled).
         scale_regularization : bool, optional
             Multiply regularization by the mean diagonal of alpha.T @ diag(1/error**2) @ alpha,
@@ -685,7 +687,7 @@ class LSD:
         Returns
         -------
         c_factor : tuple
-            Cholesky factorisation matrix and lower/upper flag, to be put straight into solve_z as `c_factor` parameter
+            Cholesky factorisation matrix and lower/upper flag, to be put straight into :py:meth:`~ACID_code.LSD.solve_z` as the ``c_factor`` parameter
         """
         V = 1.0 / (error ** 2) # variance vector in log space, error already in log space
 
@@ -710,8 +712,8 @@ class LSD:
         flux         : Array1D,
         error        : Array1D,
         c_factor     : tuple,
-        return_error : bool = True,
-        return_cov   : bool = False,
+        return_error : bool    = True,
+        return_cov   : bool    = False,
         **kwargs,
         ) -> Array1D|Array2D|tuple:
         """
@@ -723,15 +725,15 @@ class LSD:
 
         Parameters
         ----------
-        alpha : :py:type:`Array2D`
+        alpha : :py:type:`~ACID_code.Array2D`
             The precomputed alpha matrix
-        flux : :py:type:`Array1D`
+        flux : :py:type:`~ACID_code.Array1D`
             The observed flux values in optical depth space
-        error : :py:type:`Array1D`
+        error : :py:type:`~ACID_code.Array1D`
             The flux errors in optical depth space
         c_factor : tuple
             Cholesky factorisation matrix and lower/upper flag, to be put straight into 
-            scipy.linalg.cho_solve as `c_factor` parameter
+            scipy.linalg.cho_solve as the ``c_factor`` parameter
         return_error : bool, optional
             Whether to calculate and return the profile errors along with the
             profile, by default True
@@ -773,37 +775,37 @@ class LSD:
         cls,
         profile              : Array1D|Array2D,
         alpha                : Array2D|Array3D|None = None,
-        profile_groups       : Array1D|None = None,
-        velocities           : Array1D|None = None,
-        wavelengths          : Array1D|None = None,
-        linelist_wavelengths : Array1D|None = None,
-        linelist_depths      : Array1D|None = None,
-        return_alpha         : bool = False,
+        profile_groups       : Array1D|None         = None,
+        velocities           : Array1D|None         = None,
+        wavelengths          : Array1D|None         = None,
+        linelist_wavelengths : Array1D|None         = None,
+        linelist_depths      : Array1D|None         = None,
+        return_alpha         : bool                 = False,
         ) -> Array1D|Array2D|tuple:
         """
-        Convolve your profile either using an inputted alpha matrix or by calculating one using :py:meth:`calc_alpha` 
+        Convolve your profile either using an inputted alpha matrix or by calculating one using :py:meth:`~ACID_code.LSD.calc_alpha`
         with the inputted wavelengths and linelist. The units of the output convolved model spectrum will match the 
         units of the input profile (ie OD or flux) and alpha matrix/linelist depths. If alpha is not input, the wavelengths 
         and linelist inputs are required to calculate the alpha matrix.
-        See :py:func:`utils.flux_to_od` and :py:func:`utils.od_to_flux` for conversions.
+        See :py:func:`~ACID_code.utils.flux_to_od` and :py:func:`~ACID_code.utils.od_to_flux` for conversions.
 
         Parameters
         ----------
-        profile : :py:type:`Array1D` | :py:type:`Array2D`
+        profile : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
             1D or 2D array of the LSD profile to be convolved. If 2D, the first dimension should correspond to the profile groups and the second to velocities.
             Should be in the same units as the alpha matrix (OD or flux)
-        alpha : :py:type:`Array2D` | :py:type:`Array3D` | None, optional
+        alpha : :py:type:`~ACID_code.Array2D` | :py:type:`~ACID_code.Array3D` | None, optional
             Precomputed alpha matrix, if already calculated and you want to skip directly to the convolution, by default None.
             Can be 2D (n_wavelengths, n_velocities) or 3D (n_profs, n_wavelengths, n_velocities). If 3D, the first dimension should correspond to profile groups.
-        profile_groups : :py:type:`Array1D` | None, optional
+        profile_groups : :py:type:`~ACID_code.Array1D` | None, optional
             Profile groups to calculate the alpha matrix if not input. If None, the alpha matrix to be calculated (if needed) will not be grouped.
-        velocities : :py:type:`Array1D` | None, optional
+        velocities : :py:type:`~ACID_code.Array1D` | None, optional
             Array of velocities corresponding to the observed spectrum, required if alpha is not input, by default None
-        wavelengths : :py:type:`Array1D` | None, optional
+        wavelengths : :py:type:`~ACID_code.Array1D` | None, optional
             Array of wavelengths of the observed spectrum, required if alpha is not input, by default None
-        linelist_wavelengths : :py:type:`Array1D` | None, optional
+        linelist_wavelengths : :py:type:`~ACID_code.Array1D` | None, optional
             Array of wavelengths from the linelist, required if alpha is not input, by default None
-        linelist_depths : :py:type:`Array1D` | None, optional
+        linelist_depths : :py:type:`~ACID_code.Array1D` | None, optional
             Array of depths from the linelist, required if alpha is not input. Must be in the same units
             as the alpha matrix (OD or flux), by default None
         return_alpha : bool, optional
@@ -811,10 +813,10 @@ class LSD:
         
         Returns
         -------
-        model_spectrum : :py:type:`Array1D` | :py:type:`Array2D`
+        model_spectrum : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
             The convolved model spectrum, in the same units as the input profile and alpha matrix/linelist depths.
             If the input profile is 1D, the output will be 1D. If the input profile is 2D, the output will be 2D with shape (n_profs, n_wavelengths).
-        alpha : :py:type:`Array2D` | :py:type:`Array3D`
+        alpha : :py:type:`~ACID_code.Array2D` | :py:type:`~ACID_code.Array3D`
             The calculated alpha matrix, only returned if return_alpha is True. Will be 2D 
             (n_wavelengths, n_velocities) or 3D (n_profs, n_wavelengths, n_velocities) 
             depending on whether profile_groups is provided.
@@ -840,7 +842,7 @@ class LSD:
             return model_spectrum
 
     @staticmethod
-    def dot_alpha_and_profile(alpha, profile):
+    def dot_alpha_and_profile(alpha:ArrayLike, profile:ArrayLike) -> np.ndarray:
         alpha = np.asarray(alpha)
         profile = np.asarray(profile)
 
@@ -879,13 +881,13 @@ class LSD:
     @classmethod
     def calc_mp_alpha(
         cls,
-        wavelengths: Array1D,
-        velocities: Array1D,
-        linelist_wavelengths: Array1D,
-        linelist_depths: Array1D,
-        profile_groups: Array1D,
-        sparse: bool = True,
-        verbose: IntLike|bool|str|None = None,
+        wavelengths          : Array1D,
+        velocities           : Array1D,
+        linelist_wavelengths : Array1D,
+        linelist_depths      : Array1D,
+        profile_groups       : Array1D,
+        sparse               : bool                  = True,
+        verbose              : IntLike|bool|str|None = None,
         ) -> tuple[Array3D, Array1D]:
         """
         Build one alpha block per line-depth profile group.
@@ -929,7 +931,7 @@ class LSD:
         return np.concatenate(alpha, axis=1)
 
     @staticmethod
-    def group_profs_by_species(species, requested):
+    def group_profs_by_species(species:ArrayLike, requested:list[str]) -> tuple[np.ndarray, dict[int, str]]:
         """Separate well-populated species, retaining rejected lines in group 0."""
         utils.validate_seperate_species(requested)
         species = np.asarray(species)

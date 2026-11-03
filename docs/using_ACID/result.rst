@@ -88,7 +88,7 @@ If you try to open the dictionary yourself with pickle.load() and without using 
 If the sampler is not stored, some of the methods when loading the result will not work (eg. plotting walkers).
 
 Resuming an interrupted run
---------------------------
+---------------------------
 
 For emcee runs with both ``save_path`` and ``sampler_path`` configured, ACID saves
 the prepared Data immediately before sampling. The usual ``dir`` setting supplies
@@ -158,17 +158,17 @@ Plotting
 
 The Result class contains a number of plotting methods to visualise the results of ACID. These include:
 
-- :py:function:`ACID_code.Result.plot_profiles`: Plots the final LSD profiles returned by ACID. Can plot multiple profiles if multiple spectra were input.
+- :py:meth:`~ACID_code.Result.plot_profiles`: Plots the final LSD profiles returned by ACID. Can plot multiple profiles if multiple spectra were input.
 
-- :py:function:`ACID_code.Result.plot_walkers`: Plots the MCMC walkers for the continuum fit parameters.
+- :py:meth:`~ACID_code.Result.plot_walkers`: Plots the MCMC walkers for the continuum fit parameters.
 
-- :py:function:`ACID_code.Result.plot_corner`: Plots a corner plot of the posterior distributions of the continuum fit parameters.
+- :py:meth:`~ACID_code.Result.plot_corner`: Plots a corner plot of the posterior distributions of the continuum fit parameters.
 
-- :py:function:`ACID_code.Result.plot_forward_model`: Plots the forward model fit to the data.
+- :py:meth:`~ACID_code.Result.plot_forward_model`: Plots the forward model fit to the data.
 
-- :py:function:`ACID_code.Result.plot_autocorrelation`: Plots the autocorrelation of the MCMC chains for the continuum fit parameters.
+- :py:meth:`~ACID_code.Result.plot_autocorrelation`: Plots the autocorrelation of the MCMC chains for the continuum fit parameters.
 
-- :py:function:`ACID_code.Result.plot_acf`: Plots the autocorrelation function for each parameter, averaged across walkers. This is less useful than the above, but kept as it was a part of the emcee example.
+- :py:meth:`~ACID_code.Result.plot_acf`: Plots the autocorrelation function for each parameter, averaged across walkers. This is less useful than the above, but kept as it was a part of the emcee example.
 
 These plotting functions have a number of keyword arguments to tailor the plots to your needs. See the API (linked above) for more information on these.
 

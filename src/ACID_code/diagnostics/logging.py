@@ -69,11 +69,11 @@ def _default_handler(logger: logging.Logger) -> Optional[logging.Handler]:
 
 
 def configure_logging(
-    level: Union[int, str, None] = DEFAULT_LOG_LEVEL,
+    level  : Union[int, str, None] = DEFAULT_LOG_LEVEL,
     *,
-    stream=None,
-    format: str = DEFAULT_LOG_FORMAT,
-) -> logging.Logger:
+    stream                         = None,
+    format : str                   = DEFAULT_LOG_FORMAT,
+    ) -> logging.Logger:
     """Configure ACID's own logging without affecting the root logger.
 
     Parameters

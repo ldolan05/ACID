@@ -14,9 +14,13 @@ from ..diagnostics.errors import *
 from ..diagnostics.warnings import *
 from ..diagnostics.logging import get_logger
 from ..diagnostics.output import with_output_settings
-from ..utils import IntLike, Array1D, Array2D, Scalar
+from ..utils import IntLike, Array1D, Array2D, ArrayLike, Scalar
 from .config import Config
 from .line_list import LineList
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import ACID_code
 
 # Try import dynesty if available and fail silently, only raises later if dynesty is chosen
 try:
@@ -128,7 +132,7 @@ class Data:
     #: The groups for the clipped linelist, used for plotting and analysis.
     _profile_groups : Optional[np.ndarray] = None
     #: Resolved names keyed by the clipped line list's profile group IDs.
-    profile_names : Optional[dict] = None
+    profile_names : Optional[dict[IntLike, str]] = None
     #: Internal variables used for plotting the continuum_fit and the residual masks
     plotting_variables   : Dict[str, Any]  = field(default_factory=dict)
     #: setup_time (float) - The time taken for initialization
@@ -183,6 +187,10 @@ class Data:
 
     def __repr__(self) -> str:
         """String representation of the Data object, showing all stored attributes in a user-friendly format."""
+        # Type errors can include Data instances whose inputs have not been prepared yet.
+        if (self.linelist is None or self.ll_mask is None or len(self.ll_mask) == 0
+            or self.velocities is None or len(self.velocities) < 2):
+            return f"Data(order={self.config.order}, complete={self.complete})"
         ll_wl = self.linelist["wavelengths"]
         full_ll_range = [np.min(ll_wl), np.max(ll_wl)]
         cut_ll_range = [np.min(self.ll_mask), np.max(self.ll_mask)]
@@ -347,15 +355,15 @@ class Data:
     @linelist.setter
     def linelist(self, linelist:Array2D|str|LineList|dict|None) -> None:
         """
-        Sets the linelist for the data object using the formats documented in :py:class:`Acid`.
-        Reading, validation, and storage are handled by :py:class:`LineList`.
+        Sets the linelist for the data object using the formats documented in :py:class:`~ACID_code.Acid`.
+        Reading, validation, and storage are handled by :py:class:`~ACID_code.LineList`.
         Data resets dependent calculations when the linelist changes.
 
         Parameters
         ----------
         linelist : Array2D, str, LineList, dict, or None
              The linelist to be set, which can be in various formats for convenience.
-             See :py:class:`Acid` init for the accepted linelist formats and parameters.
+             See :py:class:`~ACID_code.Acid` init for the accepted linelist formats and parameters.
         """
         # Check if linelist already exists, override with new inputs if provided
         if linelist is not None:
@@ -386,7 +394,7 @@ class Data:
         return self._profile_groups
 
     @profile_groups.setter
-    def profile_groups(self, profile_groups) -> None:
+    def profile_groups(self, profile_groups:ArrayLike|None) -> None:
         """Accept full or clipped groups, storing only the clipped groups."""
         if profile_groups is not None:
             profile_groups = np.asarray(profile_groups).copy()
@@ -404,7 +412,7 @@ class Data:
         self._profile_groups = profile_groups
 
     def plot_linelist(self, idx:np.ndarray|list|None=None, bounds:tuple|list|None=None, fig_ax:tuple|None=None, return_fig:bool=False) -> None|tuple:
-        """Forward to :py:meth:`Plot.linelist`."""
+        """Forward to :py:meth:`~ACID_code.Plot.linelist`."""
         return self.plot.linelist(idx=idx, bounds=bounds, fig_ax=fig_ax, return_fig=return_fig)
 
     # Store config as a property for handling it to/from dictionary on saving
@@ -421,14 +429,15 @@ class Data:
     @with_output_settings
     def set_inputs(
         self,
-        input_wavelengths: Array1D|Array2D|None        = None,
-        input_flux:        Array1D|Array2D|None        = None,
-        input_errors:      Array1D|Array2D|None        = None,
-        input_sn:          Array1D|Array2D|Scalar|None = None,
-        skips:             IntLike|None                = None,
-    ) -> None:
+        input_wavelengths : Array1D|Array2D|None        = None,
+        input_flux        : Array1D|Array2D|None        = None,
+        input_errors      : Array1D|Array2D|None        = None,
+        input_sn          : Array1D|Array2D|Scalar|None = None,
+        skips             : IntLike|None                = None,
+        ) -> None:
         """Sets the input data for the ACID class. This is used to initialize the data object with the raw spectra,
         and to validate the arguments (previously done within the ACID function).
+
         Parameters
         ----------
         input_wavelengths : np.ndarray, optional
@@ -596,11 +605,11 @@ class Data:
 
     def combine_spec(
         self,
-        frame_wavelengths: Array1D|Array2D|None = None,
-        frame_flux:        Array1D|Array2D|None = None,
-        frame_errors:      Array1D|Array2D|None = None,
-        frame_sns:         Array1D|Array2D|None = None,
-        output:            bool                 = True
+        frame_wavelengths : Array1D|Array2D|None = None,
+        frame_flux        : Array1D|Array2D|None = None,
+        frame_errors      : Array1D|Array2D|None = None,
+        frame_sns         : Array1D|Array2D|None = None,
+        output            : bool                 = True,
         ) -> tuple | None:
         """
         Combines the multiple inputted spectral frames into one spectrum, or just passes through the single frame if only one was input. 
@@ -609,13 +618,13 @@ class Data:
 
         Parameters
         ----------
-        frame_wavelengths : :py:type:`Array1D` | :py:type:`Array2D`, optional
+        frame_wavelengths : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             Wavelengths for the spectral frames, by default None
-        frame_flux : :py:type:`Array1D` | :py:type:`Array2D`, optional
+        frame_flux : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             Fluxes for the spectral frames, by default None
-        frame_errors : :py:type:`Array1D` | :py:type:`Array2D`, optional
+        frame_errors : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             Errors for the spectral frames, by default None
-        frame_sns : :py:type:`Array1D` | :py:type:`Array2D`, optional
+        frame_sns : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             Signal-to-noise ratio for the spectral frames, by default None
         output : bool, optional
             Whether to output the combined spectrum, by default True
@@ -816,11 +825,11 @@ class Data:
                 getattr(self, name)["input"] = value
 
     def plot_continuum_fit(self, key:str="masked", return_fig:bool=False, save_fig:str|None=None) -> None|tuple:
-        """Forward to :py:meth:`Plot.continuum_fit`."""
+        """Forward to :py:meth:`~ACID_code.Plot.continuum_fit`."""
         return self.plot.continuum_fit(key=key, return_fig=return_fig, save_fig=save_fig)
 
     def plot_residual_masking(self) -> None:
-        """Forward to :py:meth:`Plot.residual_masking`."""
+        """Forward to :py:meth:`~ACID_code.Plot.residual_masking`."""
         return self.plot.residual_masking()
 
     @with_output_settings
@@ -1000,13 +1009,14 @@ class Data:
         return self
 
     @property
-    def plot(self):
+    def plot(self) -> "ACID_code.plot.Plot":
         """Access plots for any available stage of this Data instance."""
+        # Keep this import local and its return hint lazy to avoid the Data/Plot/Result cycle.
         from ..plot import Plot
         return Plot(self)
 
     @property
-    def result(self):
+    def result(self) -> Optional["ACID_code.result.Result"]:
         if self.exception is not None:
             warnings.warn(f"An exception was raised during the run, cannot return results object.\n"
                   f"Returning None instead.", ACIDStateWarning, stacklevel=2)

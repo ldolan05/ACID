@@ -270,5 +270,47 @@ def test_multiple_profiles_reject_different_velocity_grids(gaussian_profile):
         Profiles(np.array([x, x + 1]), np.array([flux, flux]), errors)
 
 
+@pytest.mark.parametrize("model", ["gaussian", "lorentzian", "voigt"])
+@pytest.mark.parametrize("container", ["array", "list", "tuple"])
+@pytest.mark.parametrize("multiple", [False, True])
+def test_fit_annotations_accept_supported_array_inputs(gaussian_profile, model, container, multiple):
+    x, flux, errors = gaussian_profile
+    profiles = Profiles(x, flux, errors)
+    guess = [-.25, 1.5, 2.2, .2, 0.] if model == "voigt" else [-.25, 1.5, 2.2, 0.]
+    covariance = np.diag(errors ** 2)
+    if multiple:
+        flux = np.array([flux, flux])
+        x = np.array([x, x])
+        errors = np.array([errors, errors])
+        guess = np.array([guess, guess])
+        covariance = np.array([covariance, covariance])
+
+    def convert(value):
+        if container == "array":
+            return np.asarray(value)
+        if container == "list":
+            return np.asarray(value).tolist()
+        return tuple(convert(row) if np.ndim(row) else row for row in value)
+
+    # Conversion boundaries accept all three forms, including stacked covariances and guesses.
+    popt, pcov = getattr(profiles, f"fit_{model}")(
+        x=convert(x), y=convert(flux), yerr=convert(errors), cov_matrix=convert(covariance),
+        p0=convert(guess), absolute_sigma=np.bool_(True), maxfev=np.int64(3000),
+    )
+    np.testing.assert_allclose(popt[..., 1], 1.5, atol=.2)
+    assert pcov.shape == ((2, len(guess[0]), len(guess[0])) if multiple else (len(guess), len(guess)))
+
+
+def test_profile_annotations_accept_numpy_scalar_parameters_and_group_ids(gaussian_profile):
+    x, flux, errors = gaussian_profile
+    expected = Profiles.gaussian_func(x, -.25, 1.5, 2.2)
+    actual = Profiles.gaussian_func(x, np.float64(-.25), np.float32(1.5), np.float64(2.2), np.int64(0))
+    np.testing.assert_allclose(actual, expected)
+    profiles = Profiles(x, flux, errors, profile_names={np.int64(0): "Iron"})
+    assert profiles._profile_covariance(np.int64(0)) is None
+    figure, _ = profiles.plot_fit("gaussian", return_fig=np.bool_(True))
+    plt.close(figure)
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))

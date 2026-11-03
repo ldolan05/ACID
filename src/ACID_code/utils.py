@@ -12,7 +12,11 @@ from .diagnostics.warnings import *
 from emcee import EnsembleSampler
 import emcee.backends.backend as emceebackend
 import scipy.constants as const
-from typing import TypeAlias, Annotated
+from typing import TypeAlias, Annotated, Any
+from collections.abc import Callable, Sequence
+from types import ModuleType
+from matplotlib.axes import Axes
+from numpy.typing import ArrayLike as NumpyArrayLike
 from matplotlib.collections import LineCollection
 from numpy.polynomial.polynomial import polyval, polyfit
 from numpy.polynomial.chebyshev import chebval, chebfit
@@ -20,13 +24,16 @@ c_kms = float(const.c/1e3)
 FloatLike: TypeAlias = float | np.floating
 IntLike: TypeAlias = int | np.integer
 Scalar: TypeAlias = FloatLike | IntLike | Annotated[np.ndarray, IsAttr["size", IsEqual[1]]]
+# NumPy's nested-sequence protocol can reject valid tuples during runtime checks.
+ArrayLike: TypeAlias = NumpyArrayLike | tuple
 Array1D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[1]]] | list[Scalar]
 Array2D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[2]]] | list[list[Scalar]] | list[Array1D]
 Array3D: TypeAlias = Annotated[np.ndarray, IsAttr["ndim", IsEqual[3]]] | list[list[list[Scalar]]] | list[list[Array1D]] | list[Array2D]
+ProfileNames: TypeAlias = list[str] | dict[IntLike, str]
 
 logger = get_logger(__name__)
 
-def profile_name_map(names, groups=None):
+def profile_name_map(names:ProfileNames|None, groups:ArrayLike|None=None) -> dict[IntLike, str]|None:
     """Validate optional names and map them to the actual profile group IDs."""
     if names is None:
         return None
@@ -43,7 +50,7 @@ def profile_name_map(names, groups=None):
     return dict(names)
 
 
-def validate_seperate_species(species):
+def validate_seperate_species(species:list[str]|None) -> None:
     """Validate the requested species without changing their order or identifiers."""
     if species is not None and (
         not isinstance(species, list)
@@ -53,14 +60,14 @@ def validate_seperate_species(species):
         raise ACIDInputError("seperate_species must be a list of unique, non-empty species strings.")
 
 
-def calc_chi2(model, data, error):
+def calc_chi2(model:ArrayLike, data:ArrayLike, error:ArrayLike) -> Scalar:
     """Return chi-squared for a model, data, and their measurement errors."""
     model = np.asarray(model)
     data = np.asarray(data)
     error = np.asarray(error)
     return np.sum(((data-model)/error) ** 2)
 
-def eval_continuum(x, coefs, method="polyval", slices=None, **kwargs):
+def eval_continuum(x:ArrayLike, coefs:ArrayLike, method:str="polyval", slices:ArrayLike|None=None, **kwargs) -> np.ndarray|Scalar:
     """
     Evaluates the continuum at given points using specified method.
     
@@ -93,7 +100,7 @@ def eval_continuum(x, coefs, method="polyval", slices=None, **kwargs):
     else:
         raise ACIDInputError(f"Unknown method: '{method}', must be 'polyval' or 'chebval'.")
 
-def fit_continuum(x, y, degree, method="polyval", **kwargs):
+def fit_continuum(x:ArrayLike, y:ArrayLike, degree:IntLike|ArrayLike, method:str="polyval", **kwargs) -> np.ndarray|tuple:
     """
     Fits a polynomial of given degree to the data (x, y).
     
@@ -123,7 +130,7 @@ def fit_continuum(x, y, degree, method="polyval", **kwargs):
 
     raise ACIDInputError(f"Unknown method: '{method}'")
 
-def convert_moves_to_emcee(moves:list[tuple]):
+def convert_moves_to_emcee(moves:list[tuple]) -> list[tuple[emcee.moves.Move, Scalar]]:
     """Converts a list of move specifications to emcee moves.
 
     Parameters
@@ -180,7 +187,12 @@ def convert_moves_to_emcee(moves:list[tuple]):
         
     return emcee_moves
 
-def mask_invalid(wavelengths, flux, errors=None, return_mask=False):
+def mask_invalid(
+    wavelengths : np.ndarray,
+    flux        : np.ndarray,
+    errors      : np.ndarray|None = None,
+    return_mask : bool            = False,
+    ) -> tuple[np.ndarray, ...]:
     """Masks any pixels where the wavelength, flux, or error is infinite or <= 0.
     Replaces bad pixels with NaN, which ACID can handle.
 
@@ -222,7 +234,12 @@ def mask_invalid(wavelengths, flux, errors=None, return_mask=False):
     output = output + (mask,) if return_mask else output
     return output
 
-def drop_invalid(wavelengths, flux, errors=None, return_mask=False):
+def drop_invalid(
+    wavelengths : np.ndarray,
+    flux        : np.ndarray,
+    errors      : np.ndarray|None = None,
+    return_mask : bool            = False,
+    ) -> tuple[np.ndarray, ...]:
     """Drops any pixels where the wavelength, flux, or error is infinite or <= 0.
 
     Parameters
@@ -262,7 +279,7 @@ def drop_invalid(wavelengths, flux, errors=None, return_mask=False):
     output = output + (mask,) if return_mask else output
     return output
 
-def drop_edges(array, n_pix=2):
+def drop_edges(array:np.ndarray, n_pix:IntLike=2) -> np.ndarray:
     """
     Drops the edges of an array by a specified number of pixels.
     
@@ -288,12 +305,12 @@ def calc_deltav(wavelengths:Array1D)->Scalar:
 
     Parameters
     ----------
-    wavelengths : :py:type:`Array1D`
+    wavelengths : :py:type:`~ACID_code.Array1D`
         Wavelengths for Acid input spectrum (in Angstroms), must be a 1D array of positive values.
 
     Returns
     -------
-    :py:type:`float`
+    :py:class:`float`
         Velocity pixel size in km/s
     """
     if wavelengths.ndim != 1:
@@ -305,25 +322,25 @@ def calc_deltav(wavelengths:Array1D)->Scalar:
 
 @beartype
 def guess_SNR(
-        frame_wavelengths : Array1D | Array2D,
-        frame_flux        : Array1D | Array2D,
-        frame_errors      : Array1D | Array2D
-        ) -> Array1D | Scalar:
+    frame_wavelengths : Array1D | Array2D,
+    frame_flux        : Array1D | Array2D,
+    frame_errors      : Array1D | Array2D,
+    ) -> Array1D | Scalar:
     """Estimates S/N for each frame. Takes the median S/N in the central two-thirds of the
     wavelength range. Fully vectorized so that all the frames can be passed at once.
 
     Parameters
     ----------
-    frame_wavelengths : :py:type:`Array1D | Array2D`
+    frame_wavelengths : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Array/list of wavelengths for each frame.
-    frame_flux : :py:type:`Array1D | Array2D`
+    frame_flux : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Array/list of flux values for each frame.
-    frame_errors : :py:type:`Array1D | Array2D`
+    frame_errors : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Array/list of error values for each frame.
 
     Returns
     -------
-    :py:type:`Array1D | Scalar`
+    :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Scalar`
         Array of estimated signal-to-noise ratios for each frame.
     """
     if np.any(frame_flux <= 0) or np.any(frame_errors <= 0) or np.any(frame_wavelengths <= 0):
@@ -343,8 +360,8 @@ def guess_SNR(
 
 @beartype
 def guess_errors(
-    frame_flux        : Array1D | Array2D,
-    frame_sn          : Scalar  | Array1D
+    frame_flux : Array1D | Array2D,
+    frame_sn   : Scalar  | Array1D,
     ) -> Array1D | Array2D:
     """
     Estimates errors for each frame based on the flux and S/N.
@@ -352,14 +369,14 @@ def guess_errors(
 
     Parameters
     ----------
-    frame_flux : :py:type:`Array1D | Array2D`
+    frame_flux : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Array/list of flux values for each frame.
-    frame_sn : :py:type:`Scalar | Array1D`
+    frame_sn : :py:type:`~ACID_code.Scalar` | :py:type:`~ACID_code.Array1D`
         Estimated signal-to-noise ratio for each frame. Can be a single value or an array of values for each frame.
 
     Returns
     -------
-    :py:type:`Array1D | Array2D`
+    :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Array of estimated error values for each frame. The dimensions will match those of frame_flux, with the same number of frames and pixels.
     """
     frame_flux = np.atleast_2d(frame_flux)
@@ -382,14 +399,14 @@ def collapse_SNR(sn:Array1D | Array2D, wavelengths:Array1D | Array2D) -> Array1D
 
     Parameters
     ----------
-    sn : :py:type:`Array1D | Array2D`
+    sn : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Signal-to-noise ratio array.
-    wavelengths : :py:type:`Array1D | Array2D`
+    wavelengths : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`
         Wavelength array.
 
     Returns
     -------
-    :py:type:`Array1D | Scalar`
+    :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Scalar`
         Collapsed signal-to-noise ratio.
     """
     sn = np.atleast_2d(sn)
@@ -433,7 +450,7 @@ def normalize_wavelengths(wl:Array1D)->Array1D:
     a, b = get_normalisation_coeffs(wl)
     return (a*wl)+b
 
-def get_available_memory():
+def get_available_memory() -> int:
     """
     Returns the available memory in bytes.
     Checks if in a SLURM environment and uses its memory allocation if available.
@@ -450,7 +467,7 @@ def get_available_memory():
         available_memory = psutil.virtual_memory().available
     return available_memory
 
-def save_pickle_atomic(payload, filename):
+def save_pickle_atomic(payload:Any, filename:str|os.PathLike[str]) -> None:
     """Replace a pickle only after writing it successfully on the same filesystem."""
     with tempfile.TemporaryDirectory(dir=os.path.dirname(os.path.abspath(filename))) as directory:
         temporary = os.path.join(directory, "data.pkl")
@@ -461,7 +478,7 @@ def save_pickle_atomic(payload, filename):
         os.replace(temporary, filename)
 
 
-def save_backend_to_hdf5(backend, filename):
+def save_backend_to_hdf5(backend:emceebackend.Backend, filename:str|os.PathLike[str]) -> emcee.backends.HDFBackend:
     nwalkers, ndim = backend.shape
     niter = backend.iteration
 
@@ -501,7 +518,7 @@ def save_backend_to_hdf5(backend, filename):
                 g.attrs[f"random_state_{i}"] = v
     return hdf
 
-def backend_to_sampler(backend, log_prob_fn):
+def backend_to_sampler(backend:emceebackend.Backend, log_prob_fn:Callable[..., Any]) -> EnsembleSampler:
     nwalkers, ndim = backend.shape
     return emcee.EnsembleSampler(nwalkers, ndim, log_prob_fn, backend=backend)
 
@@ -577,7 +594,14 @@ def robust_mean(data:np.ndarray, nsig:int|float=3, axis:int=0) -> np.ndarray|flo
     robust_data = np.where(mask, data, np.nan)
     return np.nanmean(robust_data, axis=axis)
 
-def plot_masked_line(ax, x, y, mask, colors=["C0", "C3"], label=["Residuals", "Masked Residuals"]):
+def plot_masked_line(
+    ax     : Axes,
+    x      : np.ndarray,
+    y      : np.ndarray,
+    mask   : np.ndarray,
+    colors : Sequence[str] = ["C0", "C3"],
+    label  : Sequence[str] = ["Residuals", "Masked Residuals"],
+    ) -> None:
     ax.plot([], [], color=colors[0], label=label[0])
     ax.plot([], [], color=colors[1], label=label[1])
     points = np.array([x, y]).T.reshape(-1, 1, 2)
@@ -599,20 +623,20 @@ def combine_profiles(
 
     Parameters
     ----------
-    spectra : :py:class:`Array2D`
+    spectra : :py:type:`~ACID_code.Array2D`
         Input profiles, should have dimensions (n_profiles, n_pix).
-    errors : :py:class:`Array2D`, optional
+    errors : :py:type:`~ACID_code.Array2D`, optional
         1-sigma errors for each profile. Used only if covariances is None. Should have dimensions (n_profiles, n_pix).
-    covariances : :py:class:`Array3D` or list of :py:class:`Array2D`, optional
+    covariances : :py:type:`~ACID_code.Array3D` or list of :py:type:`~ACID_code.Array2D`, optional
         Full covariance matrix for each profile. Should have dimensions (n_profiles, n_pix, n_pix). 
         If provided, this is used instead of errors for the combination, and the combined covariance matrix is also returned.
 
     Returns
     -------
-    combined_profile : :py:class:`Array1D`
-    combined_errors : :py:class:`Array1D`
+    combined_profile : :py:type:`~ACID_code.Array1D`
+    combined_errors : :py:type:`~ACID_code.Array1D`
         sqrt(diag(combined_covariance))
-    combined_covariance : :py:class:`Array2D`
+    combined_covariance : :py:type:`~ACID_code.Array2D`
         Only returned if covariances is provided.
     """
     from scipy.linalg import cho_factor, cho_solve
@@ -808,7 +832,7 @@ def od_to_flux(
 
     return tuple(out) if len(out) > 1 else out[0]
 
-def configure_mp_environ(os):
+def configure_mp_environ(os:ModuleType) -> None:
     """
     Configures the multiprocessing environment variables to check for SLURM and set appropriate thread limits.
     See :ref:`multiprocessing` section of the documentation for more details on why this is done.
@@ -829,7 +853,7 @@ def configure_mp_environ(os):
         os.environ["OMP_NUM_THREADS"] = "1"
         os.environ["MKL_NUM_THREADS"] = "1"
 
-def next_pow_2(n):
+def next_pow_2(n:Scalar) -> int:
     """
     Calculates the next power of 2 greater than or equal to n.
 
@@ -848,7 +872,7 @@ def next_pow_2(n):
         raise ACIDInputError("Input must be a non-negative integer.")
     return 1 if n == 0 else 2**(n - 1).bit_length()
 
-def auto_window(taus: np.ndarray, c: float = 5.0):
+def auto_window(taus:np.ndarray, c:Scalar=5.0) -> IntLike:
     """
     Automated windowing procedure following Sokal (1989) in emcee documentation.
     Returns the window index to use in taus[window].
@@ -858,7 +882,7 @@ def auto_window(taus: np.ndarray, c: float = 5.0):
         return np.argmin(m)
     return len(taus) - 1
 
-def autocorr_func_1d(x, norm=True):
+def autocorr_func_1d(x:ArrayLike, norm:bool=True) -> np.ndarray:
     """
     Autocorrelation estimate using FFT from the emcee tutorial.
     """
@@ -878,14 +902,14 @@ def autocorr_func_1d(x, norm=True):
 
     return acf
 
-def autocorr_gw2010(y, c=5.0):
+def autocorr_gw2010(y:ArrayLike, c:Scalar=5.0) -> Scalar:
     """Goodman & Weare (2010) autocorrelation estimate from emcee documentation"""
     f = autocorr_func_1d(np.mean(y, axis=0))
     taus = 2.0 * np.cumsum(f) - 1.0
     window = auto_window(taus, c)
     return taus[window]
 
-def autocorr_new(y, c=5.0):
+def autocorr_new(y:np.ndarray, c:Scalar=5.0) -> Scalar:
     """New integrated autocorrelation time estimate from emcee documentation"""
     
     # Average ACF across walkers
@@ -903,7 +927,7 @@ def autocorr_new(y, c=5.0):
     window = auto_window(taus, c)
     return float(taus[window])
 
-def sampler_nbytes(sampler) -> IntLike:
+def sampler_nbytes(sampler:Any) -> IntLike:
     if hasattr(sampler, "nbytes"):
         return sampler.nbytes
     elif hasattr(sampler.backend, "nbytes"):
@@ -942,7 +966,7 @@ def ensure_directory(path:str, description:str="directory") -> str:
     return path
 
 @beartype
-def show_or_save(plt, figure_path:str|None, name:str, output_dir:str|None=None):
+def show_or_save(plt:Any, figure_path:str|None, name:str, output_dir:str|None=None) -> None:
     """Show a figure or save it, creating the output root for derived figure paths."""
     if figure_path is None:
         if plt.get_backend().lower() != "agg":

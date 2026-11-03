@@ -9,7 +9,7 @@ some of which were highlighted in the Quickstart tutorial.
 Continuing sampling
 -------------------
 
-If you wish to continue sampling the MCMC after the initial run of ACID, you can do so using the :py:function:`ACID_code.Result.continue_sampling` method.
+If you wish to continue sampling the MCMC after the initial run of ACID, you can do so using the :py:meth:`~ACID_code.Result.continue_sampling` method.
 This method takes the same keyword arguments as the nsteps argument in ACID, allowing you to specify how many additional steps to run.
 
 .. code-block:: python
@@ -26,7 +26,7 @@ This method takes the same keyword arguments as the nsteps argument in ACID, all
     result.plot_corner()
 
 This allows you to extend the MCMC sampling if you feel that the initial number of steps was insufficient for convergence.
-Note again that if multiple orders or frames were calculated, this method must be called from the :py:class:`ACID_code.Result` object returned by ACID,
+Note again that if multiple orders or frames were calculated, this method must be called from the :py:class:`~ACID_code.Result` object returned by ACID,
 not from a saved .pkl file.
 
 .. _LSD:
@@ -57,7 +57,7 @@ The class is used internally throughout the ACID package. The LSD class can be u
    velocities = np.arange(-25, 25, deltav)  
 
    # Initiate LSD class
-   LSD = acid.LSD() # Can be initiated with an instance of :py:class:`ACID_code.Acid`
+   LSD = acid.LSD() # Can be initiated with an Acid instance
 
    # Perform LSD
    LSD.run_LSD(wavelength, spectrum, error, sn, linelist, velocities)
@@ -73,4 +73,4 @@ The class is used internally throughout the ACID package. The LSD class can be u
    plt.ylabel('LSD Profile Value')
    plt.show()
 
-See the :py:class:`ACID_code.LSD` API for more information on available methods and attributes.
+See the :py:class:`~ACID_code.LSD` API for more information on available methods and attributes.

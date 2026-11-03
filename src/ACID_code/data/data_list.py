@@ -1,5 +1,7 @@
 from __future__ import annotations
 from beartype import beartype
+from collections.abc import Iterator
+from typing import Any, Optional, TYPE_CHECKING
 from ..utils import Array1D, Array2D, Array3D, IntLike
 from .config import Config
 from .data import Data
@@ -18,6 +20,9 @@ from .. import utils
 from tqdm import tqdm
 import matplotlib as mpl
 
+if TYPE_CHECKING:
+    import ACID_code
+
 logger = get_logger(__name__)
 
 @beartype
@@ -26,7 +31,7 @@ class DataList:
     A class that stores Data instances in a list indexed by order. The DataList is a useful class for running ACID over multiple orders with parallelization. 
     Fundamentally this class holds Data instances (which ACID updates with the results per order) as a list and can map the true order number
     from the instrument (stored in the config) to the index of the list. It handles missing/incomplete orders, and the ability to append new orders.
-    For more information and a full example on how to use the DataList, see :ref:`datalist' in the documentation. Note that the DataList is not 
+    For more information and a full example on how to use the DataList, see :ref:`datalist` in the documentation. Note that the DataList is not
     strictly necessary to run ACID over multiple orders, you can handle the multiple instances yourself.
 
     The DataList class works with a required root directory specified by the user to access to the same data across parallel processes, 
@@ -35,63 +40,63 @@ class DataList:
 
     def __init__(
         self,
-        wavelengths      : Array3D|Array2D|None           = None,
-        flux             : Array3D|Array2D|None           = None,
-        errors           : Array3D|Array2D|None           = None,
-        sn               : Array2D|Array1D|None           = None,
-        velocities       : Array1D|None                   = None,
-        linelist         : Array2D|None|str|LineList|dict = None,
-        order_range      : Array1D|None                   = None,
-        config           : Config|list[Config]|None       = None,
-        save_dir         : str|None                       = None,
-        store_sampler    : bool                           = True,
-        overwrite        : bool                           = False,
-        verbose          : IntLike|bool|str|None          = None,
-        _load                                             = None,
-        _data_list       : list[Data]|None                = None,
+        wavelengths     : Array3D|Array2D|None           = None,
+        flux            : Array3D|Array2D|None           = None,
+        errors          : Array3D|Array2D|None           = None,
+        sn              : Array2D|Array1D|None           = None,
+        velocities      : Array1D|None                   = None,
+        linelist        : Array2D|None|str|LineList|dict = None,
+        order_range     : Array1D|None                   = None,
+        config          : Config|list[Config]|None       = None,
+        save_dir        : str|None                       = None,
+        store_sampler   : bool                           = True,
+        overwrite       : bool                           = False,
+        verbose         : IntLike|bool|str|None          = None,
+        _load           : object|None                    = None,
+        _data_list      : list[Data]|None                = None,
         **config_kwargs,
         ) -> None:
         """
         Initializes the DataList object. The DataList can be initialized in two ways: either by providing the wavelengths, flux, errors, and sn arrays directly in
-        the class initialization (here), or using the :py:classmethod:`DataList.from_datalist` method with a list of Data objects. 
+        the class initialization (here), or using the :py:meth:`~ACID_code.DataList.from_datalist` method with a list of Data objects.
         The former is useful for quickly initializing a DataList from raw data, while the latter is useful 
         for loading a saved DataList or for more fine-grained control over the initialization of each Data object.
 
         Parameters
         ----------
-        wavelengths : :py:type:`Array3D` | :py:type:`Array2D` | None, optional
+        wavelengths : :py:type:`~ACID_code.Array3D` | :py:type:`~ACID_code.Array2D` | None, optional
             A 2D or 3D array of wavelengths for the input spectra.
             If a 2D array is provided, it is assumed to have shape (n_orders, n_pixels).
             If a 3D array is provided, it is assumed to have shape (n_orders, n_frames, n_pixels). Default is None.
-            The format for the last 1 or 2 dimensions follows that of the "wavelengths" input in the :py:function:`Acid.ACID` method.
+            The format for the last 1 or 2 dimensions follows that of the "wavelengths" input in the :py:meth:`~ACID_code.Acid.ACID` method.
             Sometimes, fits files store their frames in shape (n_frames, n_orders, n_pixels), you can swap the axes with np.swapaxes(wavelengths, 0, 1) 
             to get them in the correct shape. It is also possible to input orders with different numbers of pixels, in which case the wavelengths should be a list
             of 2D arrays/lists.
-        flux : :py:type:`Array3D` | :py:type:`Array2D` | None, optional
+        flux : :py:type:`~ACID_code.Array3D` | :py:type:`~ACID_code.Array2D` | None, optional
             A 2D or 3D array of fluxes for the input spectra. Same shape assumptions as wavelengths. Default is None.
-        errors : :py:type:`Array3D` | :py:type:`Array2D` | None, optional
+        errors : :py:type:`~ACID_code.Array3D` | :py:type:`~ACID_code.Array2D` | None, optional
             A 2D or 3D array of errors for the input spectra. Same shape assumptions as wavelengths. Default is None.
-        sn : :py:type:`Array2D` | :py:type:`Array1D` | None, optional
+        sn : :py:type:`~ACID_code.Array2D` | :py:type:`~ACID_code.Array1D` | None, optional
             A 1D or 2D array of signal-to-noise ratios for the input spectra. If a 1D array is provided, it is assumed to have shape (n_orders,). 
             If a 2D array is provided, it is assumed to have shape (n_orders, n_frames). Default is None. Follows the same logic as the "sn" input in 
-            the :py:function:`Acid.ACID` method, for approximating the errors (or vice versa) if one is not provided.
-        velocities : :py:type:`Array1D` | None, optional
+            the :py:meth:`~ACID_code.Acid.ACID` method, for approximating the errors (or vice versa) if one is not provided.
+        velocities : :py:type:`~ACID_code.Array1D` | None, optional
             The velocity grid to be used for all the orders. This should be a 1D array of velocity values in km/s. Follows the same format as the "velocities" 
-            input in the :py:function:`Acid.ACID` method. Default is None.
-        linelist : :py:type:`Array1D` | str | :py:class:`LineList` | dict | None, optional
-            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:function:`Acid.ACID` method.
-        order_range : :py:type:`Array1D` | None, optional
+            input in the :py:meth:`~ACID_code.Acid.ACID` method. Default is None.
+        linelist : :py:type:`~ACID_code.Array1D` | str | :py:class:`~ACID_code.LineList` | dict | None, optional
+            The linelist to be used for all the orders. This can be provided in the same formats as the "linelist" input in the :py:meth:`~ACID_code.Acid.ACID` method.
+        order_range : :py:type:`~ACID_code.Array1D` | None, optional
             A 1D array of order labels corresponding to the orders in the input data.
             The index of this array should match to the order of the index of the first dimension of the wavelengths, flux, errors, and sn arrays.
             For example, if your input data has 3 orders and they correspond to orders 100, 101, and 102 in the instrument, then you should input order_range = [100, 101, 102].
             If not provided, it is assumed to be a pythonic 0-indexed range of the same length as the number of orders in the input data. Default is None.
-        config : :py:class:`Config` | list[:py:class:`Config`] | None, optional
+        config : :py:class:`~ACID_code.Config` | list[:py:class:`~ACID_code.Config`] | None, optional
             A template Config object for all orders or a list of Config objects per order containing the configuration for the ACID run.
             If inputting a list, the index and length of the list must match the first dimension of the input data arrays and the order_range.
             These take higher priority than any config_kwargs passed in the initialization.
             Setting 'order' will not have any effect as they will be overwritten by the order numbers in the order_range.
             Setting 'dir', 'save_path', 'sampler_path', or 'figure_dir' in the Config will be overwritten by the save_dir if it is provided.
-            If not provided, default Config values will be used, which are again overwritten by any **config_kwargs passed here. Default is None.
+            If not provided, default Config values will be used, which are again overwritten by any ``**config_kwargs`` passed here. Default is None.
         save_dir : str | None, optional
             The default directory to save results and figures for each order.
             If it does not exist, only this final directory is created and its parent must already exist.
@@ -104,7 +109,7 @@ class DataList:
             If False, sets sampler_path="False" in the Config to disable sampler saving for new Data instances.
             If the class is being initialised from the from_datalist classmethod, then this is not applied.
             This also only applies/does anything if save_dir is not None.
-            This will take up more disk space, but allow for use of the :py:class:`Result` methods requiring the sampler attribute. Default is True.
+            This will take up more disk space, but allow for use of the :py:class:`~ACID_code.Result` methods requiring the sampler attribute. Default is True.
         overwrite : bool, optional
             Whether to overwrite existing with new Data instances when using run_ACID, or to load and use existing Data instance if they exist.
             If True, if a Data instance already exists for an order, it will be overwritten with the new Data instance generated from the ACID run for that order.
@@ -118,8 +123,8 @@ class DataList:
         _load : Any, optional
             Not yet implemented, do not use. The idea is that you can input a Load object which has its own tools to pull s2d data from common instruments 
             such as ESPRESSO, HARPS, etc. If you want to use this feature, please open an issue or contribute a pull request with the implementation.
-        _data_list : list[:py:class:`Data`] | None, optional
-            This is an internal argument used for initializing the DataList from a list of Data objects in the :py:classmethod:`DataList.from_datalist` method.
+        _data_list : :py:class:`list` of :py:class:`~ACID_code.Data` | None, optional
+            This is an internal argument used for initializing the DataList from a list of Data objects in the :py:meth:`~ACID_code.DataList.from_datalist` method.
         **config_kwargs : 
             Additional keyword arguments to be passed with low priority to all of the generated Config objects.
             These kwargs will join with but NOT overwrite any existing keys in the input Config object(s).
@@ -242,7 +247,7 @@ class DataList:
 
         Parameters
         ----------
-        data_list : list[:py:class:`Data`] | :py:class:`Data`
+        data_list : :py:class:`list` of :py:class:`~ACID_code.Data` | :py:class:`~ACID_code.Data`
             A list of Data objects to initialize the DataList from. If a single Data object is provided, it will be converted to a list with one element.
         save_dir : str | None, optional
             The directory to save intermediate results and figures for each order. If None, no saving will be done. Default is None.
@@ -252,7 +257,7 @@ class DataList:
 
         Returns
         -------
-        :py:class:`DataList`
+        :py:class:`~ACID_code.DataList`
             A DataList object initialized from the provided list of Data objects.
         """
         if isinstance(data_list, Data):
@@ -276,10 +281,10 @@ class DataList:
             velocities  = velocities,
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Data]:
         yield from self.data_list
 
-    def __getitem__(self, k):
+    def __getitem__(self, k:IntLike) -> Data:
         """
         Allows for indexing the DataList with the order number, e.g. datalist[order_number] 
         will return the Data instance with that order number. Uses the internal order to index mapping to find 
@@ -292,27 +297,27 @@ class DataList:
         
         Returns
         -------
-        :py:class:`Data`
+        :py:class:`~ACID_code.Data`
             The Data instance with the specified order number.
         """
         return self.data_list[self.o2i[k]]
 
-    def __str__(self) -> str|None:
+    def __str__(self) -> str:
         return f"DataList with {len(self.data_list)} Data instances, storing the orders: {self.orders} out of a total order range: {self.order_range}"
 
-    def __call__(self, *args, **kwargs):
-        """Runs and returns the results of the :py:function:`DataList.run_ACID` method, which runs ACID on the Data instances in the list for the specified orders.
+    def __call__(self, *args:Any, **kwargs:Any) -> Any:
+        """Runs and returns the results of the :py:meth:`~ACID_code.DataList.run_ACID` method, which runs ACID on the Data instances in the list for the specified orders.
         
         Parameters
         ----------
-        See :py:function:`DataList.run_ACID` for the accepted parameters and their descriptions.
+        See :py:meth:`~ACID_code.DataList.run_ACID` for the accepted parameters and their descriptions.
         """
         return self.run_ACID(*args, **kwargs)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data_list)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Data]:
         yield from self.data_list
 
     def append(self, data:Data, overwrite:bool=False, extend:bool=False, force_order:IntLike|None=None) -> None:
@@ -322,7 +327,7 @@ class DataList:
 
         Parameters
         ----------
-        data : :py:class:`Data`
+        data : :py:class:`~ACID_code.Data`
             The Data instance to append to the data list. The order of the Data instance is taken from its config, 
             but can be overridden with the force_order argument.
         overwrite : bool, optional
@@ -361,7 +366,7 @@ class DataList:
         
         Parameters
         ----------
-        order_range : :py:type:`Array1D`
+        order_range : :py:type:`~ACID_code.Array1D`
             The new order range to set for the DataList. This should be a 1D array of order numbers. 
         """
         if np.any([o not in order_range for o in self.orders]):
@@ -386,15 +391,15 @@ class DataList:
 
     def run_ACID(
         self,
-        orders            : Array1D|int|str|None = None,
-        use_index_mapping : bool                 = True,
-        worker            : IntLike|None         = None,
-        nworkers          : IntLike|None         = None,
-        overwrite         : bool|None            = None,
-        overwrite_kwargs  : bool                 = False,
-        pack              : bool                 = False,
-        save_on_exception : bool                 = True,
-        _return_orders    : bool                 = False,
+        orders            : Array1D|int|str|None  = None,
+        use_index_mapping : bool                  = True,
+        worker            : IntLike|None          = None,
+        nworkers          : IntLike|None          = None,
+        overwrite         : bool|None             = None,
+        overwrite_kwargs  : bool                  = False,
+        pack              : bool                  = False,
+        save_on_exception : bool                  = True,
+        _return_orders    : bool                  = False,
         verbose           : IntLike|bool|str|None = None,
         **kwargs,
         ) -> Array1D|None:
@@ -404,21 +409,21 @@ class DataList:
 
         Parameters
         ----------
-        orders : :py:type:`Array1D` | int | str | None, optional
+        orders : :py:type:`~ACID_code.Array1D` | int | str | None, optional
             The orders to run ACID on. This can be provided as a single integer for one order, a list of integers for multiple specific orders, 
             the string "all" to run on all orders, or None to run on all orders. Default is None, which will run all orders.
         use_index_mapping : bool, optional
             If False, will not use the order to index mapping, instead orders are indexed directly. Default is True. Only applies for int or array inputs for orders.
-        worker : :py:type:`IntLike` | None, optional
+        worker : :py:type:`~ACID_code.IntLike` | None, optional
             Used in conjunction with nworkers. If an integer is provided, it specifies the worker number for this process. 
             When both worker and nworkers are provided, all the orders specified in "orders" will be split evenly across the nworkers. 
             For example, if there are 100 orders, and nworkers is 4, then worker 0 will run orders 0-24, worker 1 will run orders 25-49, etc. 
             The workers are 0-indexed. Default is None, which means no splitting and all specified orders will be run in this process.
-        nworkers : :py:type:`IntLike` | None, optional
+        nworkers : :py:type:`~ACID_code.IntLike` | None, optional
             The total number of workers to use to split the orders. See the "worker" parameter for more details. Default is None.
         store_sampler : bool, optional
             If True, the sampler object from the ACID run will be stored in the same folder as the resulting data pickles.
-            This will take up more disk space, but allow for use of the :py:class:`Result` methods requiring the sampler attribute.
+            This will take up more disk space, but allow for use of the :py:class:`~ACID_code.Result` methods requiring the sampler attribute.
             We recommend leaving this on True if using deterministic sampling, otherwise set to False. Default is True.
         size_limit : Scalar | None, optional
             A hard size limit to the sampler in GB.
@@ -588,11 +593,11 @@ class DataList:
 
     def run_multi_order_ACID(
         self,
-        discard_unused_orders : bool = True,
-        run_mcmc : bool = True,
-        verbose : IntLike|bool|str|None = None,
+        discard_unused_orders : bool                  = True,
+        run_mcmc              : bool                  = True,
+        verbose               : IntLike|bool|str|None = None,
         **kwargs,
-    ) -> None|object:
+        ) -> None|object:
         """
         Fit shared profiles with an independent continuum for each order.
 
@@ -906,11 +911,11 @@ class DataList:
         return obj
 
     @property
-    def save_dir(self):
+    def save_dir(self) -> str|None:
         return self._save_dir
 
     @save_dir.setter
-    def save_dir(self, dir):
+    def save_dir(self, dir:str|None) -> None:
         if dir is not None:
             dir = utils.ensure_directory(dir, "DataList save directory")
         elif self._save_dir is None:
@@ -937,11 +942,11 @@ class DataList:
         return self._combined_profile
 
     @property
-    def data_list(self):
+    def data_list(self) -> list[Data]:
         return self._data_list
 
     @property
-    def profiles(self):
+    def profiles(self) -> "ACID_code.profiles.Profiles":
         """Return a fresh fitter for the combined profile across orders."""
         from ..profiles import Profiles
         if self.multi_order_data is not None:
@@ -951,13 +956,13 @@ class DataList:
                         profile_names=None if names is None else [names[g] for g in sorted(names)])
 
     @property
-    def profile_names(self):
+    def profile_names(self) -> dict[IntLike, str]|None:
         """Names for the combined groups, preserving actual group IDs across orders."""
         if self.multi_order_data is not None:
             return self.multi_order_data.profile_names
         return self._collect_profile_names([data for data in self.data_list if data.config.order not in self.excluded_orders])
 
-    def _collect_profile_names(self, data_list):
+    def _collect_profile_names(self, data_list:list[Data]) -> dict[IntLike, str]|None:
         """Merge names from the selected orders, including their actual depth ranges."""
         names, depths = {}, {}
         for data in data_list:
@@ -976,7 +981,7 @@ class DataList:
         return names or None
 
     @property
-    def results(self):
+    def results(self) -> list[Optional["ACID_code.result.Result"]]:
         """
         Returns a list of Result objects for each Data instance in the DataList.
         If a Data instance does not have a result, None is returned for that order.
@@ -993,13 +998,12 @@ class DataList:
         return self._results
 
     @data_list.setter
-    def data_list(self, data_list):
+    def data_list(self, data_list:list[Data]) -> None:
         """
         Sets the data list and ensures that it is a list of Data instances. 
         Also sorts the list by order and updates the order to index mapping.
         """
-        if not isinstance(data_list, list):
-            raise ACIDInputError("data_list must be a list of Data instances.")
+        # Beartype samples list members; check every order before storing the list.
         if not all(isinstance(data, Data) for data in data_list):
             raise ACIDInputError("All elements in data_list must be instances of the Data class.")
         self._data_list = data_list
@@ -1110,7 +1114,7 @@ class DataList:
         Parameters
         ----------
         **kwargs : dict
-            Keyword arguments to pass to the :py:function:`Profiles.plot_fit` method.
+            Keyword arguments to pass to the :py:meth:`~ACID_code.Profiles.plot_fit` method.
         
         Returns
         -------

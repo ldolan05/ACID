@@ -22,7 +22,7 @@ You can use the default lines, or you can specify your own lines to mask. You ca
 You can specify different sets of lines with different widths, and you can specify as many sets as you like. The key names for the dictionary (ie "wide, narrow") are arbitrary and are 
 only used for plotting.
 
-Below we detail the different types of formats for the inputs to be passed as "masking_lines" into :py:class:`ACID_code.Acid`.
+Below we detail the different types of formats for the inputs to be passed as "masking_lines" into :py:class:`~ACID_code.Acid`.
 
 Formats
 -------
@@ -30,8 +30,8 @@ Formats
 The format for the masking_lines input is a dictionary with keys as the names of the line groups (eg "wide", "narrow") and values as any of the following:
 
 - A dictionary with keys "lines" (required), and "default_width" (optional), where "default_width" is the default width to use for all lines in that group. 
-Any lines without widths will be filled with the default width for that group, and if widths are missing for some lines, an error will be raised. 
-The "lines" key can be any of the below formats.
+  Any lines without widths will be filled with the default width for that group, and if widths are missing for some lines, an error will be raised.
+  The "lines" key can be any of the below formats.
 - A one-dimensional array or list of line wavelengths, which will be filled with the default width for that group.
 - A two-dimensional array or list of line wavelengths and widths, where the first column is the wavelengths and the second column is the widths.
 - A list of tuples, where each tuple contains a wavelength and optional width.

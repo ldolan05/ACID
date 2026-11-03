@@ -3,10 +3,26 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from beartype.roar import BeartypeCallHintParamViolation
 
-from ACID_code import Acid, Data, Plot, Result, utils
+from ACID_code import Acid, Data, LSD, Plot, Result, utils
 from ACID_code.diagnostics.errors import ACIDResultError, ACIDStateError
 from ACID_code.diagnostics.warnings import ACIDStateWarning
+
+
+@pytest.mark.parametrize("constructor", [Plot, Result])
+@pytest.mark.parametrize("source_type", [Data, Acid, Result])
+def test_constructors_accept_supported_data_sources(harps_result, constructor, source_type):
+    data = harps_result.data
+    source = data if source_type is Data else source_type(data)
+    assert constructor(source).data is data
+
+
+@pytest.mark.parametrize("constructor", [Plot, Result, LSD])
+@pytest.mark.parametrize("source", [object(), {}, "data", 1.5])
+def test_constructors_reject_unsupported_data_sources(constructor, source):
+    with pytest.raises(BeartypeCallHintParamViolation):
+        constructor(source)
 
 
 @pytest.fixture(scope="module")

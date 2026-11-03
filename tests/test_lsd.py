@@ -11,6 +11,17 @@ from ACID_code import Data, LSD
 from ACID_code.diagnostics.errors import ACIDInputError, ACIDLineListRangeError, ACIDSNCutError
 
 
+@pytest.mark.parametrize("use_data", [False, True])
+def test_lsd_accepts_data_or_none_with_default_od(use_data):
+    data = Data() if use_data else None
+    lsd = LSD(data=data, od=None)
+    assert isinstance(lsd.data, Data)
+    if data is not None:
+        assert lsd.data is data
+    assert lsd.config is lsd.data.config
+    assert lsd.od == lsd.config.od
+
+
 @pytest.mark.parametrize('scale_regularization', [True, False])
 def test_regularization_matches_augmented_least_squares(scale_regularization):
     rng = np.random.default_rng(7)

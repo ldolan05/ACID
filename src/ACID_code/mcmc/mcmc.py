@@ -38,40 +38,40 @@ class MCMC:
 
     @beartype
     def __init__(
-            self,
-            x_or_data             : Array1D|Array2D|Data,
-            y                     : Array1D|None = None,
-            yerr                  : Array1D|None = None,
-            alpha                 : Array2D|None = None,
-            velocities            : Array1D|None = None,
-            c_factor                             = None,
-            deterministic_profile : bool|None    = None,
-            sampler_type          : str|None     = None,
-            od                    : bool|None    = None,
-            continuum_method      : str|None     = None,
-            use_jax               : bool|None    = None,
+        self,
+        x_or_data             : Array1D|Array2D|Data,
+        y                     : Array1D|None         = None,
+        yerr                  : Array1D|None         = None,
+        alpha                 : Array2D|None         = None,
+        velocities            : Array1D|None         = None,
+        c_factor                                     = None,
+        deterministic_profile : bool|None            = None,
+        sampler_type          : str|None             = None,
+        od                    : bool|None            = None,
+        continuum_method      : str|None             = None,
+        use_jax               : bool|None            = None,
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
-        All defaults are None in the signature because they draw from the :py:class:`Config` defaults.
-        Passing a parameter in the signature overides any defaults from the :py:class:`Config` instance.
+        All defaults are None in the signature because they draw from the :py:class:`~ACID_code.Config` defaults.
+        Passing a parameter in the signature overides any defaults from the :py:class:`~ACID_code.Config` instance.
         The parameter listings below show the defaults of the config for convenience.
-        Otherwise obtain them with the `Config.print_defaults()` method.
+        Otherwise obtain them with the :py:meth:`~ACID_code.Config.print_defaults` method.
 
         Parameters
         ----------
-        x_or_data : :py:type:`Array1D` | :py:type:`Array2D` | :py:class:`Data`
-            Normalized wavelength array or :py:class:`Data` instance. If a :py:class:`Data` instance is provided, takes all 
-            the arguments below from there. If a :py:class:`Data` instance is provided, all other 
+        x_or_data : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D` | :py:class:`~ACID_code.Data`
+            Normalized wavelength array or :py:class:`~ACID_code.Data` instance. If a :py:class:`~ACID_code.Data` instance is provided, takes all
+            the arguments below from there. If a :py:class:`~ACID_code.Data` instance is provided, all other
             arguments are ignored.
-        y : :py:type:`Array1D`, optional
-            Observed flux array, required if x_or_data is a :py:type:`Array1D` or :py:type:`Array2D`.
-        yerr : :py:type:`Array1D`, optional
-            Observed flux error array, required if x_or_data is a :py:type:`Array1D` or :py:type:`Array2D`.
-        alpha : :py:type:`Array2D`, optional
-            Precomputed alpha matrix, required if x_or_data is a :py:type:`Array1D` or :py:type:`Array2D`.
-        velocities : :py:type:`Array1D` | None, optional
+        y : :py:type:`~ACID_code.Array1D`, optional
+            Observed flux array, required if x_or_data is a :py:type:`~ACID_code.Array1D` or :py:type:`~ACID_code.Array2D`.
+        yerr : :py:type:`~ACID_code.Array1D`, optional
+            Observed flux error array, required if x_or_data is a :py:type:`~ACID_code.Array1D` or :py:type:`~ACID_code.Array2D`.
+        alpha : :py:type:`~ACID_code.Array2D`, optional
+            Precomputed alpha matrix, required if x_or_data is a :py:type:`~ACID_code.Array1D` or :py:type:`~ACID_code.Array2D`.
+        velocities : :py:type:`~ACID_code.Array1D` | None, optional
             Velocity grid for LSD profile, only needed when calling log-probability
             function, by default None.
         c_factor : tuple, optional

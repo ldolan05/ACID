@@ -6,11 +6,11 @@ Using the Data class
 Getting the Data class
 -----------------------
 
-The :py:class:`ACID_code.Data` class stores the data for all calculations done in ACID, including the final resulting profiles. It is used to work
-seamlessly with the :py:class:`ACID_code.Acid`, :py:class:`ACID_code.LSD`, and :py:class:`ACID_code.Result` classes to get configuration and store data.
+The :py:class:`~ACID_code.Data` class stores the data for all calculations done in ACID, including the final resulting profiles. It is used to work
+seamlessly with the :py:class:`~ACID_code.Acid`, :py:class:`~ACID_code.LSD`, and :py:class:`~ACID_code.Result` classes to get configuration and store data.
 The most useful examples of the usage of the class are shown below if desired by the user.
 
-Remember that all attributes and methods of Data can be found in the :py:class:`ACID_code.Data` API.
+Remember that all attributes and methods of Data can be found in the :py:class:`~ACID_code.Data` API.
 
 .. code-block:: python
 
@@ -58,7 +58,7 @@ Two-column line lists still unpack into just wavelengths and depths.
 
 Plotting
 ---------
-The :py:class:`ACID_code.Plot` class uses the stored state of a Data instance.
+The :py:class:`~ACID_code.Plot` class uses the stored state of a Data instance.
 It can plot profiles and forward models before MCMC has run, once the corresponding
 LSD step is available. It shares the Data instance, so an existing plotter sees
 subsequent updates without being recreated.

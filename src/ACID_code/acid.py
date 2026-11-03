@@ -19,7 +19,7 @@ from .diagnostics.errors import *
 from .diagnostics.logging import get_logger
 from .diagnostics.output import with_output_settings
 from ACID_code.diagnostics.warnings import *
-from .utils import IntLike, Scalar, Array1D, Array2D
+from .utils import IntLike, Scalar, Array1D, Array2D, ProfileNames
 from astropy.stats.sigma_clipping import sigma_clip
 
 logger = get_logger(__name__)
@@ -35,34 +35,34 @@ class Acid:
 
     def __init__(
         self,
-        data : Data | None = None,
+        data     : Data | None = None,
         **kwargs,
         ) -> None:
         """
         Notes
         -----
-        Initialises the Acid class with inputted parameters. The class keeps calculations stored in the :py:class:`Data` class and run configurations
-        in the :py:class:`Config` class (stored in Data for convenience). Both :py:class:`Data` and the :py:class:`Result` class (passed after ACID) have save and load 
-        methods which can save their state, with the :py:class:`Result` class handling saving the :py:class:`Data` class together, see :ref:`result`.
+        Initialises the Acid class with inputted parameters. The class keeps calculations stored in the :py:class:`~ACID_code.Data` class and run configurations
+        in the :py:class:`~ACID_code.Config` class (stored in Data for convenience). Both :py:class:`~ACID_code.Data` and the :py:class:`~ACID_code.Result` class (passed after ACID) have save and load
+        methods which can save their state, with the :py:class:`~ACID_code.Result` class handling saving the :py:class:`~ACID_code.Data` class together, see :ref:`result`.
         
-        As of 2.0, ACID is now designed to be run on one order at a time, for running and keeping track of multiple orders, please see the :py:class:`DataList` class for a natural
+        As of 2.0, ACID is now designed to be run on one order at a time, for running and keeping track of multiple orders, please see the :py:class:`~ACID_code.DataList` class for a natural
         implementation of running ACID on multiple orders and keeping track of which orders have been run and which haven't, as well as storing 
-        the results for each order. The :py:class:`DataList` class has been designed with parallelization on HPC's in mind, allowing orders (which are
-        independent) to be run by different jobs. See also the :ref:`multiprocessing` and :ref:`datalists` sections.
+        the results for each order. The :py:class:`~ACID_code.DataList` class has been designed with parallelization on HPC's in mind, allowing orders (which are
+        independent) to be run by different jobs. See also the :ref:`multiprocessing` and :ref:`datalist` sections.
 
-        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default :py:class:`Config` and/or :py:class:`Data` values or
+        Important note: All defaults in the signature are None, meaning if any values are input, they will override the default :py:class:`~ACID_code.Config` and/or :py:class:`~ACID_code.Data` values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed via 
-        :py:attr:`ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and the ACID method).
+        :py:attr:`~ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and the ACID method).
 
-        All parameters below and in the ACID method are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
-        The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
+        All parameters below and in the ACID method are stored in the :py:class:`~ACID_code.Config` instance, unless explicitly stated to be in the :py:class:`~ACID_code.Data` instance.
+        The :py:class:`~ACID_code.Config` instance is for runtime settings and the :py:class:`~ACID_code.Data` instance is for storing data and any calculations.
 
         Parameters
         ----------
-        data : :py:type:`Data | None`, optional
-            A :py:class:`Data` instance to store the data and calculations in. 
-        **kwargs : :py:type:`dict`, optional
-            Any kwargs that can be passed to :py:func:`Acid.ACID` can also be passed here.
+        data : :py:class:`~ACID_code.Data` | None, optional
+            A :py:class:`~ACID_code.Data` instance to store the data and calculations in.
+        **kwargs : :py:class:`dict`, optional
+            Any kwargs that can be passed to :py:meth:`~ACID_code.Acid.ACID` can also be passed here.
 
         Raises
         ------
@@ -89,55 +89,55 @@ class Acid:
     @with_output_settings
     def ACID(
         self,
-                                                                       # Stored in:
-        wavelengths           : Array1D|Array2D|None           = None, # Data
-        flux                  : Array1D|Array2D|None           = None, # Data
-        errors                : Array1D|Array2D|None           = None, # Data
-        sn                    : Array1D|Array2D|Scalar|None    = None, # Data
-        velocities            : Array1D|None                   = None, # Data
-        linelist              : Array2D|str|LineList|dict|None = None, # Data
-        order                 : IntLike|None                   = None, # Config
-        verbose               : IntLike|bool|str|None          = None, # Config
-        sampler_progress      : bool|None                      = None, # Config
-        masking_lines         : dict|MaskingLines|None         = None, # Config
-        seed                  : IntLike|None                   = None, # Config
-        dir                   : str|None                       = None, # Config
-        save_path             : str|None                       = None, # Config
-        sampler_path          : str|None                       = None, # Config
-        figure_dir            : str|None                       = None, # Config
-        deterministic_profile : bool|None                      = None, # Config
-        poly_ord              : IntLike|None                   = None, # Config
-        continuum_percentile  : IntLike|None                   = None, # Config
-        n_bins                : IntLike|None                   = None, # Config
-        bin_size              : IntLike|None                   = None, # Config
-        pix_chunk             : IntLike|None                   = None, # Config
-        dev_perc              : IntLike|None                   = None, # Config
-        sigma_lower           : Scalar|None                    = None, # Config
-        sigma_upper           : Scalar|None                    = None, # Config
-        skips                 : IntLike|None                   = None, # Config
-        od                    : bool|None                      = None, # Config
-        sparse                : bool|None                      = None, # Config
-        profile_groups        : Array1D|Array2D|None           = None, # Config, then Data after LSD clipping/grouping
-        profile_names         : list|dict|None                 = None, # Config, then Data after clipping/grouping
-        seperate_species      : list|None                      = None, # Config
-        depth_group_rules     : dict|None                      = None, # Config
-        sampler_type          : str|None                       = None, # Config
-        use_jax               : bool|None                      = None, # Config
-        parallel              : bool|None                      = None, # Config
-        cores                 : IntLike|None                   = None, # Config
-        nwalkers              : IntLike|None                   = None, # Config, then Data just before MCMC
-        nsteps                : IntLike|None                   = None, # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
-        max_steps             : IntLike|None                   = None, # Config
-        check_interval        : IntLike|None                   = None, # Config
-        min_checks            : IntLike|None                   = None, # Config
-        min_tau_factor        : IntLike|None                   = None, # Config
-        tau_tol               : float|None                     = None, # Config
-        moves                 : list|None                      = None, # Config
-        continuum_method      : str|None                       = None, # Config
-        run_mcmc              : bool|None                      = None, # Config
-        regularization        : Scalar|None                    = None, # Config
-        scale_regularization  : bool|None                      = None, # Config
-        resume                : bool|None                      = None, # Config
+                                                                        # Stored in:
+        wavelengths           : Array1D|Array2D|None           = None,  # Data
+        flux                  : Array1D|Array2D|None           = None,  # Data
+        errors                : Array1D|Array2D|None           = None,  # Data
+        sn                    : Array1D|Array2D|Scalar|None    = None,  # Data
+        velocities            : Array1D|None                   = None,  # Data
+        linelist              : Array2D|str|LineList|dict|None = None,  # Data
+        order                 : IntLike|None                   = None,  # Config
+        verbose               : IntLike|bool|str|None          = None,  # Config
+        sampler_progress      : bool|None                      = None,  # Config
+        masking_lines         : dict|MaskingLines|None         = None,  # Config
+        seed                  : IntLike|None                   = None,  # Config
+        dir                   : str|None                       = None,  # Config
+        save_path             : str|None                       = None,  # Config
+        sampler_path          : str|None                       = None,  # Config
+        figure_dir            : str|None                       = None,  # Config
+        deterministic_profile : bool|None                      = None,  # Config
+        poly_ord              : IntLike|None                   = None,  # Config
+        continuum_percentile  : IntLike|None                   = None,  # Config
+        n_bins                : IntLike|None                   = None,  # Config
+        bin_size              : IntLike|None                   = None,  # Config
+        pix_chunk             : IntLike|None                   = None,  # Config
+        dev_perc              : IntLike|None                   = None,  # Config
+        sigma_lower           : Scalar|None                    = None,  # Config
+        sigma_upper           : Scalar|None                    = None,  # Config
+        skips                 : IntLike|None                   = None,  # Config
+        od                    : bool|None                      = None,  # Config
+        sparse                : bool|None                      = None,  # Config
+        profile_groups        : Array1D|Array2D|None           = None,  # Config, then Data after LSD clipping/grouping
+        profile_names         : ProfileNames|None              = None,  # Config, then Data after clipping/grouping
+        seperate_species      : list[str]|None                 = None,  # Config
+        depth_group_rules     : dict|None                      = None,  # Config
+        sampler_type          : str|None                       = None,  # Config
+        use_jax               : bool|None                      = None,  # Config
+        parallel              : bool|None                      = None,  # Config
+        cores                 : IntLike|None                   = None,  # Config
+        nwalkers              : IntLike|None                   = None,  # Config, then Data just before MCMC
+        nsteps                : IntLike|None                   = None,  # Config as the initial steps, Data.nsteps is the true count of steps taken, which can be higher
+        max_steps             : IntLike|None                   = None,  # Config
+        check_interval        : IntLike|None                   = None,  # Config
+        min_checks            : IntLike|None                   = None,  # Config
+        min_tau_factor        : IntLike|None                   = None,  # Config
+        tau_tol               : float|None                     = None,  # Config
+        moves                 : list|None                      = None,  # Config
+        continuum_method      : str|None                       = None,  # Config
+        run_mcmc              : bool|None                      = None,  # Config
+        regularization        : Scalar|None                    = None,  # Config
+        scale_regularization  : bool|None                      = None,  # Config
+        resume                : bool|None                      = None,  # Config
         **kwargs,
         ) -> Result | None:
         """
@@ -148,50 +148,50 @@ class Acid:
 
         Important note: All defaults in the signature are None, meaning if any values are input, they will override the default Config and/or Data values or
         any values that have already been input. The defaults within the config are written below. The config defaults can also be accessed by:
-        ACID_code.Config.defaults (returning a dictionary of defaults for both initialisation and the ACID method).
+        :py:attr:`~ACID_code.Config.defaults` (returning a dictionary of defaults for both initialisation and the ACID method).
 
-        All parameters below are stored in the :py:class:`Config` instance, unless explicitly stated to be in the :py:class:`Data` instance.
-        The :py:class:`Config` instance is for runtime settings and the :py:class:`Data` instance is for storing data and any calculations. 
+        All parameters below are stored in the :py:class:`~ACID_code.Config` instance, unless explicitly stated to be in the :py:class:`~ACID_code.Data` instance.
+        The :py:class:`~ACID_code.Config` instance is for runtime settings and the :py:class:`~ACID_code.Data` instance is for storing data and any calculations.
 
         Parameters
         ----------
-        wavelengths : :py:type:`Array1D | Array2D`, optional
+        wavelengths : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             An array of wavelengths for each frame (in Angstroms). For multiple frames this should be a 2D array such that
             wavelengths[i] corresponds to the wavelengths for the ith frame. Can only be None if a data instance was 
             provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
-        flux : :py:type:`Array1D | Array2D`, optional
+        flux : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             An array of spectral frames (in flux). For multiple frames this should be a 2D array such that 
             flux[i] corresponds to the spectral fluxes for the ith frame. Can only be None if a data instance was 
             provided in initialisation. If a 2D array is provided, they are treated as multiple frames (not orders), by default None, stored in the Data instance.
-        errors : :py:type:`Array1D | Array2D`, optional
+        errors : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             Errors for each frame (in flux). For multiple frames this should be a 2D array such that
             errors[i] corresponds to the spectral errors for the ith frame. If a 2D array is provided, they are treated as multiple frames (not 
             orders). If no errors are provided, but the SN is provided, the errors will be estimated from the flux and SN, but we highly recommend 
             providing errors if possible, by default None, stored in the Data instance.
-        sn : :py:type:`Scalar | IntLike | Array1D`, optional
+        sn : :py:type:`~ACID_code.Scalar` | :py:type:`~ACID_code.IntLike` | :py:type:`~ACID_code.Array1D`, optional
             Average signal-to-noise ratio for each frame (used to calculate minimum line depth to consider from line list).
             Each frame should have only one S/N value, so for multiple frames this should be a 1D array such that
-            sn[i] corresponds to the S/N for the ith frame. If you prefer to use a per-pixel SN value, ACID will use the :py:function:`utils.collapse_SNR` 
+            sn[i] corresponds to the S/N for the ith frame. If you prefer to use a per-pixel SN value, ACID will use the :py:func:`~ACID_code.utils.collapse_SNR`
             function to calculate a single S/N value for each frame from the central 2/3rds of the input spectra. In which case, a 2D array can be 
             If None, the S/N will be estimated from the input spectra and errors, by default None, stored in the Data instance.
-        velocities : :py:type:`Array1D`, optional
+        velocities : :py:type:`~ACID_code.Array1D`, optional
             Velocity grid for LSD profiles (in km/s). For example, use: np.arange(-25, 25, 0.82) to create one. If None, a default grid
             from -25 to 25 km/s is used with a spacing calculated by calc_deltav after the wavelengths are provided. It is highly recommended to 
             choose your own velocity grid, by default None, stored in the Data instance.
-        linelist : :py:type:`Array2D | str` | :py:class:`LineList` | dict`, optional
+        linelist : :py:type:`~ACID_code.Array2D` | :py:class:`str` | :py:class:`~ACID_code.LineList` | :py:class:`dict`, optional
             The linelist to use for LSD. The linelist should have wavelengths in angstroms and relative depths between 0 and 1.
             This is a required parameter. It can be of the forms:
             - String: A path to a VALD linelist in string format. Support for other linelists may be added in the future or on request.
-            - :py:type:`Array2D`: A 2D array-like object indexed such that 0 is wavelengths and 1 is depths.
+            - :py:type:`~ACID_code.Array2D`: A 2D array-like object indexed such that 0 is wavelengths and 1 is depths.
             - dict: A dictionary with keys "wavelengths" and "depths", each containing array-like objects for the wavelengths and depths respectively.
-            - :py:class:`LineList`: The :py:class:`LineList` class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
-        order : :py:type:`IntLike` | None, optional
+            - :py:class:`~ACID_code.LineList`: The :py:class:`~ACID_code.LineList` class is used to expose the linelist for masking or getting/plotting the linelist. You can input an instance if you have one.
+        order : :py:type:`~ACID_code.IntLike` | None, optional
             If this ACID instance is intended as a run on a specific order, then you can designate this instance for that order. This will allow
             the resulting Data instance to track of which order the profiles correspond to. Note that orders can be indexed by the correct indexing
             of the spectrograph (ie. some spectrographs start at order ~20). By default None (unset).
             When loading a saved Data instance, an unset order is inferred from its order_<integer> parent directory.
             DataList assigns order labels from order_range when initialized from arrays.
-        verbose : :py:type:`bool | IntLike | str`, optional
+        verbose : :py:class:`bool` | :py:type:`~ACID_code.IntLike` | :py:class:`str`, optional
             The verbosity for printing and plotting the progress and warnings of ACID. The verbosities are natively stored as integers corresponding to:
             0: No routine logging, progress bars, or automatic plots.
             1: Only printing warnings.
@@ -206,32 +206,32 @@ class Acid:
             Python warning filters control warnings independently of verbosity; use
             ACID_code.configure_warnings() to change their handling. DataList batch
             runs use a quieter level-2 output, described in the DataList documentation.
-        sampler_progress : :py:type:`bool`, optional
+        sampler_progress : :py:class:`bool`, optional
             A verbosity override for just the MCMC sampling progress.
             By default None which does not override, but if True/False, it will overwrite with that value, and use/don't use a tqdm output for the sampler.
-        masking_lines : :py:type:`dict` | :py:class:`MaskingLines`, optional
+        masking_lines : :py:class:`dict` | :py:class:`~ACID_code.MaskingLines`, optional
             Telluric lines (in angstroms) and widths in (km/s) to mask from the wavelength regions from. Unless you'd like to change the default masking
             lines, we recommend just using the defaults (leaving this as None), which are based on telluric lines and strong hydrogen/metal lines in the 
             optical and near infrared. For a guide on using your own/modifying the defaults, see :ref:`masking_lines`. By default None, stored in the Config instance.
-        seed : :py:type:`IntLike`, optional
+        seed : :py:type:`~ACID_code.IntLike`, optional
             Random seed for reproducibility, leave it on None for a random seed, by default None.
             Seeds a private RNG when walkers/sampling are first prepared. Continuation restores
             the sampler state; result processing uses a copy of the initial RNG. Reset Data to reseed.
-        dir : :py:type:`str`, optional
+        dir : :py:class:`str`, optional
             Derives the save_path to dir/data.pkl, the sampler_path to dir/sampler.h5, and figure_dir to dir/figures/.
             Any inputted paths for save_path, sampler_path, or figure_dir will override this input.
             If None, the save_path, sampler_path, and figure_dir are not set. By default None.
             Created when output is written, rather than when configured. Only its parent must already exist.
             All of the three paths (save_path, sampler_path, and figure_dir) can be overriden explicitly, or turned off with a string such as
             "none", "off", "0", "false", etc.
-        save_path : :py:type:`str`, optional
+        save_path : :py:class:`str`, optional
             The path to save the data instance (containing the results) to. If None, results are not saved to disk, by default None.
             If a string is input, the data instance will be saved to this path as a .pkl file when the results are finished.
             Should be a valid file path that ends with ".pkl". Only its direct parent is created when saving if needed.
             The parent's parent must already exist.
             If a file already exists at this path, it will be overwritten on Acid initialization.
             Note that we separate the save and sampler paths, as the sampler can be very large and may not be desired to be saved.
-        sampler_path : :py:type:`str`, optional
+        sampler_path : :py:class:`str`, optional
             The path to save the sampler HDF5 backend file to.
             If None, the sampler is not saved and only stored in memory. By default None.
             Note that if your path points to an existing file, it will be overwritten on Acid initialization.
@@ -239,7 +239,7 @@ class Acid:
             Should be a valid file path that ends with ".h5". Only its direct parent is created when sampling if needed.
             The parent's parent must already exist.
             Note that if you later try and save the sampler through the data class, it is converted to a HDF5 backend.
-        figure_dir : :py:type:`str`, optional
+        figure_dir : :py:class:`str`, optional
             A directory to save the figures to.
             If None, figures are not saved to disk and figures are instead shown (if asked) with plt.show(), by default None.
             Created when saving a figure. For the default path, dir is also created if needed.
@@ -248,35 +248,35 @@ class Acid:
             profile is inferred from the continuum fit. This is a new feature that has been set to the default as it significantly
             decrease convergence time and computation time per step, while fully maintaining accuracy. Setting this to False will 
             match legacy behaviour, by default True.
-        poly_ord : :py:type:`IntLike`, optional
+        poly_ord : :py:type:`~ACID_code.IntLike`, optional
             Order of polynomial to fit as the continuum, by default 3
-        continuum_percentile : :py:type:`IntLike`, optional
+        continuum_percentile : :py:type:`~ACID_code.IntLike`, optional
             The percentile to use when fitting the continuum, by default 99. For example, if 99, the continuum fit will be performed
             on the points in the spectra that are above the 99th percentile in flux in each spectral bin (determined by n_bins/bin_size below).
-        n_bins : :py:type:`IntLike`, optional
+        n_bins : :py:type:`~ACID_code.IntLike`, optional
             The number of bins to use when performing the continuum fit. The spectra are evenly split into this many bins and the 
             continuum is fit to the median wavelength and the specified percentile (continuum_percentile) of flux in each bin.
             By default 20.
-        bin_size : :py:type:`IntLike`, optional
+        bin_size : :py:type:`~ACID_code.IntLike`, optional
             Instead of specifying the total number of bins in your spectrum (nbins), specify the number of pixels to go in each bin.
             The spectra are split into bins with this number of pixels, and the continuum is fit to the median wavelength 
             and the specified percentile of flux in each bin. If a value is input it will override n_bins. By default None.
-        pix_chunk : :py:type:`IntLike`, optional
+        pix_chunk : :py:type:`~ACID_code.IntLike`, optional
             Size of 'bad' regions in pixels. 'bad' areas are identified by the residuals between an inital model
             and the data. If the residuals deviate by a specified percentage (see dev_perc below) for this number (pix_chunk) of pixels,
             then this chunk of pixels are masked in the spectra. By default 50.
-        dev_perc : :py:type:`IntLike`, optional
+        dev_perc : :py:type:`~ACID_code.IntLike`, optional
             Allowed deviation percentage. 'bad' areas are identified by the residuals between an inital model
             and the data. If a residual deviates by this percentage for a specified number of pixels,
             then this chunk of pixels are masked in the spectra. By default 25
-        sigma_lower : :py:type:`IntLike`, optional
+        sigma_lower : :py:type:`~ACID_code.IntLike`, optional
             Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
             residuals between an inital model and the data (with masking_lines already removed).
             Regions that lie outside the median - sigma_lower STDEVs are clipped.
             The clipped regions will be masked in the spectra.
             This masking is only applied to find the MCMC continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 3
-        sigma_upper : :py:type:`IntLike`, optional
+        sigma_upper : :py:type:`~ACID_code.IntLike`, optional
             Number of sigma to keep in sigma clipping. Ill fitting lines are identified by sigma-clipping the
             residuals between an inital model and the data (with masking_lines already removed).
             Regions that lie outside the median + sigma_upper STDEVs are clipped.
@@ -284,10 +284,10 @@ class Acid:
             This masking is only applied to find the MCMC continuum fit and is removed when
             LSD is applied to obtain the final profiles, by default 5.
             The default is higher to allow ACID to find a better continuum fit in MCMC fitting (try reducing sigma_lower yourself!).
-        skips : :py:type:`IntLike`, optional
+        skips : :py:type:`~ACID_code.IntLike`, optional
             An option to only run acid on one in every n pixels, where n is the integer argument. This is only useful for
             testing to get a quicker result especially for larger wavelength ranges or datasets, by default 1 (no skipping)
-        od : :py:type:`bool`, optional
+        od : :py:class:`bool`, optional
             If True, runs ACID in optical depth, otherwise, the LSD methods and ACID fitting is performed in flux. By default None which defaults to True.
             Note that the whole point of ACID is to run LSD in OD, we highly recommend leaving this unless you specifically want to compare.
         sparse : bool, optional
@@ -296,7 +296,7 @@ class Acid:
             It is kept mainly for testing. Note also that we are not acutally calculating a sparse matrix, instead,
             we are only calculating the contributions of the nearest neighbour velocity bins and setting the rest to 0.
             For sparse=False, it calculates the entire alpha matrix with an efficient numpy method.
-        regularization : :py:type:`Scalar`, optional
+        regularization : :py:type:`~ACID_code.Scalar`, optional
             Non-negative smoothing strength, by default 0 (off). Positive values
             penalize adjacent-bin differences in fitting space (optical depth when od=True).
             With scale_regularization=True, this is a relative strength. This is not a
@@ -307,7 +307,7 @@ class Acid:
             by default True. This gives comparable smoothing across S/N and line counts on
             the same velocity grid. If False, use regularization directly as the unscaled
             coefficient in Kochukhov et al. (2010), Eq. (24). If None, uses the config value.
-        profile_groups : :py:type:`Array1D | None`, optional
+        profile_groups : :py:type:`~ACID_code.Array1D` | None, optional
             A mask for the linelist elements indicating which group they belong to. Each group is fitted with their own profiles.
             If provided, the resulting profiles are a 2D array ordered by sorted group ID.
             IDs must be non-negative integers, e.g. [0,0,2,0,1,0,3,...], and need not be consecutive.
@@ -327,7 +327,7 @@ class Acid:
             retained species is merged back with a warning. Cannot be combined with
             depth_group_rules. Explicit profile_groups override automatic grouping.
             Requires a VALD linelist input.
-        depth_group_rules : :py:type:`dict`, optional
+        depth_group_rules : :py:class:`dict`, optional
             A way to automatically generate the profile_groups based on a set of rules.
             This was set up as a way to seperate the the linelist into groups of similar depth.
             The dictionary must have the following two keys:
@@ -336,14 +336,14 @@ class Acid:
             - "min_lines" (int), the minimum number of lines that are required in each group, we recommend at least 20 for a sensible profile.
             
             If just those two keys were put, then the program will fill the 4 groups with the same number of lines. However, you can additionally
-            specify the depth of lines for each group starting from the deepest group. Here is an example:
+            specify the depth of lines for each group starting from the deepest group. Here is an example::
             
-            depth_group_rules = {
-                "n_groups": 4,
-                "min_lines": 20,
-                "0": 0.8,
-                "1": 0.5,
-            }
+                depth_group_rules = {
+                    "n_groups": 4,
+                    "min_lines": 20,
+                    "0": 0.8,
+                    "1": 0.5,
+                }
 
             This will mean that the deepest group, 0, will contain all lines from 1-0.8, or lower if that range does not contain min_lines.
             The next group will contain all lines from 0.8-0.5, or lower if not filled with min_lines. The rest of the unspecified groups
@@ -353,44 +353,44 @@ class Acid:
             Names are generated from each group's actual linear depth range unless profile_names is provided.
             Note that providing profile_groups will override this parameter, causing it to have no effect.
             Requires a VALD linelist input.
-        sampler_type : :py:type:`str`, optional
+        sampler_type : :py:class:`str`, optional
             If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
             by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
             The only reason I added this was to get the Bayesian evidence for model comparison.
             If "dynesty" is chosen, the dynesty package needs to be installed, and the nsteps parameter is treated as "nlive" to be passed to the NestedSampler.
-        use_jax : :py:type:`bool`, optional
+        use_jax : :py:class:`bool`, optional
             If True, use a lazily imported, JIT-compiled JAX kernel for MCMC log-probability calculations.
             If JAX is unavailable, ACID warns and falls back to NumPy/SciPy. By default False.
-        parallel : :py:type:`bool`, optional
+        parallel : :py:class:`bool`, optional
             If True evaluates MCMC proposals in parallel. Uses threads when JAX is requested,
             otherwise uses worker processes. See
             https://acid-code.readthedocs.io/en/stable/using_ACID.html#multiprocessing for more details. By default True
-        cores : :py:type:`IntLike`, optional
+        cores : :py:type:`~ACID_code.IntLike`, optional
             Number of cores to use if parallel=True. If None, all available cores will be used, by default None
-        nwalkers : :py:type:`IntLike`, optional
+        nwalkers : :py:type:`~ACID_code.IntLike`, optional
             A manual override for the number of walkers for the MCMC sampler. By default, uses the emcee recommendation which is 3 times the number of
             dimensions. For the deterministic model, this is just the poly_ord + 1, for the non-deterministic model, it is poly_ord + 1 + nvelocity points.
-        nsteps : :py:type:`IntLike`, optional
+        nsteps : :py:type:`~ACID_code.IntLike`, optional
             Number of steps for the MCMC to run, by default 10000, the initial steps are stored in the config as nsteps, 
             but the true count of steps taken is stored in the Data instance as Data.nsteps, which can be higher than this if 
             continue_sampling is used to continue sampling after the initial run.
-        max_steps : :py:type:`IntLike`, optional
+        max_steps : :py:type:`~ACID_code.IntLike`, optional
             If set, the sampler will run until max_steps or convergence is reached by estimation using the emcee autocorrelation 
             time (tau). The sampler will check for convergence every 'check_interval' steps, and will require a minimum number 
             of checks ('min_checks') and a minimum tau factor ('min_tau_factor') before it can stop. The stopping criterion 
             is met when the change in tau is less than 'tau_tol' for all parameters. By default None, which means no maximum. 
             If a value is inputted, the nsteps parameter is ignored. The continue_sampling method in Result or Acid can still
             be used normally to continue sampling after either stopping criterion is reached.
-        check_interval : :py:type:`IntLike`, optional
+        check_interval : :py:type:`~ACID_code.IntLike`, optional
             Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 1000. 
             Only used if max_steps is set.
-        min_checks : :py:type:`IntLike`, optional
+        min_checks : :py:type:`~ACID_code.IntLike`, optional
             Minimum number of checks before MCMC can be stopped, by default 1. Only used if max_steps is set.
-        min_tau_factor : :py:type:`IntLike`, optional
+        min_tau_factor : :py:type:`~ACID_code.IntLike`, optional
             Minimum tau factor for MCMC stopping criterion (neff), by default 50, which is the emcee recommendation, it's not
             recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
             Only used if max_steps is set. If set to 0, the effective sample size criterion is disabled.
-        tau_tol : :py:type:`float`, optional
+        tau_tol : :py:class:`float`, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
             If set to 0, the tau stability criterion is disabled. At least one of min_tau_factor and tau_tol must be nonzero.
         moves : list[tuple], optional
@@ -414,29 +414,29 @@ class Acid:
             - "fraction" is the fraction of walkers to which this move should be applied.
             - "move_kwargs" is an optional dictionary of keyword arguments passed to
               the move class initialisation.
-        continuum_method : :py:type:`str`, optional
+        continuum_method : :py:class:`str`, optional
             The method to use for fitting and evaluating the continuum. Options are "polyval" or "chebval". Default is None,
             which uses polyval for poly_ord <= 5 and chebval for poly_ord > 5.
             This is because chebyshev polynomials are more numerically stable for higher order polynomials.
-        run_mcmc : :py:type:`bool`, optional
+        run_mcmc : :py:class:`bool`, optional
             If True, runs the MCMC to fit the model, by default True. Can be set to False to perform all of the preparation
             for MCMC without actually running it. The ACID function will still update the class and data attributes.
-            If True, the method returns a :py:class:`Result` object, and if False, the method returns None, but attributes are updated.
-        resume : :py:type:`bool`, optional
+            If True, the method returns a :py:class:`~ACID_code.Result` object, and if False, the method returns None, but attributes are updated.
+        resume : :py:class:`bool`, optional
             Restore save_path and its HDF5 sampler, skipping preprocessing and walker initialization.
             Requires both files; dir supplies their usual data.pkl and sampler.h5 paths.
             Saved inputs and model settings take precedence over supplied inputs. Runtime settings
             (parallelism, moves, verbosity, paths and stopping criteria) can be overridden.
             nsteps and max_steps are total step targets, including already saved samples.
             With run_mcmc=False, only restores the run. By default False.
-        **kwargs : :py:type:`dict`, optional
+        **kwargs : :py:class:`dict`, optional
             Unused except to catch accidental inputs of initialisation arguments into the ACID method and warn if so.
 
         Returns
         -------
         Result | None
-            A :py:class:`Result` object containing the LSD profiles and associated data.
-            See the :py:class:`Result` class for available methods and attributes.
+            A :py:class:`~ACID_code.Result` object containing the LSD profiles and associated data.
+            See the :py:class:`~ACID_code.Result` class for available methods and attributes.
 
             If "run_mcmc" is False, "None" is returned, but the class
             attributes are still updated.
@@ -1005,8 +1005,8 @@ class Acid:
     @with_output_settings
     def run_mcmc(
         self,
-        nsteps:IntLike,
-        state = None,        
+        nsteps : IntLike,
+        state            = None,
         ) -> None:
         """
         Runs MCMC for a specified number of steps. A purely class method that I do not recommend you use directly. Use
@@ -1204,9 +1204,9 @@ class Acid:
 
         Parameters
         ----------
-        nsteps : :py:type:`IntLike`, optional
+        nsteps : :py:type:`~ACID_code.IntLike`, optional
             Number of additional steps to run the MCMC for.
-        max_steps : :py:type:`IntLike`, optional
+        max_steps : :py:type:`~ACID_code.IntLike`, optional
             Maximum number of steps to run the MCMC for in total (including previous steps).
             If specified, the MCMC will stop if this number of steps is reached even if convergence has not been reached, by default None.
             If input, nsteps is ignored.
@@ -1220,7 +1220,7 @@ class Acid:
             Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
         moves : dict, optional
             Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
-            Default is None. See :py:function:`Acid.ACID` for format.
+            Default is None. See :py:meth:`~ACID_code.Acid.ACID` for format.
         return_sampler : bool, optional
             Whether to return the sampler after continuing sampling. Default is True.
 

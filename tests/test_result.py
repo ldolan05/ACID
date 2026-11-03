@@ -52,6 +52,12 @@ def test_result_indexes_profiles_errors_covariance_and_frames(harps_result, harp
         _ = harps_result["continuum"]
 
 
+@pytest.mark.parametrize("selector", [None, 1.5, [0], {}])
+def test_result_rejects_unsupported_selector_types(harps_result, selector):
+    with pytest.raises(BeartypeCallHintParamViolation):
+        _ = harps_result[selector]
+
+
 def test_result_save_load_and_object_constructors(tmp_path, harps_result):
     """Result persistence must preserve both Data and the sampler backend."""
     data_path = tmp_path / "result.pkl"

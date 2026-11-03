@@ -3,7 +3,7 @@
 The DataList and loading FITS files
 ===================================
 
-The :py:class:`ACID_code.DataList` class is a wrapper around a list of :py:class:`ACID_code.Data` instances, 
+The :py:class:`~ACID_code.DataList` class is a wrapper around a list of :py:class:`~ACID_code.Data` instances,
 with some methods to easily run ACID on multiple frames of data (eg. for echelle spectra).
 
 Initialization from arrays assigns order labels from ``order_range`` (or a
@@ -26,9 +26,9 @@ For now, loading FITS files should be done by you to get the wavelength, spectru
 Over time, I may add another class to handle the loading of common FITS file formats for certain instruments (feel free to help with this).
 
 The DataList class is the main way to run ACID on multiple orders of an echelle spectrum. It allows mapping the correct order number from the instrument
-to the index of the DataList, and has a method to run ACID on all frames in the list with the same configuration. Also see the :py:class:`ACID_code.Data` API for more details.
+to the index of the DataList, and has a method to run ACID on all frames in the list with the same configuration. Also see the :py:class:`~ACID_code.Data` API for more details.
 
-The DataList can be initialized in two ways, either by inputting your spectra as arrays or by inputting a list of :py:class:`ACID_code.Data` instances.
+The DataList can be initialized in two ways, either by inputting your spectra as arrays or by inputting a list of :py:class:`~ACID_code.Data` instances.
 The former is more useful for loading in spectra from FITS files, and the latter is more useful for loading in previously saved Data instances 
 (see :ref:`data` for how to save and load Data instances).
 
@@ -37,7 +37,7 @@ Creating a DataList from Spectra
 
 The DataList class is initialized by inputting arrays of wavelengths, spectra, errors, and sn for each/one frame.
 The dimensions should be (n_orders, n_frames, n_pixels) for multiple frames or (n_orders, n_pixels) for a single frame.
-In other words, the last 1 or 2 dimensions should match the input format for :py:class:`ACID_code.Acid.ACID`.
+In other words, the last 1 or 2 dimensions should match the input format for :py:meth:`~ACID_code.Acid.ACID`.
 
 Sometimes, fits files store their frames in shape (n_frames, n_orders, n_pixels), you can swap the axes with np.swapaxes(wavelengths, 0, 1) 
 to get them in the correct shape. It is also possible to input orders with different numbers of pixels, in which case the wavelengths should be a list
@@ -105,7 +105,7 @@ we can also input it. We can also change order-specific configurations by inputt
 Creating a DataList from a list of Data instances
 -------------------------------------------------
 
-The DataList can also be initialized by inputting a list of :py:class:`ACID_code.Data` instances by using the :py:function:`ACID_code.DataList.from_datalist` class method.
+The DataList can also be initialized by inputting a list of :py:class:`~ACID_code.Data` instances by using the :py:meth:`~ACID_code.DataList.from_datalist` class method.
 This is useful for loading in previously saved Data instances (see :ref:`data` for how to save and load Data instances).
 
 .. code-block:: python
@@ -128,7 +128,7 @@ This is useful for loading in previously saved Data instances (see :ref:`data` f
     datalist.run_ACID(allow_overwrite=False) # run but don't overwrite any existing results (this is actually default)
 
 Verbosity and progress
----------------------
+----------------------
 
 ``DataList(verbose=...)`` controls output for both ``run_ACID`` and
 ``run_multi_order_ACID``. Either method also accepts ``verbose=...`` to override
@@ -235,8 +235,8 @@ to include the joint data in a packed DataList for ``DataList.load``.
 Using the DataList results
 ----------------------------
 
-Once ACID has been run on the DataList with the :py:function:`ACID_code.DataList.run_ACID` method, 
-the results for each order are stored in the DataList instance and can be accessed with the :py:function:`ACID_code.Data.result` property.
+Once ACID has been run on the DataList with the :py:meth:`~ACID_code.DataList.run_ACID` method,
+the results for each order are stored in the DataList instance and can be accessed with the :py:attr:`~ACID_code.Data.result` property.
 
 .. code-block:: python
 

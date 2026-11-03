@@ -3,6 +3,8 @@ import sys
 from time import time
 import numpy as np
 import os, functools, inspect, warnings
+from collections.abc import Callable, Iterator
+from typing import Any, TYPE_CHECKING
 from emcee import EnsembleSampler
 from beartype import beartype
 from scipy.interpolate import interp1d
@@ -12,10 +14,14 @@ from . import utils
 from .diagnostics.errors import *
 from .data import Data
 from .plot import Plot, _require_sampler
-from .utils import IntLike, Scalar
+from .utils import IntLike, Scalar, Array1D, Array2D, Array3D
 from .diagnostics.warnings import *
 from .diagnostics.logging import get_logger
 from .diagnostics.output import with_output_settings
+
+if TYPE_CHECKING:
+    import ACID_code
+
 try:
     from dynesty.sampler import Sampler
 except ImportError:
@@ -23,11 +29,13 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-def _require_profiles(method):
+def _require_profiles(method:Callable[..., Any]) -> Callable[..., Any]:
+    # Check the original parameters before the state guard wraps them in *args/**kwargs.
+    method = beartype(method)
     # Final products require processed results; intermediate keys can be plotted directly.
     sig = inspect.signature(method)
     @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self, *args:Any, **kwargs:Any) -> Any:
         key = sig.bind_partial(self, *args, **kwargs).arguments.get("key", "final")
         if key == "final" and not self.data.complete: # complete is flag for if profiles have been made
             name = method.__qualname__
@@ -54,36 +62,36 @@ class Result(Plot):
     """
 
     def __init__(
-            self,
-            data                    : Data|object,
-            sampler                 : EnsembleSampler|Sampler|None = None, # type:ignore
-            process_results         : bool                  = True,
-            verbose                 : IntLike|bool|str|None = None,
+        self,
+        data            : "Data | ACID_code.acid.Acid | ACID_code.result.Result",
+        sampler         : EnsembleSampler|Sampler|None                           = None,  # type:ignore
+        process_results : bool                                                   = True,
+        verbose         : IntLike|bool|str|None                                  = None,
         ) -> None:
         """
         Initialize the Result class
 
         Parameters
         ----------
-        data : :py:class:`Data` | :py:class:`Acid`
-            An Acid object or Data object (contained in Acid class). If an Acid 
+        data : :py:class:`~ACID_code.Data` | :py:class:`~ACID_code.Acid` | :py:class:`~ACID_code.Result`
+            An Acid, Result or Data object (contained in Acid class). If an Acid
             object is provided, all other arguments are taken from there. If a Data object is 
             provided, a sampler can be provided in the second argument. If a sampler object 
             is provided, it will be used as the sampler, but all other attributes will need 
             to be set manually for the Result object to be fully functional.
-        sampler : :py:class:`emcee.EnsembleSampler` | :py:class:`dynesty.Sampler`, optional
+        sampler : :py:class:`emcee.EnsembleSampler` | :py:class:`dynesty.sampler.Sampler`, optional
             Sets and overwrites the sampler in the Data object with this if provided, by default None. 
         process_results : bool, optional
             Whether to process the results from the Acid object upon initialisation, by default True.
-            If False, the profiles attribute will not be available until Result.process_results() is called.
+            If False, the profiles attribute will not be available until :py:meth:`~ACID_code.Result.process_results` is called.
             The process_results functions does a LSD call, which can be skipped to save time and use
             the Result object for methods that do not require the profiles attribute, such as 
             continue_sampling() or plot_walkers(). This requires a Data object with the necessary attributes, 
             and a sampler object in the initialisation, or an Acid object with the necessary attributes already set.
             By default, True.
-        verbose : :py:type:`IntLike | bool | str`, optional
-            Verbosity level, works exactly the same as :py:class:`Acid`, if not provided
-            defaults to provided :py:class:`Acid`/:py:class:`Data` class verbosity (which itself defaults to 2).
+        verbose : :py:type:`~ACID_code.IntLike` | :py:class:`bool` | :py:class:`str`, optional
+            Verbosity level, works exactly the same as :py:class:`~ACID_code.Acid`, if not provided
+            defaults to provided :py:class:`~ACID_code.Acid`/:py:class:`~ACID_code.Data` class verbosity (which itself defaults to 2).
             Overwrites any value passed trough the Data object.
         """
         super().__init__(data)
@@ -116,7 +124,7 @@ class Result(Plot):
         """
         Processes the MCMC sampler results to obtain the final LSD profiles and continuum fit, and errors on both.
         This is effectively the final step in the ACID pipeline, and must be run before the profiles attribute is available. 
-        This is automatically called if process_results is True during :py:class:`Acid` initialization.
+        This is automatically called if process_results is True during :py:class:`~ACID_code.Acid` initialization.
         This function is stored here instead of the Acid class because it is not necessary to have the final profiles to use some of the
         methods contained within this class.
         """
@@ -237,7 +245,7 @@ class Result(Plot):
         logger.info(f"Done! Results processed in {self.data.results_time:.2f} seconds. Total time: {self.data.total_time:.2f} seconds.")
         return
 
-    def _continuum_correct_and_runlsd(self, key, all_poly_coeffs, **kwargs):
+    def _continuum_correct_and_runlsd(self, key:str, all_poly_coeffs:Array2D, **kwargs:Any) -> LSD|None:
 
         data = self.data
 
@@ -265,7 +273,7 @@ class Result(Plot):
 
         return _lsd
 
-    def _get_order_alpha(self, wavelengths, key):
+    def _get_order_alpha(self, wavelengths:Array1D, key:str) -> Array2D|Array3D|None:
         """Recalculate each order's triangular interpolation on its own grid."""
         slices = self.data.continuum_slices.get(key)
         if slices is None:
@@ -291,7 +299,7 @@ class Result(Plot):
             matrices.append(alpha)
         return np.concatenate(matrices, axis=1 if groups is not None and key != "mcmc" else 0)
 
-    def _get_continuum(self, wavelengths, samples, key):
+    def _get_continuum(self, wavelengths:Array1D, samples:Array2D, key:str) -> tuple[Array1D, Array1D, Array1D]:
         slices = self.data.continuum_slices.get(key)
         if slices is None:
             slices = [(0, len(wavelengths), 0, samples.shape[1])]
@@ -306,7 +314,7 @@ class Result(Plot):
             errors.append(self._get_continuum_error(x, samples[:, a:b]))
         return tuple(np.concatenate(values) for values in (norm_wl, continua, errors))
 
-    def _get_continuum_error(self, norm_wl, all_poly_coeffs):
+    def _get_continuum_error(self, norm_wl:Array1D, all_poly_coeffs:Array2D) -> Array1D:
         ncoeffs = all_poly_coeffs.shape[1]
 
         if self.data.config.continuum_method == "polyval":
@@ -344,7 +352,7 @@ class Result(Plot):
         return continuum_error
 
     @_require_profiles
-    def __getitem__(self, item) -> list|np.ndarray:
+    def __getitem__(self, item:int|str|tuple) -> list|np.ndarray:
         """
         Allows indexing into the profiles array directly from the Result object.
         """
@@ -365,7 +373,7 @@ class Result(Plot):
             if item < 0 or item > 2:
                 raise ACIDInputError(f"Integer index must be 0, 1, or 2 to specify whether to return the profile, error, or covariance matrix. Got {item} instead.")
             return self.data.profile["final"][item]
-        elif isinstance(item, str):
+        else:
             # Various different options for string inputs, why not
             if "error" in item.lower():
                 return self.data.profile["final"][1]
@@ -375,26 +383,24 @@ class Result(Plot):
                 return self.data.profile["final"][0]
             else:
                 raise ACIDInputError(f"String index must contain either 'error', 'cov', or 'profile' to specify which to return. Got {item} instead.")
-        else:
-            raise ACIDInputError(f"Invalid index type. Must be either a tuple, int, or str. Got {type(item)} instead.")
 
     @_require_profiles
-    def __iter__(self):
+    def __iter__(self) -> Iterator[tuple|list]:
         """Allows iterating over the profiles array directly from the Result object."""
         return iter(self.data.profiles)
 
     @property
     @_require_profiles
-    def profiles(self):
+    def profiles(self) -> "ACID_code.profiles.Profiles":
         """Return a the fitter for the final profiles; use plot_profiles for raw plots."""
         from .profiles import Profiles
         return Profiles(data=self.data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Only print out the sampler and data attributes, and whether profiles is available, to avoid printing large arrays
         return f"Result object with sampler={self.sampler}, data={self.data}, profiles={'available' if self.data.profiles is not None else 'not available'}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__repr__()
 
     @_require_sampler
@@ -402,33 +408,33 @@ class Result(Plot):
     def continue_sampling(self, process_results:bool=True, sampler:EnsembleSampler|None=None, **kwargs) -> None:
         """
         Continue MCMC sampling for additional steps. Passes the stored sampler into a Acid instance with the saved data. See
-        :py:function:`Acid.continue_sampling` for more details on the parameters that can be passed.
+        :py:meth:`~ACID_code.Acid.continue_sampling` for more details on the parameters that can be passed.
 
         Parameters
         ----------
         process_results : bool, optional
             Whether to process the results after continuing sampling, by default True.
-            If False, the profiles attribute will not be updated until Result.process_results() is called.
+            If False, the profiles attribute will not be updated until :py:meth:`~ACID_code.Result.process_results` is called.
         sampler : emcee.EnsembleSampler | None, optional
             Optionally provide a different sampler to continue sampling from, otherwise,
             takes the sampler from the Result object, by default None
-        nsteps : :py:type:`IntLike`, optional
-            Number of additional MCMC steps to run. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
-        max_steps : :py:type:`IntLike`, optional
-            Maximum number of MCMC steps to run, by default None. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+        nsteps : :py:type:`~ACID_code.IntLike`, optional
+            Number of additional MCMC steps to run. Passed to :py:meth:`~ACID_code.Acid.continue_sampling` through ``**kwargs``.
+        max_steps : :py:type:`~ACID_code.IntLike`, optional
+            Maximum number of MCMC steps to run, by default None. Passed to :py:meth:`~ACID_code.Acid.continue_sampling` through ``**kwargs``.
         max_steps_kwargs : dict, optional
             Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
-            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
-            ignored. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+            The kwargs description can be found in :py:meth:`~ACID_code.Acid.ACID`, they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
+            ignored. Passed to :py:meth:`~ACID_code.Acid.continue_sampling` through ``**kwargs``.
         parallel : bool, optional
             Overwrites config with whether to run the MCMC in parallel. If None, uses already existing configuration. Default is None.
-            Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+            Passed to :py:meth:`~ACID_code.Acid.continue_sampling` through ``**kwargs``.
         cores : int, optional
             Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
-            Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+            Passed to :py:meth:`~ACID_code.Acid.continue_sampling` through ``**kwargs``.
         moves : dict, optional
             Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
-            Default is None. See :py:function:`Acid.ACID` for format. Passed to :py:function:`Acid.continue_sampling` through **kwargs.
+            Default is None. See :py:meth:`~ACID_code.Acid.ACID` for format. Passed to :py:meth:`~ACID_code.Acid.continue_sampling` through ``**kwargs``.
         """
         # Note that sampler input updates the sampler stored using the @_require_sampler decorator
 
@@ -458,7 +464,7 @@ class Result(Plot):
     def save(self, *args, **kwargs) -> None:
         """
         Saves the Data instance which the Result class inherits from Acid.
-        See :py:function:`Data.save` for more details on the parameters that can be passed.
+        See :py:meth:`~ACID_code.Data.save` for more details on the parameters that can be passed.
         """
         self.data.save(*args, **kwargs)
 
@@ -469,12 +475,12 @@ class Result(Plot):
 
         Parameters
         ----------
-        data : str | :py:class:`Result` | :py:class:`Data`, optional
+        data : :py:class:`str` | :py:class:`~ACID_code.Result` | :py:class:`~ACID_code.Data`, optional
             A pickle file name or an object with the same attributes as a saved Result object, by default "result.pkl"
 
         Returns
         ----------
-        :py:class:`Result`
+        :py:class:`~ACID_code.Result`
             A Result object loaded from the pickle file or from the provided object.
         """
         if isinstance(data, str):

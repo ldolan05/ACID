@@ -6,7 +6,7 @@ Analysing the Final Profiles
 The Profiles class fits absorption profiles normalized to a continuum of 1,
 as returned by ACID.
 
-There is simple class provided to fit the final Acid profiles, called :py:class:`ACID_code.Profiles`.
+There is simple class provided to fit the final Acid profiles, called :py:class:`~ACID_code.Profiles`.
 It can be initialised with a Data instance or directly with the profile and velocity values.
 If a Data instance is provided, the combined profile at ``key="final"`` is used by default.
 

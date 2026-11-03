@@ -27,11 +27,13 @@ Core Classes
 Utility Functions
 ------------------
 
+The :py:func:`calc_deltav <ACID_code.utils.calc_deltav>` function is also available
+directly from ``ACID_code`` for backwards compatibility.
+
 .. autosummary::
    :toctree: _api
    :nosignatures:
 
-   calc_deltav
    utils
 
 Legacy ACID Functions

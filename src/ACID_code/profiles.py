@@ -2,18 +2,29 @@ from __future__ import annotations
 from .diagnostics.errors import *
 import numpy as np
 import copy, warnings, functools
+from collections.abc import Callable
+from typing import Any
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
 from scipy.special import wofz
-from .utils import Array1D, Array2D, Array3D, profile_name_map
+from .utils import Array1D, Array2D, Array3D, ArrayLike, IntLike, Scalar, ProfileNames, profile_name_map
 from .data import Data
 from .diagnostics.warnings import ACIDRuntimeWarning
 
-def _fit_profiles(method):
+def _fit_profiles(method:Callable[..., tuple[np.ndarray, np.ndarray]]) -> Callable[..., tuple[np.ndarray, np.ndarray]]:
     """Apply a single-profile fitter independently to each row of a 2D flux array."""
     @functools.wraps(method)
-    def wrapper(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception="raise", **kwargs):
+    def wrapper(
+        self,
+        x            : ArrayLike|None = None,
+        y            : ArrayLike|None = None,
+        yerr         : ArrayLike|None = None,
+        cov_matrix   : ArrayLike|None = None,
+        p0           : ArrayLike|None = None,
+        on_exception : str            = "raise",
+        **kwargs     : Any,
+        ) -> tuple[np.ndarray, np.ndarray]:
         # Keep single-profile calls on the original fitting path.
         if np.ndim(self.flux if y is None else y) != 2:
             return method(self, x, y, yerr, cov_matrix, p0, on_exception, **kwargs)
@@ -61,37 +72,37 @@ class Profiles:
     (n_profiles, n_parameters, n_parameters), with a shared or per-profile p0.
     """
     def __init__(
-            self,
-            velocities    : Array1D|Array2D|None = None,
-            flux          : Array1D|Array2D|None = None,
-            flux_err      : Array1D|Array2D|None = None,
-            cov_matrix    : Array2D|Array3D|None = None,
-            data          : Data|None            = None,
-            key           : str                  = "final",
-            profile_names : list|dict|None       = None,
+        self,
+        velocities    : Array1D|Array2D|None = None,
+        flux          : Array1D|Array2D|None = None,
+        flux_err      : Array1D|Array2D|None = None,
+        cov_matrix    : Array2D|Array3D|None = None,
+        data          : Data|None            = None,
+        key           : str                  = "final",
+        profile_names : ProfileNames|None    = None,
         ) -> None:
         """
         Initializes the Profiles class with velocity, flux, and optional flux error data.
 
         Parameters
         ----------
-        velocities : :py:type:`Array1D | Array2D`, optional
+        velocities : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             The velocity values corresponding to the spectral line profile.
             A 2D input must repeat the same velocity grid for every profile.
             Must be provided if no data instance is passed, by default None.
-        flux : :py:type:`Array1D | Array2D`, optional
+        flux : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             The flux values of the spectral line profile, normalized to a continuum at 1.
             For multiple profiles, use shape (n_profiles, n_velocities).
             Must be provided if no data instance is passed, by default None.
-        flux_err : :py:type:`Array1D | Array2D`, optional
+        flux_err : :py:type:`~ACID_code.Array1D` | :py:type:`~ACID_code.Array2D`, optional
             The errors associated with the flux values, by default None. If not
             input, they won't be used in the fitting process. A 1D array is shared across profiles.
-        cov_matrix : :py:type:`Array2D | Array3D`, optional
+        cov_matrix : :py:type:`~ACID_code.Array2D` | :py:type:`~ACID_code.Array3D`, optional
             The covariance matrix associated with the flux values, by default None. If not
             input, it won't be used in the fitting process. Inputting this overrides the errors when fitting.
             Accepts a shared matrix, one matrix per profile, or a flattened multi-profile
             matrix. Profiles are fitted independently using their diagonal covariance blocks.
-        data : :py:class:`Data`, optional
+        data : :py:class:`~ACID_code.Data`, optional
             A data instance to draw velocities, flux, flux errors, and covariance matrix. Will raise an
             exception if they do not exist within the class.
             Must be provided if all four of the above inputs were not passed, by default None. 
@@ -167,7 +178,7 @@ class Profiles:
 
         self.fitted_x = np.linspace(np.nanmin(self.velocities), np.nanmax(self.velocities), 1000)
 
-    def _profile_covariance(self, i):
+    def _profile_covariance(self, i:IntLike) -> Array2D|None:
         """Select this profile's covariance, excluding cross-profile blocks."""
         if self.cov_matrix is None:
             return None
@@ -180,7 +191,7 @@ class Profiles:
         block = slice(i * n, (i + 1) * n)
         return self.cov_matrix[block, block]
 
-    def plot_fit(self, model:str|None='voigt', return_fig=False, **kwargs) -> tuple|None:
+    def plot_fit(self, model:str|None='voigt', return_fig:bool|np.bool_=False, **kwargs:Any) -> tuple[plt.Figure, np.ndarray]|None:
         """Plots the original data and the fitted profile if available.
         
         Parameters
@@ -252,7 +263,16 @@ class Profiles:
         plt.show()
 
     @_fit_profiles
-    def fit_voigt(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception:str="raise", **kwargs) -> tuple:
+    def fit_voigt(
+        self,
+        x            : ArrayLike|None = None,
+        y            : ArrayLike|None = None,
+        yerr         : ArrayLike|None = None,
+        cov_matrix   : ArrayLike|None = None,
+        p0           : ArrayLike|None = None,
+        on_exception : str            = "raise",
+        **kwargs     : Any,
+        ) -> tuple[np.ndarray, np.ndarray]:
         """Fits a Voigt profile to the given data.
 
         Parameters
@@ -324,7 +344,16 @@ class Profiles:
             return np.full(5, np.nan), np.full((5, 5), np.nan)
 
     @_fit_profiles
-    def fit_gaussian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception:str="raise", **kwargs) -> tuple:
+    def fit_gaussian(
+        self,
+        x            : ArrayLike|None = None,
+        y            : ArrayLike|None = None,
+        yerr         : ArrayLike|None = None,
+        cov_matrix   : ArrayLike|None = None,
+        p0           : ArrayLike|None = None,
+        on_exception : str            = "raise",
+        **kwargs     : Any,
+        ) -> tuple[np.ndarray, np.ndarray]:
         """Fits a Gaussian profile to the given data.
 
         Parameters
@@ -389,7 +418,16 @@ class Profiles:
             return np.full(4, np.nan), np.full((4, 4), np.nan)
 
     @_fit_profiles
-    def fit_lorentzian(self, x=None, y=None, yerr=None, cov_matrix=None, p0=None, on_exception:str="raise", **kwargs) -> tuple:
+    def fit_lorentzian(
+        self,
+        x            : ArrayLike|None = None,
+        y            : ArrayLike|None = None,
+        yerr         : ArrayLike|None = None,
+        cov_matrix   : ArrayLike|None = None,
+        p0           : ArrayLike|None = None,
+        on_exception : str            = "raise",
+        **kwargs     : Any,
+        ) -> tuple[np.ndarray, np.ndarray]:
         """Fits a Lorentzian profile to the given data.
 
         Parameters
@@ -456,7 +494,12 @@ class Profiles:
             return np.full(4, np.nan), np.full((4, 4), np.nan)
 
     @staticmethod
-    def _remove_nans(x, y, yerr, cov_matrix):
+    def _remove_nans(
+        x          : Array1D,
+        y          : Array1D,
+        yerr       : Array1D|None,
+        cov_matrix : Array2D|None,
+        ) -> tuple[Array1D, Array1D, Array1D|None, Array2D|None]:
         mask = np.isfinite(x) & np.isfinite(y)
 
         if yerr is not None:
@@ -474,7 +517,13 @@ class Profiles:
 
         return x, y, yerr, cov_matrix
 
-    def _copy_inputs(self, x, y, yerr, cov_matrix) -> tuple:
+    def _copy_inputs(
+        self,
+        x          : ArrayLike|None,
+        y          : ArrayLike|None,
+        yerr       : ArrayLike|None,
+        cov_matrix : ArrayLike|None,
+        ) -> tuple[np.ndarray, np.ndarray, np.ndarray|None, np.ndarray|None]:
         """Internal method to copy input data or use class attributes.
 
         Parameters
@@ -501,7 +550,17 @@ class Profiles:
         cov_matrix_copy = np.copy(cov_matrix) if cov_matrix is not None else cov_matrix
         return x, y, yerr_copy, cov_matrix_copy
 
-    def _fit_model(self, model_name, x, y, yerr, cov_matrix, p0, bounds=None, **kwargs) -> tuple:
+    def _fit_model(
+        self,
+        model_name : str,
+        x          : Array1D,
+        y          : Array1D,
+        yerr       : Array1D|None,
+        cov_matrix : Array2D|None,
+        p0         : ArrayLike|None,
+        bounds     : tuple[ArrayLike, ArrayLike]|None = None,
+        **kwargs   : Any,
+        ) -> tuple[np.ndarray, np.ndarray]:
         """Internal method to fit a specified model to the data.
 
         Parameters
@@ -548,7 +607,7 @@ class Profiles:
         return popt, pcov
 
     @staticmethod
-    def voigt_func(x, amplitude, centre, sigma, gamma, offset=0) -> Array1D:
+    def voigt_func(x:Array1D, amplitude:Scalar, centre:Scalar, sigma:Scalar, gamma:Scalar, offset:Scalar=0) -> Array1D:
         """Calculates the Voigt profile at given x values.
 
         Parameters
@@ -581,7 +640,7 @@ class Profiles:
         return 1 + amplitude * profile + offset
 
     @staticmethod
-    def gaussian_func(x, amplitude, mean, stddev, offset=0) -> Array1D:
+    def gaussian_func(x:Array1D, amplitude:Scalar, mean:Scalar, stddev:Scalar, offset:Scalar=0) -> Array1D:
         """Calculates the Gaussian profile at given x values.
 
         Parameters
@@ -605,7 +664,7 @@ class Profiles:
         return 1 + amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + offset
     
     @staticmethod
-    def lorentzian_func(x, amplitude, centre, gamma, offset=0) -> Array1D:
+    def lorentzian_func(x:Array1D, amplitude:Scalar, centre:Scalar, gamma:Scalar, offset:Scalar=0) -> Array1D:
         """Calculates the Lorentzian profile at given x values.
 
         Parameters

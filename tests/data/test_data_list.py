@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import warnings
 import pandas as pd
+from beartype.roar import BeartypeCallHintParamViolation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
@@ -123,9 +124,9 @@ def test_datalist_callable_and_container_protocol(monkeypatch, completed_datalis
 
 def test_datalist_setter_and_from_datalist_validate_members_and_velocities(completed_datalist):
     # The property accepts only a list containing Data objects.
-    with pytest.raises(ValueError, match="must be a list"):
+    with pytest.raises(BeartypeCallHintParamViolation):
         completed_datalist.data_list = completed_datalist[20]
-    with pytest.raises(ValueError, match="instances of the Data"):
+    with pytest.raises(BeartypeCallHintParamViolation):
         completed_datalist.data_list = [object()]
 
     # Every order must have a unique label and share one velocity grid.
@@ -136,6 +137,17 @@ def test_datalist_setter_and_from_datalist_validate_members_and_velocities(compl
     changed_velocity.velocities = changed_velocity.velocities + 0.1
     with pytest.raises(ValueError, match="same velocity grid"):
         DataList.from_datalist([completed_datalist[20], changed_velocity])
+
+
+@pytest.mark.parametrize("bad_index", range(3))
+def test_datalist_rejects_any_invalid_member_before_replacing_orders(completed_datalist, bad_index):
+    original = completed_datalist.data_list
+    invalid = original.copy()
+    invalid[bad_index] = object()
+    # Depending on the sampled member, either beartype or the exhaustive check rejects it.
+    with pytest.raises((BeartypeCallHintParamViolation, ValueError)):
+        completed_datalist.data_list = invalid
+    assert completed_datalist.data_list is original
 
 
 def test_datalist_combines_profiles_and_exposes_all_diagnostics(completed_datalist):

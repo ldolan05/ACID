@@ -1,6 +1,8 @@
 from __future__ import annotations
 from ..diagnostics.errors import *
 import numpy as np
+from collections.abc import Iterator
+from typing import Any
 from ..utils import Array1D
 from ..diagnostics.warnings import *
 import warnings
@@ -10,9 +12,9 @@ class LineList:
     """
     Read, validate, and store a linelist in wavelength order.
 
-    Accepts the same linelist inputs as :py:class:`Acid`: a string path to a
+    Accepts the same linelist inputs as :py:class:`~ACID_code.Acid`: a string path to a
     VALD file, a dictionary with "wavelengths" and "depths", a list or NumPy
-    array indexed by wavelength/depth, or another :py:class:`LineList`.
+    array indexed by wavelength/depth, or another :py:class:`~ACID_code.LineList`.
     Invalid lines are removed with a warning. Arrays can be accessed by name,
     by indices 0 and 1, or by unpacking the object.
     With full=True, also read/require "spec_ion" and "lande_factor" (indices
@@ -22,13 +24,13 @@ class LineList:
     def __init__(self, ll:str|dict|LineList|list|np.ndarray, full:bool=False) -> None:
         self.ll = self.validate_linelist(ll, full=full, return_dict=True)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name:str) -> Any:
         return getattr(object.__getattribute__(self, "ll"), name)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.ll)
 
-    def __getitem__(self, k):
+    def __getitem__(self, k:int|np.integer|str) -> np.ndarray:
         if isinstance(k, (int, np.integer)):
             keys = list(self.ll)
             if k < 0 or k >= len(keys):
@@ -36,20 +38,26 @@ class LineList:
             return self.ll[keys[k]]
         return self.ll[k]  # allow column names
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[np.ndarray]:
         yield from self.ll.values()
 
     @staticmethod
-    def validate_linelist(linelist, return_mask:bool=False, *, full:bool=False, return_dict:bool=False) -> tuple|dict:
+    def validate_linelist(
+        linelist    : str|dict|LineList|list|np.ndarray|None,
+        return_mask : bool                                   = False,
+        *,
+        full        : bool                                   = False,
+        return_dict : bool                                   = False,
+        ) -> tuple|dict[str, np.ndarray]:
         """
-        Validates the linelist according to the description in :py:class:`Acid`, and returns the linelist columns
+        Validates the linelist according to the description in :py:class:`~ACID_code.Acid`, and returns the linelist columns
         as numpy arrays. Used internally by the constructor; use ``LineList(linelist)`` for a fully
         validated and stored linelist.
 
         Parameters
         ----------
         linelist : str, dict, LineList, list, or np.ndarray
-            See :py:class:`Acid`.
+            See :py:class:`~ACID_code.Acid`.
         return_mask : bool, optional
             Also return the validity mask in wavelength-sorted order, before invalid lines are removed.
             For files, rows with nonnumeric wavelengths/depths are discarded before this mask.
