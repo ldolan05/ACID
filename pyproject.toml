@@ -27,7 +27,7 @@ dependencies = [
     "tqdm",
     "psutil",
     "corner",
-    "beartype",
+    "beartype>=0.23.1",
     "h5py",
     "pandas",
 ]
