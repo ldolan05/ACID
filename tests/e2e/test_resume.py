@@ -6,8 +6,89 @@ import pytest
 import emcee
 from emcee.backends import HDFBackend
 
-from ACID_code import Acid, Data, DataList, Result
+from ACID_code import Acid, Config, Data, DataList, Result
 from ACID_code.diagnostics.errors import ACIDStateError
+
+
+@pytest.mark.parametrize("paths", ["none", "dir", "custom"])
+@pytest.mark.parametrize("resume_source", ["method", "init", "config"])
+def test_resume_starts_new_run_when_no_saved_run(tmp_path, synthetic_spectrum, paths, resume_source):
+    wave, flux, errors, sn, velocities, linelist = synthetic_spectrum
+    saved_paths = {}
+    if paths == "dir":
+        saved_paths = {"dir": str(tmp_path)}
+    elif paths == "custom":
+        saved_paths = {"save_path": str(tmp_path / "state.pkl"),
+                       "sampler_path": str(tmp_path / "chain.h5")}
+    resume_kwargs = {"resume": True} if resume_source == "init" else {}
+    if resume_source == "config":
+        resume_kwargs = {"config": Config(resume=True)}
+    acid = Acid(velocities=velocities, linelist=linelist, parallel=False, verbose=0,
+                seed=2, poly_ord=1, sigma_lower=100., sigma_upper=100.,
+                dev_perc=100., masking_lines={}, n_bins=10, **saved_paths, **resume_kwargs)
+    # A fresh allowed-resume run must be identical to an ordinary run.
+    reference = Acid(config=Config(**acid.config.to_dict()), velocities=velocities, linelist=linelist)
+    reference.config.update_hipri(save_path="off", sampler_path="off", resume=False)
+    expected = reference.ACID(wave, flux, errors, sn, nsteps=45)
+    result = acid.ACID(wave, flux, errors, sn, nsteps=40,
+                       **({"resume": True} if resume_source == "method" else {}))
+    assert result.data.complete
+    assert result.data.nsteps == 40
+    np.testing.assert_array_equal(result.sampler.get_chain(), expected.sampler.get_chain()[:40])
+    if saved_paths:
+        prefix = result.sampler.get_chain().copy()
+        result = Acid(**saved_paths).ACID(resume=True, nsteps=45)
+        assert result.data.nsteps == 45
+        np.testing.assert_array_equal(result.sampler.get_chain()[:40], prefix)
+        np.testing.assert_array_equal(result.sampler.get_chain(), expected.sampler.get_chain())
+
+
+@pytest.mark.parametrize("resume_source", ["method", "init", "config"])
+def test_resume_respects_disabled_paths(interrupted_run, synthetic_spectrum, resume_source):
+    wave, flux, errors, sn, velocities, linelist = synthetic_spectrum
+    original_data = (interrupted_run / "data.pkl").read_bytes()
+    original_chain = (interrupted_run / "sampler.h5").read_bytes()
+    disabled = dict(save_path="off", sampler_path="off")
+    init_kwargs = {}
+    if resume_source == "init":
+        init_kwargs = disabled
+    elif resume_source == "config":
+        init_kwargs = {"config": Config(**disabled)}
+    acid = Acid(dir=str(interrupted_run), velocities=velocities, linelist=linelist,
+                parallel=False, verbose=0, seed=2, poly_ord=1, sigma_lower=100.,
+                sigma_upper=100., dev_perc=100., masking_lines={}, n_bins=10,
+                **init_kwargs)
+    result = acid.ACID(wave, flux, errors, sn, resume=True, nsteps=40,
+                       **(disabled if resume_source == "method" else {}))
+    assert result.data.complete
+    assert result.data.config.save_path is None
+    assert result.data.config.sampler_path is None
+    np.testing.assert_array_equal(result.data.velocities, velocities)
+    assert (interrupted_run / "data.pkl").read_bytes() == original_data
+    assert (interrupted_run / "sampler.h5").read_bytes() == original_chain
+
+
+@pytest.mark.parametrize("custom_paths", [False, True])
+def test_resume_fresh_run_uses_call_time_paths(interrupted_run, synthetic_spectrum, custom_paths):
+    wave, flux, errors, sn, velocities, linelist = synthetic_spectrum
+    original_data = (interrupted_run / "data.pkl").read_bytes()
+    original_chain = (interrupted_run / "sampler.h5").read_bytes()
+    directory = interrupted_run / "new"
+    if custom_paths:
+        paths = dict(save_path=str(directory / "state.pkl"), sampler_path=str(directory / "chain.h5"))
+    else:
+        paths = dict(dir=str(directory))
+    acid = Acid(dir=str(interrupted_run), velocities=velocities, linelist=linelist,
+                parallel=False, verbose=0, seed=2, poly_ord=1, sigma_lower=100.,
+                sigma_upper=100., dev_perc=100., masking_lines={}, n_bins=10)
+    result = acid.ACID(wave, flux, errors, sn, resume=True, nsteps=40, **paths)
+
+    assert result.data.nsteps == 40
+    np.testing.assert_array_equal(result.data.velocities, velocities)
+    assert (directory / ("state.pkl" if custom_paths else "data.pkl")).exists()
+    assert (directory / ("chain.h5" if custom_paths else "sampler.h5")).exists()
+    assert (interrupted_run / "data.pkl").read_bytes() == original_data
+    assert (interrupted_run / "sampler.h5").read_bytes() == original_chain
 
 
 @pytest.fixture

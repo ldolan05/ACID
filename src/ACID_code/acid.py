@@ -424,7 +424,8 @@ class Acid:
             If True, the method returns a :py:class:`~ACID_code.Result` object, and if False, the method returns None, but attributes are updated.
         resume : :py:class:`bool`, optional
             Restore save_path and its HDF5 sampler, skipping preprocessing and walker initialization.
-            Requires both files; dir supplies their usual data.pkl and sampler.h5 paths.
+            Starts a fresh run if neither file exists; dir supplies their usual data.pkl and sampler.h5 paths.
+            If either file exists, both are required for resuming.
             Saved inputs and model settings take precedence over supplied inputs. Runtime settings
             (parallelism, moves, verbosity, paths and stopping criteria) can be overridden.
             nsteps and max_steps are total step targets, including already saved samples.
@@ -549,7 +550,7 @@ class Acid:
             resume_run = config_kwargs.get("resume")
             if resume_run is None:
                 resume_run = self.config.resume
-            if resume_run:
+            if resume_run and self._has_saved_run(config_kwargs):
                 return self._resume(config_kwargs)
 
             # Update config if any of the above config settings are new
@@ -878,6 +879,17 @@ class Acid:
             raise error
 
         return
+
+    def _has_saved_run(self, config_kwargs:dict) -> bool:
+        """Check both paths so an incomplete saved run still raises on resume."""
+        paths = ("dir", "save_path", "sampler_path")
+        stored = self.config.to_dict()
+        # Preserve disabling strings, which the public properties resolve to None.
+        config = Config(**{name: stored["_" + name] for name in paths
+                           if "_" + name in stored})
+        config.update_hipri(**{name: config_kwargs[name] for name in paths if name in config_kwargs})
+        return any(path is not None and os.path.exists(path)
+                   for path in (config.save_path, config.sampler_path))
 
     def _resume(self, config_kwargs:dict) -> Result|None:
         """Restore the existing save format and use the normal continuation path."""

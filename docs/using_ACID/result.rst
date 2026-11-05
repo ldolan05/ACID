@@ -104,7 +104,9 @@ while ``sampler.h5`` stores the chain, walker positions and sampling RNG state.
     # After an interruption, including in a new Python process:
     result = acid.Acid(dir="run").ACID(resume=True, nsteps=10000)
 
-``resume=True`` loads the saved run before preprocessing or walker initialization
+``resume=True`` starts a normal new run if neither saved file exists. Supply the
+usual spectra and model inputs so that a new run can be prepared. If a saved run
+exists, it loads that run before preprocessing or walker initialization
 and uses the existing ``continue_sampling`` implementation. ``nsteps`` is the
 total target: a chain with 3000 saved steps runs another 7000 in this example.
 ``max_steps`` also includes saved steps and retains convergence checking. If the
@@ -118,8 +120,9 @@ likelihood is retained. You can override runtime settings such as ``parallel``,
 Use ``dir`` for a relocated run with the standard filenames, or explicit
 ``save_path`` and ``sampler_path`` for custom filenames.
 
-Both files are required. The HDF5 chain alone does not contain the spectra or
-prepared likelihood. Older runs can resume if their saved Data is also available;
+Both files are required to resume an existing run. The HDF5 chain alone does not
+contain the spectra or prepared likelihood. Older runs can resume if their saved
+Data is also available;
 this feature cannot recover missing Data from an older HDF5-only run. Missing,
 empty or dimensionally incompatible chains raise an error without resetting the
 backend. Use ``resume=False`` to start a fresh run.

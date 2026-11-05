@@ -42,6 +42,114 @@ def make_orders(nframes=1, **kwargs):
     return DataList.from_datalist(orders, verbose=0), np.concatenate(coefficients)
 
 
+@pytest.mark.parametrize("reload", [False, True])
+def test_joint_resume_skips_preparation_and_preserves_chain(tmp_path, monkeypatch, reload):
+    orders, _ = make_orders()
+    orders.save_dir = str(tmp_path)
+    orders.save()
+    run_mcmc = Acid.run_mcmc
+
+    def interrupt(self, nsteps, state=None):
+        run_mcmc(self, 17, state)
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Acid, "run_mcmc", interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            orders.run_multi_order_ACID()
+    joint = Data.load(str(tmp_path / "multi_order" / "data.pkl"))
+    prefix = joint.sampler.get_chain().copy()
+    reference = Acid(data=joint)
+    reference.sampler = None
+    reference.config.update_hipri(save_path="off", sampler_path="off")
+    reference.run_mcmc(45, joint.initial_state)
+
+    if reload:
+        orders = DataList.load(str(tmp_path), verbose=0)
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Resume repeated order preparation")
+
+    monkeypatch.setattr(DataList, "run_ACID", unexpected)
+    monkeypatch.setattr(Acid, "get_initial_state", unexpected)
+    result = orders.run_multi_order_ACID(
+        resume=True, nsteps=45, pack=True, orders=[999], masking_lines={"wide": [5000.]},
+        poly_ord=99, velocities=np.array([0.]), overwrite=True, overwrite_kwargs=True,
+        worker=0, nworkers=2, use_index_mapping=False, save_on_exception=True)
+    assert result.data is orders.multi_order_data
+    assert result.data.nsteps == 45
+    np.testing.assert_array_equal(result.sampler.get_chain()[:17], prefix)
+    np.testing.assert_array_equal(result.sampler.get_chain(), reference.sampler.get_chain())
+    assert all(actual is expected for actual, expected in
+               zip(orders.combined_profile, result.data.profile["final"]))
+    assert DataList.load(str(tmp_path), verbose=0).multi_order_data.nsteps == 45
+
+    restored = orders.run_multi_order_ACID(resume=True, run_mcmc=False)
+    assert restored is None
+    assert orders.multi_order_data.nsteps == 45
+    assert orders._combined_profile is None
+
+
+@pytest.mark.parametrize("save", [False, True])
+def test_joint_resume_starts_new_run_when_no_saved_run(tmp_path, save):
+    orders, _ = make_orders()
+    if save:
+        orders.save_dir = str(tmp_path)
+    result = orders.run_multi_order_ACID(resume=True)
+    assert result.data is orders.multi_order_data
+    assert result.data.complete
+    assert result.data.nsteps == 40
+    if save:
+        prefix = result.sampler.get_chain().copy()
+        result = orders.run_multi_order_ACID(resume=True, nsteps=45)
+        assert result.data.nsteps == 45
+        np.testing.assert_array_equal(result.sampler.get_chain()[:40], prefix)
+
+
+@pytest.mark.parametrize("missing", ["data.pkl", "sampler.h5"])
+def test_joint_resume_rejects_incomplete_saved_run(tmp_path, missing):
+    orders, _ = make_orders()
+    orders.save_dir = str(tmp_path)
+    orders.run_multi_order_ACID()
+    (tmp_path / "multi_order" / missing).rename(tmp_path / missing)
+    with pytest.raises(ACIDStateError, match="requires"):
+        orders.run_multi_order_ACID(resume=True)
+
+
+def test_resume_handles_mixed_existing_and_new_orders(tmp_path):
+    orders, _ = make_orders()
+    for data in orders:
+        data.config.dir = str(tmp_path / f"order_{data.config.order}")
+    first = orders[10]
+    Acid(data=first).ACID(nsteps=17)
+    prefix = first.sampler.get_chain().copy()
+
+    orders.run_ACID(resume=True, nsteps=40, overwrite_kwargs=True)
+
+    assert all(data.complete and data.nsteps == 40 for data in orders)
+    np.testing.assert_array_equal(first.sampler.get_chain()[:17], prefix)
+    assert all((tmp_path / f"order_{order}" / "sampler.h5").exists() for order in orders.orders)
+
+
+def test_joint_resume_fresh_run_preserves_preparation_options(tmp_path):
+    settings = dict(nframes=2, profile_groups=np.array([2, 2, 2, 7, 7, 7]), regularization=0.3)
+    orders, _ = make_orders(**settings)
+    reference, _ = make_orders(**settings)
+    orders.save_dir = str(tmp_path)
+    options = dict(orders=[11, 12], discard_unused_orders=False, nsteps=42, overwrite_kwargs=True)
+    expected = reference.run_multi_order_ACID(**options)
+    result = orders.run_multi_order_ACID(resume=True, pack=True, **options)
+
+    assert len(orders) == 3
+    assert result.data.config.order == [11, 12]
+    assert len(result.data.profiles) == 2
+    assert result.data.config.regularization == 0.3
+    np.testing.assert_array_equal(result.sampler.get_chain(), expected.sampler.get_chain())
+    for actual, wanted in zip(result.data.profile["final"], expected.data.profile["final"]):
+        np.testing.assert_array_equal(actual, wanted)
+    assert DataList.load(str(tmp_path), verbose=0).multi_order_data.nsteps == 42
+
+
 @pytest.mark.parametrize("regularization, scaled", [(0., True), (0.3, False), (0.3, True)])
 def test_joint_solve_matches_weighted_least_squares(regularization, scaled):
     orders, theta = make_orders(regularization=regularization, scale_regularization=scaled)

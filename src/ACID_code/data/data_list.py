@@ -596,6 +596,7 @@ class DataList:
         discard_unused_orders : bool                  = True,
         run_mcmc              : bool                  = True,
         verbose               : IntLike|bool|str|None = None,
+        resume                : bool                  = False,
         **kwargs,
         ) -> None|object:
         """
@@ -614,6 +615,12 @@ class DataList:
             Whether to remove orders that were not successfully prepared for the joint fit, by default True.
         run_mcmc : bool, optional
             Whether to run MCMC sampling for the joint fit, by default True.
+        resume : bool, optional
+            Resume the saved joint emcee run without preparing orders again. Requires
+            its Data pickle and HDF5 chain. Runtime settings follow Acid.ACID;
+            nsteps is the total target length, not the number of additional steps.
+            Order selection, preparation and model settings are ignored when resuming.
+            Starts a fresh joint fit if neither saved file exists.
         verbose : IntLike | bool | str | None, optional
             Output level for this call, as in run_ACID. Order preparation uses quieter
             batch output; the main joint fit uses normal standalone output at this level.
@@ -633,6 +640,25 @@ class DataList:
 
         # Remove and discard unused orders if requested, working on kwargs to pass to run_ACID
         pack = kwargs.pop("pack", False)
+        joint = self.multi_order_data
+        if resume and joint is None:
+            joint = Data()
+            if self.save_dir is not None:
+                joint.config.dir = os.path.join(self.save_dir, "multi_order")
+        if resume and Acid(data=joint)._has_saved_run(kwargs):
+            # Order preparation is skipped; Acid._resume preserves the saved model.
+            for key in ("orders", "use_index_mapping", "worker", "nworkers",
+                        "overwrite", "overwrite_kwargs", "save_on_exception", "_return_orders"):
+                kwargs.pop(key, None)
+            with output_settings(joint.config, verbose=verbose):
+                result = Acid(data=joint).ACID(resume=True, run_mcmc=run_mcmc, **kwargs)
+            self.multi_order_data = joint
+            self._results = None
+            self._combined_profile = tuple(joint.profile["final"]) if result is not None else None
+            if pack:
+                self.save()
+            return result
+
         kwargs["save_on_exception"] = False
         orders = self.run_ACID(_return_orders=True, verbose=verbose, **kwargs)
         selected = [self.data_list[self.o2i[order]] for order in orders]
