@@ -1,5 +1,6 @@
 """Joint profile recovery with independent order continua."""
 import numpy as np
+import os
 import pytest
 import shutil
 import warnings
@@ -40,6 +41,79 @@ def make_orders(nframes=1, **kwargs):
         orders.append(data)
         coefficients.append(coefs)
     return DataList.from_datalist(orders, verbose=0), np.concatenate(coefficients)
+
+
+@pytest.mark.parametrize("packed", [False, True])
+@pytest.mark.parametrize("relocate", [False, True])
+def test_joint_only_load_restores_profiles_paths_and_sampler(tmp_path, packed, relocate):
+    orders, _ = make_orders()
+    root = tmp_path / "original"
+    orders.save_dir = str(root)
+    result = orders.run_multi_order_ACID()
+    prefix = result.sampler.get_chain().copy()
+    assert not list(root.glob("order_*"))
+    if packed:
+        orders.data_list = []
+        orders.save()
+    if relocate:
+        moved = tmp_path / "moved"
+        shutil.copytree(root, moved)
+        root = moved
+
+    loaded = DataList.load(str(root / "datalist.pkl" if packed else root), verbose=0)
+    joint = loaded.multi_order_data
+    assert len(loaded) == 0
+    np.testing.assert_array_equal(loaded.order_range, [10, 11, 12])
+    np.testing.assert_array_equal(loaded.velocities, joint.velocities)
+    np.testing.assert_array_equal(loaded.combined_profile[0], result[0])
+    assert joint.config.save_path == str(root / "multi_order" / "data.pkl")
+    assert joint.config.sampler_path == str(root / "multi_order" / "sampler.h5")
+    assert joint.config.figure_dir == str(root / "multi_order" / "figures")
+    assert joint.sampler.backend.filename == joint.config.sampler_path
+    np.testing.assert_array_equal(joint.sampler.get_chain(), prefix)
+    fig, _ = joint.result.plot_forward_model(return_fig=True)
+    plt.close(fig)
+    fig, _ = loaded.plot_combined_profile(return_fig=True)
+    plt.close(fig)
+    loaded.run_multi_order_ACID(resume=True, nsteps=45)
+    assert joint.nsteps == 45
+    np.testing.assert_array_equal(joint.sampler.get_chain()[:40], prefix)
+    if relocate:
+        assert result.sampler.backend.iteration == 40
+    loaded.save()
+    assert DataList.load(str(root), verbose=0).multi_order_data.nsteps == 45
+
+
+@pytest.mark.parametrize("joint_mtime_offset, expected_steps", [(-1, 40), (0, 40), (1, 45)])
+def test_joint_load_uses_newer_save_over_packed_snapshot(tmp_path, joint_mtime_offset, expected_steps):
+    orders, _ = make_orders()
+    orders.save_dir = str(tmp_path)
+    result = orders.run_multi_order_ACID(pack=True)
+    result.continue_sampling(nsteps=5)
+    packed_path = tmp_path / "datalist.pkl"
+    joint_path = tmp_path / "multi_order" / "data.pkl"
+    packed_mtime = packed_path.stat().st_mtime_ns
+    joint_mtime = packed_mtime + joint_mtime_offset
+    os.utime(joint_path, ns=(joint_mtime, joint_mtime))
+
+    loaded = DataList.load(str(tmp_path), verbose=0)
+    assert loaded.multi_order_data.nsteps == expected_steps
+
+
+def test_joint_only_load_preserves_disabled_outputs(tmp_path):
+    orders, _ = make_orders(sampler_path="off", figure_dir="off")
+    orders.save_dir = str(tmp_path)
+    result = orders.run_multi_order_ACID()
+    loaded = DataList.load(str(tmp_path), verbose=0)
+    assert loaded.multi_order_data.sampler is None
+    assert loaded.multi_order_data.config.sampler_path is None
+    assert loaded.multi_order_data.config.figure_dir is None
+    np.testing.assert_array_equal(loaded.combined_profile[0], result[0])
+
+
+def test_load_empty_directory_reports_missing_data(tmp_path):
+    with pytest.raises(ACIDInputError, match="No saved order or multi-order data"):
+        DataList.load(str(tmp_path), verbose=0)
 
 
 @pytest.mark.parametrize("reload", [False, True])

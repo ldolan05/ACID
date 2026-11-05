@@ -834,6 +834,9 @@ class DataList:
         the packed version is used, including when modification times are equal.
         Directory copies should preserve modification times to retain this ordering.
         Order directories absent from the packed snapshot are also loaded.
+        Joint runs are restored from multi_order/data.pkl even without packed or
+        individual-order data. A newer joint save takes precedence over its packed
+        snapshot. Joint-only loads keep data_list empty and use the joint velocity grid.
         Unset orders are inferred from each data.pkl file's order_<integer> parent
         directory, or its stored save path for a packed DataList. Explicit orders
         are preserved and continue to determine relocation paths.
@@ -867,6 +870,7 @@ class DataList:
                              f"You should provide a path to a directory containing the folders with the data pickles and sampler files.")
 
         d = {}
+        packed_mtime = 0
         if exists(join(path, "datalist.pkl")):
             with open(join(path, "datalist.pkl"), "rb") as f:
                 packed_mtime = os.fstat(f.fileno()).st_mtime_ns
@@ -920,19 +924,36 @@ class DataList:
             warnings.warn(f"At least one of the Data instances found in the directory does not match the current location, it has been updated.",
                           ACIDStateWarning, stacklevel=2)
 
-        obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
-        if "multi_order_data" in d:
-            payload = d["multi_order_data"].copy()
+        joint_path = join(path, "multi_order", "data.pkl")
+        payload = d.get("multi_order_data")
+        if exists(joint_path) and (payload is None or os.stat(joint_path).st_mtime_ns > packed_mtime):
+            with open(joint_path, "rb") as stream:
+                payload = pickle.load(stream)
+        joint = None
+        if payload is not None:
+            payload = payload.copy()
             cfg = payload["config"].copy()
-            for key in ("save_path", "sampler_path", "figure_dir"):
-                cfg[key] = "False" if Config._no_save(cfg.get(key)) else None
+            for key in ("dir", "save_path", "sampler_path", "figure_dir"):
+                value = cfg.pop("_" + key, cfg.get(key))
+                cfg.pop(key, None)
+                if key != "dir" and Config._no_save(value):
+                    cfg[key] = "False"
             cfg["dir"] = join(path, "multi_order")
             payload["config"] = cfg
             if payload.get("sampler") is not None:
                 payload["sampler"] = join(path, "multi_order", "sampler.h5")
-            obj.multi_order_data = Data().from_dict(payload)
-            if obj.multi_order_data.complete:
-                obj._combined_profile = tuple(obj.multi_order_data.profile["final"])
+            joint = Data().from_dict(payload)
+
+        if data_list:
+            obj = cls.from_datalist(data_list, save_dir=path, verbose=verbose)
+        elif joint is not None:
+            obj = cls(_data_list=[], save_dir=path, verbose=verbose,
+                      velocities=joint.velocities, order_range=joint.config.order)
+        else:
+            raise ACIDInputError(f"No saved order or multi-order data found in {path}.")
+        obj.multi_order_data = joint
+        if joint is not None and joint.complete:
+            obj._combined_profile = tuple(joint.profile["final"])
         if folder_moved_flag and "data_list" in d:
             obj.save() # repack with new save locations, including newly discovered orders
         return obj
