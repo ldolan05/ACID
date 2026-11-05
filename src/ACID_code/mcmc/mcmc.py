@@ -137,6 +137,7 @@ class MCMC:
                 scales = LSD._regularization_scales(information, len(self.velocities))
             self._regularization_weights = self.regularization * scales
 
+        # TODO: add an option for the diff and var be a comparison also in OD
         # Precompute the terms which are invariant for every likelihood call
         self._likelihood_var = self.yerr * self.yerr
         self._likelihood_log_norm = np.log(2 * np.pi * self._likelihood_var)

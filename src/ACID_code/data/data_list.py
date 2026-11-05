@@ -625,6 +625,7 @@ class DataList:
         None or Result
             The result of the joint fit if successful and if running mcmc, otherwise None.
         """
+        # TODO: Make seperate_ions and group_depths work here across all orders rather than in ACID
         from ..acid import Acid
         from ..result import Result
         from ..lsd import LSD
