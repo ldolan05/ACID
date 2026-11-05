@@ -51,7 +51,9 @@ def test_stopping_criterion(mcmc, tau_list, steps, expected):
 @pytest.mark.parametrize("min_tau_factor, tau_tol, steps, expected", [
     (0, 0.1, 40, True),
     (0, 0.001, 40, False),
-    (0, 0.1, 10, False),
+    (0, 0.1, 10, True),
+    (5, 0, 11, True),
+    (5, 0, 10, False),
     (50, 0, 200, True),
     (50, 0, 100, False),
 ])
@@ -59,6 +61,23 @@ def test_stopping_criterion_with_disabled_threshold(min_tau_factor, tau_tol, ste
     tau_list = [np.array([3.0]), np.array([2.0])]
     if tau_tol != 0:
         tau_list = [np.array([2.0]), np.array([2.01])]
+    converged, _, _ = MCMC._get_mcmc_stopping_criterion(tau_list, steps, 1, min_tau_factor, tau_tol)
+    assert converged is expected
+
+
+@pytest.mark.parametrize("tau_list, steps, min_tau_factor, tau_tol, expected", [
+    ([0.8, 0.81], 100, 0, 0.1, True),
+    ([0.99, 1.0], 100, 0, 0.1, True),
+    ([1000.0, 1010.0], 5000, 0, 0.1, True),
+    ([2.0, 2.01], 200, 0, np.float64(0.1), True),
+    ([np.nan, 2.0], 200, 50, 0, True),
+    ([1.0, 0.0], 100, 0, 0.1, False),
+    ([-1.0, -1.0], 100, 0, 0.1, False),
+    ([2.0, 2.01], 40, 50, 0.1, False),
+    ([3.0, 2.0], 200, 50, 0.1, False),
+])
+def test_stopping_requires_only_enabled_criteria(tau_list, steps, min_tau_factor, tau_tol, expected):
+    tau_list = [np.array([tau]) for tau in tau_list]
     converged, _, _ = MCMC._get_mcmc_stopping_criterion(tau_list, steps, 1, min_tau_factor, tau_tol)
     assert converged is expected
 

@@ -373,7 +373,7 @@ class MCMC:
                 n_eff = int(n_eff)
             except:
                 pass
-            if np.isnan(tol_metric):
+            if tau_rel_tol != 0 and np.isnan(tol_metric):
                 return False, np.inf, n_eff
 
         # Need enough tau estimates to do min_checks consecutive deltas
@@ -383,12 +383,10 @@ class MCMC:
         tau = tau_list[-1]
         if not np.all(np.isfinite(tau)):
             return False, tol_metric, n_eff
-        if np.max(tau) <= 1:
+        if np.any(tau <= 0):
             return False, tol_metric, n_eff
 
         tau_ref = np.max(tau)
-        if step_number < 10 * tau_ref:
-            return False, tol_metric, n_eff
         if min_tau_factor != 0 and not (step_number > min_tau_factor * tau_ref):
             return False, tol_metric, n_eff
 
@@ -400,7 +398,7 @@ class MCMC:
             rel_changes.append(np.percentile(np.abs(b - a) / den, 90))
 
         tol_metric = float(np.max(rel_changes))  # overwrite with the stricter metric
-        return (tau_rel_tol == 0 or tol_metric < tau_rel_tol), tol_metric, n_eff
+        return bool(tau_rel_tol == 0 or tol_metric < tau_rel_tol), tol_metric, n_eff
 
     @staticmethod
     def _get_tqdm_desc(last_tolerance, last_neff, config):

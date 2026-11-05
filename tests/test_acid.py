@@ -55,8 +55,9 @@ def test_convergence_requires_an_enabled_criterion():
     (np.nan, 50, 3000),
     (50.0, 0, 2000),
 ])
-def test_final_convergence_check_only_validates_neff(monkeypatch, full_tau, min_tau_factor, expected_steps):
-    acid = Acid(verbose=0, check_interval=1000, min_tau_factor=min_tau_factor)
+@pytest.mark.parametrize("tau_tol", [0.1, np.float64(0.1)])
+def test_final_convergence_check_only_validates_neff(monkeypatch, full_tau, min_tau_factor, expected_steps, tau_tol):
+    acid = Acid(verbose=0, check_interval=1000, min_tau_factor=min_tau_factor, tau_tol=tau_tol)
     calls, tolerances = [], []
     sampler = EnsembleSampler(4, 1, lambda theta: 0.0)
 

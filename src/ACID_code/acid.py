@@ -393,6 +393,7 @@ class Acid:
         tau_tol : :py:class:`float`, optional
             Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
             If set to 0, the tau stability criterion is disabled. At least one of min_tau_factor and tau_tol must be nonzero.
+            Both criteria must be met when both are enabled.
         moves : list[tuple], optional
             A list of tuples specifying the moves for the MCMC sampler. The format
             tries to follow the emcee documentation as closely as possible.
