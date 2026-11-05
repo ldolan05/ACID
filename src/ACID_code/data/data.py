@@ -92,6 +92,9 @@ class Data:
     residuals              : Dict[str, np.ndarray] = field(default_factory=dict)
     #: The indexes from the full linelist that was used in this LSD run
     ll_mask                : Optional[np.ndarray] = None
+    #: Full-line-list automatic groups/names shared by DataList orders before clipping.
+    _automatic_profile_groups : Optional[np.ndarray] = None
+    _automatic_profile_names  : dict[int, str]|None = None
 
     # Products generated from residual masking
     # ---------------------------------------------------------

@@ -407,6 +407,10 @@ class DataList:
         Runs ACID on the Data instances in the data list for the specified orders. The results are saved in the save_dir if it is not None, 
         with one pickle file per order containing the Result object. The idea is that you can run ACID on any orders you choose
 
+        Automatic species/depth groups are assigned across the union of selected
+        orders' wavelength- and S/N-clipped lines, before splitting workers.
+        Explicit profile_groups take precedence over automatic grouping.
+
         Parameters
         ----------
         orders : :py:type:`~ACID_code.Array1D` | int | str | None, optional
@@ -497,13 +501,14 @@ class DataList:
         else:
             raise ACIDInputError(f"orders must be an int, a list of ints, 'all', or None. Got: {orders!r}")
 
-        # Now we split the orders across workers and select the orders for this worker
-        if nworkers > 1:
-            orders = np.array_split(orders, nworkers)[worker]
-
         # Check if linelist or velocities were in kwargs and remove them now once if so
         ll = kwargs.pop("linelist", None)
         vel = kwargs.pop("velocities", None)
+        automatic_groups = self._get_automatic_profile_groups(orders, kwargs, overwrite_kwargs, ll)
+
+        # Group before splitting so every worker uses the same line assignments.
+        if nworkers > 1:
+            orders = np.array_split(orders, nworkers)[worker]
 
         successful_orders = []
         desc = "Running ACID on orders" if not _return_orders else "Preparing orders"
@@ -533,14 +538,21 @@ class DataList:
 
             # Handling if any kwargs were input
             # Only overwrite if overwrite_kwargs is True, otherwise keep the existing linelist/velocities in the Data instance
-            if ll is not None:
-                data.linelist = ll if overwrite_kwargs else data.linelist
-            if vel is not None:
-                data.velocities = vel if overwrite_kwargs else data.velocities
             if overwrite_kwargs:
                 data.config.update_hipri(**kwargs)
             else:
                 data.config.update_lowpri(**kwargs)
+            if ll is not None:
+                data.linelist = ll if overwrite_kwargs else data.linelist
+            if vel is not None:
+                data.velocities = vel if overwrite_kwargs else data.velocities
+
+            groups, names = automatic_groups.get(order, (None, None))
+            if data.alpha and (not np.array_equal(data._automatic_profile_groups, groups)
+                               or data._automatic_profile_names != names):
+                data.reset() # cached profiles and alpha must use the new assignments
+            data._automatic_profile_groups = groups
+            data._automatic_profile_names = names
 
             # The following try-except loops came from just testing ACID on a lot of different orders, stars, and instruments
             failed_msg = f"Order {order} (list index {self.o2i[order]}) failed with error:"
@@ -591,6 +603,58 @@ class DataList:
         if _return_orders:
             return np.asarray(successful_orders, dtype=np.int32)
 
+    def _get_automatic_profile_groups(self, orders:Array1D, kwargs:dict, overwrite:bool,
+                                      linelist:Array2D|str|LineList|dict|None) -> dict:
+        """Group unique surviving lines once, leaving the user's Config intact."""
+        from ..lsd import LSD
+
+        selected = []
+        for order in orders:
+            data = self[order]
+            config = Config(**data.config.to_dict())
+            if overwrite:
+                config.update_hipri(**kwargs)
+            else:
+                config.update_lowpri(**kwargs)
+            if config.profile_groups is not None or not (config.seperate_species or config.depth_group_rules is not None):
+                continue
+            if config.seperate_species and config.depth_group_rules is not None:
+                raise ACIDInputError("Use either depth_group_rules or seperate_species, not both.")
+            lines = (LineList(linelist, full=bool(config.seperate_species))
+                     if linelist is not None and overwrite else data.linelist)
+            if lines is None:
+                raise ACIDInputError("Automatic DataList grouping requires a linelist.")
+            selected.append((data, config, lines))
+        if not selected:
+            return {}
+
+        _, first, lines = selected[0]
+        columns = ["wavelengths", "depths"] + (["spec_ion"] if first.seperate_species else [])
+        union = np.zeros(len(lines["wavelengths"]), dtype=bool)
+        for data, config, order_lines in selected:
+            if config.seperate_species != first.seperate_species or config.depth_group_rules != first.depth_group_rules:
+                raise ACIDInputError("Orders must share the same automatic profile grouping settings.")
+            if any(key not in order_lines.keys() or key not in lines.keys() or
+                   not np.array_equal(order_lines[key], lines[key]) for key in columns):
+                raise ACIDInputError("Automatic DataList grouping requires a shared linelist, including species metadata.")
+            wave = data.wavelengths["combined"]
+            union |= ((lines["wavelengths"] >= np.nanmin(wave)-5)
+                      & (lines["wavelengths"] <= np.nanmax(wave)+5)
+                      & (lines["depths"] >= 1/(3*data.sn["combined"])))
+        if not np.any(union):
+            return {} # normal order preparation reports wavelength/S/N failures
+
+        depths = lines["depths"][union]
+        if first.seperate_species:
+            groups, names = LSD.group_profs_by_species(lines["spec_ion"][union], first.seperate_species)
+        else:
+            groups = LSD.group_profs_by_depth(depths, prof_group_rules=first.depth_group_rules)
+            names = {int(g): f"Depth {depths[groups == g].min():.3g}–{depths[groups == g].max():.3g}"
+                     for g in np.unique(groups)}
+        full_groups = np.zeros(len(union), dtype=int)
+        full_groups[union] = groups
+        return {data.config.order: (full_groups, names) for data, _, _ in selected}
+
     def run_multi_order_ACID(
         self,
         discard_unused_orders : bool                  = True,
@@ -632,7 +696,6 @@ class DataList:
         None or Result
             The result of the joint fit if successful and if running mcmc, otherwise None.
         """
-        # TODO: Make seperate_ions and group_depths work here across all orders rather than in ACID
         from ..acid import Acid
         from ..result import Result
         from ..lsd import LSD
@@ -720,7 +783,8 @@ class DataList:
         joint.ll_mask = line_indices
         joint.profile_groups = groups
         joint.profile_names = self._collect_profile_names(selected)
-        joint.config.update_hipri(profile_groups=groups, profile_names=joint.profile_names, depth_group_rules=None)
+        joint.config.update_hipri(force=True, profile_groups=groups, profile_names=joint.profile_names,
+                                 depth_group_rules=None, seperate_species=None)
         for name in ("full_mask", "line_mask", "pix_mask", "sigma_mask"):
             setattr(joint, name, np.concatenate([getattr(data, name) for data in selected]))
         joint.poly_coeffs["masked"] = np.concatenate([data.poly_coeffs["masked"] for data in selected])
@@ -1018,7 +1082,8 @@ class DataList:
                 continue
             for group, name in data.profile_names.items():
                 # Automatic depth labels describe the complete depth range across orders.
-                if data.config.depth_group_rules is not None and data.config.profile_names is None:
+                if (data.config.depth_group_rules is not None and data.config.profile_names is None
+                        and data._automatic_profile_groups is None):
                     values = data.linelist["depths"][data.ll_mask][data.profile_groups == group]
                     depths.setdefault(group, []).extend(values)
                 elif group in names and names[group] != name:

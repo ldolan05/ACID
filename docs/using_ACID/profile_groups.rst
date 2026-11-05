@@ -104,9 +104,16 @@ Promote this warning to an exception when the requested grouping is essential:
 
 Explicit ``profile_groups`` take precedence over automatic grouping. Otherwise,
 choose either ``depth_group_rules`` or ``seperate_species``; using both raises
-an error. Custom names must match the surviving automatic groups. For joint
-orders, shared lines must have the same group assignments and names in each
-order; wavelength and S/N cuts still happen separately per order.
+an error. Custom names must match the surviving automatic groups.
+
+For ``DataList.run_ACID`` and ``DataList.run_multi_order_ACID``, automatic grouping
+uses the union of lines surviving the selected orders' wavelength and S/N cuts.
+Lines in overlapping orders count once; lines in wavelength gaps are excluded.
+Minimum line counts, depth boundaries and automatic names therefore apply across
+the selected range, with consistent group IDs in every order. Grouping happens
+before worker splitting. Each order fits only the groups present in its own
+clipped line list. Supply the same automatic grouping settings and shared line
+list for these orders, or use explicit ``profile_groups`` for custom assignments.
 
 Fitting named profiles directly
 --------------------------------

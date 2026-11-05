@@ -258,6 +258,9 @@ class LSD:
 
         # Generate groups after line-list cuts, using linear depths or species metadata.
         automatic_names = None
+        if profile_groups is None and self.data._automatic_profile_groups is not None:
+            profile_groups = self.data._automatic_profile_groups
+            automatic_names = self.data._automatic_profile_names
         if profile_groups is None:
             if self.config.depth_group_rules is not None and self.config.seperate_species:
                 raise ACIDInputError("Use either depth_group_rules or seperate_species, not both.")

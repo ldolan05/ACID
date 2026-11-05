@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from ACID_code import Acid, Config, Data, LSD, Profiles, ACIDProfileGroupsWarning
+from ACID_code import Acid, Config, Data, DataList, LSD, Profiles, ACIDProfileGroupsWarning
 from ACID_code.diagnostics.errors import ACIDInputError
 
 
@@ -110,6 +110,127 @@ def test_species_grouping_loads_full_vald_metadata(tmp_path):
     data.linelist = str(path)
     assert data.linelist["spec_ion"].tolist() == ["Fe 1"]
     assert data.linelist["lande_factor"].tolist() == [1.2]
+
+
+def grouped_orders(**kwargs):
+    """Each order is too small for automatic grouping on its own."""
+    wave = np.array([np.linspace(5000, 5010, 1001), np.linspace(5100, 5110, 1001)])
+    lines = {"wavelengths": np.r_[np.linspace(5001, 5009, 24), 5050, np.linspace(5101, 5109, 24)],
+             "depths": np.r_[np.linspace(.1, .5, 24), .99, np.linspace(.4, .8, 24)],
+             "spec_ion": np.array(["Fe 1", "Other"] * 12 + ["Gap"] + ["Fe 1", "Other"] * 12),
+             "lande_factor": np.ones(49)}
+    return DataList(wave, np.ones_like(wave), np.full_like(wave, .01), np.full(2, 100.),
+                    velocities=np.array([-2., 0., 2.]), linelist=lines, verbose=0,
+                    poly_ord=1, masking_lines={}, parallel=False,
+                    sigma_lower=100., sigma_upper=100., dev_perc=100., **kwargs)
+
+
+@pytest.mark.parametrize("species", [False, True])
+@pytest.mark.parametrize("joint", [False, True])
+@pytest.mark.parametrize("source", ["kwargs", "config", "from_datalist", "run"])
+def test_datalist_groups_across_orders_before_preparation(monkeypatch, species, joint, source):
+    grouping = ({"seperate_species": ["Fe 1"]} if species else
+                {"depth_group_rules": {"n_groups": 2, "min_lines": 20}})
+    options = {"config": Config(**grouping)} if source == "config" else grouping if source == "kwargs" else {}
+    orders = grouped_orders(**options)
+    if source == "from_datalist":
+        for data in orders:
+            data.config.update_hipri(**grouping)
+        orders = DataList.from_datalist(list(orders), verbose=0)
+    method_name = "group_profs_by_species" if species else "group_profs_by_depth"
+    grouper = getattr(LSD, method_name)
+    calls = []
+
+    def count_groups(*args, **kwargs):
+        calls.append(len(args[0]))
+        return grouper(*args, **kwargs)
+
+    monkeypatch.setattr(LSD, method_name, staticmethod(count_groups))
+    runner = orders.run_multi_order_ACID if joint else orders.run_ACID
+    runner(run_mcmc=False, **(grouping if source == "run" else {}))
+    assert calls == [48] # exclude the line in the wavelength gap
+    lines = orders[0].linelist
+    selected = np.r_[np.arange(24), np.arange(25, 49)]
+    expected = (np.where(lines["spec_ion"][selected] == "Fe 1", 1, 0) if species else
+                grouper(lines["depths"][selected], prof_group_rules=grouping["depth_group_rules"]))
+    expected_full = np.zeros(49, dtype=int)
+    expected_full[selected] = expected
+    for data in orders:
+        assert data.config.profile_groups is None # automatic settings remain editable
+        np.testing.assert_array_equal(data.profile_groups, expected_full[data.ll_mask])
+        restored = Data().from_dict(data.to_dict())
+        np.testing.assert_array_equal(restored._automatic_profile_groups, expected_full)
+        assert restored._automatic_profile_names == data._automatic_profile_names
+    assert len(orders.profile_names) == 2
+    if species:
+        assert orders.profile_names == {0: "Everything else", 1: "Fe 1"}
+    else:
+        depths = lines["depths"][selected]
+        assert orders.profile_names == {g: f"Depth {depths[expected == g].min():.3g}–{depths[expected == g].max():.3g}"
+                                        for g in [0, 1]}
+    if joint:
+        np.testing.assert_array_equal(orders.multi_order_data.profile_groups, expected)
+
+
+def test_datalist_species_counts_unique_overlapping_lines():
+    orders = grouped_orders(seperate_species=["Fe 1"])
+    lines = {"wavelengths": np.linspace(5001, 5009, 30), "depths": np.full(30, .3),
+             "spec_ion": np.array(["Fe 1"] * 15 + ["Other"] * 15), "lande_factor": np.ones(30)}
+    for data in orders:
+        data.set_inputs(orders[0].wavelengths["input"].ravel(), np.ones(1001), np.full(1001, .01), 100.)
+        data.linelist = lines
+    with pytest.warns(ACIDProfileGroupsWarning, match="15 lines") as caught:
+        orders.run_ACID(run_mcmc=False)
+    assert len(caught) == 1
+    assert orders.profile_names == {0: "Everything else"}
+    assert all(np.all(data.profile_groups == 0) for data in orders)
+
+
+def test_datalist_groups_before_splitting_workers_and_refreshes_cached_groups():
+    orders = grouped_orders(depth_group_rules={"n_groups": 2, "min_lines": 20})
+    orders.run_ACID(run_mcmc=False, worker=0, nworkers=2)
+    first_groups = orders[0]._automatic_profile_groups.copy()
+    assert orders[1]._automatic_profile_groups is None
+    orders.run_ACID(run_mcmc=False, worker=1, nworkers=2)
+    np.testing.assert_array_equal(orders[1]._automatic_profile_groups, first_groups)
+    orders.run_ACID(run_mcmc=False, depth_group_rules={"n_groups": 1, "min_lines": 20}, overwrite_kwargs=True)
+    assert all(data.alpha["initial"].shape[0] == 1 for data in orders)
+    assert orders.profile_names == {0: "Depth 0.1–0.8"}
+
+
+def test_datalist_grouping_respects_sn_cuts_and_explicit_groups():
+    orders = grouped_orders(depth_group_rules={"n_groups": 2, "min_lines": 20})
+    orders[0].sn["input"][:] = orders[0].sn["combined"] = 1.
+    with pytest.raises(ACIDInputError, match="from 34 lines"):
+        orders.run_ACID(run_mcmc=False)
+    explicit = np.arange(49) % 2
+    orders.run_ACID(run_mcmc=False, profile_groups=explicit, overwrite_kwargs=True)
+    for data in orders:
+        np.testing.assert_array_equal(data.profile_groups, explicit[data.ll_mask])
+        assert data._automatic_profile_groups is None
+
+
+def test_datalist_joint_species_names_allow_missing_groups_and_custom_names(tmp_path):
+    orders = grouped_orders(seperate_species=["Fe 1"], profile_names=["Rest", "Iron"])
+    orders.save_dir = str(tmp_path)
+    for data in orders:
+        data.linelist["spec_ion"][:] = ["Fe 1"] * 24 + ["Gap"] + ["Other"] * 24
+    orders.run_multi_order_ACID(run_mcmc=False)
+    assert orders[0].profile_names == {1: "Iron"}
+    assert orders[1].profile_names == {0: "Rest"}
+    assert orders.profile_names == {0: "Rest", 1: "Iron"}
+    orders.save()
+    restored = DataList.load(str(tmp_path), verbose=0)
+    assert restored.profile_names == orders.profile_names
+    assert restored[0].config.profile_groups is None
+    np.testing.assert_array_equal(restored[0]._automatic_profile_groups, orders[0]._automatic_profile_groups)
+
+
+def test_datalist_rejects_conflicting_automatic_grouping_settings():
+    orders = grouped_orders(depth_group_rules={"n_groups": 2, "min_lines": 20})
+    orders[1].config.depth_group_rules = {"n_groups": 3, "min_lines": 5}
+    with pytest.raises(ACIDInputError, match="same automatic profile grouping settings"):
+        orders.run_ACID(run_mcmc=False)
 
 
 def test_datalist_rvs_keep_named_groups_aligned(completed_datalist, monkeypatch):
