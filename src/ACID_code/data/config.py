@@ -100,6 +100,7 @@ class Config:
         "min_checks" : 1,
         "min_tau_factor" : 50,
         "tau_tol" : 0.1,
+        "reduced_tau_tol" : 0.05, # defaults to this if tau_tol is not explicitly set
         "moves" : [
             ("StretchMove", 0.20, {}),
             ("DESnookerMove", 0.1, {}),
@@ -113,7 +114,7 @@ class Config:
 
     #: Property list for error handling
     properties = ["verbose", "masking_lines", "dir", "save_path", "sampler_path", "figure_dir", "continuum_method", "sampler_type",
-                  "regularization"]
+                  "regularization", "tau_tol"]
     _properties = [f"_{prop}" for prop in properties]
 
     #: For error handling if Data attributes were accidentally set in config. These should be set in :py:class:`~ACID_code.Data` instead
@@ -262,6 +263,18 @@ class Config:
         return out
 
     # --- Properties ---
+    @property
+    def tau_tol(self) -> float:
+        """Tau stability tolerance; defaults to reduced_tau_tol when neff is disabled."""
+        stored_tau_tol = self.__dict__.get("_tau_tol")
+        if stored_tau_tol is not None:
+            return stored_tau_tol
+        return self.reduced_tau_tol if self.min_tau_factor == 0 else self.defaults["tau_tol"]
+
+    @tau_tol.setter
+    def tau_tol(self, value:Scalar) -> None:
+        self._tau_tol = float(value)
+
     # - Path and directory properties
     @property
     def regularization(self) -> float:

@@ -9,6 +9,45 @@ from ACID_code.diagnostics.errors import ACIDInputError
 from ACID_code import Config
 
 
+@pytest.mark.parametrize("min_tau_factor, default_tol", [(None, 0.1), (50, 0.1), (0, 0.05)])
+@pytest.mark.parametrize("tau_tol", [None, 0, 0.1, 0.02])
+def test_tau_tolerance_default_and_explicit_override(min_tau_factor, default_tol, tau_tol):
+    config = Config(min_tau_factor=min_tau_factor, tau_tol=tau_tol)
+    assert config.tau_tol == (default_tol if tau_tol is None else tau_tol)
+    assert config.to_full_dict()["tau_tol"] == config.tau_tol
+    restored = Config(**config.to_dict())
+    assert restored.tau_tol == config.tau_tol
+
+
+def test_tau_tolerance_default_tracks_neff_and_preserves_priorities():
+    config = Config()
+    assert config.tau_tol == 0.1
+    config.min_tau_factor = 0
+    assert config.tau_tol == 0.05
+    config.reduced_tau_tol = 0.03
+    assert config.tau_tol == 0.03
+    config.min_tau_factor = 50
+    assert config.tau_tol == 0.1
+
+    config.update_lowpri(tau_tol=0.2)
+    config.update_hipri(tau_tol=0.08)
+    config.update_lowpri(tau_tol=0.3)
+    config.min_tau_factor = 0
+    assert config.tau_tol == 0.08
+    config.update_hipri(tau_tol=None)
+    assert config.tau_tol == 0.08
+    config.update_hipri(tau_tol=None, force=True)
+    assert config.tau_tol == 0.03
+
+
+def test_implicit_tau_tolerance_stays_dynamic_after_round_trip(monkeypatch):
+    config = Config(**Config(min_tau_factor=0).to_dict())
+    config.min_tau_factor = 50
+    assert config.tau_tol == 0.1
+    monkeypatch.setenv("_ACID_CONFIG", '{"min_tau_factor": 0}')
+    assert config.tau_tol == 0.05
+
+
 def test_config_priorities_properties_and_environment(monkeypatch):
     # Low-priority values should fill gaps, while high-priority values win conflicts.
     config = Config(verbose="off", order=1)

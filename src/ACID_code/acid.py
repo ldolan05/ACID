@@ -391,7 +391,9 @@ class Acid:
             recommend to set a value below 50 unless you want to force convergence for the deterministic_profile=False option.
             Only used if max_steps is set. If set to 0, the effective sample size criterion is disabled.
         tau_tol : :py:class:`float`, optional
-            Tolerance for tau convergence in MCMC stopping criterion, by default 0.1. Only used if max_steps is set.
+            Tolerance for tau convergence in MCMC stopping criterion. If left as None, defaults to 0.1 when
+            min_tau_factor is enabled, or config.reduced_tau_tol (0.05 by default, can be changed by the user) when min_tau_factor is 0.
+            An explicitly set tau_tol overrides either default. Only used if max_steps is set.
             If set to 0, the tau stability criterion is disabled. At least one of min_tau_factor and tau_tol must be nonzero.
             Both criteria must be met when both are enabled.
         moves : list[tuple], optional
