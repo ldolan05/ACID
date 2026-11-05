@@ -135,6 +135,10 @@ class Result(Plot):
             flat_samples = self.sampler.results.samples_equal()
         else:
             flat_samples = self.sampler.get_chain(discard=self.burnin, thin=self.thin, flat=True)
+        if len(flat_samples) == 0:
+            raise ACIDStateError("No posterior samples remain after ACID's automatic sample selection. "
+                                 "Check the convergence warnings and try continuing the MCMC run for longer. "
+                                 "If this persists, report it as an ACID issue.")
 
         # May be used in a future update for more accurate error estimation
         # Get approximate 1 sigma errors on the parameters using the 16th and 84th percentiles

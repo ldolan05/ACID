@@ -10,8 +10,37 @@ from emcee import EnsembleSampler
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code.diagnostics.errors import ACIDInputError, ACIDStateError, ACIDContinuumFitError, ACIDResultError
-from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList, Result
+from ACID_code import ACID, ACID_HARPS, Acid, Config, Data, LineList, LSD, Result
 from ACID_code.acid import _get_run_kwargs
+
+
+@pytest.mark.parametrize("roundoff", [-np.finfo(float).eps, np.finfo(float).eps])
+def test_sigma_mask_preserves_line_information_at_roundoff(synthetic_spectrum, monkeypatch, roundoff):
+    wave, flux, errors, sn, velocities, lines = synthetic_spectrum
+    original = LSD.runlsd_and_store
+
+    def set_residuals(data, key, **kwargs):
+        result = original(data, key, **kwargs)
+        if key == "initial":
+            support = np.any(data.alpha[key] != 0, axis=(0, 2))
+            residuals = np.zeros_like(data.residuals[key])
+            residuals[support] = roundoff
+            residuals[0] = 0.01
+            residuals[1] = np.nan
+            data.residuals[key] = residuals
+        return result
+
+    monkeypatch.setattr(LSD, "runlsd_and_store", staticmethod(set_residuals))
+    acid = Acid(velocities=velocities, linelist=lines, verbose=0, parallel=False,
+                poly_ord=1, masking_lines={}, profile_groups=np.array([0, 1]))
+    acid.ACID(wave, flux, errors, sn, run_mcmc=False)
+
+    data = acid.data
+    support = np.any(data.alpha["initial"] != 0, axis=(0, 2))
+    assert not np.any(data.sigma_mask[support])
+    assert np.all(data.sigma_mask[:2])
+    assert np.all(np.isfinite(data.profile["masked"][0]))
+    assert np.linalg.matrix_rank(data.alpha["mcmc"]) == 6
 
 
 def test_convergence_requires_an_enabled_criterion():

@@ -661,7 +661,9 @@ class Acid:
 
                 # Put the sigma mask back onto the full pixel grid
                 sigma_mask = np.zeros_like(residuals, dtype=bool)
-                sigma_mask[unmasked] = np.ma.getmaskarray(result)
+                # Relative residuals at roundoff must not remove line information.
+                sigma_mask[unmasked] = np.ma.getmaskarray(result) & (
+                    ~np.isfinite(masked_residuals) | (np.abs(masked_residuals) > 10 * np.finfo(float).eps))
 
                 self.data.sigma_mask = sigma_mask
 

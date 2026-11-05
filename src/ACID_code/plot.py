@@ -989,6 +989,7 @@ class Plot:
                 self.burnin = int(3 * np.max(self.tau))
             else:
                 self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
+                self.thin = 1
         except:
             warnings.warn(
                 "Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
@@ -1000,7 +1001,7 @@ class Plot:
             self.thin = 1
         
         self.burnin = int(np.clip(self.burnin, 0, self.data.nsteps-1)) # ensure burnin is at least 0 and less than total steps
-        self.thin = int(np.clip(self.thin, 1, self.data.nsteps-1)) # ensure thin is at least 1, and not clipping to nsteps
+        self.thin = int(np.clip(self.thin, 1, self.data.nsteps-self.burnin)) # retain at least one step
 
         # Below is used for the parameters for the walker and corner plots
         n_poly_params = len(self.data.poly_coeffs["masked"])

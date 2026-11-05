@@ -3,6 +3,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from emcee import EnsembleSampler
+from emcee.backends import Backend
 from beartype.roar import BeartypeCallHintParamViolation
 from pathlib import Path
 import sys
@@ -10,7 +12,46 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ACID_code.diagnostics.errors import ACIDStateError
+from ACID_code.diagnostics.warnings import ACIDConvergenceWarning
 from ACID_code import Acid, Data, Profiles, Result
+
+
+@pytest.mark.parametrize("nsteps", [40, 1201])
+@pytest.mark.parametrize("deterministic", [False, True])
+def test_unconverged_chain_retains_samples_and_processes_results(synthetic_spectrum, monkeypatch, nsteps, deterministic):
+    wave, flux, errors, sn, velocities, lines = synthetic_spectrum
+    acid = Acid(velocities=velocities, linelist=lines, seed=2, verbose=0, parallel=False,
+                poly_ord=1, masking_lines={}, deterministic_profile=deterministic,
+                sigma_lower=100., sigma_upper=100., dev_perc=100.)
+    acid.ACID(wave, flux, errors, sn, run_mcmc=False)
+    data = acid.data
+    backend = Backend()
+    backend.reset(data.nwalkers, data.ndim)
+    backend.grow(nsteps, None)
+    backend.chain[:] = data.initial_state
+    backend.log_prob[:] = 0.
+    backend.iteration = data.nsteps = nsteps
+    data.sampler = EnsembleSampler(data.nwalkers, data.ndim, lambda theta: 0., backend=backend)
+    monkeypatch.setattr(data.sampler, "get_autocorr_time", lambda **kwargs: np.full(data.ndim, 6000.))
+
+    with pytest.warns(ACIDConvergenceWarning, match="last 1000 steps"):
+        result = Result(acid)
+
+    assert not result.converged
+    assert result.thin == 1
+    assert result.burnin == max(0, nsteps - 1000)
+    assert result.sampler.get_chain(discard=result.burnin, thin=result.thin).shape[0] == min(nsteps, 1000)
+    assert data.complete
+    assert all(np.all(np.isfinite(values)) for values in data.profile["final"])
+
+
+def test_result_reports_empty_posterior_before_fitting(harps_result):
+    data = Data().from_dict(harps_result.data.to_dict())
+    data.sampler = harps_result.sampler
+    result = Result(data)
+    result.burnin = data.nsteps
+    with pytest.raises(ACIDStateError, match="No posterior samples.*ACID's automatic sample selection"):
+        result.process_results()
 
 
 def test_result_profiles_returns_a_fresh_fitter(harps_result):
