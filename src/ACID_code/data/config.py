@@ -135,7 +135,13 @@ class Config:
         raise AttributeError(f"'Config' object has no attribute '{name}'")
 
     def __getattribute__(self, name:str) -> Any:
-        """Override the default attribute access to allow for environment variable overrides."""
+        """
+        Allow environment variable overrides, e.g. after importing json and os::
+
+            os.environ["_ACID_CONFIG"] = json.dumps({"nsteps": 1000})
+
+        Reading config.nsteps then returns 1000.
+        """
         if name.startswith("_"):
             return object.__getattribute__(self, name)
 
