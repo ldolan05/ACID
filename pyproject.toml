@@ -39,12 +39,14 @@ dynesty = [
 ]
 jax = [
     "jax",
+    "jaxfit",
 ]
 test = [
     "pytest",
     "pytest-cov",
     "dynesty",
     "jax",
+    "jaxfit",
 ]
 docs = [
     "sphinx_rtd_theme",

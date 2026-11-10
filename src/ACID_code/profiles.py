@@ -1,13 +1,11 @@
 from __future__ import annotations
 from .diagnostics.errors import *
 import numpy as np
-import copy, warnings, functools
+import copy, warnings, functools, scipy, inspect
 from collections.abc import Callable
 from typing import Any
-from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from beartype import beartype
-from scipy.special import wofz
 from .utils import Array1D, Array2D, Array3D, ArrayLike, IntLike, Scalar, ProfileNames, profile_name_map
 from .data import Data
 from .diagnostics.warnings import ACIDRuntimeWarning
@@ -30,7 +28,7 @@ def _fit_profiles(method:Callable[..., tuple[np.ndarray, np.ndarray]]) -> Callab
             return method(self, x, y, yerr, cov_matrix, p0, on_exception, **kwargs)
 
         # Resolve defaults and validate the shared grid and profile uncertainties.
-        inputs = Profiles(*self._copy_inputs(x, y, yerr, cov_matrix))
+        inputs = Profiles(*self._copy_inputs(x, y, yerr, cov_matrix), use_jax=self.use_jax)
         model = method.__name__.removeprefix("fit_")
         results, fitted, errors, on_x = [], [], [], []
         for i, flux in enumerate(inputs.flux):
@@ -71,6 +69,8 @@ class Profiles:
     of shape (n_profiles, n_parameters) and covariances of shape
     (n_profiles, n_parameters, n_parameters), with a shared or per-profile p0.
     """
+    # TODO: Get jax speedup here, make jax the default if installed
+
     def __init__(
         self,
         velocities    : Array1D|Array2D|None = None,
@@ -80,6 +80,7 @@ class Profiles:
         data          : Data|None            = None,
         key           : str                  = "final",
         profile_names : ProfileNames|None    = None,
+        use_jax       : bool                 = True,
         ) -> None:
         """
         Initializes the Profiles class with velocity, flux, and optional flux error data.
@@ -130,6 +131,7 @@ class Profiles:
         self.flux = None
         self.flux_err = None
         self.cov_matrix = None
+        self.use_jax = use_jax
 
         # Copy inputs and reduce repeated velocity rows to a shared 1D grid.
         x, y, yerr, cov = self._copy_inputs(velocities, flux, flux_err, cov_matrix)
@@ -589,6 +591,31 @@ class Profiles:
         # Get the model function
         model_func = getattr(self, f"{model_name}_func")
 
+        # Determine which numerical module to use based on use_jax flag
+        numpy_module = np
+        from scipy.optimize import curve_fit
+        if self.use_jax:
+            from .mcmc.jax import _import_jax
+            modules = _import_jax(_import_jaxfit=True)
+            if modules is not None:
+                jax, jnp, _, jaxfit = modules
+                numpy_module = jnp
+                # Runtime NumPy type checks cannot accept JAX tracers inside jit.
+                model_func = functools.partial(inspect.unwrap(model_func), np=jnp, scipy=jax.scipy)
+                model_func = jax.jit(model_func)
+                x = jnp.array(x)
+                y = jnp.array(y)
+                if yerr is not None:
+                    yerr = jnp.array(yerr)
+                if cov_matrix is not None:
+                    cov_matrix = jnp.array(cov_matrix)
+                if p0 is not None:
+                    p0 = jnp.array(p0)
+                if bounds is not None:
+                    bounds = (jnp.array(bounds[0]), jnp.array(bounds[1]))
+                JCF = jaxfit.CurveFit()
+                curve_fit = JCF.curve_fit
+
         # Perform the curve fitting
         sigma = yerr if cov_matrix is None else cov_matrix
         popt, pcov = curve_fit(model_func, x, y, sigma=sigma, p0=p0, bounds=bounds, **kwargs)
@@ -607,7 +634,7 @@ class Profiles:
         return popt, pcov
 
     @staticmethod
-    def voigt_func(x:Array1D, amplitude:Scalar, centre:Scalar, sigma:Scalar, gamma:Scalar, offset:Scalar=0) -> Array1D:
+    def voigt_func(x:Array1D, amplitude:Scalar, centre:Scalar, sigma:Scalar, gamma:Scalar, offset:Scalar=0, np=np, scipy=scipy) -> Array1D:
         """Calculates the Voigt profile at given x values.
 
         Parameters
@@ -624,23 +651,27 @@ class Profiles:
             The Lorentzian half-width at half-maximum.
         offset : float, optional
             The continuum offset, by default 0.
-
+        np : module, optional
+            The numpy module to use for calculations, by default np, can use jnp for JAX arrays.
+        scipy : module, optional
+            The scipy module to use for calculations, by default scipy, can use jax.scipy for JAX arrays.
+            
         Returns
         -------
         array_like
             The Voigt profile evaluated at the input x values.
         """
         z = ((x - centre) + 1j * gamma) / (sigma * np.sqrt(2))
-        profile = np.real(wofz(z)) / (sigma * np.sqrt(2*np.pi))
+        profile = np.real(scipy.special.wofz(z)) / (sigma * np.sqrt(2*np.pi))
 
         z0 = 1j * gamma / (sigma * np.sqrt(2))
-        peak = np.real(wofz(z0)) / (sigma * np.sqrt(2*np.pi))
+        peak = np.real(scipy.special.wofz(z0)) / (sigma * np.sqrt(2*np.pi))
 
         profile = profile / peak
         return 1 + amplitude * profile + offset
 
     @staticmethod
-    def gaussian_func(x:Array1D, amplitude:Scalar, mean:Scalar, stddev:Scalar, offset:Scalar=0) -> Array1D:
+    def gaussian_func(x:Array1D, amplitude:Scalar, mean:Scalar, stddev:Scalar, offset:Scalar=0, np=np, scipy=scipy) -> Array1D:
         """Calculates the Gaussian profile at given x values.
 
         Parameters
@@ -655,6 +686,11 @@ class Profiles:
             The standard deviation of the Gaussian profile.
         offset : float, optional
             The continuum offset, by default 0.
+        np : module, optional
+            The numpy module to use for calculations, by default np, can use jnp for JAX arrays.
+        scipy : module, optional
+            The scipy module to use for calculations, by default scipy, can use jax.scipy for JAX arrays.
+            Not used in this function, included for consistency with other profile functions.
 
         Returns
         -------
@@ -664,7 +700,7 @@ class Profiles:
         return 1 + amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2)) + offset
     
     @staticmethod
-    def lorentzian_func(x:Array1D, amplitude:Scalar, centre:Scalar, gamma:Scalar, offset:Scalar=0) -> Array1D:
+    def lorentzian_func(x:Array1D, amplitude:Scalar, centre:Scalar, gamma:Scalar, offset:Scalar=0, np=np, scipy=scipy) -> Array1D:
         """Calculates the Lorentzian profile at given x values.
 
         Parameters
@@ -679,6 +715,12 @@ class Profiles:
             The half-width at half-maximum.
         offset : float, optional
             The continuum offset, by default 0.
+        np : module, optional
+            The numpy module to use for calculations, by default np, can use jnp for JAX arrays.
+            This function does not actually use numpy, but this is added for consitency with the others.
+        scipy : module, optional
+            The scipy module to use for calculations, by default scipy, can use jax.scipy for JAX arrays.
+            Not used in this function, included for consistency with other profile functions.
 
         Returns
         -------

@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import numpy as np
 import pytest
 from ACID_code import Acid, MCMC
@@ -32,7 +33,7 @@ def test_regularization_prior_and_jax_agree(harps_order_40, deterministic, scale
 def test_requested_jax_falls_back_when_it_cannot_be_imported(mcmc, monkeypatch):
     # A missing optional accelerator must never make the ordinary MCMC path unusable.
     monkeypatch.delenv("SLURM_JOB_ID", raising=False)
-    monkeypatch.setattr(jax_module, "_import_jax", lambda: None)
+    monkeypatch.setitem(sys.modules, "jax", None)
     with pytest.warns(ACIDRuntimeWarning, match="falling back"):
         model = MCMC(mcmc.x, mcmc.y, mcmc.yerr, mcmc.alpha, mcmc.velocities,
                      mcmc.c_factor, deterministic_profile=True, use_jax=True)
