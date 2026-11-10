@@ -249,3 +249,34 @@ the results for each order are stored in the DataList instance and can be access
     
     # Is a wrapper for ACID_code.Profiles.plot_fit() and passes the stored combined_profile through, kwargs are passed directly
     datalist.fit_profile()
+
+Refitting from stored continua
+------------------------------
+
+``refit_combined_profile`` runs one joint LSD solve on the spectra normalized
+by each selected order's stored continuum. It replaces ``combined_profile``
+without combining the independently fitted profiles or rerunning MCMC:
+
+.. code-block:: python
+
+    datalist.refit_combined_profile(exclude=[21], key="final")
+    datalist.refit_combined_profile(orders=[20, 22], key="initial")
+    datalist.plot_combined_profile()
+    datalist.profiles.fit_gaussian()
+
+The default ``orders="completed"`` selects non-excluded orders containing the
+requested ``key`` in their wavelength, flux, error, S/N and continuum dictionaries.
+``"finished"``, ``"done"``, ``"containing"`` and ``"includes"`` are equivalent;
+selection does not require ``Data.complete``. ``orders="all"`` or explicit order
+IDs raise if a selected, non-excluded order lacks those inputs. Existing
+``datalist.exclude`` values apply unless ``exclude`` is supplied.
+
+Each order retains its own pixel grid, line selection and masks; overlapping
+wavelengths remain separate measurements. Profile groups align by actual ID,
+including groups missing from individual orders. Cached interpolation matrices
+are reused when available. The orders must share their velocity grid, line list,
+OD setting and regularization settings. Continua are treated as fixed, so the
+returned errors and covariance are conditional LSD uncertainties and do not
+include the continuum posterior uncertainty. Refitted profiles and names are
+retained by ``DataList.save``/``load``; the source orders and joint sampler are
+preserved.

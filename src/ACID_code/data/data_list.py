@@ -153,6 +153,7 @@ class DataList:
         self._save_dir = None
         self._data_list = None
         self._combined_profile = None
+        self._refit_data = None
         self._exclude = []
         self._results = None
         self.multi_order_data = None
@@ -461,6 +462,7 @@ class DataList:
         verbose = Output.current(verbose=self.verbose if verbose is None else verbose).verbose
         if not _return_orders:
             self.multi_order_data = None
+            self._refit_data = None
             self._combined_profile = self._results = None
 
         # Configure overwrite from class default if not input in the method call
@@ -716,6 +718,7 @@ class DataList:
             with output_settings(joint.config, verbose=verbose):
                 result = Acid(data=joint).ACID(resume=True, run_mcmc=run_mcmc, **kwargs)
             self.multi_order_data = joint
+            self._refit_data = None
             self._results = None
             self._combined_profile = tuple(joint.profile["final"]) if result is not None else None
             if pack:
@@ -745,19 +748,8 @@ class DataList:
             if len(data.wavelengths["input"]) != nframes:
                 raise ACIDInputError("Joint orders must have the same number of frames.")
 
-        # Map clipped groups back to line indices, checking overlapping orders.
-        line_indices = np.unique(np.concatenate([data.ll_mask for data in selected]))
-        groups = None
-        if first.profile_groups is not None:
-            groups = np.zeros(len(line_indices), dtype=first.profile_groups.dtype)
-            assigned = np.zeros(len(line_indices), dtype=bool)
-            for data in selected:
-                indices = np.searchsorted(line_indices, data.ll_mask)
-                if np.any(assigned[indices] & (groups[indices] != data.profile_groups)):
-                    raise ACIDInputError("Joint orders must assign the same profile group to shared lines.")
-                groups[indices] = data.profile_groups
-                assigned[indices] = True
-            unique_groups = np.unique(groups)
+        line_indices, groups = self._get_joint_profile_groups(selected)
+        unique_groups = np.unique(groups) if groups is not None else None
 
         # Discard unused orders if requested and thin the selected data.
         if discard_unused_orders:
@@ -836,6 +828,7 @@ class DataList:
         # Set class values
         joint.setup_time = sum(data.setup_time for data in selected)
         self.multi_order_data = joint
+        self._refit_data = None
         self._combined_profile = self._results = None
 
         # Run the ACID analysis on the combined joint data
@@ -885,6 +878,8 @@ class DataList:
         }
         if self.multi_order_data is not None:
             d["multi_order_data"] = self.multi_order_data.to_dict()
+        if self._refit_data is not None:
+            d["refit_data"] = self._refit_data.to_dict()
         utils.save_pickle_atomic(d, save_loc)
 
     @classmethod
@@ -1018,6 +1013,9 @@ class DataList:
         obj.multi_order_data = joint
         if joint is not None and joint.complete:
             obj._combined_profile = tuple(joint.profile["final"])
+        if d.get("refit_data") is not None:
+            obj._refit_data = Data().from_dict(d["refit_data"])
+            obj._combined_profile = tuple(obj._refit_data.profile["final"])
         if folder_moved_flag and "data_list" in d:
             obj.save() # repack with new save locations, including newly discovered orders
         return obj
@@ -1044,6 +1042,8 @@ class DataList:
         Returns:
             tuple[Array1D, Array1D]|None: The combined profile and its errors, or None if not available.
         """
+        if self._refit_data is not None:
+            return self._combined_profile
         if self.multi_order_data is not None and self.multi_order_data.complete:
             return tuple(self.multi_order_data.profile["final"])
         if self._combined_profile is None:
@@ -1061,6 +1061,8 @@ class DataList:
     def profiles(self) -> "ACID_code.profiles.Profiles":
         """Return a fresh fitter for the combined profile across orders."""
         from ..profiles import Profiles
+        if self._refit_data is not None:
+            return Profiles(data=self._refit_data)
         if self.multi_order_data is not None:
             return Profiles(data=self.multi_order_data)
         names = self.profile_names
@@ -1070,6 +1072,8 @@ class DataList:
     @property
     def profile_names(self) -> dict[IntLike, str]|None:
         """Names for the combined groups, preserving actual group IDs across orders."""
+        if self._refit_data is not None:
+            return self._refit_data.profile_names
         if self.multi_order_data is not None:
             return self.multi_order_data.profile_names
         return self._collect_profile_names([data for data in self.data_list if data.config.order not in self.exclude])
@@ -1092,6 +1096,24 @@ class DataList:
         for group, values in depths.items():
             names[group] = f"Depth {min(values):.3g}–{max(values):.3g}"
         return names or None
+
+    def _get_joint_profile_groups(self, selected:list[Data]) -> tuple[np.ndarray, np.ndarray|None]:
+        """Map clipped group IDs onto unique line indices across orders."""
+        first = selected[0]
+        if any((data.profile_groups is None) != (first.profile_groups is None) for data in selected):
+            raise ACIDInputError("Joint orders must all use profile groups or all use a single profile.")
+        line_indices = np.unique(np.concatenate([data.ll_mask for data in selected]))
+        if first.profile_groups is None:
+            return line_indices, None
+        groups = np.zeros(len(line_indices), dtype=int)
+        assigned = np.zeros(len(line_indices), dtype=bool)
+        for data in selected:
+            indices = np.searchsorted(line_indices, data.ll_mask)
+            if np.any(assigned[indices] & (groups[indices] != data.profile_groups)):
+                raise ACIDInputError("Joint orders must assign the same profile group to shared lines.")
+            groups[indices] = data.profile_groups
+            assigned[indices] = True
+        return line_indices, groups
 
     @property
     def results(self) -> list[Optional["ACID_code.result.Result"]]:
@@ -1144,6 +1166,7 @@ class DataList:
             if must_have_converged and not self.multi_order_data.result.converged:
                 raise ACIDStateError("The joint fit has not converged.")
             self._combined_profile = tuple(self.multi_order_data.profile["final"])
+            self._refit_data = None
             return
 
         if exclude is not None:
@@ -1173,8 +1196,115 @@ class DataList:
         self._combined_profile = utils.combine_profiles(profiles, errors, covariances)
 
         self._combined_profile = utils.od_to_flux(self._combined_profile[0], self._combined_profile[1], cov_matrix=self._combined_profile[2], od=od)
+        self._refit_data = None
 
         return
+
+    def refit_combined_profile(self, orders:Array1D|int|str|None="completed",
+                               exclude:int|Array1D|None=None, key:str="final") -> None:
+        """Refit shared profiles once using each order's stored continuum.
+
+        ``orders`` accepts instrument order IDs, "all", or the default
+        "completed" (also "finished", "done", "containing", "includes").
+        The latter selects orders containing ``key`` in wavelengths, flux,
+        errors, sn and continuum, regardless of Data.complete. "all" and
+        explicit IDs raise if any non-excluded order lacks those inputs.
+        Existing exclusions apply unless ``exclude`` is supplied.
+
+        Pixels remain separate across orders, including overlaps. Continua are
+        fixed: returned errors/covariance describe conditional LSD uncertainty,
+        without propagating their posterior uncertainty or resampling MCMC.
+        Updates combined_profile and its group names; individual orders and
+        any existing joint sampler are preserved.
+        """
+        from ..lsd import LSD
+
+        excluded = self.exclude if exclude is None else np.atleast_1d(exclude).tolist()
+        if any(order not in self.orders for order in excluded):
+            raise ACIDInputError(f"Exclusions must refer to available orders: {self.orders.tolist()}.")
+        required = ("wavelengths", "flux", "errors", "sn", "continuum")
+        available = [data for data in self.data_list if data.config.order not in excluded]
+        if orders is None or isinstance(orders, str):
+            mode = "completed" if orders is None else orders.lower()
+            if mode in ("completed", "finished", "done", "containing", "includes"):
+                selected = [data for data in available if all(key in getattr(data, name) for name in required)]
+            elif mode == "all":
+                selected = available
+            else:
+                raise ACIDInputError(f"Unknown order selection {orders!r}; use 'completed', 'all', or order IDs.")
+        else:
+            requested = np.atleast_1d(orders).tolist()
+            if any(order not in self.orders for order in requested):
+                raise ACIDInputError(f"Requested orders must be available: {self.orders.tolist()}.")
+            selected = [data for data in available if data.config.order in requested]
+        if not selected:
+            raise ACIDStateError(f"No non-excluded orders contain the inputs for key={key!r}.")
+        for data in selected:
+            missing = [name for name in required if key not in getattr(data, name)]
+            if missing:
+                raise ACIDStateError(f"Order {data.config.order} lacks key={key!r} in {', '.join(missing)}.")
+
+        first = selected[0]
+        for data in selected:
+            if data.linelist is None or data.ll_mask is None:
+                raise ACIDStateError(f"Order {data.config.order} has no prepared line selection.")
+            if not np.array_equal(data.velocities, first.velocities):
+                raise ACIDInputError("Refitted orders must share the same velocity grid.")
+            if any(not np.array_equal(data.linelist[name], first.linelist[name]) for name in ("wavelengths", "depths")):
+                raise ACIDInputError("Refitted orders must share the same line list.")
+            for name in ("od", "regularization", "scale_regularization"):
+                if getattr(data.config, name) != getattr(first.config, name):
+                    raise ACIDInputError(f"Refitted orders must share the same {name} setting.")
+        line_indices, groups = self._get_joint_profile_groups(selected)
+        labels = np.unique(groups) if groups is not None else None
+        refit = Data(complete=True)
+        refit.config = Config(od=first.config.od, regularization=first.config.regularization,
+                              scale_regularization=first.config.scale_regularization,
+                              profile_groups=groups, profile_names=self._collect_profile_names(selected),
+                              order=[data.config.order for data in selected], verbose=self.verbose)
+        refit.velocities, refit.linelist, refit.ll_mask = first.velocities, first.linelist, line_indices
+        wavelengths, fluxes, errors, matrices = [], [], [], []
+        for data in selected:
+            wave, flux, error, continuum = (getattr(data, name)[key] for name in ("wavelengths", "flux", "errors", "continuum"))
+            if wave.ndim != 1 or not (wave.shape == flux.shape == error.shape == continuum.shape):
+                raise ACIDInputError(f"Order {data.config.order}: {key!r} arrays must share a 1D pixel grid.")
+            if not np.all(np.isfinite(continuum) & (continuum > 0)):
+                raise ACIDInputError(f"Order {data.config.order}: continuum[{key!r}] must be positive and finite.")
+            alpha = data.alpha.get(key)
+            local_groups = np.unique(data.profile_groups) if groups is not None else None
+            nvel = len(refit.velocities)
+            shapes = ((len(wave), nvel),) if groups is None else (
+                (len(local_groups), len(wave), nvel), (len(wave), len(local_groups)*nvel))
+            if alpha is not None and alpha.shape not in shapes:
+                alpha = None # e.g. a cached single_profile matrix for grouped data
+            if alpha is None:
+                lines = data.linelist["wavelengths"][data.ll_mask]
+                depths = utils.flux_to_od(linelist=data.linelist["depths"][data.ll_mask], od=refit.config.od)
+                if groups is None:
+                    alpha = LSD.calc_alpha(wave, lines, depths, refit.velocities, sparse=data.config.sparse)
+                else:
+                    alpha = np.stack([LSD.calc_alpha(wave, lines[data.profile_groups == g],
+                        depths[data.profile_groups == g], refit.velocities, sparse=data.config.sparse) for g in local_groups])
+            if groups is not None:
+                if alpha.ndim == 2:
+                    alpha = np.stack(np.split(alpha, len(local_groups), axis=1))
+                aligned = np.zeros((len(labels), *alpha.shape[1:]))
+                aligned[np.searchsorted(labels, local_groups)] = alpha
+                alpha = aligned
+            wavelengths.append(wave)
+            fluxes.append(flux / continuum)
+            errors.append(np.where(error >= 1e11, 1e12, error / continuum))
+            matrices.append(alpha)
+        lsd = LSD(refit)
+        with output_settings(refit.config, verbose=self.verbose):
+            lsd.run_LSD(np.concatenate(wavelengths), np.concatenate(fluxes), np.concatenate(errors),
+                        min(float(data.sn[key]) for data in selected),
+                        alpha=np.concatenate(matrices, axis=1 if groups is not None else 0))
+        refit.profile["final"] = [lsd.profile_F, lsd.profile_errors_F, lsd.cov_z_F]
+        if exclude is not None:
+            self.exclude = exclude
+        self._refit_data = refit
+        self._combined_profile = tuple(refit.profile["final"])
 
     def plot_combined_profile(self, return_fig:bool=False) -> None|tuple[plt.Figure, plt.Axes]:
         """
@@ -1191,13 +1321,15 @@ class DataList:
             The figure and axis objects if return_fig is True, otherwise None.
 
         """
-        if self.multi_order_data is not None and self.multi_order_data.profile_groups is not None:
+        if self._refit_data is None and self.multi_order_data is not None and self.multi_order_data.profile_groups is not None:
             return self.multi_order_data.result.plot_profiles(return_fig=return_fig)
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
         for data in self.data_list:
             if "final" not in data.profile or data.config.order in self.exclude:
                 continue # failed or excluded orders
+            if self._refit_data is not None and data.config.order not in self._refit_data.config.order:
+                continue
             for profile in np.atleast_2d(data.profile["final"][0]):
                 ax.plot(self.velocities, profile, alpha=0.2, color="C0")
 
@@ -1438,6 +1570,7 @@ class DataList:
         # Setting excludes changes the combined_profile so must be reset if changed
         if self.exclude != value:
             self._combined_profile = None
+            self._refit_data = None
         self._exclude = value
 
     excluded_orders = exclude
