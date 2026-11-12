@@ -5,6 +5,7 @@ import os, time
 from contextlib import nullcontext
 from dataclasses import fields
 from multiprocessing.pool import ThreadPool
+from typing import TYPE_CHECKING
 import numpy as np
 from .. import utils
 from ..data import Config, Data
@@ -13,6 +14,10 @@ from ..diagnostics.logging import get_logger
 from ..diagnostics.output import with_output_settings
 from ..utils import IntLike
 from .mcmc import MCMC
+
+if TYPE_CHECKING:
+    import ACID_code
+    import emcee
 
 logger = get_logger(__name__)
 
@@ -46,7 +51,7 @@ class Sampler:
         return self.data.config
 
     @property
-    def backend(self):
+    def backend(self) -> "Sampler":
         if self.config.sampler_type == "emcee":
             from .emcee import EmceeBackend
             return EmceeBackend(self.data)
@@ -153,7 +158,7 @@ class Sampler:
         cores            : int|None     = None,
         moves            : dict|None    = None,
         return_sampler   : bool         = False,
-        ):
+        ) -> "emcee.EnsembleSampler | None":
         """
         Continue a prepared emcee run for additional steps, sharing its Data and RNG.
 
@@ -218,7 +223,7 @@ class Sampler:
         return any(path is not None and os.path.exists(path)
                    for path in (config.save_path, config.sampler_path))
 
-    def resume(self, config_kwargs:dict):
+    def resume(self, config_kwargs:dict) -> "ACID_code.result.Result | None":
         """Restore the existing save format and use the normal continuation path."""
 
         # Define the editable runtime settings for the continuation of the MCMC run.

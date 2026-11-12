@@ -596,7 +596,8 @@ class Profiles:
         from scipy.optimize import curve_fit
         if self.use_jax:
             from .mcmc.jax import _import_jax
-            modules = _import_jax(_import_jaxfit=True)
+            # Silenlty try to import jax, suppressing warnings if any.
+            modules = _import_jax(_import_jaxfit=True, _disable_warnings=True)
             if modules is not None:
                 jax, jnp, _, jaxfit = modules
                 numpy_module = jnp

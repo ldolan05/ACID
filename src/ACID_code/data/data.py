@@ -22,8 +22,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import ACID_code
 
-#TODO: Replace types "X|None" with "Optional[X]"" for beartype consistency
-
 # Try import dynesty if available and fail silently, only raises later if dynesty is chosen
 try:
     from dynesty.sampler import Sampler

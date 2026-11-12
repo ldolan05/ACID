@@ -664,7 +664,7 @@ class DataList:
         verbose               : IntLike|bool|str|None = None,
         resume                : bool                  = False,
         **kwargs,
-        ) -> None|object:
+        ) -> "ACID_code.result.Result | None":
         """
         Fit shared profiles with an independent continuum for each order.
 

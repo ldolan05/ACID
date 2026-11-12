@@ -74,7 +74,6 @@ class Plot:
         tuple or None
             If return_fig is True, returns a tuple of (figure, axis) objects. Otherwise, returns None.
         """
-        #TODO: Add ability to plot multiple profile group lines
         if self.data.linelist is None:
             raise ACIDStateError("No linelist found. Please set a linelist before trying to plot it.")
         wl = self.data.linelist["wavelengths"]
