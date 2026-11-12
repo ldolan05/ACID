@@ -45,6 +45,16 @@ Accelerator installations depend on the cluster hardware. For example, current N
 Consult the `JAX installation documentation <https://docs.jax.dev/en/latest/installation.html>`_ for CUDA 12, ROCm, TPU, driver, operating-system, and architecture requirements.
 Once installed, enable the backend for an ACID run with ``use_jax=True``. If JAX cannot be imported, ACID will issue a warning and continue with NumPy/SciPy.
 
+For PyMC's NumPyro NUTS sampler, install the separate optional dependencies:
+
+.. code-block:: bash
+
+    pip install "ACID_code[pymc]"
+
+Select it with ``sampler_type="pymc"``. This sampler requires working JAX and
+uses it automatically; ``use_jax`` continues to control acceleration for the
+other samplers.
+
 With ``parallel=True``, ACID uses a thread pool when JAX is requested.
 Forking after JAX has initialised its runtime can deadlock workers during compilation or execution.
 Threads share one model and compiled kernel per sampler, and work with interactive scripts without a ``__main__`` guard.

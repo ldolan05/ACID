@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import ACID_code
 
+#TODO: Replace types "X|None" with "Optional[X]"" for beartype consistency
+
 # Try import dynesty if available and fail silently, only raises later if dynesty is chosen
 try:
     from dynesty.sampler import Sampler
@@ -129,6 +131,8 @@ class Data:
     nsteps   : Optional[int]  = 0
     #: A flag for whether the profiles have been fully calculated to avoid recalculating
     complete : bool           = False # is set to True when the profiles and final profile has been fully calculated
+
+    sampler_diagnostics : Dict[str, Any] = field(default_factory=dict)
 
     # Other useful data and figures
     # -----------------------------

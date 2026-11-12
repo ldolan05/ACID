@@ -701,6 +701,7 @@ class DataList:
         from ..acid import Acid
         from ..result import Result
         from ..lsd import LSD
+        from ..mcmc.sampler import Sampler
         verbose = Output.current(verbose=self.verbose if verbose is None else verbose).verbose
 
         # Remove and discard unused orders if requested, working on kwargs to pass to run_ACID
@@ -710,8 +711,8 @@ class DataList:
             joint = Data()
             if self.save_dir is not None:
                 joint.config.dir = os.path.join(self.save_dir, "multi_order")
-        if resume and Acid(data=joint)._has_saved_run(kwargs):
-            # Order preparation is skipped; Acid._resume preserves the saved model.
+        if resume and Sampler(joint).has_saved_run(kwargs):
+            # Order preparation is skipped; Sampler.resume preserves the saved model.
             for key in ("orders", "use_index_mapping", "worker", "nworkers",
                         "overwrite", "overwrite_kwargs", "save_on_exception", "_return_orders"):
                 kwargs.pop(key, None)
@@ -842,7 +843,7 @@ class DataList:
                 acid.run_mcmc(joint.config.nsteps, joint.initial_state)
             else:
                 acid.run_mcmc_until_converged(joint.config.max_steps, joint.initial_state)
-            joint.nsteps = acid.sampler.backend.iteration if joint.config.sampler_type == "emcee" else joint.config.nsteps
+            joint.nsteps = acid.sampler.backend.iteration if joint.config.sampler_type != "dynesty" else joint.config.nsteps
             joint.mcmc_time = time() - started
             result = Result(acid)
         self._combined_profile = tuple(joint.profile["final"])

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from ACID_code import Acid, MCMC
 from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
-from ACID_code.mcmc import mcmc as mcmc_module
+from ACID_code import utils
 from ACID_code.mcmc import jax as jax_module
 
 
@@ -23,9 +23,12 @@ def test_regularization_prior_and_jax_agree(harps_order_40, deterministic, scale
     z = 0.2 + 0.05 * (-1.0)**np.arange(len(v))
     weighted_alpha = model.alpha / (model.yerr / model.y)[:, None]
     scale = np.trace(weighted_alpha.T @ weighted_alpha) / len(v) if scale_regularization else 1.0
-    assert model.regularization_prior(z) == pytest.approx(-0.5 * 0.5 * scale * np.sum(np.diff(z)**2))
+    expected = -0.5 * 0.5 * scale * np.sum(np.diff(z)**2)
+    assert model.regularization_prior(z) == pytest.approx(expected)
+    assert jax_model.regularization_prior(z) == pytest.approx(expected)
     coefs = acid.data.poly_coeffs['masked']
     theta = coefs if deterministic else np.r_[z, coefs]
+    assert jax_model.log_prior(theta, z) == pytest.approx(model.log_prior(theta, z))
     assert jax_model(theta) == pytest.approx(model(theta), rel=1e-10)
     assert jax_model.dynesty_logprob(theta) == pytest.approx(model.dynesty_logprob(theta), rel=1e-10)
 
@@ -90,8 +93,8 @@ def test_jax_probabilities_match_numpy(mcmc, deterministic_profile, od,
             coefs[0] += 1
         profile = rng.uniform(-1.2, 2.0, mcmc.k_max) + (0 if od else 1)
         theta = coefs if deterministic_profile else np.r_[profile, coefs]
-        np.testing.assert_allclose(jax_model._jax_backend._eval_continuum(coefs),
-                                   mcmc_module.utils.eval_continuum(numpy_model.x, coefs, method=continuum_method),
+        np.testing.assert_allclose(jax_model.eval_continuum(coefs),
+                                   utils.eval_continuum(numpy_model.x, coefs, method=continuum_method),
                                    rtol=1e-13, atol=1e-14)
         assert jax_model(theta) == pytest.approx(numpy_model(theta), rel=1e-10, abs=1e-8)
         assert jax_model.dynesty_logprob(theta) == pytest.approx(

@@ -2,7 +2,6 @@ from __future__ import annotations
 import functools, inspect, warnings
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
-import corner
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
@@ -454,6 +453,7 @@ class Plot:
         kwargs = utils.set_dict_defaults(kwargs, default_kwargs)
 
         # Use corner.corner to handle corner plot
+        import corner
         fig = corner.corner(samples, labels=self.default_param_labels, **kwargs)
         plt.suptitle('MCMC Corner Plot')
         if return_fig:
@@ -972,36 +972,41 @@ class Plot:
         # ACID performs its own convergence check below.
         self.tau = self.sampler.get_autocorr_time(tol=0)
 
-        self.converged = True
-        if self.data.nsteps < 50 * np.max(self.tau):
-            self.converged = False
-            warnings.warn(
-                f"The number of MCMC steps ({self.data.nsteps}) is less than 50 times the maximum autocorrelation time.\n" \
-                f"The sampler may not have converged. Consider running more steps and checking the walker plots.\n" \
-                f"The minimum number of steps should be roughly {int(50*np.max(self.tau))}.\n " \
-                f"Using only up to the last 1000 steps as the posterior samples.",
-                ACIDConvergenceWarning, stacklevel=2
-            )
+        if self.config.sampler_type == "pymc":
+            # NUTS warmup is already discarded; retain every posterior draw.
+            self.burnin, self.thin = 0, 1
+            self.converged = self.data.sampler_diagnostics.get("converged")
+        else:
+            self.converged = True
+            if self.data.nsteps < 50 * np.max(self.tau):
+                self.converged = False
+                warnings.warn(
+                    f"The number of MCMC steps ({self.data.nsteps}) is less than 50 times the maximum autocorrelation time.\n" \
+                    f"The sampler may not have converged. Consider running more steps and checking the walker plots.\n" \
+                    f"The minimum number of steps should be roughly {int(50*np.max(self.tau))}.\n " \
+                    f"Using only up to the last 1000 steps as the posterior samples.",
+                    ACIDConvergenceWarning, stacklevel=2
+                )
 
-        try:
-            self.thin = int(np.min(self.tau)/5)
-            if self.converged:
-                self.burnin = int(3 * np.max(self.tau))
-            else:
+            try:
+                self.thin = int(np.min(self.tau)/5)
+                if self.converged:
+                    self.burnin = int(3 * np.max(self.tau))
+                else:
+                    self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
+                    self.thin = 1
+            except:
+                warnings.warn(
+                    "Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
+                    " due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
+                    " wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.",
+                    ACIDConvergenceWarning, stacklevel=2
+                )
                 self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
                 self.thin = 1
-        except:
-            warnings.warn(
-                "Warning: Could not compute autocorrelation time for burnin and thinning.\n This is likely" \
-                " due to all posterior samples being rejected (possibly by prior constraints).\n The resulting profile is likely" \
-                " wrong. Try Result.plot_walkers() to see the issue.\nSetting defaults: burnin=nsteps-1000, and thin=1.",
-                ACIDConvergenceWarning, stacklevel=2
-            )
-            self.burnin = self.data.nsteps - 1000 # just the last 1000 steps
-            self.thin = 1
         
-        self.burnin = int(np.clip(self.burnin, 0, self.data.nsteps-1)) # ensure burnin is at least 0 and less than total steps
-        self.thin = int(np.clip(self.thin, 1, self.data.nsteps-self.burnin)) # retain at least one step
+            self.burnin = int(np.clip(self.burnin, 0, self.data.nsteps-1)) # ensure burnin is at least 0 and less than total steps
+            self.thin = int(np.clip(self.thin, 1, self.data.nsteps-self.burnin)) # retain at least one step
 
         # Below is used for the parameters for the walker and corner plots
         n_poly_params = len(self.data.poly_coeffs["masked"])

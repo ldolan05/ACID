@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from ACID_code import Acid
 from emcee.ensemble import walkers_independent
@@ -25,7 +25,7 @@ def test_parallel_sampling_uses_correct_workers(harps_order_40, tmp_path, warm_j
     script = """
 import os, sys
 import numpy as np
-from ACID_code import Acid, MCMC
+from ACID_code import Acid, MCMC, Sampler
 
 inputs = dict(np.load(sys.argv[1]))
 inputs['linelist'] = inputs['linelist'].item()
@@ -49,7 +49,7 @@ reference = MCMC(acid.data)
 acid.config.use_jax = sys.argv[2] == 'True'
 for sampler in ('emcee', 'dynesty'):
     acid.config.sampler_type = sampler
-    pool, log_prob, ptform = acid._get_sampler_pool()
+    pool, log_prob, ptform = Sampler(acid.data)._get_sampler_pool()
     expected = reference if sampler == 'emcee' else reference.dynesty_logprob
     with pool:
         assert (pool.apply(os.getpid) == os.getpid()) == acid.config.use_jax

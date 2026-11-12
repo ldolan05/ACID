@@ -4,8 +4,6 @@ import pytest
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
-from contextlib import nullcontext
-from emcee import EnsembleSampler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -41,46 +39,6 @@ def test_sigma_mask_preserves_line_information_at_roundoff(synthetic_spectrum, m
     assert np.all(data.sigma_mask[:2])
     assert np.all(np.isfinite(data.profile["masked"][0]))
     assert np.linalg.matrix_rank(data.alpha["mcmc"]) == 6
-
-
-def test_convergence_requires_an_enabled_criterion():
-    acid = Acid(min_tau_factor=0, tau_tol=0)
-    with pytest.raises(ACIDInputError, match="cannot both be 0"):
-        acid.run_mcmc_until_converged(100)
-
-
-@pytest.mark.parametrize("full_tau, min_tau_factor, expected_steps", [
-    (30.0, 50, 2000),
-    (50.0, 50, 3000),
-    (np.nan, 50, 3000),
-    (50.0, 0, 2000),
-])
-@pytest.mark.parametrize("tau_tol", [0.1, np.float64(0.1)])
-def test_final_convergence_check_only_validates_neff(monkeypatch, full_tau, min_tau_factor, expected_steps, tau_tol):
-    acid = Acid(verbose=0, check_interval=1000, min_tau_factor=min_tau_factor, tau_tol=tau_tol)
-    calls, tolerances = [], []
-    sampler = EnsembleSampler(4, 1, lambda theta: 0.0)
-
-    def run_mcmc(nsteps, **kwargs):
-        sampler.backend.iteration += nsteps
-
-    def get_autocorr_time(tol, thin=None):
-        calls.append(thin)
-        return np.array([full_tau if thin is None else 10.0 + 0.1 * thin])
-
-    sampler.run_mcmc = run_mcmc
-    sampler.get_autocorr_time = get_autocorr_time
-    monkeypatch.setattr("ACID_code.acid.EnsembleSampler", lambda **kwargs: sampler)
-    monkeypatch.setattr(acid, "_get_sampler_kwargs", lambda **kwargs: ({}, {"progress": False}))
-    monkeypatch.setattr(acid, "_get_sampler_pool", lambda: (nullcontext(None), None, None))
-    monkeypatch.setattr("ACID_code.mcmc.mcmc.MCMC._get_tqdm_desc",
-                        lambda tolerance, neff, config: (tolerances.append(tolerance) or "", ""))
-
-    acid.run_mcmc_until_converged(3000)
-
-    assert sampler.backend.iteration == expected_steps
-    assert tolerances[1] == pytest.approx(0.1 / 10.2)
-    assert (None in calls) == (min_tau_factor != 0)
 
 
 @pytest.mark.parametrize("full", [False, True])
@@ -347,40 +305,6 @@ def test_scipy_continuum_fit_rejects_insufficient_unmasked_bins():
 
     with pytest.raises(ACIDContinuumFitError, match="Insufficient good points"):
         Acid.scipy_continuum_fit(data, "test")
-
-
-def test_initial_state_and_sampler_kwargs_use_preprocessed_result(harps_result):
-    # Reconstruct an independent Data instance so walker setup cannot mutate the shared result.
-    data = Data().from_dict(harps_result.data.to_dict())
-    acid = Acid(data=data)
-    acid.config.parallel = False
-    acid.config.nwalkers = 12
-    state = acid.get_initial_state()
-
-    # Deterministic sampling contains only the continuum coefficients.
-    assert state.shape == (12, acid.config.poly_ord + 1)
-    assert np.all(np.isfinite(state))
-
-    # Sampler and run kwargs should carry the derived dimensions and requested state unchanged.
-    sampler_kwargs, run_kwargs = acid._get_sampler_kwargs(7, state)
-    assert sampler_kwargs["nwalkers"] == 12
-    assert sampler_kwargs["ndim"] == acid.config.poly_ord + 1
-    np.testing.assert_array_equal(run_kwargs["initial_state"].coords, state)
-    np.testing.assert_equal(run_kwargs["initial_state"].random_state, acid.data.get_rng().get_state())
-    assert run_kwargs["nsteps"] == 7
-
-
-def test_non_deterministic_initial_state_includes_every_profile_parameter(harps_result):
-    # The legacy sampler adds one parameter for every column of the flattened alpha matrix.
-    data = Data().from_dict(harps_result.data.to_dict())
-    acid = Acid(data=data)
-    acid.config.deterministic_profile = False
-    acid.config.nwalkers = 12
-    state = acid.get_initial_state()
-    expected_ndim = acid.data.alpha["mcmc"].shape[1] + acid.config.poly_ord + 1
-
-    assert acid.data.ndim == expected_ndim
-    assert state.shape == (12, expected_ndim)
 
 
 def test_sampler_and_result_properties_validate_acid_state(harps_result):

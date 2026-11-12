@@ -442,10 +442,8 @@ class Result(Plot):
         """
         # Note that sampler input updates the sampler stored using the @_require_sampler decorator
 
-        # Continue sampling using the Acid method
-        from .acid import Acid
-        acid = Acid(data=self.data) # includes config data
-        acid.continue_sampling(**kwargs) # updates self.data.sampler (or self.sampler)
+        from .mcmc.sampler import Sampler
+        Sampler(self.data).continue_sampling(**kwargs)
 
         self.initiate_sampler(self.sampler) # update internal variables to match new sampler
 

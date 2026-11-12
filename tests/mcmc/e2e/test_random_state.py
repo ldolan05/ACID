@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 import pytest
 
-from ACID_code import Acid, Data, Profiles, Result, utils
+from ACID_code import Acid, Data, Profiles, Result, Sampler, utils
 
 
 @pytest.fixture
@@ -96,6 +96,23 @@ def test_convergence_chunks_preserve_rng_sequence(prepare_acid):
     split.continue_sampling(max_steps=40)
     np.testing.assert_array_equal(split.sampler.get_chain(), uninterrupted.sampler.get_chain())
     assert rng_state(split.data.get_rng()) == rng_state(uninterrupted.data.get_rng())
+
+
+@pytest.mark.parametrize("until_converged", [False, True])
+def test_sampler_interface_matches_acid_and_shares_data(prepare_acid, until_converged):
+    direct = prepare_acid(check_interval=7, min_checks=100)
+    data = copy.deepcopy(direct.data)
+    sampling = Sampler(data)
+    direct.run_mcmc(40, direct.data.initial_state)
+    run = sampling.run_mcmc_until_converged if until_converged else sampling.run_mcmc
+    run(17, data.initial_state)
+    sampling.continue_sampling(nsteps=23)
+
+    assert sampling.data is data
+    assert data.nsteps == 40
+    np.testing.assert_array_equal(data.sampler.get_chain(), direct.sampler.get_chain())
+    np.testing.assert_array_equal(data.sampler.get_log_prob(), direct.sampler.get_log_prob())
+    assert rng_state(data.get_rng()) == rng_state(direct.data.get_rng())
 
 
 def test_result_subsampling_is_repeatable_and_does_not_advance_rng(prepare_acid, monkeypatch):

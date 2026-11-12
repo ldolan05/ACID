@@ -8,7 +8,7 @@ from .result import Result
 from .plot import Plot
 from . import utils
 from .profiles import Profiles
-from .mcmc.mcmc import MCMC
+from .mcmc import MCMC, Sampler
 from .utils import calc_deltav # for legacy reasons, this is its own function rather than part of utils
 from .data import Data, DataList, Config, LineList, MaskingLines
 from .utils import FloatLike, IntLike, Scalar, Array1D, Array2D, Array3D

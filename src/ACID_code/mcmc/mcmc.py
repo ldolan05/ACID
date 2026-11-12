@@ -2,38 +2,17 @@ from __future__ import annotations
 import warnings
 from ..diagnostics.warnings import ACIDInputWarning
 import numpy as np
-from numpy.linalg import norm
-from .. import utils
+import scipy.linalg
 from ..utils import Array1D, Array2D
 from beartype import beartype
-from scipy.linalg import cho_solve, cho_factor
 from ..data import Config, Data
-from numpy.polynomial.chebyshev import chebval
 from ..lsd import LSD
-
-# The following wrapper functions allow each worker to initialise the model once
-# rather than serialising it with every likelihood call.
-def _mp_init_worker(data):
-    """Initializes each worker process with global data."""
-    global _MCMC
-    _MCMC = MCMC(data)
-
-def _mp_log_probability(theta):
-    """Wrapper for log probability function for multiprocessing."""
-    return _MCMC(theta)
-
-def _mp_log_likelihood(theta):
-    return _MCMC.dynesty_logprob(theta)
-
-def _mp_ptform(u):
-    return _MCMC.ptform(u)
 
 class MCMC:
 
     """
-    Class for handling the MCMC fitting process. Since this is the most computationally intensive part of the code, 
-    it is designed to be as efficient as possible. Hence, no beartype checks are performed except in initialization, and we
-    have tried to precomputed as many variables as possible to avoid as much recalculation during sampling as possible. 
+    Shared probability model and priors for NumPy/SciPy and JAX sampling.
+    Invariant terms are precomputed, and only initialization uses beartype checks.
     """
 
     @beartype
@@ -50,11 +29,13 @@ class MCMC:
         od                    : bool|None            = None,
         continuum_method      : str|None             = None,
         use_jax               : bool|None            = None,
+        numpy_module                                 = np,
+        linalg                                       = scipy.linalg,
         ) -> None:
         """
         Initialise MCMC functions with necessary data.
         Called once per worker if using multiprocessing.
-        All defaults are None in the signature because they draw from the :py:class:`~ACID_code.Config` defaults.
+        Model settings default to None because they draw from the :py:class:`~ACID_code.Config` defaults.
         Passing a parameter in the signature overides any defaults from the :py:class:`~ACID_code.Config` instance.
         The parameter listings below show the defaults of the config for convenience.
         Otherwise obtain them with the :py:meth:`~ACID_code.Config.print_defaults` method.
@@ -77,7 +58,7 @@ class MCMC:
         c_factor : tuple, optional
             Precomputed c_factor for LSD profile calculation, by default None.
         deterministic_profile : bool, optional
-            Whether to fit the full profile (True) or use the fast model (False), by default True.
+            Infer profile points from the continuum (True), or fit them explicitly (False), by default True.
         sampler_type : str, optional
             Type of sampler to use, by default "emcee".
         od : bool, optional
@@ -88,6 +69,9 @@ class MCMC:
         use_jax : bool, optional
             Use an optional JAX-jitted log-probability kernel. JAX is imported
             lazily, and NumPy/SciPy is used if it is unavailable, by default False.
+        numpy_module, linalg : module, optional
+            Array operations and Cholesky solver, defaulting to NumPy and SciPy.
+            When use_jax is enabled, these are replaced with the JAX equivalents.
         """
 
         if isinstance(x_or_data, Data):
@@ -156,12 +140,27 @@ class MCMC:
         else:
             self.model_inputs = None
 
+        self.np, self.linalg = numpy_module, linalg
         self.jax_enabled = False
-        self._jax_backend = None
         if self.use_jax:
-            from .jax import JAXBackend
-            self._jax_backend = JAXBackend(self)
-            self.jax_enabled = self._jax_backend.enabled
+            from .jax import _import_jax
+            modules = _import_jax()
+            if modules is not None:
+                jax, self.np, self.linalg = modules
+                self.jax_enabled = True
+
+        if self.np is not np:
+            # Precompute with NumPy first to preserve its input precision and promotion.
+            for name in ("x", "y", "yerr", "alpha", "AtV", "_likelihood_var", "_likelihood_log_norm"):
+                setattr(self, name, self.np.asarray(getattr(self, name), dtype=float))
+            if self.c_factor is not None:
+                self.c_factor = (self.np.asarray(self.c_factor[0], dtype=float), bool(self.c_factor[1]))
+            if self.regularization:
+                self._regularization_weights = self.np.asarray(self._regularization_weights)
+
+        if self.jax_enabled:
+            self.log_probability = jax.jit(self.log_probability)
+            self.dynesty_logprob = jax.jit(self.dynesty_logprob)
 
         # Lastly, just warn once for determinstic non-OD option
         if self.deterministic_profile and not self.od:
@@ -176,7 +175,33 @@ class MCMC:
 
     def __call__(self, *args, **kwargs):
         # Sets the default call is the log_probability function
-        return self.log_probability(*args, **kwargs)
+        return float(self.log_probability(*args, **kwargs))
+
+    # Models
+    # ------
+    def eval_continuum(self, coefs, x=None):
+        """Evaluate ordinary or log-Chebyshev continua, independently per order."""
+        np = self.np
+        coefs = np.asarray(coefs, dtype=float)
+        if x is None:
+            if self.continuum_slices is not None:
+                return np.concatenate([self.eval_continuum(coefs[a:b], self.x[i:j])
+                                       for i, j, a, b in self.continuum_slices])
+            x = self.x
+        if self.continuum_method == "polyval":
+            value = coefs[-1] + x * 0
+            for coef in coefs[-2::-1]:
+                value = coef + value * x
+            return value
+
+        # Clenshaw recurrence is shared because JAX has no chebval.
+        if len(coefs) == 1:
+            c0, c1 = coefs[0], 0
+        else:
+            c0, c1 = coefs[-2], coefs[-1]
+            for coef in coefs[-3::-1]:
+                c0, c1 = coef - c1, c0 + c1 * (2 * x)
+        return np.exp(c0 + c1 * x)
 
     def full_model(self, theta):
         """
@@ -195,10 +220,11 @@ class MCMC:
             Model spectrum and profile points (z).
         """
         # Extract profile points and continuum coefficients from theta
+        np = self.np
         z = np.asarray(theta[:self.k_max], dtype=float).copy()
         if not self.od:
-            z -= 1 # if not using OD, profile points are in flux space and need to be shifted by 1
-        mdl = LSD.dot_alpha_and_profile(self.alpha, z) # handles the new ion_mode where multiple profiles are fitted simultaneously
+            z = z - 1 # if not using OD, profile points are in flux space and need to be shifted by 1
+        mdl = self.alpha @ z
 
         # Converting model from optical depth to flux
         mdl = np.exp(-mdl) if self.od else mdl+1 # if not using OD, just use flux directly
@@ -207,7 +233,7 @@ class MCMC:
         coefs = np.asarray(theta[self.k_max:], dtype=float)
 
         # Apply continuum model
-        mdl *= utils.eval_continuum(self.x, coefs, method=self.continuum_method, slices=self.continuum_slices)
+        mdl = mdl * self.eval_continuum(coefs)
 
         return mdl, z
 
@@ -226,54 +252,73 @@ class MCMC:
         tuple
             Model spectrum and profile points (z).
         """
+        np = self.np
         coefs = np.asarray(theta, dtype=float)
 
         # Build continuum model
-        mdl = utils.eval_continuum(self.x, coefs, method=self.continuum_method, slices=self.continuum_slices)
+        mdl = self.eval_continuum(coefs)
 
         # Calculate fitted flux and convert to OD
         fitted_flux = self.y/mdl
 
-        if self.od:
-            if np.any(fitted_flux <= 0) or not np.all(np.isfinite(fitted_flux)):
-                return fitted_flux, np.full(self.k_max, -2)
-
         # Do OD/non-OD conversions
         if self.od:
-            flux = (-np.log(fitted_flux))
-            AtV = self.AtV
+            valid = np.all((fitted_flux > 0) & np.isfinite(fitted_flux))
+            flux = -np.log(np.where(valid, fitted_flux, 1.0))
         else:
-            AtV = self.AtV
+            valid = True
             flux = fitted_flux - 1
 
         # Solve for the profile points
-        z = cho_solve(self.c_factor, AtV @ flux, check_finite=False)
+        z = self.linalg.cho_solve(self.c_factor, self.AtV @ flux, check_finite=False)
 
         # Convert back from optical depth to flux
-        dot_prod = LSD.dot_alpha_and_profile(self.alpha, z)
+        dot_prod = self.alpha @ z
         dot_prod = np.exp(-dot_prod) if self.od else dot_prod + 1
         forward = dot_prod * mdl
 
-        return forward, z
+        return np.where(valid, forward, fitted_flux), np.where(valid, z, -2)
+
+    # Log probability
+    # ---------------
+    def log_probability(self, theta):
+        """Log posterior for either profile model, using NumPy or JAX operations."""
+        np = self.np
+        theta = np.asarray(theta, dtype=float)
+        forward, z = self.model_function(theta)
+        lp = self.log_prior(theta, z)
+        diff = self.y - forward
+        ll = -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
+        return np.where(np.isfinite(lp), lp + ll, -np.inf)
+
+    def dynesty_logprob(self, theta):
+        """Constrained log likelihood; dynesty applies the coefficient prior transform."""
+        np = self.np
+        theta = np.asarray(theta, dtype=float)
+        forward, z = self.model_function(theta)
+        lp = self.log_prior(theta, z)
+        diff = self.y - forward
+        ll = -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
+        valid = np.all(np.isfinite(forward)) & np.isfinite(lp)
+        return np.where(valid, ll + self.regularization_prior(z), -np.inf)
+
+    # Priors
+    # ------
 
     def continuum_prior(self, coefs):
+        """Gaussian prior on log-Chebyshev coefficients; ordinary polynomials are unconstrained."""
+        np = self.np
         if self.continuum_method != "chebval":
             return 0.0 # No prior for non-Chebyshev methods
 
         k = np.arange(len(coefs), dtype=float)
-        sigma = 0.25 / (1.0 + k)**2
-        sigma[0] = 1.0
-
-        # logC = chebval(self.x, coefs)
-        # if np.any(np.abs(logC) > 1.0):
-        #     return -np.inf
+        sigma = np.where(k == 0, 1.0, 0.25 / (1.0 + k)**2)
 
         return -0.5 * np.sum((coefs / sigma)**2)
 
     def log_prior(self, theta, z):
         """
-        Calculates the log prior probability of the profile points (z) and imposes the prior
-        restrictions on the inputs - penalises if profile point is less than -0.4 or greater than 1.6.
+        Combine the soft profile constraints, regularization, and continuum priors.
 
         Parameters
         ----------
@@ -288,9 +333,9 @@ class MCMC:
             Log prior probability.
         """
 
+        np = self.np
         lp = self.soft_z_prior(z)
-        if not np.isfinite(lp):
-            return -np.inf
+        valid = np.isfinite(lp)
 
         coefs = theta[self.k_max:] if not self.deterministic_profile else theta
         if self.continuum_slices is None:
@@ -298,14 +343,13 @@ class MCMC:
         else:
             lp += sum(self.continuum_prior(coefs[a:b]) for _, _, a, b in self.continuum_slices)
 
-        return lp
+        return np.where(valid, lp, -np.inf)
 
     def soft_z_prior(self, z):
         """
         Soft prior on the profile points (z) to prevent them from going too far outside the expected range.
         """
-        if np.all(z == -2): # sentinel returned for invalid deterministic models
-            return -np.inf
+        np = self.np
 
         # Set the expected range of acceptable values, we dont expect "good" profiles to fall outside this
         if self.od:
@@ -318,145 +362,25 @@ class MCMC:
         above = np.maximum(z - hi, 0.0)
 
         # Set a gaussian penalty for values outside the expected range, with a scale factor to control the strength of the penalty
-        return -0.5 * np.sum((below / scale)**2 + (above / scale)**2) + self.regularization_prior(z)
+        prior = -0.5 * np.sum((below / scale)**2 + (above / scale)**2) + self.regularization_prior(z)
+        return np.where(np.all(z == -2), -np.inf, prior)
 
     def regularization_prior(self, z):
         """First-difference prior, optionally information-scaled, independently per profile."""
         if not self.regularization:
             return 0.0
+        np = self.np
         differences = np.diff(z.reshape(-1, len(self.velocities)), axis=1)
         return -0.5 * np.sum(self._regularization_weights[:, None] * differences**2)
 
-    def log_probability(self, theta):
-        """
-        Calculates log probability depending on which model (full or fast).
-        
-        Parameters
-        ----------
-        theta : array-like
-            Model parameters.
-        
-        Returns
-        -------
-        float
-            Log probability.
-        """
-        if self.jax_enabled:
-            return self._jax_backend.log_probability(theta)
-
-        forward, z = self.model_function(theta)
-
-        lp = self.log_prior(theta, z)
-        if not np.isfinite(lp):
-            return -np.inf
-
-        diff = self.y - forward
-        ll = -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm)
-        return lp + ll
-
-    @staticmethod
-    def _get_mcmc_stopping_criterion(tau_list, step_number, min_checks, min_tau_factor, tau_rel_tol):
-        """Determines whether the MCMC sampling has converged based on the list of tau estimates and the current step number."""
-        # --- always try to compute a tolerance metric as early as possible ---
-        tol_metric = np.nan  # show NaN until computable
-        n_eff = 0
-
-        if len(tau_list) >= 2:
-            # compute a "most recent" change metric from the last two tau estimates
-            a, b = tau_list[-2], tau_list[-1]
-            if np.all(np.isfinite(a)) and np.all(np.isfinite(b)):
-                den = np.maximum(b, 1e-12)
-                tol_metric = float(np.percentile(np.abs(b - a) / den, 90))
-            
-            n_eff = step_number / np.max(tau_list)
-            try:
-                n_eff = int(n_eff)
-            except:
-                pass
-            if tau_rel_tol != 0 and np.isnan(tol_metric):
-                return False, np.inf, n_eff
-
-        # Need enough tau estimates to do min_checks consecutive deltas
-        if len(tau_list) < (min_checks + 1):
-            return False, np.inf, n_eff
-
-        tau = tau_list[-1]
-        if not np.all(np.isfinite(tau)):
-            return False, tol_metric, n_eff
-        if np.any(tau <= 0):
-            return False, tol_metric, n_eff
-
-        tau_ref = np.max(tau)
-        if min_tau_factor != 0 and not (step_number > min_tau_factor * tau_ref):
-            return False, tol_metric, n_eff
-
-        # Stability over last min_checks deltas
-        recent_tau = tau_list[-(min_checks + 1):]
-        rel_changes = []
-        for a, b in zip(recent_tau[:-1], recent_tau[1:]):
-            den = np.maximum(b, 1e-12)
-            rel_changes.append(np.percentile(np.abs(b - a) / den, 90))
-
-        tol_metric = float(np.max(rel_changes))  # overwrite with the stricter metric
-        return bool(tau_rel_tol == 0 or tol_metric < tau_rel_tol), tol_metric, n_eff
-
-    @staticmethod
-    def _get_tqdm_desc(last_tolerance, last_neff, config):
-        """Formats the tqdm description string with the current tolerance and effective sample size metrics."""
-        tol_str = "<" if last_tolerance < config.tau_tol else ">"
-        tol_str = f"{last_tolerance:.4f}{tol_str}{config.tau_tol}"
-        neff_str = ">" if last_neff > config.min_tau_factor else "<"
-        neff_str = f"{last_neff:.2f}{neff_str}{config.min_tau_factor}"
-        if config.tau_tol == 0:
-            tol_str = "disabled"
-        if config.min_tau_factor == 0:
-            neff_str = "disabled"
-        return tol_str, neff_str
-
-    def dynesty_logprob(self, theta):
-        """Log likelihood function for dynesty nested sampling."""
-
-        if self.jax_enabled:
-            return self._jax_backend.log_likelihood(theta)
-
-        forward, z = self.model_function(theta)
-
-        if not np.all(np.isfinite(forward)):
-            return -np.inf
-
-        lp = self.log_prior(theta, z)
-        if not np.isfinite(lp):
-            return -np.inf
-
-        diff = self.y - forward
-        return -0.5 * np.sum(diff * diff / self._likelihood_var + self._likelihood_log_norm) + self.regularization_prior(z)
-
     def ptform(self, u):
         """
-        Prior transform for dynesty.
-
-        Maps unit-cube samples u in [0, 1] to continuum polynomial
-        coefficients using uniform priors centred on self.model_inputs.
+        Map unit-cube samples to uniform continuum priors around the fitted coefficients.
         """
-
         u = np.asarray(u, dtype=float)
-        theta0 = np.asarray(self.model_inputs, dtype=float)
-        theta0 = theta0[self.k_max:] # only continuum coefficents, not profile points
-
-        # Width of uniform prior around curve_fit solution.
-        # The floor matters because higher-order polynomial coefficients
-        # may be close to zero.
-        frac_width = 5
-        abs_floor = 0.05
-
-        width = np.maximum(frac_width * np.abs(theta0), abs_floor)
-
-        # Usually the zeroth-order continuum coefficient is close to 1,
-        # so give it a slightly wider absolute floor.
+        theta0 = np.asarray(self.model_inputs, dtype=float)[self.k_max:]
+        width = np.maximum(5 * np.abs(theta0), 0.05)
         if len(width) > 0:
             width[0] = max(width[0], 0.25)
-
-        lower = theta0 - width
-        upper = theta0 + width
-
+        lower, upper = theta0 - width, theta0 + width
         return lower + u * (upper - lower)

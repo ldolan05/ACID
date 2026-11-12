@@ -41,12 +41,19 @@ jax = [
     "jax",
     "jaxfit",
 ]
+pymc = [
+    "pymc>=5.10",
+    "numpyro",
+    "jax",
+]
 test = [
     "pytest",
     "pytest-cov",
     "dynesty",
     "jax",
     "jaxfit",
+    "pymc>=5.10",
+    "numpyro",
 ]
 docs = [
     "sphinx_rtd_theme",

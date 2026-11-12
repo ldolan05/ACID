@@ -1,19 +1,13 @@
 from __future__ import annotations
 import traceback
-import sys, emcee, os, time, warnings, copy
+import sys, time, warnings, copy
 from emcee import EnsembleSampler
 import numpy as np
-import multiprocessing as mp
-from multiprocessing.pool import ThreadPool
 from beartype import beartype
-from contextlib import nullcontext
-from dataclasses import fields
-
-from tqdm import tqdm
 from . import utils
 from .lsd import LSD
-from .mcmc import mcmc
 from .result import Result
+from .mcmc.sampler import Sampler
 from .data import Data, Config, MaskingLines, LineList
 from .diagnostics.errors import *
 from .diagnostics.logging import get_logger
@@ -122,6 +116,7 @@ class Acid:
         seperate_species      : list[str]|None                 = None,  # Config
         depth_group_rules     : dict|None                      = None,  # Config
         sampler_type          : str|None                       = None,  # Config
+        pymc_kwargs           : dict|None                      = None,  # Config
         use_jax               : bool|None                      = None,  # Config
         parallel              : bool|None                      = None,  # Config
         cores                 : IntLike|None                   = None,  # Config
@@ -354,10 +349,13 @@ class Acid:
             Note that providing profile_groups will override this parameter, causing it to have no effect.
             Requires a VALD linelist input.
         sampler_type : :py:class:`str`, optional
-            If you really try to wish to use the dynesty nested sampler, you can set this to "dynesty". It is almost entirely unsupported
-            by the rest of the code other than to just get a finished result object, and much slower. We highly recommend using None or "emcee" (default).
-            The only reason I added this was to get the Bayesian evidence for model comparison.
-            If "dynesty" is chosen, the dynesty package needs to be installed, and the nsteps parameter is treated as "nlive" to be passed to the NestedSampler.
+            "emcee" (default), "pymc" for PyMC's NumPyro NUTS sampler, or "dynesty"
+            for nested sampling and Bayesian evidence. PyMC and dynesty are optional dependencies.
+            For PyMC, nsteps is the number of retained draws per chain; for dynesty, it is nlive.
+        pymc_kwargs : dict, optional
+            Options for PyMC's sample_numpyro_nuts, such as tune (default 1000), target_accept,
+            and nuts_kwargs. Draw count, chain count, seed, model, and initial state are controlled
+            by ACID. PyMC always uses JAX, independently of use_jax.
         use_jax : :py:class:`bool`, optional
             If True, use a lazily imported, JIT-compiled JAX kernel for MCMC log-probability calculations.
             If JAX is unavailable, ACID warns and falls back to NumPy/SciPy. By default False.
@@ -370,6 +368,7 @@ class Acid:
         nwalkers : :py:type:`~ACID_code.IntLike`, optional
             A manual override for the number of walkers for the MCMC sampler. By default, uses the emcee recommendation which is 3 times the number of
             dimensions. For the deterministic model, this is just the poly_ord + 1, for the non-deterministic model, it is poly_ord + 1 + nvelocity points.
+            For PyMC this sets the number of independent NUTS chains, defaulting to four.
         nsteps : :py:type:`~ACID_code.IntLike`, optional
             Number of steps for the MCMC to run, by default 10000, the initial steps are stored in the config as nsteps, 
             but the true count of steps taken is stored in the Data instance as Data.nsteps, which can be higher than this if 
@@ -381,6 +380,9 @@ class Acid:
             is met when the change in tau is less than 'tau_tol' for all parameters. By default None, which means no maximum. 
             If a value is inputted, the nsteps parameter is ignored. The continue_sampling method in Result or Acid can still
             be used normally to continue sampling after either stopping criterion is reached.
+            For PyMC, max_steps caps retained draws per chain after warmup. At each check,
+            rank-normalized R-hat must be below 1.01, bulk and tail ESS at least 100 per chain,
+            and retained draws must have no divergences. Requires at least two chains.
         check_interval : :py:type:`~ACID_code.IntLike`, optional
             Interval (in steps) at which to check for MCMC convergence if max_steps is set, by default 1000. 
             Only used if max_steps is set.
@@ -553,8 +555,12 @@ class Acid:
             resume_run = config_kwargs.get("resume")
             if resume_run is None:
                 resume_run = self.config.resume
-            if resume_run and self._has_saved_run(config_kwargs):
-                return self._resume(config_kwargs)
+            sampling = Sampler(self.data)
+            if resume_run and sampling.has_saved_run(config_kwargs):
+                try:
+                    return sampling.resume(config_kwargs)
+                finally:
+                    self.config = self.data.config
 
             # Update config if any of the above config settings are new
             old_grouping = {name: copy.deepcopy(getattr(self.config, name))
@@ -754,7 +760,7 @@ class Acid:
                 if self.config.max_steps is None:
                     logger.info("Running MCMC for %d steps", self.config.nsteps)
                     self.run_mcmc(self.config.nsteps, self.data.initial_state)
-                    if self.config.sampler_type == "emcee":
+                    if self.config.sampler_type != "dynesty":
                         self.data.nsteps = self.sampler.backend.iteration
                     else:
                         self.data.nsteps = self.config.nsteps
@@ -885,389 +891,31 @@ class Acid:
 
         return
 
-    def _has_saved_run(self, config_kwargs:dict) -> bool:
-        """Check both paths so an incomplete saved run still raises on resume."""
-        paths = ("dir", "save_path", "sampler_path")
-        stored = self.config.to_dict()
-        # Preserve disabling strings, which the public properties resolve to None.
-        config = Config(**{name: stored["_" + name] for name in paths
-                           if "_" + name in stored})
-        config.update_hipri(**{name: config_kwargs[name] for name in paths if name in config_kwargs})
-        return any(path is not None and os.path.exists(path)
-                   for path in (config.save_path, config.sampler_path))
-
-    def _resume(self, config_kwargs:dict) -> Result|None:
-        """Restore the existing save format and use the normal continuation path."""
-
-        # Define the editable runtime settings for the continuation of the MCMC run.
-        runtime_settings = (
-            "verbose", "sampler_progress", "dir", "save_path", "sampler_path", "figure_dir",
-            "parallel", "cores", "use_jax", "moves", "nsteps", "max_steps", "check_interval",
-            "min_checks", "min_tau_factor", "tau_tol", "run_mcmc", "resume",
-        )
-        # Include settings supplied through Acid.__init__ or an existing Config.
-        overrides = self.config.to_dict()
-        overrides = {name: getattr(self.config, name) for name in runtime_settings
-                     if name in overrides or "_" + name in overrides}
-        overrides.update({name: value for name, value in config_kwargs.items()
-                          if name in runtime_settings and value is not None})
-        config = Config(**overrides)
-        if config.save_path is None or not os.path.isfile(config.save_path):
-            raise ACIDStateError("resume=True requires the saved Data .pkl file as well as the .h5 chain. "
-                                 "Set dir or save_path to the saved run.")
-
-        data = Data.load(config.save_path, sampler_path=config.sampler_path)
-        data.config.update_hipri(**overrides)
-        # Point relocated runs at the paths used to load them.
-        data.config.update_hipri(save_path=config.save_path, sampler_path=config.sampler_path,
-                                figure_dir=config.figure_dir)
-        if data.config.sampler_type != "emcee" or data.sampler is None:
-            raise ACIDStateError("resume=True requires a saved emcee HDF5 sampler.")
-        backend = data.sampler.backend
-        if backend.iteration == 0:
-            raise ACIDStateError("The saved sampler has no samples to resume. Start a new run with resume=False.")
-        if backend.shape != (data.nwalkers, data.ndim):
-            raise ACIDStateError("The saved sampler shape does not match the saved Data.")
-
-        # Restore in place so DataList and Result retain their reference to this Data.
-        for field in fields(data):
-            setattr(self.data, field.name, getattr(data, field.name))
-        self.config = self.data.config
-        self.data.exception = self.data.traceback = None
-        self.data.nsteps = backend.iteration
-        self.data.complete = False
-        self.data.get_rng().set_state(self.sampler.random_state)
-        if not self.config.run_mcmc:
-            return None
-
-        logger.info("Resuming MCMC from step %d", self.data.nsteps)
-        started = time.time()
-        remaining_steps = max(0, self.config.nsteps - self.data.nsteps)
-        if self.config.max_steps is not None or remaining_steps > 0:
-            self.continue_sampling(nsteps=remaining_steps, max_steps=self.config.max_steps)
-        self.data.mcmc_time += time.time() - started
-        return Result(self)
-
     def get_initial_state(self, reuse:bool=False) -> np.ndarray|None:
+        """Prepare walkers using the shared sampler interface."""
+        return Sampler(self.data).get_initial_state(reuse)
 
-        # Preserve the initial RNG for results; only walkers and sampling advance this one.
-        rng = self.data.get_rng()
+    def run_mcmc(self, nsteps:IntLike, state=None) -> None:
+        """Run the configured sampler; see :py:class:`~ACID_code.mcmc.sampler.Sampler`."""
+        Sampler(self.data).run_mcmc(nsteps, state)
 
-        n_profile_params = self.data.alpha["mcmc"].shape[1]
-
-        # Set the number of dimensions, add the no. of velocity points if also fitting the profile
-        self.data.ndim = len(self.data.poly_coeffs["masked"])
-        if not self.config.deterministic_profile:
-            self.data.ndim += n_profile_params
-
-        # emcee recommendation is 3 times the number of dimensions (we add a +3 buffer as well), but can be overridden by user input
-        self.data.nwalkers = 3 + self.data.ndim * 3 if self.config.nwalkers is None else self.config.nwalkers
-
-        if self.config.sampler_type == "emcee":
-            # Preparation with run_mcmc=False already drew these walkers.
-            if (reuse and self.data.initial_state is not None
-                    and self.data.initial_state.shape == (self.data.nwalkers, self.data.ndim)):
-                return self.data.initial_state
-            theta0 = self.data.poly_coeffs["masked"]
-
-            if not self.config.deterministic_profile:
-                profile0 = np.asarray(self.data.profile["masked"][0]).reshape(-1)
-                theta0 = np.concatenate((profile0, theta0))
-
-            # Test to see if the starting position is valid, up to a max of 1000 attempts
-            test_mcmc = mcmc.MCMC(self.data)
-            width = np.maximum(0.5 * np.abs(theta0), 1e-3)
-            walkers = []
-            max_attempts = max(1000, 100 * self.data.nwalkers)
-            n_attempt = 0
-            while len(walkers) < self.data.nwalkers:
-                theta = rng.normal(theta0, width)
-                if np.isfinite(test_mcmc.log_probability(theta)):
-                    walkers.append(theta)
-
-                n_attempt += 1
-                if n_attempt == max_attempts:
-                    raise ACIDInitialStateError("Reached the max number of attempts for finding an initial state for MCMC walkers.")
-
-            initial_state = np.array(walkers)
-        else:
-            initial_state = None
-
-        return initial_state
-
-    def _get_sampler_pool(self):
-        """Use threads for JAX and the original process pool for NumPy."""
-        use_threads = self.config.use_jax
-        if self.config.parallel:
-            utils.configure_mp_environ(os)
-            workers = "threads" if use_threads else "processes"
-            logger.info(f"Using {self.config.cores} {workers} for MCMC")
-
-            if not use_threads:
-                pool = mp.get_context("fork").Pool(
-                    processes=self.config.cores,
-                    initializer=mcmc._mp_init_worker,
-                    initargs=(self.data,),
-                )
-                log_prob = mcmc._mp_log_probability if self.config.sampler_type == "emcee" else mcmc._mp_log_likelihood
-                return pool, log_prob, mcmc._mp_ptform
-
-        # Each pool owns its model. Do not use the process-global _MCMC wrapper
-        # for threads: simultaneous ACID runs would overwrite each other's data.
-        model = mcmc.MCMC(self.data)
-        log_prob = model if self.config.sampler_type == "emcee" else model.dynesty_logprob
-        pool = ThreadPool(processes=self.config.cores) if self.config.parallel else nullcontext(None)
-        return pool, log_prob, model.ptform
-
-    @with_output_settings
-    def run_mcmc(
-        self,
-        nsteps : IntLike,
-        state            = None,
-        ) -> None:
-        """
-        Runs MCMC for a specified number of steps. A purely class method that I do not recommend you use directly. Use
-        Acid.ACID(run_mcmc=True) to run MCMC for the first pass if not already done, which will skip already performed calculations.
-        Otherwise, use Acid.continue_sampling or Result.continue_sampling if you have already run MCMC and want to continue.
-        """
-
-        # Get default sampler kwargs from initial state
-        if self.config.sampler_type == "emcee":
-            sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
-
-        # Get pool context from our helper
-        pool_context, log_prob, ptform = self._get_sampler_pool()
-        queue_size = os.cpu_count() if self.config.parallel else None
-
-        with pool_context as pool:
-            if self.config.sampler_type == "emcee":
-                self.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
-                try:
-                    self.sampler.run_mcmc(**mcmc_kwargs)
-                finally:
-                    # Regardless of failed run, set the RNG state to match the sampler's state
-                    self.data.get_rng().set_state(self.sampler.random_state)
-            else:
-                import dynesty # we have already checked if the user can import dynesty in the config property setter
-                if self.config.parallel:
-                    pool.size = self.config.cores
-                self.sampler = dynesty.NestedSampler(log_prob, ptform, self.data.ndim, self.config.nsteps,
-                                                    pool=pool, queue_size=queue_size, rstate=self.data.get_rng())
-                self.sampler.run_nested(print_progress=self.config.output.sampling)
-
-    @with_output_settings
     def run_mcmc_until_converged(self, max_steps:IntLike, state=None) -> None:
-        """
-        Runs MCMC until convergence is reached. A purely class method that I do not recommend you use directly. Use
-        Acid.ACID(run_mcmc=True) to run MCMC for the first pass if not already done, which will skip already performed calculations.
-        Otherwise, use Acid.continue_sampling or Result.continue_sampling if you have already run MCMC and want to continue.
-        """
-        if self.config.min_tau_factor == 0 and self.config.tau_tol == 0:
-            raise ACIDInputError("min_tau_factor and tau_tol cannot both be 0; at least one convergence criterion must be enabled.")
+        """Run until convergence or the step limit through the sampler interface."""
+        Sampler(self.data).run_mcmc_until_converged(max_steps, state)
 
-        # Get sampler and stopping criterion kwargs for the first run based on initial state, then update nsteps in mcmc_kwargs for subsequent runs
-        sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps=self.config.check_interval, state=state)
-        show_progress = mcmc_kwargs.get("progress", True)
-        mcmc_kwargs["progress"] = False
-        stopping_criterion_args = (self.config.min_checks, self.config.min_tau_factor, self.config.tau_tol)
-
-        # Set variables to be updated within the convergence loop
-        step_number = 0
-        tau_list = []
-        max_samples = int(np.ceil(max_steps / self.config.check_interval))
-        last_tolerance = np.inf
-        last_neff = 0
-        condition = False
-        pool_context, log_prob_fn, _ = self._get_sampler_pool()
-
-        with pool_context as pool, tqdm(
-                 total=max_samples, desc="MCMC convergence", unit="check", disable=not show_progress,
-             ) as progress:
-
-            self.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn)
-
-            # Count completed checks explicitly so early convergence is counted too.
-            for _ in range(max_samples):
-                steps_this_run = min(self.config.check_interval, max_steps-step_number)
-                mcmc_kwargs["nsteps"] = steps_this_run
-
-                try:
-                    self.sampler.run_mcmc(**mcmc_kwargs, skip_initial_state_check=True)
-                finally:
-                    self.data.get_rng().set_state(self.sampler.random_state)
-                mcmc_kwargs["initial_state"] = None
-
-                step_number += steps_this_run
-
-                # We want to keep the time for get_autocorr_time to run constant, so thin accordingly
-                # It scales with the number of steps, so thin by the number of steps taken divided by 
-                # the check interval to keep the same number of samples for get_autocorr_time to process.
-                try:
-                    tau = self.sampler.get_autocorr_time(tol=0, thin=max(1, self.sampler.backend.iteration//self.config.check_interval))
-                except emcee.autocorr.AutocorrError:
-                    progress.set_postfix_str("autocorrelation unavailable", refresh=False)
-                    progress.update(1)
-                    continue
-                tau_list.append(tau)
-
-                # The stopping criterion function below handles the logic for determining stopping condition
-                total_step_number = self.sampler.backend.iteration
-                condition, last_tolerance, last_neff = mcmc.MCMC._get_mcmc_stopping_criterion(tau_list, total_step_number, *stopping_criterion_args)
-                if condition is True and self.config.min_tau_factor != 0:
-                    # Confirm only the effective sample size using the full chain.
-                    full_tau = self.sampler.get_autocorr_time(tol=0)
-                    tau_max = np.max(full_tau)
-                    last_neff = total_step_number / tau_max if np.all(np.isfinite(full_tau)) and tau_max > 0 else 0
-                    condition = bool(last_neff > self.config.min_tau_factor)
-                tol_str, neff_str = mcmc.MCMC._get_tqdm_desc(last_tolerance, last_neff, self.config)
-                progress.set_postfix_str(f"tolerance: {tol_str}, neff: {neff_str}", refresh=False)
-                if condition is True:
-                    progress.set_description_str("MCMC converged", refresh=False)
-                progress.update(1)
-
-                if condition is True:
-                    break
-
-        if condition is True:
-            logger.info(
-                "Converged at step %d (tolerance %.4f, effective sample size %.2f)",
-                total_step_number,
-                last_tolerance,
-                last_neff,
-            )
-
-        self.step_number = step_number # Update step number once mcmc has finished
-        return
-
-    def _get_sampler_kwargs(self, nsteps, state=None):
-        # Gets sampler kwargs for the emcee EnsembleSampler and run_mcmc functions based on the current state of the
-        # ACID instance and the inputted nsteps and state.
-
-        # Set verbosity of the sampler with sampler_progress override if specified
-        sampler_verbosity = self.config.output.sampling
-        
-        backend = None
-        if state is None:
-            if self.sampler is None:
-                raise ACIDStateError(f"Either a state or an existing sampler must be provided to initiate the sampler. \n" \
-                                      "This has most likely happened because you ran continue_sampling without first running ACID or using run_mcmc=False.")
-            backend = self.sampler.backend # This includes previous seed
-        
-        # Now that the backend has been set depending on an existing state, if the backend is stil None, we choose depending on sampler_path
-        if backend is None and self.config.sampler_path is not None:
-            utils.ensure_directory(os.path.dirname(self.config.sampler_path), "sampler directory")
-            backend = emcee.backends.HDFBackend(self.config.sampler_path)
-            if state is not None:
-                backend.reset(self.data.nwalkers, self.data.ndim)
-
-        elif self.sampler is not None:
-            # And, if it is still none, we check if self.sampler already exists in memory, 
-            # and if so, we reuse its backend. We started with the path backend as that supersedes
-            backend = self.sampler.backend
-        # else: leave none and a normal in-memory sampler backend is used
-
-        if self.config.cores is None:
-            if "SLURM_JOB_ID" in os.environ:
-                self.config.cores = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
-            else:
-                self.config.cores = os.cpu_count()
-
-        # Configure moves based on config, this function converts a Config moves dictionary format to a class format
-        # accepted for emcee moves.
-        moves = utils.convert_moves_to_emcee(self.config.moves)
-
-        # A fresh chain starts immediately after walker generation. For continuation,
-        # leave state=None so emcee restores both walkers and RNG from its backend.
-        if state is not None:
-            state = emcee.State(state, copy=True)
-            if state.random_state is None:
-                state.random_state = self.data.get_rng().get_state()
-
-        sampler_kwargs = {
-            "nwalkers": self.data.nwalkers,
-            "ndim"    : self.data.ndim,
-            "moves"   : moves,
-            "backend" : backend,
-        }
-        mcmc_kwargs = {
-            "initial_state"  : state,
-            "nsteps"         : nsteps,
-            "progress"       : sampler_verbosity,
-            "store"          : True,
-            "tune"           : True,
-            "progress_kwargs": {"mininterval":0.5}
-        }
-        # Quietly save the prepared likelihood before sampling can be interrupted. The chain
-        # stays in HDF5 and Data.load reconnects it through config.sampler_path.
-        if state is not None and isinstance(backend, emcee.backends.HDFBackend) and self.config.save_path is not None:
-            self.data.complete = False
-            self.data.save(quiet=True)
-        return sampler_kwargs, mcmc_kwargs
-
-    @with_output_settings
     def continue_sampling(
         self,
         nsteps           : IntLike|None = None,
         max_steps        : IntLike|None = None,
         max_steps_kwargs : dict|None    = None,
-        parallel         : bool         = None,
-        cores            : int          = None,
-        moves            : dict         = None,
+        parallel         : bool|None    = None,
+        cores            : int|None     = None,
+        moves            : dict|None    = None,
         return_sampler   : bool         = False,
         ) -> EnsembleSampler | None:
-        """
-        Continue MCMC sampling for additional steps. This should be called in Result class by the user.
-        This necessarily requires a Data instance to have been put into the ACID init.
-
-        Parameters
-        ----------
-        nsteps : :py:type:`~ACID_code.IntLike`, optional
-            Number of additional steps to run the MCMC for.
-        max_steps : :py:type:`~ACID_code.IntLike`, optional
-            Maximum number of steps to run the MCMC for in total (including previous steps).
-            If specified, the MCMC will stop if this number of steps is reached even if convergence has not been reached, by default None.
-            If input, nsteps is ignored.
-        max_steps_kwargs : dict, optional
-            Additional keyword arguments to be passed to the run_mcmc_until_converged function if max_steps is specified, by default None.
-            The kwargs description can be found in Acid.ACID(), they are the 4 kwargs appearing after max_steps. Typos for kwargs are silently
-            ignored.
-        parallel : bool, optional
-            Overwrites config with whether to run the MCMC in parallel. If None, uses already existing configuration. Default is None.
-        cores : int, optional
-            Overwrites config with the number of cores to use for parallel MCMC. If None, uses already existing configuration. Default is None.
-        moves : dict, optional
-            Overwrites config with the dictionary specifying the moves to use for MCMC sampling. If None, uses already existing configuration. 
-            Default is None. See :py:meth:`~ACID_code.Acid.ACID` for format.
-        return_sampler : bool, optional
-            Whether to return the sampler after continuing sampling. Default is True.
-
-        Returns
-        -------
-        emcee.EnsembleSampler | None
-            The MCMC sampler after running for the additional steps, or None if return_sampler is False.
-        """
-        # Update config with any new parallel, cores, or moves settings for the continued sampling
-        self.config.update_hipri(parallel=parallel, cores=cores, moves=moves)
-
-        if max_steps is not None:
-            if max_steps_kwargs is not None:
-                self.config.update_hipri(**max_steps_kwargs)
-            remaining_steps = max_steps - self.sampler.backend.iteration
-            if remaining_steps > 0:
-                self.run_mcmc_until_converged(remaining_steps, state=None)
-                self.data.complete = False
-
-        else:
-            if nsteps is None:
-                raise ACIDInputError("Either nsteps or max_steps must be provided.")
-
-            self.run_mcmc(nsteps, state=None)
-            self.data.complete = False
-
-        self.data.nsteps = self.sampler.backend.iteration
-
-        if return_sampler:
-            return self.sampler
+        """Continue sampling; see :py:meth:`~ACID_code.mcmc.sampler.Sampler.continue_sampling`."""
+        return Sampler(self.data).continue_sampling(
+            nsteps, max_steps, max_steps_kwargs, parallel, cores, moves, return_sampler)
 
     @property
     def result(self) -> Result:

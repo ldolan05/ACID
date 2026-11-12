@@ -152,9 +152,63 @@ use fresh copies of the initial RNG state. Repeating these calculations does not
 advance sampling or change their random draws for the same inputs. Seeded chains
 will differ from older ACID versions, where ``seed`` controlled only the initial walkers.
 
-ACID's ``continue_sampling`` interface is for emcee. Dynesty receives its private RNG
+ACID's ``continue_sampling`` interface supports emcee and PyMC. Dynesty receives its private RNG
 through ``rstate``; use dynesty's native checkpoint/restore workflow for interrupted
 nested sampling. Its live-point count is not equivalent to emcee's number of steps.
+
+PyMC / NumPyro NUTS
+------------------
+
+After installing ``ACID_code[pymc]``, select NUTS with:
+
+.. code-block:: python
+
+    result = acid.Acid().ACID(
+        wavelengths, flux, errors, sn, linelist=linelist, velocities=velocities,
+        sampler_type="pymc", nsteps=1000, nwalkers=4,
+        pymc_kwargs={"tune": 1000, "target_accept": 0.9},
+    )
+
+``nsteps`` is the retained draw count per chain. ``nwalkers`` sets the number of
+independent NUTS chains (four by default). Warmup runs in addition to these draws
+and is discarded once. PyMC always uses the shared JAX probability and priors,
+including differentiation through the deterministic profile solve. Other options
+in ``pymc_kwargs`` are passed to ``sample_numpyro_nuts``. ``parallel=True`` uses
+vectorized chains; ``parallel=False`` runs them sequentially. These modes use
+NumPyro's execution rather than ACID's worker pool; ``cores`` does not control them.
+
+PyMC is used only during sampling. Its output is converted to an emcee sampler
+with chains shaped ``(draw, chain, parameter)``. Existing profile processing,
+plotting, chain access, and HDF5 save/load then use the normal ACID interface.
+Every retained draw is used: ``burnin=0`` and ``thin=1``. ``get_log_prob()`` returns
+the shared log posterior, while ``get_blobs()`` retains NumPyro statistics such as
+``diverging`` and ``acceptance_rate``. ``acceptance_fraction`` gives each chain's
+mean NUTS acceptance probability. PyMC performs its native convergence checks;
+For fixed-length runs, ``Result.converged`` is unset. For convergence-controlled
+runs it reports whether the stopping criteria passed; the latest values are stored
+in ``result.data.sampler_diagnostics`` and survive save/load.
+
+``result.continue_sampling(nsteps=M)`` starts a new warmup from each chain's last
+position and appends M retained draws. This also works after save/load, but does
+not restore NumPyro's internal adaptation or reproduce an uninterrupted run.
+With ``max_steps=5000``, ACID instead warms up once and checks all retained draws
+every ``check_interval`` steps (default 1000). NumPyro's adapted state and RNG are
+preserved between batches. Sampling stops once rank-normalized R-hat is below
+1.01 for every parameter, bulk and tail ESS are each at least 100 times the number
+of chains, and there are no retained divergences. These criteria must pass for
+``min_checks`` consecutive checks (default 1). At least two chains are required;
+four are recommended. These checks remain active even if
+``pymc_kwargs['compute_convergence_checks']`` is False.
+
+``max_steps`` caps retained draws per chain, excluding warmup, and replaces
+``nsteps``. ``continue_sampling(max_steps=M)`` uses M as a total cap, including
+existing samples. Each separate continuation call still starts fresh warmup;
+batches within that call preserve adaptation. Convergence runs accept ``tune``,
+``target_accept``, ``nuts_kwargs``, ``chain_method``, and ``progressbar`` in
+``pymc_kwargs``; ``jitter`` must remain False. Inspect ``sampler_diagnostics``
+when the cap is reached without convergence. Interrupted-run ``resume=True``
+remains unsupported for PyMC. NUTS adapts its step size and mass matrix during
+warmup; faster convergence depends on the posterior and is not guaranteed.
 
 Plotting
 ---------

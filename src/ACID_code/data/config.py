@@ -90,6 +90,7 @@ class Config:
         "profile_names" : None,
         "seperate_species" : None,
         "sampler_type" : "emcee",
+        "pymc_kwargs" : None,
         "use_jax" : False,
         "parallel" : True,
         "cores" : None,
@@ -443,8 +444,8 @@ class Config:
 
     @sampler_type.setter
     def sampler_type(self, sampler_type:str) -> None:
-        if sampler_type not in ["emcee", "dynesty"]:
-            raise ACIDInputError("Invalid 'sampler_type' input, must be one of ['emcee', 'dynesty'].")
+        if sampler_type not in ["emcee", "dynesty", "pymc"]:
+            raise ACIDInputError("Invalid 'sampler_type' input, must be one of ['emcee', 'dynesty', 'pymc'].")
         if sampler_type == "dynesty":
             if dynesty is None:
                 raise ImportError("The 'dynesty' sampler requires the 'dynesty' package to be installed.\nPlease install it with 'pip install dynesty' or choose a different sampler type.")

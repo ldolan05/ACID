@@ -8,6 +8,37 @@ If you have any suggestions for features, improvements, or find any bugs, please
 If you would like to contribute code, please fork the repository and make a pull request with your changes.
 I am also open to collaborations, so if you have an idea for a project using ACID, please feel free to reach out to me via email or GitHub.
 
+Sampling
+--------
+
+``Sampler`` owns sampler selection, worker pools, continuation, and resume.
+It shares the prepared ``Data`` instance with ``Acid`` and ``Result``:
+
+.. code-block:: python
+
+    from ACID_code import Sampler, Result
+
+    sampler = Sampler(acid.data)  # after acid.ACID(..., run_mcmc=False)
+    sampler.run_mcmc(1000, state=acid.data.initial_state)
+    sampler.continue_sampling(max_steps=5000)
+    result = Result(acid.data)
+
+``run_mcmc`` and ``run_mcmc_until_converged`` dispatch to the configured backend
+in ``mcmc/emcee.py``, ``mcmc/dynesty.py``, or ``mcmc/pymc.py``. Dynesty handles convergence internally
+and uses ``nsteps`` as its live-point count. Existing ``Acid`` sampling methods
+forward to this interface.
+
+``MCMC`` in ``mcmc/mcmc.py`` defines both profile models, the log probability,
+and their priors once. Its array and linear-algebra modules default to NumPy
+and SciPy. With ``use_jax=True``, inputs are converted to JAX arrays and the same
+probability methods are compiled. ``mcmc/jax.py`` only handles optional imports
+and double-precision setup. New sampler implementations should reuse this model.
+
+``mcmc/pymc.py`` lazily builds a PyTensor bridge to that JAX posterior and calls
+PyMC's NumPyro NUTS implementation. It converts retained samples and diagnostics
+to an emcee backend, so downstream code does not need PyMC objects. The bridge
+follows `PyMC's JAX wrapping interface <https://www.pymc.io/projects/examples/en/latest/howto/wrapping_jax_function.html>`_.
+
 Output and verbosity
 --------------------
 

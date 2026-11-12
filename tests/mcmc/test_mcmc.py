@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from ACID_code.diagnostics.warnings import ACIDRuntimeWarning
 from ACID_code import Acid, Config, LSD, MCMC
@@ -35,51 +35,6 @@ def test_full_model_uses_profile_and_continuum(synthetic_spectrum):
 
     np.testing.assert_allclose(forward, 1.0)
     np.testing.assert_array_equal(profile, 0.0)
-
-
-@pytest.mark.parametrize("tau_list, steps, expected", [
-    ([np.array([2.0])], 200, False),
-    ([np.array([2.0]), np.array([2.01])], 200, True),
-    ([np.array([np.nan]), np.array([2.0])], 200, False),
-])
-def test_stopping_criterion(mcmc, tau_list, steps, expected):
-    # Feed fixed autocorrelation histories to isolate stopping logic from sampling noise.
-    converged, _, _ = mcmc._get_mcmc_stopping_criterion(tau_list, steps, 1, 50, 0.1)
-    assert converged is expected
-
-
-@pytest.mark.parametrize("min_tau_factor, tau_tol, steps, expected", [
-    (0, 0.1, 40, True),
-    (0, 0.001, 40, False),
-    (0, 0.1, 10, True),
-    (5, 0, 11, True),
-    (5, 0, 10, False),
-    (50, 0, 200, True),
-    (50, 0, 100, False),
-])
-def test_stopping_criterion_with_disabled_threshold(min_tau_factor, tau_tol, steps, expected):
-    tau_list = [np.array([3.0]), np.array([2.0])]
-    if tau_tol != 0:
-        tau_list = [np.array([2.0]), np.array([2.01])]
-    converged, _, _ = MCMC._get_mcmc_stopping_criterion(tau_list, steps, 1, min_tau_factor, tau_tol)
-    assert converged is expected
-
-
-@pytest.mark.parametrize("tau_list, steps, min_tau_factor, tau_tol, expected", [
-    ([0.8, 0.81], 100, 0, 0.1, True),
-    ([0.99, 1.0], 100, 0, 0.1, True),
-    ([1000.0, 1010.0], 5000, 0, 0.1, True),
-    ([2.0, 2.01], 200, 0, np.float64(0.1), True),
-    ([np.nan, 2.0], 200, 50, 0, True),
-    ([1.0, 0.0], 100, 0, 0.1, False),
-    ([-1.0, -1.0], 100, 0, 0.1, False),
-    ([2.0, 2.01], 40, 50, 0.1, False),
-    ([3.0, 2.0], 200, 50, 0.1, False),
-])
-def test_stopping_requires_only_enabled_criteria(tau_list, steps, min_tau_factor, tau_tol, expected):
-    tau_list = [np.array([tau]) for tau in tau_list]
-    converged, _, _ = MCMC._get_mcmc_stopping_criterion(tau_list, steps, 1, min_tau_factor, tau_tol)
-    assert converged is expected
 
 
 def test_soft_prior_penalises_out_of_range_profiles(mcmc):
@@ -143,24 +98,6 @@ def test_dynesty_likelihood_and_prior_transform_use_acid_starting_model(harps_re
     np.testing.assert_allclose((lower + upper) / 2, centre)
     assert np.all(lower < upper)
     assert np.isfinite(model.dynesty_logprob(centre))
-
-
-def test_stopping_description_formats_tolerance_and_effective_samples():
-    # Progress text should show both values and the correct side of each threshold.
-    config = Config(tau_tol=0.1, min_tau_factor=50)
-    tolerance, effective = MCMC._get_tqdm_desc(0.05, 75, config)
-
-    assert tolerance == "0.0500<0.1"
-    assert effective == "75.00>50"
-
-
-@pytest.mark.parametrize("min_tau_factor, tau_tol, expected", [
-    (0, 0.1, ("0.0500<0.1", "disabled")),
-    (50, 0, ("disabled", "75.00>50")),
-])
-def test_stopping_description_labels_disabled_threshold(min_tau_factor, tau_tol, expected):
-    config = Config(min_tau_factor=min_tau_factor, tau_tol=tau_tol)
-    assert MCMC._get_tqdm_desc(0.05, 75, config) == expected
 
 
 # def test_multiprocessing_wrappers_delegate_to_the_worker_model(harps_result):

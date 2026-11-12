@@ -471,9 +471,10 @@ def test_joint_sampling_with_parallel_workers(use_jax):
 
 
 @pytest.mark.parametrize("method", ["polyval", "chebval"])
-def test_joint_jax_probability_matches_numpy(method):
+@pytest.mark.parametrize("regularization", [0., 0.3])
+def test_joint_jax_probability_matches_numpy(method, regularization):
     pytest.importorskip("jax")
-    orders, _ = make_orders(continuum_method=method)
+    orders, _ = make_orders(continuum_method=method, regularization=regularization)
     orders.run_multi_order_ACID(run_mcmc=False)
     data = orders.multi_order_data
     theta = data.poly_coeffs["masked"]
