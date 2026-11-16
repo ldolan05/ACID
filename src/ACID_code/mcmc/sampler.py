@@ -98,6 +98,7 @@ class Sampler:
 
             if not self.config.deterministic_profile:
                 profile0 = np.asarray(self.data.profile["masked"][0]).reshape(-1)
+                profile0 = -np.log(profile0) if self.config.od else profile0
                 theta0 = np.concatenate((profile0, theta0))
 
             # Test to see if the starting position is valid, up to a max of 1000 attempts
