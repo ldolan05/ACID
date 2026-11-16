@@ -1,6 +1,7 @@
 """Ensemble sampling and autocorrelation-based convergence with emcee."""
 from __future__ import annotations
 import os, emcee
+from contextlib import nullcontext
 import numpy as np
 from emcee import EnsembleSampler
 from tqdm import tqdm
@@ -9,6 +10,7 @@ from ..diagnostics.errors import ACIDInputError, ACIDStateError
 from ..diagnostics.logging import get_logger
 from ..diagnostics.output import with_output_settings
 from ..utils import IntLike
+from .mcmc import MCMC
 from .sampler import Sampler
 
 logger = get_logger(__name__)
@@ -17,13 +19,29 @@ logger = get_logger(__name__)
 class EmceeBackend(Sampler):
     """emcee-specific sampling, persistence, and convergence checks."""
 
+    def _get_emcee_pool(self):
+        """Batch JAX walkers when enabled, otherwise use the usual scalar pool."""
+        if self.config.use_jax and self.config._use_jax_vmap:
+            model = MCMC(self.data)
+            if model.jax_enabled:
+                import jax
+                batched_log_prob = jax.jit(jax.vmap(model.log_probability))
+
+                def log_prob(walkers):
+                    # Transfer once: emcee iterates over the returned likelihoods.
+                    return np.asarray(batched_log_prob(walkers))
+
+                return nullcontext(None), log_prob, True
+        pool, log_prob, _ = self._get_sampler_pool()
+        return pool, log_prob, False
+
     @with_output_settings
     def run_mcmc(self, nsteps:IntLike, state=None) -> None:
         """Sample for a fixed number of additional steps."""
         sampler_kwargs, mcmc_kwargs = self._get_sampler_kwargs(nsteps, state)
-        pool_context, log_prob, _ = self._get_sampler_pool()
+        pool_context, log_prob, vectorize = self._get_emcee_pool()
         with pool_context as pool:
-            self.data.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, **sampler_kwargs)
+            self.data.sampler = EnsembleSampler(log_prob_fn=log_prob, pool=pool, vectorize=vectorize, **sampler_kwargs)
             try:
                 self.data.sampler.run_mcmc(**mcmc_kwargs)
             finally:
@@ -48,13 +66,13 @@ class EmceeBackend(Sampler):
         last_tolerance = np.inf
         last_neff = 0
         condition = False
-        pool_context, log_prob_fn, _ = self._get_sampler_pool()
+        pool_context, log_prob_fn, vectorize = self._get_emcee_pool()
 
         with pool_context as pool, tqdm(
                  total=max_samples, desc="MCMC convergence", unit="check", disable=not show_progress,
              ) as progress:
 
-            self.data.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn)
+            self.data.sampler = EnsembleSampler(**sampler_kwargs, pool=pool, log_prob_fn=log_prob_fn, vectorize=vectorize)
 
             # Count completed checks explicitly so early convergence is counted too.
             for _ in range(max_samples):

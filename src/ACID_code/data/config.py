@@ -92,6 +92,7 @@ class Config:
         "sampler_type" : "emcee",
         "pymc_kwargs" : None,
         "use_jax" : False,
+        "_use_jax_vmap" : False,
         "parallel" : True,
         "cores" : None,
         "nwalkers" : None,

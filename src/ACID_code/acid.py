@@ -118,6 +118,7 @@ class Acid:
         sampler_type          : str|None                       = None,  # Config
         pymc_kwargs           : dict|None                      = None,  # Config
         use_jax               : bool|None                      = None,  # Config
+        _use_jax_vmap         : bool|None                      = None,  # Config
         parallel              : bool|None                      = None,  # Config
         cores                 : IntLike|None                   = None,  # Config
         nwalkers              : IntLike|None                   = None,  # Config, then Data just before MCMC

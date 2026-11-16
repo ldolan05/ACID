@@ -230,7 +230,7 @@ class Sampler:
         # Define the editable runtime settings for the continuation of the MCMC run.
         runtime_settings = (
             "verbose", "sampler_progress", "dir", "save_path", "sampler_path", "figure_dir",
-            "parallel", "cores", "use_jax", "moves", "nsteps", "max_steps", "check_interval",
+            "parallel", "cores", "use_jax", "_use_jax_vmap", "moves", "nsteps", "max_steps", "check_interval",
             "min_checks", "min_tau_factor", "tau_tol", "run_mcmc", "resume",
         )
         # Include settings supplied through Acid.__init__ or an existing Config.
