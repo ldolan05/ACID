@@ -282,9 +282,6 @@ class DataList:
             velocities  = velocities,
         )
 
-    def __iter__(self) -> Iterator[Data]:
-        yield from self.data_list
-
     def __getitem__(self, k:IntLike) -> Data:
         """
         Allows for indexing the DataList with the order number, e.g. datalist[order_number] 

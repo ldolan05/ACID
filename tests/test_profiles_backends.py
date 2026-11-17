@@ -34,7 +34,7 @@ def test_numpy_profiles_do_not_import_jax(profile_inputs, monkeypatch, model, mu
 
 @pytest.mark.parametrize("missing", ["jax", "jaxfit"])
 @pytest.mark.parametrize("model", ["gaussian", "lorentzian", "voigt"])
-def test_profiles_fall_back_without_optional_packages(profile_inputs, monkeypatch, missing, model):
+def test_profiles_fall_back_without_optional_packages(profile_inputs, monkeypatch, recwarn, missing, model):
     original_import = builtins.__import__
 
     def optional_import(name, *args, **kwargs):
@@ -47,8 +47,9 @@ def test_profiles_fall_back_without_optional_packages(profile_inputs, monkeypatc
 
     expected = getattr(Profiles(*profile_inputs, use_jax=False), f"fit_{model}")()
     monkeypatch.setattr(builtins, "__import__", optional_import)
-    with pytest.warns(ACIDRuntimeWarning, match="falling back"):
-        actual = getattr(Profiles(*profile_inputs, use_jax=True), f"fit_{model}")()
+    actual = getattr(Profiles(*profile_inputs, use_jax=True), f"fit_{model}")()
+    # Optional accelerators are deliberately tried silently by Profiles.
+    assert not any(issubclass(w.category, ACIDRuntimeWarning) for w in recwarn)
     np.testing.assert_allclose(actual[0], expected[0])
     np.testing.assert_allclose(actual[1], expected[1])
 

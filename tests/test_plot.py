@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
-from ACID_code import Acid, Data, LSD, Plot, Result, utils
+from ACID_code import Acid, Config, Data, LSD, Plot, Result, utils
 from ACID_code.diagnostics.errors import ACIDResultError, ACIDStateError
 from ACID_code.diagnostics.warnings import ACIDStateWarning
 
@@ -101,6 +101,90 @@ def test_plot_sampler_diagnostics_can_be_used_directly(harps_result):
     plt.close(figure)
     with pytest.raises(ACIDStateError, match="without a sampler"):
         Plot(Data()).walkers(return_fig=True)
+
+
+def walker_data(sampler_type, n_poly, n_profile=0):
+    """Store distinct parameter traces without running a sampler."""
+    from emcee import EnsembleSampler
+    from emcee.backends import Backend
+
+    ndim = n_poly + n_profile
+    chain = np.random.default_rng(12).normal(size=(256, 4, ndim)) + 100 * np.arange(ndim)
+    backend = Backend()
+    backend.reset(4, ndim)
+    backend.chain, backend.iteration = chain, len(chain)
+    backend.log_prob = np.zeros(chain.shape[:2])
+    data = Data()
+    data.config = Config(sampler_type=sampler_type, deterministic_profile=n_profile == 0, verbose=0)
+    data.poly_coeffs["masked"] = np.zeros(n_poly)
+    data.nsteps, data.nwalkers, data.ndim = chain.shape
+    data.sampler = EnsembleSampler(4, ndim, lambda theta: 0., backend=backend)
+    return data, chain
+
+
+@pytest.mark.parametrize("sampler_type", ["emcee", "pymc"])
+@pytest.mark.parametrize("n_poly", [1, 4])
+def test_single_order_walker_traces_and_chain_colours(sampler_type, n_poly):
+    data, chain = walker_data(sampler_type, n_poly)
+    options = {"alpha":0.5}
+    figure, axes = Plot(data).walkers(burnin=12, thin=3, plot_kwargs=options, return_fig=True)
+    assert axes.shape == (n_poly,)
+    assert options == {"alpha":0.5}
+    for parameter, axis in enumerate(axes):
+        assert axis.get_ylabel() == f"Continuum coefficient {parameter}"
+        assert len(axis.patches) == 1
+        for walker, line in enumerate(axis.lines):
+            np.testing.assert_array_equal(line.get_ydata(), chain[2::3, walker, parameter])
+            np.testing.assert_array_equal(line.get_xdata(), np.arange(3, len(chain)+1, 3))
+            np.testing.assert_array_equal(line.get_color(), axes[0].lines[walker].get_color())
+    assert len({tuple(line.get_color()) for line in axes[0].lines}) == 4
+    assert axes[-1].get_xlabel() == ("Retained draw after warmup" if sampler_type == "pymc" else "Step number")
+    assert [text.get_text() for text in figure.legends[0].texts][:4] == [
+        f"{'Chain' if sampler_type == 'pymc' else 'Walker'} {i+1}" for i in range(4)]
+    plt.close(figure)
+
+
+@pytest.mark.parametrize("sampler_type", ["emcee", "pymc"])
+def test_joint_walker_plot_maps_each_orders_coefficients(sampler_type):
+    data, chain = walker_data(sampler_type, 6)
+    data.continuum_slices["mcmc"] = np.array([[0, 10, 0, 2], [10, 20, 2, 5], [20, 30, 5, 6]])
+    data.config.order = [33, 38, 42]
+    figure, axes = Plot(data).walkers(burnin=0, thin=1, return_fig=True)
+    assert axes.shape == (3, 3)
+    assert [axis.get_ylabel() for axis in axes[:, 0]] == ["Order 33", "Order 38", "Order 42"]
+    for row, (_, _, start, stop) in enumerate(data.continuum_slices["mcmc"]):
+        for coefficient in range(stop-start):
+            axis = axes[row, coefficient]
+            np.testing.assert_array_equal(axis.lines[2].get_ydata(), chain[:, 2, start+coefficient])
+            assert not axis.patches
+        for blank in axes[row, stop-start:]:
+            assert not blank.axison
+            assert not blank.lines
+    assert axes[1, 2].get_xlabel()
+    plt.close(figure)
+
+
+def test_full_model_walker_plot_preserves_profile_traces_and_format():
+    data, chain = walker_data("emcee", n_poly=2, n_profile=5)
+    options = {"fmt":"k--", "alpha":0.7, "lw":1.2}
+    figure, axes = Plot(data).walkers(burnin=0, thin=1, plot_kwargs=options, return_fig=True)
+    assert len(axes) == 5
+    for row, parameter in enumerate((5, 6, 4, 4, 0)):
+        np.testing.assert_array_equal(axes[row].lines[0].get_ydata(), chain[:, 0, parameter])
+        assert axes[row].lines[0].get_color() == "k"
+        assert axes[row].lines[0].get_linestyle() == "--"
+        assert axes[row].lines[0].get_linewidth() == 1.2
+    assert options == {"fmt":"k--", "alpha":0.7, "lw":1.2}
+    plt.close(figure)
+
+
+def test_nuts_walkers_keep_all_retained_draws_without_warmup_shading():
+    data, chain = walker_data("pymc", 4)
+    figure, axes = Plot(data).walkers(return_fig=True)
+    np.testing.assert_array_equal(axes[0].lines[0].get_ydata(), chain[:, 0, 0])
+    assert axes[-1].get_xlabel() == "Retained draw after warmup"
+    assert all(not axis.patches for axis in axes)
+    plt.close(figure)
 
 
 @pytest.mark.parametrize("method", ["plot_profiles", "plot_forward_model"])

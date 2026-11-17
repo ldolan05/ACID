@@ -70,15 +70,13 @@ class PyMCBackend(Sampler):
         return theta
 
     @with_output_settings
-    def run_mcmc(self, nsteps:IntLike, state=None) -> None:
+    def run_mcmc(self, nsteps:IntLike, state=None, *, _until_converged:bool=False) -> None:
         """Draw nsteps per chain after warmup, appending when state is None and a sampler exists.
 
         Continuation starts a new NUTS adaptation from the last saved positions.
         Warmup is discarded on every call; the NumPyro kernel itself is not persisted.
+        _until_converged is used internally by run_mcmc_until_converged.
         """
-        self._run(nsteps, state)
-
-    def _run(self, nsteps, state, until_converged=False):
         if nsteps < 1:
             raise ACIDInputError("nsteps must be positive for PyMC sampling.")
         options = dict(self.config.pymc_kwargs or {})
@@ -117,7 +115,7 @@ class PyMCBackend(Sampler):
         with pm.Model() as model:
             theta = pm.Flat("theta", shape=self.data.ndim, dtype="float64")
             pm.Potential("log_probability", LogProbability(log_probability)(theta))
-            if until_converged:
+            if _until_converged:
                 chain, stats = self.sample_until_converged(model, state, options, nsteps, previous)
             else:
                 trace = sample_numpyro_nuts(
@@ -163,7 +161,7 @@ class PyMCBackend(Sampler):
             raise ACIDInputError("NUTS convergence checks require at least two chains (nwalkers).")
         if self.config.check_interval < 1 or self.config.min_checks < 1:
             raise ACIDInputError("check_interval and min_checks must be positive.")
-        self._run(max_steps, state, until_converged=True)
+        self.run_mcmc(max_steps, state, _until_converged=True)
 
     @staticmethod
     def stopping_criterion(chain, divergences):

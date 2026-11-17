@@ -61,13 +61,6 @@ def _normalise_level(level: Union[int, str]) -> int:
     raise ACIDInputError("Logging level must be an integer, string, or None.")
 
 
-def _default_handler(logger: logging.Logger) -> Optional[logging.Handler]:
-    for handler in logger.handlers:
-        if getattr(handler, _HANDLER_MARKER, False):
-            return handler
-    return None
-
-
 def configure_logging(
     level  : Union[int, str, None] = DEFAULT_LOG_LEVEL,
     *,
@@ -87,7 +80,7 @@ def configure_logging(
         Format used by the package's default handler.
     """
     logger = get_logger()
-    handler = _default_handler(logger)
+    handler = next((h for h in logger.handlers if getattr(h, _HANDLER_MARKER, False)), None)
 
     # Respect a handler installed by an application before ACID was imported.
     # Otherwise install exactly one package-owned terminal handler.
@@ -131,11 +124,6 @@ def log_level_from_verbosity(verbose: int) -> int:
         raise ACIDInputError("verbose must be an integer between 0 and 4") from exc
 
 
-def set_log_level_from_verbosity(verbose: int) -> None:
-    """Apply the logging equivalent of a validated legacy verbosity value."""
-    set_log_level(log_level_from_verbosity(verbose))
-
-
 def _configure_default_logging() -> None:
     """Install ACID's INFO-by-default behavior without changing root logging."""
     global _level_limit
@@ -164,5 +152,4 @@ __all__ = [
     "get_logger",
     "log_level_from_verbosity",
     "set_log_level",
-    "set_log_level_from_verbosity",
 ]
