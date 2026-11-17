@@ -351,8 +351,13 @@ class Plot:
         return_fig     : bool                 = False,
         **kwargs,
         ) -> None | tuple:
-        """Plots, at maximum, the last 10 MCMC walkers for the LSD profile and continuum 
-        polynomial coefficients.
+        """Plot coloured chain traces for the continuum and sampled profile parameters.
+
+        Joint fits use one row per order and one column per continuum coefficient.
+        Single-order fits use one column, with a labelled row per coefficient.
+        Each walker/chain has the same colour across panels. Individual legend
+        entries are omitted for ensembles larger than ten walkers.
+        PyMC/NumPyro draw numbers refer to retained samples after warmup.
 
         Parameters
         ----------
@@ -363,41 +368,98 @@ class Plot:
             Optionally define the number of burnin steps, by default uses the burnin calculated when the sampler was initiated.
         thin : :py:type:`~ACID_code.IntLike`, optional
             Optionally define the number of thinning steps, by default uses the thinning calculated when the sampler was initiated.
+            The horizontal axis retains the original step/draw numbers.
         return_fig : bool, optional
             Whether to return the figure and axis objects instead of showing the plot, by default False
 
         Returns
         ----------
-        If return_fig is True, returns a tuple (fig, ax) of the figure and axes objects containing, else None
+        If return_fig is True, returns (fig, ax). Axes are one-dimensional for
+        single-order fits and two-dimensional for joint fits.
         """
+        if self.dynesty:
+            return self.traceplot(return_fig=return_fig, **kwargs)
+
         # Set burnin and thin to defaults if not provided
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
         samples = self.sampler.get_chain(thin=int(thin))
-        steps = np.arange(samples.shape[0]) * thin
+        steps = (np.arange(samples.shape[0]) + 1) * thin
+        nuts = self.config.sampler_type == "pymc"
+        nwalkers, ndim = samples.shape[1:]
+        n_poly = len(self.data.poly_coeffs["masked"])
+        offset = ndim - n_poly
+        slices = self.data.continuum_slices.get("mcmc")
+        joint = slices is not None and len(slices) > 1
+
+        if joint:
+            rows = [[(offset + param, f"Continuum coefficient {param-a}")
+                     for param in range(a, b)] for _, _, a, b in slices]
+            orders = np.atleast_1d(self.config.order)
+            if len(orders) != len(rows):
+                orders = np.arange(len(rows))
+        else:
+            rows = [[(offset + param, f"Continuum coefficient {param}")]
+                    for param in range(n_poly)]
+        if not self.config.deterministic_profile:
+            # Profile samples precede the continuum, regardless of polynomial degree.
+            rows.extend([[(param, label)] for param, label in zip(
+                (offset - 1, self.default_params[n_poly + 1], 0),
+                ("$Z_{-1}$", "$Z_{max}$", "$Z_0$"))])
 
         # Use dict defaults
-        plot_defaults = {"fmt": "k", "alpha": 0.3}
-        plot_kwargs = utils.set_dict_defaults(plot_kwargs, plot_defaults)
+        options = {"alpha": 0.65, **(plot_kwargs or {})}
+        if "lw" not in options:
+            options.setdefault("linewidth", 0.6)
+        colour_chains = "fmt" not in options and "color" not in options and "c" not in options
+        fmt = options.pop("fmt", "-")
+        cmap = plt.get_cmap("tab10" if nwalkers <= 10 else "turbo")
+        colours = cmap(np.arange(nwalkers) if nwalkers <= 10 else np.linspace(0, 1, nwalkers))
 
-        subplot_defaults = {"figsize": (10, 20), "sharex": True}
+        nrows, ncols = len(rows), max(map(len, rows))
+        subplot_defaults = {"figsize": (4 * ncols if joint else 10, 2.5 * nrows + 1), "sharex": True}
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, subplot_defaults)
+        subplot_kwargs = {**subplot_kwargs, "squeeze": False}
 
-        # Setup plot and plot the walkers for the default parameters
-        naxes = len(self.default_params)
-        fig, ax = plt.subplots(naxes, 1, **subplot_kwargs)
-        fmt = plot_kwargs.pop("fmt", "k")
-        for i in range(naxes):
-            ax[i].plot(steps, samples[:, :, self.default_params[i]], fmt, **plot_kwargs)
-            ax[i].axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
-            ax[i].set_ylabel(self.default_param_labels[i])
-        ax[-1].legend()
-        ax[-1].set_xlabel("Step number")
-        ax[-1].set_xlim(0, self.data.nsteps)
-        ax[0].set_title('MCMC Walkers')
-        plt.subplots_adjust(hspace=0.05)
+        fig, axes = plt.subplots(nrows, ncols, **subplot_kwargs)
+        name = "Chain" if nuts else "Walker"
+        if joint:
+            for col, axis in enumerate(axes[0]):
+                axis.set_title(f"Continuum coefficient {col}")
+        for row, params in enumerate(rows):
+            for col, axis in enumerate(axes[row]):
+                if col >= len(params):
+                    axis.set_axis_off()
+                    continue
+                param, label = params[col]
+                lines = axis.plot(steps, samples[:, :, param], fmt, **options)
+                for walker, line in enumerate(lines):
+                    if colour_chains:
+                        line.set_color(colours[walker])
+                    if "label" not in options:
+                        line.set_label(f"{name} {walker + 1}" if nwalkers <= 10 else "_nolegend_")
+                if burnin > 0:
+                    axis.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
+                if joint and row < len(slices):
+                    if col == 0:
+                        axis.set_ylabel(f"Order {orders[row]}")
+                else:
+                    axis.set_ylabel(label)
+                if isinstance(axis.yaxis.get_major_formatter(), mpl.ticker.ScalarFormatter):
+                    axis.ticklabel_format(axis="y", style="plain", useOffset=False)
+                axis.set_xlim(0, self.sampler.iteration)
+                axis.grid(alpha=0.15)
+        for column in axes.T:
+            visible = [axis for axis in column if axis.axison]
+            visible[-1].set_xlabel("Retained draw after warmup" if nuts else "Step number")
+            visible[-1].tick_params(labelbottom=True)
+        handles, labels = axes[0, 0].get_legend_handles_labels()
+        if handles:
+            fig.legend(handles, labels, loc="lower center", ncol=min(5, len(handles)))
+        fig.suptitle("NUTS chains" if nuts else f"MCMC walkers ({nwalkers})")
+        fig.tight_layout(rect=(0, 0.04 if handles else 0, 1, 0.97))
         if return_fig:
-            return fig, ax
+            return fig, axes if joint else axes[:, 0]
         utils.show_or_save(plt, self.config.figure_dir, "walkers.png", output_dir=self.config.dir)
 
     @_require_sampler
