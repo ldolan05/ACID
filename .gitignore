@@ -2,6 +2,7 @@
 *.h5
 test.py
 tmp/*
+benchmarks/*
 
 # Standard Python ignores
 .vscode/
