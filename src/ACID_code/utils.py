@@ -450,22 +450,34 @@ def normalize_wavelengths(wl:Array1D)->Array1D:
     a, b = get_normalisation_coeffs(wl)
     return (a*wl)+b
 
-def get_available_memory() -> int:
+def get_available_memory(unit="B") -> int:
     """
     Returns the available memory in bytes.
     Checks if in a SLURM environment and uses its memory allocation if available.
 
+    Parameters
+    ----------
+    unit : str, optional
+        Unit for the returned memory value. Default is "B" (bytes).
+        The capitalization of the second letter matters to specify bytes (B) or bits (b).
+        Other options include "KB", "MB", "GB".
+
     Returns
     -------
-    int
-        Available memory in bytes.
+    float
+        Available memory in the specified units.
     """
     if "SLURM_JOB_ID" in os.environ:
         available_memory = int(os.environ.get('SLURM_MEM_PER_NODE')) # in MB
         available_memory *= 1024**2  # Convert to bytes as in the else statement below
     else:
         available_memory = psutil.virtual_memory().available
-    return available_memory
+
+    units = ("B", "KB", "MB", "GB", "b", "Kb", "Mb", "Gb")
+    if unit not in units:
+        raise ACIDInputError(f"Unsupported unit: {unit}, must be one of {units}")
+    power = ("", "K", "M", "G").index(unit[:-1])
+    return available_memory * (8 if unit[-1] == "b" else 1) / 1024**power
 
 def save_pickle_atomic(payload:Any, filename:str|os.PathLike[str]) -> None:
     """Replace a pickle only after writing it successfully on the same filesystem."""

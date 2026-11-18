@@ -544,7 +544,7 @@ class LSD:
             # Conservative estimate for temporary arrays per wavelength-line pair:
             # u/frac, k0, k1, rows, weights, masks, plus indexing overhead.
             bytes_per_pair = 96
-            max_pairs = max(1, work_memory // bytes_per_pair)
+            max_pairs = max(1, int(work_memory // bytes_per_pair))
 
             # Prefer blocking over lines while keeping all wavelengths together.
             # If even one line over all wavelengths is too big, also block wavelengths.
