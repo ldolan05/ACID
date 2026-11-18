@@ -380,7 +380,7 @@ class Plot:
         if self.dynesty:
             return self.traceplot(return_fig=return_fig, **kwargs)
 
-        # Set burnin and thin to defaults if not provided
+        # Keep the stored trace, including emcee burn-in, and preserve draw numbers when thinning.
         burnin = burnin if burnin is not None else self.burnin
         thin = thin if thin is not None else self.thin
         samples = self.sampler.get_chain(thin=int(thin))
@@ -388,10 +388,12 @@ class Plot:
         nuts = self.config.sampler_type == "pymc"
         nwalkers, ndim = samples.shape[1:]
         n_poly = len(self.data.poly_coeffs["masked"])
+        # Continuum indices follow any sampled profile parameters in the shared chain.
         offset = ndim - n_poly
         slices = self.data.continuum_slices.get("mcmc")
         joint = slices is not None and len(slices) > 1
 
+        # Map joint coefficient slices to order rows; single-order parameters stack vertically.
         if joint:
             rows = [[(offset + param, f"Continuum coefficient {param-a}")
                      for param in range(a, b)] for _, _, a, b in slices]
@@ -407,7 +409,7 @@ class Plot:
                 (offset - 1, self.default_params[n_poly + 1], 0),
                 ("$Z_{-1}$", "$Z_{max}$", "$Z_0$"))])
 
-        # Use dict defaults
+        # Respect explicit Matplotlib formats/colours; otherwise colour chains consistently.
         options = {"alpha": 0.65, **(plot_kwargs or {})}
         if "lw" not in options:
             options.setdefault("linewidth", 0.6)
@@ -416,6 +418,7 @@ class Plot:
         cmap = plt.get_cmap("tab10" if nwalkers <= 10 else "turbo")
         colours = cmap(np.arange(nwalkers) if nwalkers <= 10 else np.linspace(0, 1, nwalkers))
 
+        # Use a rectangular grid internally, leaving room for orders with different degrees.
         nrows, ncols = len(rows), max(map(len, rows))
         subplot_defaults = {"figsize": (4 * ncols if joint else 10, 2.5 * nrows + 1), "sharex": True}
         subplot_kwargs = utils.set_dict_defaults(subplot_kwargs, subplot_defaults)
@@ -428,6 +431,7 @@ class Plot:
                 axis.set_title(f"Continuum coefficient {col}")
         for row, params in enumerate(rows):
             for col, axis in enumerate(axes[row]):
+                # Lower-degree orders leave their unused coefficient panels blank.
                 if col >= len(params):
                     axis.set_axis_off()
                     continue
@@ -438,6 +442,7 @@ class Plot:
                         line.set_color(colours[walker])
                     if "label" not in options:
                         line.set_label(f"{name} {walker + 1}" if nwalkers <= 10 else "_nolegend_")
+                # NUTS normally has no stored burn-in, since warmup was already discarded.
                 if burnin > 0:
                     axis.axvspan(0, burnin, color="red", alpha=0.1, label="burn-in")
                 if joint and row < len(slices):
@@ -449,10 +454,14 @@ class Plot:
                     axis.ticklabel_format(axis="y", style="plain", useOffset=False)
                 axis.set_xlim(0, self.sampler.iteration)
                 axis.grid(alpha=0.15)
+
+        # Label the last visible panel in each column when orders have different degrees.
         for column in axes.T:
             visible = [axis for axis in column if axis.axison]
             visible[-1].set_xlabel("Retained draw after warmup" if nuts else "Step number")
             visible[-1].tick_params(labelbottom=True)
+
+        # Share one legend across panels and keep the legacy 1D axes return for single orders.
         handles, labels = axes[0, 0].get_legend_handles_labels()
         if handles:
             fig.legend(handles, labels, loc="lower center", ncol=min(5, len(handles)))

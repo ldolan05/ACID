@@ -108,6 +108,7 @@ def walker_data(sampler_type, n_poly, n_profile=0):
     from emcee import EnsembleSampler
     from emcee.backends import Backend
 
+    # Separate parameter values so plotting the wrong coefficient cannot pass unnoticed.
     ndim = n_poly + n_profile
     chain = np.random.default_rng(12).normal(size=(256, 4, ndim)) + 100 * np.arange(ndim)
     backend = Backend()
@@ -147,6 +148,7 @@ def test_single_order_walker_traces_and_chain_colours(sampler_type, n_poly):
 @pytest.mark.parametrize("sampler_type", ["emcee", "pymc"])
 def test_joint_walker_plot_maps_each_orders_coefficients(sampler_type):
     data, chain = walker_data(sampler_type, 6)
+    # Nonconsecutive order labels and different degrees exercise both kinds of indexing.
     data.continuum_slices["mcmc"] = np.array([[0, 10, 0, 2], [10, 20, 2, 5], [20, 30, 5, 6]])
     data.config.order = [33, 38, 42]
     figure, axes = Plot(data).walkers(burnin=0, thin=1, return_fig=True)
@@ -169,6 +171,7 @@ def test_full_model_walker_plot_preserves_profile_traces_and_format():
     options = {"fmt":"k--", "alpha":0.7, "lw":1.2}
     figure, axes = Plot(data).walkers(burnin=0, thin=1, plot_kwargs=options, return_fig=True)
     assert len(axes) == 5
+    # Continuum coefficients come first in the plot, then the last, peak and first profile points.
     for row, parameter in enumerate((5, 6, 4, 4, 0)):
         np.testing.assert_array_equal(axes[row].lines[0].get_ydata(), chain[:, 0, parameter])
         assert axes[row].lines[0].get_color() == "k"

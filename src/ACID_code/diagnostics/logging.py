@@ -79,6 +79,7 @@ def configure_logging(
     format
         Format used by the package's default handler.
     """
+    # Reconfigure ACID's existing handler while leaving application-owned handlers alone.
     logger = get_logger()
     handler = next((h for h in logger.handlers if getattr(h, _HANDLER_MARKER, False)), None)
 
