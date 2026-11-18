@@ -6,7 +6,7 @@ Installation and Setup
 Installing the package
 ------------------------
 
-ACID has been tested in Python 3.13 and 3.14, running fastest on 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
+ACID requires Python 3.10–3.14 and has been tested in Python 3.13 and 3.14, running fastest on 3.14. It is recommended to install ACID in a new conda environment to avoid dependency conflicts.
 
 In this example we create an environment named 'acid' and activate it using:
 

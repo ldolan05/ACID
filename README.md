@@ -27,4 +27,6 @@ The documentation will be kept up to date until at least 2029.
 Installation
 ============
 
+ACID requires Python 3.10–3.14.
+
 See the [Read the Docs documentation](https://acid-code.readthedocs.io/en/latest/installation.html) for installation instructions.
